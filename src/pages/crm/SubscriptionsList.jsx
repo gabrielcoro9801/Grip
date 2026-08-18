@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { api } from "@/api/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import PageHeader from "@/components/shared/PageHeader";
@@ -15,8 +15,8 @@ export default function SubscriptionsList() {
 
   useEffect(() => {
     Promise.all([
-      base44.entities.Subscription.list(),
-      base44.entities.Member.list(),
+      api.entities.Subscription.list(),
+      api.entities.Member.list(),
     ]).then(([s, m]) => {
       setSubscriptions(s);
       setMembers(m);

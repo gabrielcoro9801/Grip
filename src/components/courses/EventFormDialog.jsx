@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { api } from "@/api/client";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
@@ -124,7 +124,7 @@ export default function EventFormDialog({ open, onClose, data, reload }) {
 
       const capacity = eventData.capacity || room?.capacity || 0;
       eventData.capacity = capacity;
-      const createdEvent = await base44.entities.Event.create(eventData);
+      const createdEvent = await api.entities.Event.create(eventData);
       const sessionRecords = cleanDates.map(date => ({
         event_id: createdEvent.id, date,
         start_time: eventData.start_time, end_time: eventData.end_time,
@@ -133,7 +133,7 @@ export default function EventFormDialog({ open, onClose, data, reload }) {
       }));
       const { valid, errors: validationErrors } = validateSessionsBulk(sessionRecords, eventData);
       if (!valid) { throw new Error(`Validazione sessioni fallita:\n${validationErrors.join("\n")}`); }
-      await base44.entities.Session.bulkCreate(sessionRecords);
+      await api.entities.Session.bulkCreate(sessionRecords);
 
       toast({ title: "Evento creato", description: conflicts.length > 0 ? `${cleanDates.length} sessioni create, ${conflicts.length} saltate` : `${cleanDates.length} sessioni generate` });
       if (conflicts.length > 0) {

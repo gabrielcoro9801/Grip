@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
-import { base44 } from "@/api/base44Client";
+import { api } from "@/api/client";
 import { useOrganization } from "@/hooks/useOrganization";
 import { settleJournalEntry, settleLoanInstallment } from "@/lib/journalEntryEngine";
 import { generateReceiptForJournalEntry } from "@/lib/receiptEngine";
@@ -35,23 +35,23 @@ export default function CreditiDebiti() {
   const loadData = useCallback(() => {
     if (!organization) return;
     Promise.all([
-      base44.entities.JournalEntry.filter({ organization_id: organization.id, stato: "confermata" }, "-data_scadenza"),
-      base44.entities.ChartOfAccount.filter({ organization_id: organization.id }),
-      base44.entities.Loan.filter({ organization_id: organization.id }),
-      base44.entities.Member.list(),
-      base44.entities.AccountingSupplier.filter({ organization_id: organization.id }),
-      base44.entities.Client.filter({ organization_id: organization.id }),
+      api.entities.JournalEntry.filter({ organization_id: organization.id, stato: "confermata" }, "-data_scadenza"),
+      api.entities.ChartOfAccount.filter({ organization_id: organization.id }),
+      api.entities.Loan.filter({ organization_id: organization.id }),
+      api.entities.Member.list(),
+      api.entities.AccountingSupplier.filter({ organization_id: organization.id }),
+      api.entities.Client.filter({ organization_id: organization.id }),
     ]).then(async ([e, a, l, m, s, cl]) => {
       const entryIds = e.map(x => x.id);
       let allLines = [];
       if (entryIds.length > 0) {
-        allLines = await base44.entities.JournalLine.filter({});
+        allLines = await api.entities.JournalLine.filter({});
         allLines = allLines.filter(l => entryIds.includes(l.journal_entry_id));
       }
       const loanIds = l.map(x => x.id);
       let insts = [];
       if (loanIds.length > 0) {
-        insts = await base44.entities.LoanInstallment.filter({});
+        insts = await api.entities.LoanInstallment.filter({});
         insts = insts.filter(i => loanIds.includes(i.loan_id));
       }
       setEntries(e); setLines(allLines); setAccounts(a); setLoans(l); setInstallments(insts);

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { api } from "@/api/client";
 import { useMemberAuth } from "@/lib/MemberAuthContext";
 import { Link } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -18,8 +18,8 @@ export default function MemberDashboard() {
     if (!memberUser?.member_id) return;
     (async () => {
       const [m, subs] = await Promise.all([
-        base44.entities.Member.get(memberUser.member_id),
-        base44.entities.Subscription.filter({ member_id: memberUser.member_id }),
+        api.entities.Member.get(memberUser.member_id),
+        api.entities.Subscription.filter({ member_id: memberUser.member_id }),
       ]);
       setMember(m);
       setSubscriptions(subs);

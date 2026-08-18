@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { api } from "@/api/client";
 import { useStaffAuth } from "@/lib/StaffAuthContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -23,8 +23,8 @@ export default function PtPortal() {
   useEffect(() => {
     if (isPT && collaboratoreId) {
       Promise.all([
-        base44.entities.Collaboratore.get(collaboratoreId).catch(() => null),
-        base44.entities.SedutaPT.filter({ collaboratore_id: collaboratoreId }, "-data_ora_inizio", 200),
+        api.entities.Collaboratore.get(collaboratoreId).catch(() => null),
+        api.entities.SedutaPT.filter({ collaboratore_id: collaboratoreId }, "-data_ora_inizio", 200),
       ]).then(([c, s]) => {
         setColl(c);
         setSedute(s);

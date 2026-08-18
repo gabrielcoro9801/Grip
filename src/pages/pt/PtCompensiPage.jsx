@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { api } from "@/api/client";
 import { useStaffAuth } from "@/lib/StaffAuthContext";
 import { useOrganization } from "@/hooks/useOrganization";
 import { logAction } from "@/lib/auditLog";
@@ -34,16 +34,16 @@ export default function PtCompensiPage() {
   const loadData = async () => {
     if (isPT && collaboratoreId) {
       const [s, liq] = await Promise.all([
-        base44.entities.SedutaPT.filter({ collaboratore_id: collaboratoreId }, "-data_ora_inizio", 500),
-        base44.entities.LiquidazionePT.filter({ collaboratore_id: collaboratoreId }, "-periodo_anno", 100),
+        api.entities.SedutaPT.filter({ collaboratore_id: collaboratoreId }, "-data_ora_inizio", 500),
+        api.entities.LiquidazionePT.filter({ collaboratore_id: collaboratoreId }, "-periodo_anno", 100),
       ]);
       setSedute(s); setLiquidazioni(liq);
       setLoading(false);
     } else if (organization?.id) {
       const [colls, s, liq] = await Promise.all([
-        base44.entities.Collaboratore.filter({ organization_id: organization.id, tipo_rapporto: "collaboratore_sportivo" }),
-        base44.entities.SedutaPT.list("-data_ora_inizio", 500),
-        base44.entities.LiquidazionePT.list("-periodo_anno", 200),
+        api.entities.Collaboratore.filter({ organization_id: organization.id, tipo_rapporto: "collaboratore_sportivo" }),
+        api.entities.SedutaPT.list("-data_ora_inizio", 500),
+        api.entities.LiquidazionePT.list("-periodo_anno", 200),
       ]);
       setCollaboratori(colls); setSedute(s); setLiquidazioni(liq);
       setLoading(false);
@@ -114,7 +114,7 @@ export default function PtCompensiPage() {
   const righe = selectedColls.map(calcolaRiga);
 
   const handleGenera = async (riga) => {
-    const liq = await base44.entities.LiquidazionePT.create({
+    const liq = await api.entities.LiquidazionePT.create({
       collaboratore_id: riga.coll.id,
       collaboratore_nome: `${riga.coll.nome} ${riga.coll.cognome}`,
       periodo_anno: anno,
@@ -134,7 +134,7 @@ export default function PtCompensiPage() {
       toast({ title: "Errore", description: "Organizzazione non configurata", variant: "destructive" });
       return;
     }
-    const je = await base44.entities.JournalEntry.create({
+    const je = await api.entities.JournalEntry.create({
       organization_id: organization.id,
       data_competenza: moment().format("YYYY-MM-DD"),
       descrizione: `Compenso ${riga.coll.nome} ${riga.coll.cognome} — ${MESI[mese]} ${anno}`,
@@ -145,7 +145,7 @@ export default function PtCompensiPage() {
     });
     const liq = liquidazioni.find((l) => l.collaboratore_id === riga.coll.id && l.periodo_anno === anno && l.periodo_mese === mese);
     if (liq) {
-      await base44.entities.LiquidazionePT.update(liq.id, {
+      await api.entities.LiquidazionePT.update(liq.id, {
         stato: "liquidata",
         journal_entry_id: je.id,
         data_liquidazione: moment().format("YYYY-MM-DD"),

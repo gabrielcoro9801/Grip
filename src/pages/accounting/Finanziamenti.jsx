@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { base44 } from "@/api/base44Client";
+import { api } from "@/api/client";
 import { useOrganization } from "@/hooks/useOrganization";
 import { settleLoanInstallment } from "@/lib/journalEntryEngine";
 import { useStaffAuth } from "@/lib/StaffAuthContext";
@@ -38,13 +38,13 @@ export default function Finanziamenti() {
   const loadData = useCallback(() => {
     if (!organization) return;
     Promise.all([
-      base44.entities.Loan.filter({ organization_id: organization.id }),
-      base44.entities.ChartOfAccount.filter({ organization_id: organization.id }),
+      api.entities.Loan.filter({ organization_id: organization.id }),
+      api.entities.ChartOfAccount.filter({ organization_id: organization.id }),
     ]).then(async ([l, a]) => {
       const loanIds = l.map(x => x.id);
       let insts = [];
       if (loanIds.length > 0) {
-        insts = await base44.entities.LoanInstallment.filter({});
+        insts = await api.entities.LoanInstallment.filter({});
         insts = insts.filter(i => loanIds.includes(i.loan_id));
       }
       setLoans(l); setInstallments(insts); setAccounts(a); setLoading(false);
@@ -55,7 +55,7 @@ export default function Finanziamenti() {
 
   const handleCreateLoan = async (e) => {
     e.preventDefault();
-    const loan = await base44.entities.Loan.create({
+    const loan = await api.entities.Loan.create({
       organization_id: organization.id,
       ente_finanziatore: loanForm.ente_finanziatore,
       capitale_erogato: Number(loanForm.capitale_erogato),
@@ -72,7 +72,7 @@ export default function Finanziamenti() {
 
   const handleAddInstallment = async (e) => {
     e.preventDefault();
-    await base44.entities.LoanInstallment.create({
+    await api.entities.LoanInstallment.create({
       loan_id: showInstallmentForm,
       numero_rata: Number(instForm.numero_rata),
       data_scadenza: instForm.data_scadenza,

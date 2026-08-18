@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { api } from "@/api/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -129,14 +129,14 @@ export default function ManageSessions({ data, reload, initialSessionId }) {
     if (targetSessions.length === 0) return;
     setSaving(true);
     try {
-      await base44.entities.Session.bulkUpdate(
+      await api.entities.Session.bulkUpdate(
         targetSessions.map(s => ({ id: s.id, status: "cancelled" }))
       );
 
       const sessionIds = new Set(targetSessions.map(s => s.id));
       const sessionBookings = bookings.filter(b => sessionIds.has(b.session_id) && b.status !== "cancelled");
       if (sessionBookings.length > 0) {
-        await base44.entities.Booking.bulkUpdate(
+        await api.entities.Booking.bulkUpdate(
           sessionBookings.map(b => ({ id: b.id, status: "cancelled" }))
         );
       }
@@ -166,7 +166,7 @@ export default function ManageSessions({ data, reload, initialSessionId }) {
 
       // Per full_series: aggiorna anche l'Event, così le Session rimangono coerenti (modified_manually resta false)
       if (filterType === "full_series" && Object.keys(newValues).length > 0) {
-        await base44.entities.Event.update(filterEventId, newValues);
+        await api.entities.Event.update(filterEventId, newValues);
       }
 
       const updated = [];
@@ -206,7 +206,7 @@ export default function ManageSessions({ data, reload, initialSessionId }) {
           throw new Error(`Validazione fallita per sessione ${formatDate(session.date)}: ${validationErrors.join(", ")}`);
         }
 
-        await base44.entities.Session.update(session.id, updateData);
+        await api.entities.Session.update(session.id, updateData);
         updated.push(formatDate(session.date));
       }
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { base44 } from "@/api/base44Client";
+import { api } from "@/api/client";
 import { useMemberAuth } from "@/lib/MemberAuthContext";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -26,8 +26,8 @@ export default function MemberWorkoutPlans() {
   const loadData = useCallback(async () => {
     try {
       const [p, l] = await Promise.all([
-        base44.entities.ExercisePlan.filter({ member_id: memberUser.member_id }),
-        base44.entities.WorkoutLog.filter({ member_id: memberUser.member_id }, "-data", 200),
+        api.entities.ExercisePlan.filter({ member_id: memberUser.member_id }),
+        api.entities.WorkoutLog.filter({ member_id: memberUser.member_id }, "-data", 200),
       ]);
       setPlans(p);
       setLogs(l);
@@ -57,7 +57,7 @@ export default function MemberWorkoutPlans() {
     }
     setSaving(true);
     try {
-      await base44.entities.WorkoutLog.create({
+      await api.entities.WorkoutLog.create({
         member_id: memberUser.member_id,
         plan_id: plan.id,
         plan_name: plan.name,

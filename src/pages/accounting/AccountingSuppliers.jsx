@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { api } from "@/api/client";
 import { useOrganization } from "@/hooks/useOrganization";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -20,8 +20,8 @@ export default function AccountingSuppliers() {
 
   const loadData = (orgId) => {
     Promise.all([
-      base44.entities.AccountingSupplier.filter({ organization_id: orgId }),
-      base44.entities.ChartOfAccount.filter({ organization_id: orgId, tipo_conto: "costo" }),
+      api.entities.AccountingSupplier.filter({ organization_id: orgId }),
+      api.entities.ChartOfAccount.filter({ organization_id: orgId, tipo_conto: "costo" }),
     ]).then(([s, a]) => { setSuppliers(s); setAccounts(a); setLoading(false); });
   };
 
@@ -29,7 +29,7 @@ export default function AccountingSuppliers() {
 
   const handleCreate = async (e) => {
     e.preventDefault();
-    await base44.entities.AccountingSupplier.create({
+    await api.entities.AccountingSupplier.create({
       ...form,
       organization_id: organization.id,
       conto_costo_default_id: form.conto_costo_default_id || undefined,

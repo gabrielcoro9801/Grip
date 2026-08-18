@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { api } from "@/api/client";
 import { useStaffAuth } from "@/lib/StaffAuthContext";
 import { logAction } from "@/lib/auditLog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -31,12 +31,12 @@ export default function FeriePermessiPage() {
 
   const loadData = async () => {
     if (isAdmin) {
-      const r = await base44.entities.RichiestaFeriePermesso.list("-created_date", 200);
+      const r = await api.entities.RichiestaFeriePermesso.list("-created_date", 200);
       setRichieste(r);
     } else if (empId) {
       const [r, emp] = await Promise.all([
-        base44.entities.RichiestaFeriePermesso.filter({ dipendente_id: empId }, "-created_date", 100),
-        base44.entities.Collaboratore.get(empId).catch(() => null),
+        api.entities.RichiestaFeriePermesso.filter({ dipendente_id: empId }, "-created_date", 100),
+        api.entities.Collaboratore.get(empId).catch(() => null),
       ]);
       setRichieste(r);
       setEmployee(emp);
@@ -48,7 +48,7 @@ export default function FeriePermessiPage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    await base44.entities.RichiestaFeriePermesso.create({
+    await api.entities.RichiestaFeriePermesso.create({
       dipendente_id: empId,
       dipendente_nome: employee ? `${employee.nome} ${employee.cognome}` : staffUser.nome,
       tipo: form.tipo,
@@ -65,7 +65,7 @@ export default function FeriePermessiPage() {
   };
 
   const handleApprove = async (r, approvato) => {
-    await base44.entities.RichiestaFeriePermesso.update(r.id, {
+    await api.entities.RichiestaFeriePermesso.update(r.id, {
       stato: approvato ? "approvata" : "rifiutata",
       approvato_da: staffUser.nome,
       approvato_il: new Date().toISOString(),

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { base44 } from "@/api/base44Client";
+import { api } from "@/api/client";
 import { useOrganization } from "@/hooks/useOrganization";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -28,7 +28,7 @@ export default function ChartOfAccounts() {
   const [form, setForm] = useState({ codice: "", nome: "", tipo_conto: "attivo", natura: "dare", conto_padre_id: "", gestisce_iva: false });
 
   const loadAccounts = (orgId) => {
-    base44.entities.ChartOfAccount.filter({ organization_id: orgId }, "codice").then(a => { setAccounts(a); setLoading(false); });
+    api.entities.ChartOfAccount.filter({ organization_id: orgId }, "codice").then(a => { setAccounts(a); setLoading(false); });
   };
 
   useEffect(() => {
@@ -44,7 +44,7 @@ export default function ChartOfAccounts() {
 
   const handleCreate = async (e) => {
     e.preventDefault();
-    await base44.entities.ChartOfAccount.create({
+    await api.entities.ChartOfAccount.create({
       ...form,
       organization_id: organization.id,
       conto_padre_id: form.conto_padre_id || undefined,

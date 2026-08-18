@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { base44 } from "@/api/base44Client";
+import { api } from "@/api/client";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -35,7 +35,7 @@ export default function AuditLogPage() {
   const [dateTo, setDateTo] = useState("");
 
   useEffect(() => {
-    base44.entities.AuditLog.list("-timestamp", 200).then(l => { setLogs(l); setLoading(false); });
+    api.entities.AuditLog.list("-timestamp", 200).then(l => { setLogs(l); setLoading(false); });
   }, []);
 
   const uniqueUsers = useMemo(() => {

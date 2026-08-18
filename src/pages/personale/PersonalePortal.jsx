@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { api } from "@/api/client";
 import { useStaffAuth } from "@/lib/StaffAuthContext";
 import { useOrganization } from "@/hooks/useOrganization";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -30,9 +30,9 @@ export default function PersonalePortal() {
     if (isAdmin) {
       if (!organization?.id) return;
       Promise.all([
-        base44.entities.Collaboratore.filter({ organization_id: organization.id, tipo_rapporto: "dipendente" }),
-        base44.entities.Timbratura.list("-data_ora_server", 200),
-        base44.entities.RichiestaFeriePermesso.filter({ stato: "in_attesa" }),
+        api.entities.Collaboratore.filter({ organization_id: organization.id, tipo_rapporto: "dipendente" }),
+        api.entities.Timbratura.list("-data_ora_server", 200),
+        api.entities.RichiestaFeriePermesso.filter({ stato: "in_attesa" }),
       ]).then(([emps, tims, pf]) => {
         setEmployees(emps);
         setTimbrature(tims);
@@ -41,10 +41,10 @@ export default function PersonalePortal() {
       });
     } else if (empId) {
       Promise.all([
-        base44.entities.Collaboratore.get(empId).catch(() => null),
-        base44.entities.Timbratura.filter({ dipendente_id: empId }, "-data_ora_server", 200),
-        base44.entities.Turno.filter({ dipendente_id: empId }, "data", 50),
-        base44.entities.RichiestaFeriePermesso.filter({ dipendente_id: empId }),
+        api.entities.Collaboratore.get(empId).catch(() => null),
+        api.entities.Timbratura.filter({ dipendente_id: empId }, "-data_ora_server", 200),
+        api.entities.Turno.filter({ dipendente_id: empId }, "data", 50),
+        api.entities.RichiestaFeriePermesso.filter({ dipendente_id: empId }),
       ]).then(([emp, tims, tur, fer]) => {
         setEmployee(emp);
         setTimbrature(tims);

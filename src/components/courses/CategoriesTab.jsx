@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { base44 } from "@/api/base44Client";
+import { api } from "@/api/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -16,7 +16,7 @@ export default function CategoriesTab({ data, reload }) {
     e.preventDefault();
     if (!form.name.trim()) return;
     try {
-      await base44.entities.Category.create(form);
+      await api.entities.Category.create(form);
       toast({ title: "Categoria creata" });
       setForm({ name: "", color: "#3b82f6" });
       reload();

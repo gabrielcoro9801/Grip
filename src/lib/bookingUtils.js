@@ -1,4 +1,4 @@
-import { base44 } from "@/api/base44Client";
+import { api } from "@/api/client";
 
 /**
  * Crea una prenotazione su una Sessione.
@@ -21,7 +21,7 @@ export async function createBooking(session, memberId, memberName, allBookings) 
   if (isFull) {
     const waitlisted = allBookings.filter(b => b.session_id === session.id && b.status === "waitlisted");
     const position = waitlisted.length + 1;
-    const booking = await base44.entities.Booking.create({
+    const booking = await api.entities.Booking.create({
       session_id: session.id,
       member_id: memberId,
       member_name: memberName,
@@ -31,7 +31,7 @@ export async function createBooking(session, memberId, memberName, allBookings) 
     return { ok: true, booking, status: "waitlisted", waitlist_position: position };
   }
 
-  const booking = await base44.entities.Booking.create({
+  const booking = await api.entities.Booking.create({
     session_id: session.id,
     member_id: memberId,
     member_name: memberName,
@@ -47,40 +47,40 @@ export async function createBooking(session, memberId, memberName, allBookings) 
  * - Se era waitlisted: NON promuove (non si libera posto), solo rinumera
  */
 export async function cancelBooking(bookingId) {
-  const booking = await base44.entities.Booking.get(bookingId);
+  const booking = await api.entities.Booking.get(bookingId);
   const originalStatus = booking.status;
   let promoted = false;
 
-  await base44.entities.Booking.update(bookingId, { status: "cancelled" });
+  await api.entities.Booking.update(bookingId, { status: "cancelled" });
 
   if (originalStatus === "confirmed") {
-    const waitlist = await base44.entities.Booking.filter({
+    const waitlist = await api.entities.Booking.filter({
       session_id: booking.session_id,
       status: "waitlisted",
     });
     if (waitlist.length > 0) {
       waitlist.sort((a, b) => (a.waitlist_position || 999) - (b.waitlist_position || 999));
       const promotedBooking = waitlist[0];
-      await base44.entities.Booking.update(promotedBooking.id, {
+      await api.entities.Booking.update(promotedBooking.id, {
         status: "confirmed",
         waitlist_position: null,
       });
       promoted = true;
       const remaining = waitlist.slice(1);
       if (remaining.length > 0) {
-        await base44.entities.Booking.bulkUpdate(
+        await api.entities.Booking.bulkUpdate(
           remaining.map((b, i) => ({ id: b.id, waitlist_position: i + 1 }))
         );
       }
     }
   } else if (originalStatus === "waitlisted") {
-    const waitlist = await base44.entities.Booking.filter({
+    const waitlist = await api.entities.Booking.filter({
       session_id: booking.session_id,
       status: "waitlisted",
     });
     waitlist.sort((a, b) => (a.waitlist_position || 999) - (b.waitlist_position || 999));
     if (waitlist.length > 0) {
-      await base44.entities.Booking.bulkUpdate(
+      await api.entities.Booking.bulkUpdate(
         waitlist.map((b, i) => ({ id: b.id, waitlist_position: i + 1 }))
       );
     }

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { base44 } from "@/api/base44Client";
+import { api } from "@/api/client";
 import { useOrganization } from "@/hooks/useOrganization";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -42,8 +42,8 @@ export default function CausaliOperative() {
   const loadData = useCallback(() => {
     if (!organization) return;
     Promise.all([
-      base44.entities.CausaleOperativa.filter({ organization_id: organization.id }),
-      base44.entities.ChartOfAccount.filter({ organization_id: organization.id, attivo: true }, "codice"),
+      api.entities.CausaleOperativa.filter({ organization_id: organization.id }),
+      api.entities.ChartOfAccount.filter({ organization_id: organization.id, attivo: true }, "codice"),
     ]).then(([c, a]) => { setCausali(c); setAccounts(a); setLoading(false); });
   }, [organization]);
 
@@ -80,10 +80,10 @@ export default function CausaliOperative() {
       tipo_controparte: form.richiede_controparte ? form.tipo_controparte : undefined,
     };
     if (editing) {
-      await base44.entities.CausaleOperativa.update(editing.id, payload);
+      await api.entities.CausaleOperativa.update(editing.id, payload);
       toast({ title: "Causale aggiornata" });
     } else {
-      await base44.entities.CausaleOperativa.create({ ...payload, sistema: false, attivo: true });
+      await api.entities.CausaleOperativa.create({ ...payload, sistema: false, attivo: true });
       toast({ title: "Causale creata" });
     }
     setShowForm(false);

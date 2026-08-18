@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { base44 } from "@/api/base44Client";
+import { api } from "@/api/client";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import PageHeader from "@/components/shared/PageHeader";
 import CalendarView from "@/components/courses/CalendarView";
@@ -15,14 +15,14 @@ export default function CalendarPage() {
 
   const loadData = useCallback(async () => {
     const [courses, categories, instructors, events, sessions, rooms, members, bookings] = await Promise.all([
-      base44.entities.Course.list(),
-      base44.entities.Category.list(),
-      base44.entities.Instructor.list(),
-      base44.entities.Event.list("-created_date", 200),
-      base44.entities.Session.list("-date", 500),
-      base44.entities.Room.list(),
-      base44.entities.Member.list(),
-      base44.entities.Booking.list("-created_date", 500),
+      api.entities.Course.list(),
+      api.entities.Category.list(),
+      api.entities.Instructor.list(),
+      api.entities.Event.list("-created_date", 200),
+      api.entities.Session.list("-date", 500),
+      api.entities.Room.list(),
+      api.entities.Member.list(),
+      api.entities.Booking.list("-created_date", 500),
     ]);
     setData({ courses, categories, instructors, events, sessions, rooms, members, bookings });
     setLoading(false);

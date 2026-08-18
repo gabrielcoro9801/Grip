@@ -19,8 +19,41 @@
             },
             "presentation": {
                 "reveal": "always",
-                "panel": "dedicated"
+                "panel": "dedicated",
+                "group": "grip"
             }
+        },
+        {
+            "type": "npm",
+            "script": "start",
+            "path": "server",
+            "label": "npm: start - server",
+            "isBackground": true,
+            "problemMatcher": {
+                "owner": "fastify",
+                "pattern": {
+                    "regexp": "."
+                },
+                "background": {
+                    "activeOnStart": true,
+                    "beginsPattern": ".*",
+                    "endsPattern": "Server listening at"
+                }
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "group": "grip"
+            }
+        },
+        {
+            "label": "Avvia Grip (backend + frontend)",
+            "dependsOn": [
+                "npm: start - server",
+                "npm: dev"
+            ],
+            "dependsOrder": "parallel",
+            "problemMatcher": []
         }
     ]
 }

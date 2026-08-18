@@ -1,6 +1,5 @@
 import React, { useState } from "react";
 import { Outlet, Link, useLocation } from "react-router-dom";
-import { base44 } from "@/api/base44Client";
 import { useStaffAuth } from "@/lib/StaffAuthContext";
 import { canAccess, ROLES, SIDEBAR_PERMISSIONS } from "@/lib/permissions";
 import StaffLogin from "@/pages/StaffLogin";

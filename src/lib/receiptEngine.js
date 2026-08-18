@@ -1,4 +1,4 @@
-import { base44 } from "@/api/base44Client";
+import { api } from "@/api/client";
 import jsPDF from "jspdf";
 import moment from "moment";
 
@@ -157,9 +157,9 @@ export async function buildReceiptPdfBlob(receipt, organization, template, membe
  * Recupera o crea il ReceiptTemplate per l'organizzazione.
  */
 export async function getOrCreateReceiptTemplate(organizationId) {
-  const existing = await base44.entities.ReceiptTemplate.filter({ organization_id: organizationId });
+  const existing = await api.entities.ReceiptTemplate.filter({ organization_id: organizationId });
   if (existing.length > 0) return existing[0];
-  return await base44.entities.ReceiptTemplate.create({ organization_id: organizationId });
+  return await api.entities.ReceiptTemplate.create({ organization_id: organizationId });
 }
 
 /**
@@ -170,15 +170,15 @@ export async function getOrCreateReceiptTemplate(organizationId) {
  * @param {Object} extraData - campi aggiuntivi (subscription_id, plan_name, ecc.)
  */
 export async function generateReceiptForJournalEntry(journalEntryId, organization, accounts, extraData = {}) {
-  const entry = await base44.entities.JournalEntry.get(journalEntryId);
+  const entry = await api.entities.JournalEntry.get(journalEntryId);
   if (!entry || entry.tipo_origine !== "incasso_cliente") return null;
   if (entry.stato !== "confermata" || entry.stato_pagamento !== "saldata") return null;
 
   // Recupera righe
-  const lines = await base44.entities.JournalLine.filter({ journal_entry_id: journalEntryId });
+  const lines = await api.entities.JournalLine.filter({ journal_entry_id: journalEntryId });
 
   // Evita duplicati / promuovi bozza
-  const existing = await base44.entities.Receipt.filter({ journal_entry_id: journalEntryId });
+  const existing = await api.entities.Receipt.filter({ journal_entry_id: journalEntryId });
   if (existing.length > 0) {
     const prev = existing[0];
     if (prev.stato === "emessa") return prev; // già completa
@@ -188,7 +188,7 @@ export async function generateReceiptForJournalEntry(journalEntryId, organizatio
 
   const controparteLine = lines.find(l => l.controparte_id && l.controparte_tipo === "cliente");
   if (!controparteLine) return null;
-  const client = await base44.entities.Client.get(controparteLine.controparte_id);
+  const client = await api.entities.Client.get(controparteLine.controparte_id);
   const member = { id: client?.id, full_name: clientDisplayName(client) };
 
   // Calcola importi
@@ -204,17 +204,17 @@ export async function generateReceiptForJournalEntry(journalEntryId, organizatio
 
   // Numero progressivo per esercizio
   const esercizio_fiscale = moment(entry.data_competenza).year();
-  const lastReceipts = await base44.entities.Receipt.filter(
+  const lastReceipts = await api.entities.Receipt.filter(
     { organization_id: organization.id, esercizio_fiscale }, "-numero_progressivo", 1
   );
   const numero_progressivo = (lastReceipts[0]?.numero_progressivo || 0) + 1;
 
   // Template
-  const templates = await base44.entities.ReceiptTemplate.filter({ organization_id: organization.id });
+  const templates = await api.entities.ReceiptTemplate.filter({ organization_id: organization.id });
   const template = templates[0] || {};
 
   // Crea receipt
-  const receipt = await base44.entities.Receipt.create({
+  const receipt = await api.entities.Receipt.create({
     organization_id: organization.id,
     cliente_id: member.id,
     cliente_name: member.full_name,
@@ -241,9 +241,9 @@ export async function generateReceiptForJournalEntry(journalEntryId, organizatio
   // Genera e carica PDF
   const pdfBlob = await buildReceiptPdfBlob(receipt, organization, template, member);
   const pdfFile = new File([pdfBlob], `ricevuta-${numero_progressivo}-${esercizio_fiscale}.pdf`, { type: "application/pdf" });
-  const { file_url } = await base44.integrations.Core.UploadFile({ file: pdfFile });
+  const { file_url } = await api.integrations.Core.UploadFile({ file: pdfFile });
 
-  return await base44.entities.Receipt.update(receipt.id, { pdf_url: file_url });
+  return await api.entities.Receipt.update(receipt.id, { pdf_url: file_url });
 }
 
 /**
@@ -251,7 +251,7 @@ export async function generateReceiptForJournalEntry(journalEntryId, organizatio
  */
 async function promoteDraftReceipt(draft, entry, organization, lines) {
   const controparteLine = lines.find(l => l.controparte_id && l.controparte_tipo === "cliente");
-  const client = draft.cliente_id ? await base44.entities.Client.get(draft.cliente_id) : null;
+  const client = draft.cliente_id ? await api.entities.Client.get(draft.cliente_id) : null;
   const member = client ? { id: client.id, full_name: clientDisplayName(client) } : { full_name: draft.cliente_name };
 
   const importo_lordo = draft.importo_lordo || lines.reduce((s, l) => s + (l.dare || 0), 0);
@@ -264,15 +264,15 @@ async function promoteDraftReceipt(draft, entry, organization, lines) {
   const tipo_documento = isForfettario ? "ricevuta_semplice" : "ricevuta_fiscale";
 
   const esercizio_fiscale = moment(entry.data_competenza).year();
-  const lastReceipts = await base44.entities.Receipt.filter(
+  const lastReceipts = await api.entities.Receipt.filter(
     { organization_id: organization.id, esercizio_fiscale }, "-numero_progressivo", 1
   );
   const numero_progressivo = (lastReceipts[0]?.numero_progressivo || 0) + 1;
 
-  const templates = await base44.entities.ReceiptTemplate.filter({ organization_id: organization.id });
+  const templates = await api.entities.ReceiptTemplate.filter({ organization_id: organization.id });
   const template = templates[0] || {};
 
-  const updated = await base44.entities.Receipt.update(draft.id, {
+  const updated = await api.entities.Receipt.update(draft.id, {
     numero_progressivo,
     esercizio_fiscale,
     tipo_documento,
@@ -289,30 +289,30 @@ async function promoteDraftReceipt(draft, entry, organization, lines) {
 
   const pdfBlob = await buildReceiptPdfBlob(updated, organization, template, member);
   const pdfFile = new File([pdfBlob], `ricevuta-${numero_progressivo}-${esercizio_fiscale}.pdf`, { type: "application/pdf" });
-  const { file_url } = await base44.integrations.Core.UploadFile({ file: pdfFile });
+  const { file_url } = await api.integrations.Core.UploadFile({ file: pdfFile });
 
-  return await base44.entities.Receipt.update(draft.id, { pdf_url: file_url });
+  return await api.entities.Receipt.update(draft.id, { pdf_url: file_url });
 }
 
 /**
  * Rigenera il PDF di una Receipt esistente senza cambiare numero_progressivo.
  */
 export async function regenerateReceiptPdf(receiptId, organization) {
-  let receipt = await base44.entities.Receipt.get(receiptId);
+  let receipt = await api.entities.Receipt.get(receiptId);
   const client = receipt.cliente_id
-    ? await base44.entities.Client.get(receipt.cliente_id)
+    ? await api.entities.Client.get(receipt.cliente_id)
     : null;
   const member = client
     ? { id: client.id, full_name: clientDisplayName(client) }
     : { full_name: receipt.cliente_name || receipt.member_name };
-  const templates = await base44.entities.ReceiptTemplate.filter({ organization_id: organization.id });
+  const templates = await api.entities.ReceiptTemplate.filter({ organization_id: organization.id });
   const template = templates[0] || {};
 
   const pdfBlob = await buildReceiptPdfBlob(receipt, organization, template, member);
   const pdfFile = new File([pdfBlob], `ricevuta-${receipt.numero_progressivo}-${receipt.esercizio_fiscale}.pdf`, { type: "application/pdf" });
-  const { file_url } = await base44.integrations.Core.UploadFile({ file: pdfFile });
+  const { file_url } = await api.integrations.Core.UploadFile({ file: pdfFile });
 
-  receipt = await base44.entities.Receipt.update(receiptId, {
+  receipt = await api.entities.Receipt.update(receiptId, {
     pdf_url: file_url,
     versione: (receipt.versione || 1) + 1,
     rigenerata_il: new Date().toISOString(),

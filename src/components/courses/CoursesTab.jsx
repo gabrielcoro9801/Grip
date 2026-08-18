@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { base44 } from "@/api/base44Client";
+import { api } from "@/api/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -43,10 +43,10 @@ export default function CoursesTab({ data, reload }) {
     if (!form.name.trim() || !form.category_id || !form.instructor_id) return;
     try {
       if (editing) {
-        await base44.entities.Course.update(editing.id, form);
+        await api.entities.Course.update(editing.id, form);
         toast({ title: "Corso aggiornato" });
       } else {
-        await base44.entities.Course.create(form);
+        await api.entities.Course.create(form);
         toast({ title: "Corso creato" });
       }
       setShowCourseForm(false);
@@ -59,7 +59,7 @@ export default function CoursesTab({ data, reload }) {
   const handleCreateCategory = async (e) => {
     e.preventDefault();
     if (!catForm.name.trim()) return;
-    await base44.entities.Category.create(catForm);
+    await api.entities.Category.create(catForm);
     setCatForm({ name: "", color: "#3b82f6" });
     reload();
   };
@@ -67,7 +67,7 @@ export default function CoursesTab({ data, reload }) {
   const handleCreateInstructor = async (e) => {
     e.preventDefault();
     if (!instForm.full_name.trim()) return;
-    await base44.entities.Instructor.create(instForm);
+    await api.entities.Instructor.create(instForm);
     setInstForm({ full_name: "", tax_id: "", contact_email: "", contact_phone: "", notes: "" });
     reload();
   };

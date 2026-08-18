@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { api } from "@/api/client";
 import { useStaffAuth } from "@/lib/StaffAuthContext";
 import { useOrganization } from "@/hooks/useOrganization";
 import { logAction } from "@/lib/auditLog";
@@ -37,10 +37,10 @@ export default function PtSedutePage() {
 
   const loadData = async () => {
     const [allSedute, colls, cls, rms] = await Promise.all([
-      base44.entities.SedutaPT.list("-data_ora_inizio", 200),
-      base44.entities.Collaboratore.filter({ organization_id: organization?.id, tipo_rapporto: "collaboratore_sportivo" }),
-      base44.entities.Client.list(),
-      base44.entities.Room.list(),
+      api.entities.SedutaPT.list("-data_ora_inizio", 200),
+      api.entities.Collaboratore.filter({ organization_id: organization?.id, tipo_rapporto: "collaboratore_sportivo" }),
+      api.entities.Client.list(),
+      api.entities.Room.list(),
     ]);
     setSedute(isPT ? allSedute.filter((s) => s.collaboratore_id === collaboratoreId) : allSedute);
     setCollaboratori(colls);
@@ -70,7 +70,7 @@ export default function PtSedutePage() {
       return;
     }
 
-    const created = await base44.entities.SedutaPT.create({
+    const created = await api.entities.SedutaPT.create({
       ...formData,
       collaboratore_nome: coll ? `${coll.nome} ${coll.cognome}` : "",
       cliente_nome: client ? (client.tipo === "azienda" ? client.ragione_sociale : [client.nome, client.cognome].filter(Boolean).join(" ")) : "",
@@ -86,7 +86,7 @@ export default function PtSedutePage() {
 
   const handleStato = async (s, nuovoStato) => {
     const oldStato = s.stato;
-    await base44.entities.SedutaPT.update(s.id, { stato: nuovoStato });
+    await api.entities.SedutaPT.update(s.id, { stato: nuovoStato });
     await logAction(staffUser, "update", "pt_seduta", s.cliente_nome, s.id, `Stato: ${oldStato} → ${nuovoStato}`, oldStato, nuovoStato);
     toast({ title: `Seduta ${STATO_LABEL[nuovoStato].toLowerCase()}` });
     loadData();

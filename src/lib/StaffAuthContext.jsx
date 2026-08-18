@@ -1,55 +1,45 @@
 import { createContext, useContext, useState, useEffect, useCallback } from "react";
-import { base44 } from "@/api/base44Client";
+import { api, getToken, setToken } from "@/api/client";
 
 const StaffAuthContext = createContext(null);
-
-const STORAGE_KEY = "grip_staff_user";
 
 export function StaffAuthProvider({ children }) {
   const [staffUser, setStaffUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  // La sessione viene ricostruita chiedendo al server chi è il portatore del token,
+  // non rileggendo dati utente salvati nel browser: così un account disattivato o con
+  // ruolo cambiato perde subito i privilegi, e il ruolo non è manomettibile lato client.
   useEffect(() => {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) {
-      try {
-        setStaffUser(JSON.parse(stored));
-      } catch {
-        localStorage.removeItem(STORAGE_KEY);
-      }
+    if (!getToken()) {
+      setLoading(false);
+      return;
     }
-    setLoading(false);
+    api.auth
+      .me()
+      .then(setStaffUser)
+      .catch(() => setToken(null))
+      .finally(() => setLoading(false));
   }, []);
 
   const login = useCallback(async (email, password) => {
-    const accounts = await base44.entities.StaffAccount.filter({ email });
-    const account = accounts[0];
-    if (!account) return { ok: false, error: "Account non trovato." };
-    if (!account.attivo) return { ok: false, error: "Account disattivato. Contattare l'amministratore." };
-    if (account.password !== password) return { ok: false, error: "Password non corretta." };
-
-    const userData = {
-      id: account.id,
-      nome: account.nome,
-      email: account.email,
-      ruolo: account.ruolo,
-      linked_collaboratore_id: account.linked_collaboratore_id || null,
-    };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(userData));
-    setStaffUser(userData);
-
-    // Aggiorna last activity
     try {
-      await base44.entities.StaffAccount.update(account.id, {
-        last_activity_date: new Date().toISOString(),
-      });
-    } catch {}
-
-    return { ok: true };
+      const user = await api.auth.login(email, password);
+      // Il portale soci ha un accesso separato: un account "member" non deve entrare
+      // nel gestionale anche quando le credenziali sono corrette.
+      if (user.ruolo === "member") {
+        api.auth.logout();
+        return { ok: false, error: "Questo account può accedere solo al portale soci." };
+      }
+      setStaffUser(user);
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, error: error.message || "Credenziali non valide." };
+    }
   }, []);
 
   const logout = useCallback(() => {
-    localStorage.removeItem(STORAGE_KEY);
+    api.auth.logout();
     setStaffUser(null);
   }, []);
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { api } from "@/api/client";
 import { useOrganization } from "@/hooks/useOrganization";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -35,7 +35,7 @@ export default function NewJournalEntry() {
 
   useEffect(() => {
     if (organization) {
-      base44.entities.ChartOfAccount.filter({ organization_id: organization.id, attivo: true }, "codice").then(setAccounts);
+      api.entities.ChartOfAccount.filter({ organization_id: organization.id, attivo: true }, "codice").then(setAccounts);
     }
   }, [organization]);
 
@@ -75,10 +75,10 @@ export default function NewJournalEntry() {
     }
 
     setSaving(true);
-    const existingEntries = await base44.entities.JournalEntry.filter({ organization_id: organization.id }, "-numero_protocollo", 1);
+    const existingEntries = await api.entities.JournalEntry.filter({ organization_id: organization.id }, "-numero_protocollo", 1);
     const numero_protocollo = (existingEntries[0]?.numero_protocollo || 0) + 1;
 
-    const entry = await base44.entities.JournalEntry.create({
+    const entry = await api.entities.JournalEntry.create({
       ...header,
       organization_id: organization.id,
       numero_protocollo,
@@ -86,7 +86,7 @@ export default function NewJournalEntry() {
       stato,
     });
 
-    await base44.entities.JournalLine.bulkCreate(
+    await api.entities.JournalLine.bulkCreate(
       lines.map(l => ({
         journal_entry_id: entry.id,
         conto_id: l.conto_id,

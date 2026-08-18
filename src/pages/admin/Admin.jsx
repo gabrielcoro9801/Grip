@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { base44 } from "@/api/base44Client";
+import { api } from "@/api/client";
 import { useStaffAuth } from "@/lib/StaffAuthContext";
 import { useOrganization } from "@/hooks/useOrganization";
 import { logAction } from "@/lib/auditLog";
@@ -34,12 +34,12 @@ export default function Admin() {
 
   const loadData = useCallback(() => {
     const collabCall = organization?.id
-      ? base44.entities.Collaboratore.filter({ organization_id: organization.id })
-      : base44.entities.Collaboratore.list();
+      ? api.entities.Collaboratore.filter({ organization_id: organization.id })
+      : api.entities.Collaboratore.list();
     Promise.all([
-      base44.entities.StaffAccount.list(),
+      api.entities.StaffAccount.list(),
       collabCall,
-      base44.entities.Member.list(),
+      api.entities.Member.list(),
     ]).then(([a, colls, mems]) => { setAccounts(a); setCollaboratori(colls); setMembers(mems); setLoading(false); });
   }, [organization]);
 
@@ -53,7 +53,9 @@ export default function Admin() {
 
   const openEdit = (acc) => {
     setEditing(acc);
-    setForm({ nome: acc.nome, email: acc.email, ruolo: acc.ruolo, password: acc.password, linked_collaboratore_id: acc.linked_collaboratore_id || "", linked_member_id: acc.linked_member_id || "" });
+    // La password non è più leggibile (sul server esiste solo il suo hash): il campo
+    // parte vuoto e viene inviato soltanto se l'utente ne digita una nuova.
+    setForm({ nome: acc.nome, email: acc.email, ruolo: acc.ruolo, password: "", linked_collaboratore_id: acc.linked_collaboratore_id || "", linked_member_id: acc.linked_member_id || "" });
     setShowForm(true);
   };
 
@@ -61,11 +63,12 @@ export default function Admin() {
     e.preventDefault();
     if (editing) {
       const roleChanged = form.ruolo !== editing.ruolo;
-      await base44.entities.StaffAccount.update(editing.id, {
+      await api.entities.StaffAccount.update(editing.id, {
         nome: form.nome,
         email: form.email,
         ruolo: form.ruolo,
-        password: form.password,
+        // Campo vuoto = password invariata.
+        ...(form.password ? { password: form.password } : {}),
         linked_collaboratore_id: form.linked_collaboratore_id || null,
         linked_member_id: form.linked_member_id || null,
       });
@@ -77,7 +80,7 @@ export default function Admin() {
       }
       toast({ title: "Account aggiornato", description: form.nome });
     } else {
-      const created = await base44.entities.StaffAccount.create({
+      const created = await api.entities.StaffAccount.create({
         nome: form.nome,
         email: form.email,
         ruolo: form.ruolo,
@@ -95,7 +98,7 @@ export default function Admin() {
 
   const toggleActive = async (acc) => {
     const newAttivo = !acc.attivo;
-    await base44.entities.StaffAccount.update(acc.id, { attivo: newAttivo });
+    await api.entities.StaffAccount.update(acc.id, { attivo: newAttivo });
     await logAction(
       staffUser,
       newAttivo ? "activate" : "deactivate",
@@ -117,7 +120,7 @@ export default function Admin() {
     const chars = "abcdefghjkmnpqrstuvwxyz23456789";
     let pwd = "";
     for (let i = 0; i < 10; i++) pwd += chars[Math.floor(Math.random() * chars.length)];
-    await base44.entities.StaffAccount.update(resetTarget.id, { password: pwd });
+    await api.entities.StaffAccount.update(resetTarget.id, { password: pwd });
     await logAction(staffUser, "password_reset", "staff_account", resetTarget.nome, resetTarget.id, "Password resettata");
     setGeneratedPassword(pwd);
     toast({ title: "Password resettata", description: "Mostra la nuova password all'utente" });
@@ -265,7 +268,16 @@ export default function Admin() {
                 </SelectContent>
               </Select>
             </div>
-            <div><Label>Password *</Label><Input required value={form.password} onChange={e => setForm({...form, password: e.target.value})} /></div>
+            <div>
+              <Label>{editing ? "Password" : "Password *"}</Label>
+              <Input
+                type="password"
+                required={!editing}
+                value={form.password}
+                onChange={e => setForm({...form, password: e.target.value})}
+                placeholder={editing ? "Lascia vuoto per non cambiarla" : ""}
+              />
+            </div>
             <div>
               <Label>Collaboratore collegato (opzionale)</Label>
               <Select value={form.linked_collaboratore_id || "none"} onValueChange={v => setForm({...form, linked_collaboratore_id: v === "none" ? "" : v})}>

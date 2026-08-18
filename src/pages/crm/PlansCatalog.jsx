@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { api } from "@/api/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -18,7 +18,7 @@ export default function PlansCatalog() {
   const [form, setForm] = useState({ name: "", price: "", duration_days: "", sessions_included: "", description: "" });
 
   const loadData = () => {
-    base44.entities.Plan.list().then(p => { setPlans(p); setLoading(false); });
+    api.entities.Plan.list().then(p => { setPlans(p); setLoading(false); });
   };
   useEffect(() => { loadData(); }, []);
 
@@ -32,9 +32,9 @@ export default function PlansCatalog() {
     e.preventDefault();
     const data = { ...form, price: Number(form.price), duration_days: Number(form.duration_days), sessions_included: form.sessions_included ? Number(form.sessions_included) : 999, is_active: true };
     if (editing) {
-      await base44.entities.Plan.update(editing.id, data);
+      await api.entities.Plan.update(editing.id, data);
     } else {
-      await base44.entities.Plan.create(data);
+      await api.entities.Plan.create(data);
     }
     setShowForm(false);
     setEditing(null);
@@ -43,7 +43,7 @@ export default function PlansCatalog() {
   };
 
   const handleDelete = async (id) => {
-    await base44.entities.Plan.delete(id);
+    await api.entities.Plan.delete(id);
     loadData();
   };
 

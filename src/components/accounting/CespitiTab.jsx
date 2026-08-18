@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { base44 } from "@/api/base44Client";
+import { api } from "@/api/client";
 import { useOrganization } from "@/hooks/useOrganization";
 import { useStaffAuth } from "@/lib/StaffAuthContext";
 import { logAction } from "@/lib/auditLog";
@@ -37,7 +37,7 @@ export default function CespitiTab({ accounts }) {
 
   const loadData = useCallback(() => {
     if (!organization) return;
-    base44.entities.FixedAsset.filter({ organization_id: organization.id }, "-data_acquisto")
+    api.entities.FixedAsset.filter({ organization_id: organization.id }, "-data_acquisto")
       .then((a) => { setAssets(a); setLoading(false); });
   }, [organization]);
 
@@ -79,10 +79,10 @@ export default function CespitiTab({ accounts }) {
         lines.push({ conto_id: contoCespite.id, avere: costoStorico });
       }
 
-      const existing = await base44.entities.JournalEntry.filter({ organization_id: organization.id }, "-numero_protocollo", 1);
+      const existing = await api.entities.JournalEntry.filter({ organization_id: organization.id }, "-numero_protocollo", 1);
       const numero_protocollo = (existing[0]?.numero_protocollo || 0) + 1;
 
-      const entry = await base44.entities.JournalEntry.create({
+      const entry = await api.entities.JournalEntry.create({
         organization_id: organization.id,
         numero_protocollo,
         data_competenza: cessionData.data_vendita,
@@ -95,7 +95,7 @@ export default function CespitiTab({ accounts }) {
         natura_fiscale: "plusvalenza_patrimoniale",
       });
 
-      await base44.entities.JournalLine.bulkCreate(
+      await api.entities.JournalLine.bulkCreate(
         lines.map((l) => ({
           journal_entry_id: entry.id,
           conto_id: l.conto_id,
@@ -104,7 +104,7 @@ export default function CespitiTab({ accounts }) {
         }))
       );
 
-      await base44.entities.FixedAsset.update(asset.id, {
+      await api.entities.FixedAsset.update(asset.id, {
         stato: "venduto",
         data_vendita: cessionData.data_vendita,
         valore_vendita: valoreVendita,

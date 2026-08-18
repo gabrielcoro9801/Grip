@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { api } from "@/api/client";
 import { useOrganization } from "@/hooks/useOrganization";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -24,8 +24,8 @@ export default function ProfiloFiscale() {
     if (!organization?.id) return;
     try {
       const [snaps, years] = await Promise.all([
-        base44.entities.FiscalProfileSnapshot.filter({ organization_id: organization.id }),
-        base44.entities.FiscalYearData.filter({ organization_id: organization.id }),
+        api.entities.FiscalProfileSnapshot.filter({ organization_id: organization.id }),
+        api.entities.FiscalYearData.filter({ organization_id: organization.id }),
       ]);
       setSnapshots(snaps);
       setFiscalYears(years);
@@ -47,7 +47,7 @@ export default function ProfiloFiscale() {
   const handleEditSnapshot = (snap) => { setEditingSnapshot(snap); setShowForm(true); };
   const handleDeleteSnapshot = async (snap) => {
     if (!confirm(`Eliminare lo snapshot con decorrenza ${snap.data_decorrenza}?`)) return;
-    await base44.entities.FiscalProfileSnapshot.delete(snap.id);
+    await api.entities.FiscalProfileSnapshot.delete(snap.id);
     toast({ title: "Snapshot eliminato" });
     loadData();
   };

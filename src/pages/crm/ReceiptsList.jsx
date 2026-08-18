@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { base44 } from "@/api/base44Client";
+import { api } from "@/api/client";
 import { useOrganization } from "@/hooks/useOrganization";
 import { useStaffAuth } from "@/lib/StaffAuthContext";
 import { regenerateReceiptPdf } from "@/lib/receiptEngine";
@@ -24,7 +24,7 @@ export default function ReceiptsList() {
 
   const loadData = useCallback(async () => {
     if (!organization) return;
-    const r = await base44.entities.Receipt.filter({ organization_id: organization.id }, "-data_emissione");
+    const r = await api.entities.Receipt.filter({ organization_id: organization.id }, "-data_emissione");
     setReceipts(r);
     setLoading(false);
   }, [organization]);

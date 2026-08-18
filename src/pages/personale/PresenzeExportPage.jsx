@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { api } from "@/api/client";
 import { useStaffAuth } from "@/lib/StaffAuthContext";
 import { useOrganization } from "@/hooks/useOrganization";
 import { Card, CardContent } from "@/components/ui/card";
@@ -29,9 +29,9 @@ export default function PresenzeExportPage() {
   useEffect(() => {
     if (!organization?.id) return;
     Promise.all([
-      base44.entities.Collaboratore.filter({ organization_id: organization.id, tipo_rapporto: "dipendente" }),
-      base44.entities.Timbratura.list("-data_ora_server", 500),
-      base44.entities.RichiestaFeriePermesso.list("-created_date", 500),
+      api.entities.Collaboratore.filter({ organization_id: organization.id, tipo_rapporto: "dipendente" }),
+      api.entities.Timbratura.list("-data_ora_server", 500),
+      api.entities.RichiestaFeriePermesso.list("-created_date", 500),
     ]).then(([emps, tims, rich]) => {
       setEmployees(emps); setTimbrature(tims); setRichieste(rich); setLoading(false);
     });

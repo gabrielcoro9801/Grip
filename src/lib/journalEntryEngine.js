@@ -1,4 +1,4 @@
-import { base44 } from "@/api/base44Client";
+import { api } from "@/api/client";
 
 /**
  * Motore di generazione scrittura contabile da causale operativa.
@@ -77,10 +77,10 @@ export async function generateJournalEntry(params) {
     ? (isEntrata ? "da_incassare" : "da_pagare")
     : "saldata";
 
-  const existing = await base44.entities.JournalEntry.filter({ organization_id }, "-numero_protocollo", 1);
+  const existing = await api.entities.JournalEntry.filter({ organization_id }, "-numero_protocollo", 1);
   const numero_protocollo = (existing[0]?.numero_protocollo || 0) + 1;
 
-  const entry = await base44.entities.JournalEntry.create({
+  const entry = await api.entities.JournalEntry.create({
     organization_id,
     numero_protocollo,
     data_competenza: data,
@@ -96,7 +96,7 @@ export async function generateJournalEntry(params) {
   });
 
   // 5. Crea JournalLines
-  await base44.entities.JournalLine.bulkCreate(
+  await api.entities.JournalLine.bulkCreate(
     lines.map(l => ({
       journal_entry_id: entry.id,
       conto_id: l.conto_id,
@@ -130,12 +130,12 @@ export async function settleJournalEntry(originalEntry, accounts, metodo_liquidi
   // Recupera la causale per trovare il conto credito/debito
   let contoCreditoDebitoId = null;
   if (originalEntry.causale_operativa_id) {
-    const causale = await base44.entities.CausaleOperativa.get(originalEntry.causale_operativa_id);
+    const causale = await api.entities.CausaleOperativa.get(originalEntry.causale_operativa_id);
     contoCreditoDebitoId = causale?.conto_credito_debito_id;
   }
 
   // Fallback: cerca il conto credito/debito dalle righe originali
-  const originalLines = await base44.entities.JournalLine.filter({ journal_entry_id: originalEntry.id });
+  const originalLines = await api.entities.JournalLine.filter({ journal_entry_id: originalEntry.id });
 
   let contoCreditoDebito = null;
   if (contoCreditoDebitoId) {
@@ -163,10 +163,10 @@ export async function settleJournalEntry(originalEntry, accounts, metodo_liquidi
     lines.push({ conto_id: contoLiquidita.id, avere: importoSaldo });
   }
 
-  const existing = await base44.entities.JournalEntry.filter({ organization_id: originalEntry.organization_id }, "-numero_protocollo", 1);
+  const existing = await api.entities.JournalEntry.filter({ organization_id: originalEntry.organization_id }, "-numero_protocollo", 1);
   const numero_protocollo = (existing[0]?.numero_protocollo || 0) + 1;
 
-  const newEntry = await base44.entities.JournalEntry.create({
+  const newEntry = await api.entities.JournalEntry.create({
     organization_id: originalEntry.organization_id,
     numero_protocollo,
     data_competenza: dataCassa,
@@ -178,7 +178,7 @@ export async function settleJournalEntry(originalEntry, accounts, metodo_liquidi
     stato_pagamento: "saldata",
   });
 
-  await base44.entities.JournalLine.bulkCreate(
+  await api.entities.JournalLine.bulkCreate(
     lines.map(l => ({
       journal_entry_id: newEntry.id,
       conto_id: l.conto_id,
@@ -187,7 +187,7 @@ export async function settleJournalEntry(originalEntry, accounts, metodo_liquidi
     }))
   );
 
-  await base44.entities.JournalEntry.update(originalEntry.id, {
+  await api.entities.JournalEntry.update(originalEntry.id, {
     stato_pagamento: "saldata",
     journal_entry_saldo_id: newEntry.id,
   });
@@ -213,10 +213,10 @@ export async function settleLoanInstallment(installment, loan, accounts, metodo_
     { conto_id: contoLiquidita.id, avere: totale },
   ];
 
-  const existing = await base44.entities.JournalEntry.filter({ organization_id: loan.organization_id }, "-numero_protocollo", 1);
+  const existing = await api.entities.JournalEntry.filter({ organization_id: loan.organization_id }, "-numero_protocollo", 1);
   const numero_protocollo = (existing[0]?.numero_protocollo || 0) + 1;
 
-  const entry = await base44.entities.JournalEntry.create({
+  const entry = await api.entities.JournalEntry.create({
     organization_id: loan.organization_id,
     numero_protocollo,
     data_competenza: dataPagamento,
@@ -228,7 +228,7 @@ export async function settleLoanInstallment(installment, loan, accounts, metodo_
     stato_pagamento: "saldata",
   });
 
-  await base44.entities.JournalLine.bulkCreate(
+  await api.entities.JournalLine.bulkCreate(
     lines.map(l => ({
       journal_entry_id: entry.id,
       conto_id: l.conto_id,
@@ -237,7 +237,7 @@ export async function settleLoanInstallment(installment, loan, accounts, metodo_
     }))
   );
 
-  await base44.entities.LoanInstallment.update(installment.id, {
+  await api.entities.LoanInstallment.update(installment.id, {
     stato_pagamento: "pagata",
     journal_entry_id: entry.id,
   });

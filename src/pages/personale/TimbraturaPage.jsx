@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { api } from "@/api/client";
 import { useStaffAuth } from "@/lib/StaffAuthContext";
 import { useOrganization } from "@/hooks/useOrganization";
 import { logAction } from "@/lib/auditLog";
@@ -31,13 +31,13 @@ export default function TimbraturaPage() {
     if (isAdmin) {
       if (!organization?.id) return;
       const [tims, emps] = await Promise.all([
-        base44.entities.Timbratura.list("-data_ora_server", 200),
-        base44.entities.Collaboratore.filter({ organization_id: organization.id, tipo_rapporto: "dipendente" }),
+        api.entities.Timbratura.list("-data_ora_server", 200),
+        api.entities.Collaboratore.filter({ organization_id: organization.id, tipo_rapporto: "dipendente" }),
       ]);
       setTimbrature(tims);
       setEmployees(emps);
     } else if (empId) {
-      const tims = await base44.entities.Timbratura.filter({ dipendente_id: empId }, "-data_ora_server", 200);
+      const tims = await api.entities.Timbratura.filter({ dipendente_id: empId }, "-data_ora_server", 200);
       setTimbrature(tims);
     }
     setLoading(false);
@@ -51,7 +51,7 @@ export default function TimbraturaPage() {
 
   const handleTimbra = async () => {
     const emp = employees.find((e) => e.id === empId);
-    await base44.entities.Timbratura.create({
+    await api.entities.Timbratura.create({
       dipendente_id: empId,
       dipendente_nome: emp ? `${emp.nome} ${emp.cognome}` : staffUser.nome,
       tipo: nextTipo,
@@ -65,7 +65,7 @@ export default function TimbraturaPage() {
     if (!editTarget) return;
     const oldValue = editTarget.data_ora_server;
     const newValue = moment(editValue).toISOString();
-    await base44.entities.Timbratura.update(editTarget.id, {
+    await api.entities.Timbratura.update(editTarget.id, {
       data_ora_server: newValue,
       corretta_da: staffUser.nome,
       corretta_il: new Date().toISOString(),

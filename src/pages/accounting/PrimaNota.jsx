@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { base44 } from "@/api/base44Client";
+import { api } from "@/api/client";
 import { useOrganization } from "@/hooks/useOrganization";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
@@ -19,13 +19,13 @@ export default function PrimaNota() {
   useEffect(() => {
     if (!organization) return;
     Promise.all([
-      base44.entities.JournalEntry.filter({ organization_id: organization.id, stato: "confermata" }, "-data_competenza"),
-      base44.entities.ChartOfAccount.filter({ organization_id: organization.id }),
+      api.entities.JournalEntry.filter({ organization_id: organization.id, stato: "confermata" }, "-data_competenza"),
+      api.entities.ChartOfAccount.filter({ organization_id: organization.id }),
     ]).then(async ([e, acc]) => {
       const entryIds = e.map(x => x.id);
       let allLines = [];
       if (entryIds.length > 0) {
-        allLines = await base44.entities.JournalLine.filter({});
+        allLines = await api.entities.JournalLine.filter({});
         allLines = allLines.filter(l => entryIds.includes(l.journal_entry_id));
       }
       setEntries(e);

@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from "react";
-import { base44 } from "@/api/base44Client";
+import { api } from "@/api/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -162,7 +162,7 @@ export default function EventsTab({ data, reload }) {
       eventData.capacity = capacity;
 
       // Crea Event
-      const createdEvent = await base44.entities.Event.create(eventData);
+      const createdEvent = await api.entities.Event.create(eventData);
       const sessionRecords = cleanDates.map(date => ({
         event_id: createdEvent.id,
         date,
@@ -178,7 +178,7 @@ export default function EventsTab({ data, reload }) {
       if (!valid) {
         throw new Error(`Validazione sessioni fallita — divergenza dall'Event:\n${validationErrors.join("\n")}`);
       }
-      await base44.entities.Session.bulkCreate(sessionRecords);
+      await api.entities.Session.bulkCreate(sessionRecords);
 
       // Riepilogo
       toast({

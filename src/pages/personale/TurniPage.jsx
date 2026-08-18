@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { api } from "@/api/client";
 import { useStaffAuth } from "@/lib/StaffAuthContext";
 import { useOrganization } from "@/hooks/useOrganization";
 import { logAction } from "@/lib/auditLog";
@@ -39,13 +39,13 @@ export default function TurniPage() {
     if (isAdmin) {
       if (!organization?.id) return;
       const [tur, emps, rms] = await Promise.all([
-        base44.entities.Turno.list("-data", 200),
-        base44.entities.Collaboratore.filter({ organization_id: organization.id, tipo_rapporto: "dipendente" }),
-        base44.entities.Room.list(),
+        api.entities.Turno.list("-data", 200),
+        api.entities.Collaboratore.filter({ organization_id: organization.id, tipo_rapporto: "dipendente" }),
+        api.entities.Room.list(),
       ]);
       setTurni(tur); setEmployees(emps); setRooms(rms);
     } else if (empId) {
-      const tur = await base44.entities.Turno.filter({ dipendente_id: empId }, "data", 100);
+      const tur = await api.entities.Turno.filter({ dipendente_id: empId }, "data", 100);
       setTurni(tur);
     }
     setLoading(false);
@@ -74,7 +74,7 @@ export default function TurniPage() {
         stato: "assegnato",
       });
     }
-    await base44.entities.Turno.bulkCreate(turniData);
+    await api.entities.Turno.bulkCreate(turniData);
     await logAction(staffUser, "create", "turno", emp ? `${emp.nome} ${emp.cognome}` : "", "", `Turno ${form.data} ${form.ora_inizio}-${form.ora_fine}${ripeti > 1 ? ` (ripetuto ${ripeti}x)` : ""}`);
     toast({ title: "Turno creato", description: ripeti > 1 ? `${ripeti} turni creati` : "Turno assegnato" });
     setShowForm(false);
@@ -83,7 +83,7 @@ export default function TurniPage() {
   };
 
   const handleDelete = async (t) => {
-    await base44.entities.Turno.update(t.id, { stato: "annullato" });
+    await api.entities.Turno.update(t.id, { stato: "annullato" });
     await logAction(staffUser, "delete", "turno", t.dipendente_nome, t.id, `Turno ${t.data} annullato`);
     toast({ title: "Turno annullato" });
     loadData();

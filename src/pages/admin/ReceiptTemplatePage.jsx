@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { base44 } from "@/api/base44Client";
+import { api } from "@/api/client";
 import { useOrganization } from "@/hooks/useOrganization";
 import { shouldShowIva } from "@/lib/receiptEngine";
 import PageHeader from "@/components/shared/PageHeader";
@@ -23,8 +23,8 @@ export default function ReceiptTemplatePage() {
 
   const loadData = useCallback(async () => {
     if (!organization) return;
-    const templates = await base44.entities.ReceiptTemplate.filter({ organization_id: organization.id });
-    const t = templates[0] || await base44.entities.ReceiptTemplate.create({ organization_id: organization.id });
+    const templates = await api.entities.ReceiptTemplate.filter({ organization_id: organization.id });
+    const t = templates[0] || await api.entities.ReceiptTemplate.create({ organization_id: organization.id });
     setTemplate(t);
     setOrgForm({
       ragione_sociale: organization.ragione_sociale || organization.nome || "",
@@ -45,7 +45,7 @@ export default function ReceiptTemplatePage() {
     const file = e.target.files?.[0];
     if (!file) return;
     try {
-      const { file_url } = await base44.integrations.Core.UploadFile({ file });
+      const { file_url } = await api.integrations.Core.UploadFile({ file });
       setOrgForm(f => ({ ...f, logo_url: file_url }));
       toast({ title: "Logo caricato" });
     } catch (err) {
@@ -58,13 +58,13 @@ export default function ReceiptTemplatePage() {
     setSaving(true);
     try {
       await Promise.all([
-        base44.entities.Organization.update(organization.id, {
+        api.entities.Organization.update(organization.id, {
           ragione_sociale: orgForm.ragione_sociale,
           piva_cf: orgForm.piva_cf,
           indirizzo: orgForm.indirizzo,
           logo_url: orgForm.logo_url,
         }),
-        base44.entities.ReceiptTemplate.update(template.id, {
+        api.entities.ReceiptTemplate.update(template.id, {
           nota_piede: tplForm.nota_piede,
           colore_accento: tplForm.colore_accento,
           mostra_iva_override: tplForm.mostra_iva_override,

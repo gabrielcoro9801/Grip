@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { api } from "@/api/client";
 import { seedChartOfAccounts, seedCausaliOperative } from "@/lib/accountingDefaults";
 
 // Cache a livello modulo: l'organizzazione è globale per l'app.
@@ -13,10 +13,10 @@ function loadOrganization() {
   if (_cachedOrg) return Promise.resolve(_cachedOrg);
   if (_cachePromise) return _cachePromise;
   _cachePromise = (async () => {
-    const orgs = await base44.entities.Organization.list();
+    const orgs = await api.entities.Organization.list();
     let org = orgs[0];
     if (!org) {
-      org = await base44.entities.Organization.create({ nome: "La mia palestra" });
+      org = await api.entities.Organization.create({ nome: "La mia palestra" });
     }
     const accounts = await seedChartOfAccounts(org.id);
     await seedCausaliOperative(org.id, accounts);

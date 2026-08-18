@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { base44 } from "@/api/base44Client";
+import { api } from "@/api/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -44,10 +44,10 @@ export default function FiscalYearTable({ organization, years, onRefresh }) {
         proventi_complessivi: form.proventi_complessivi === "" ? null : Number(form.proventi_complessivi),
       };
       if (editing) {
-        await base44.entities.FiscalYearData.update(editing.id, payload);
+        await api.entities.FiscalYearData.update(editing.id, payload);
         toast({ title: "Dati esercizio aggiornati" });
       } else {
-        await base44.entities.FiscalYearData.create(payload);
+        await api.entities.FiscalYearData.create(payload);
         toast({ title: "Dati esercizio registrati" });
       }
       setShowForm(false);
@@ -60,7 +60,7 @@ export default function FiscalYearTable({ organization, years, onRefresh }) {
 
   const handleDelete = async (y) => {
     if (!confirm(`Eliminare i dati dell'esercizio ${y.anno_esercizio}?`)) return;
-    await base44.entities.FiscalYearData.delete(y.id);
+    await api.entities.FiscalYearData.delete(y.id);
     toast({ title: "Dati eliminati" });
     onRefresh();
   };

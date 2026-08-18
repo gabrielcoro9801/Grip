@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { base44 } from "@/api/base44Client";
+import { api } from "@/api/client";
 import { useToast } from "@/components/ui/use-toast";
 
 const FORMA_GIURIDICA = ["ASD (associazione non riconosciuta)", "ASD con personalità giuridica", "SSD (società di capitali)"];
@@ -76,10 +76,10 @@ export default function SnapshotForm({ open, onClose, organization, currentSnaps
       const payload = { ...form, organization_id: organization.id };
       if (!isEdit) {
         payload.data_inserimento = new Date().toISOString();
-        await base44.entities.FiscalProfileSnapshot.create(payload);
+        await api.entities.FiscalProfileSnapshot.create(payload);
         toast({ title: "Snapshot registrato" });
       } else {
-        await base44.entities.FiscalProfileSnapshot.update(editingSnapshot.id, payload);
+        await api.entities.FiscalProfileSnapshot.update(editingSnapshot.id, payload);
         toast({ title: "Snapshot aggiornato" });
       }
       onSaved();

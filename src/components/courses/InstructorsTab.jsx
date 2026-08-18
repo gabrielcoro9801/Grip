@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { base44 } from "@/api/base44Client";
+import { api } from "@/api/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -17,7 +17,7 @@ export default function InstructorsTab({ data, reload }) {
     e.preventDefault();
     if (!form.full_name.trim()) return;
     try {
-      await base44.entities.Instructor.create(form);
+      await api.entities.Instructor.create(form);
       toast({ title: "Istruttore creato" });
       setForm({ full_name: "", tax_id: "", contact_email: "", contact_phone: "", notes: "" });
       reload();

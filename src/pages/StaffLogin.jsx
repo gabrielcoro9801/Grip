@@ -1,13 +1,10 @@
-import React, { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import React, { useState } from "react";
 import { useStaffAuth } from "@/lib/StaffAuthContext";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
-import { Dumbbell, LogIn, AlertCircle, User } from "lucide-react";
-import { ROLES } from "@/lib/permissions";
+import { Dumbbell, LogIn, AlertCircle } from "lucide-react";
 
 export default function StaffLogin() {
   const { login } = useStaffAuth();
@@ -15,11 +12,6 @@ export default function StaffLogin() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [accounts, setAccounts] = useState([]);
-
-  useEffect(() => {
-    base44.entities.StaffAccount.filter({ attivo: true }, "nome").then(setAccounts);
-  }, []);
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -28,12 +20,6 @@ export default function StaffLogin() {
     const result = await login(email, password);
     if (!result.ok) setError(result.error);
     setLoading(false);
-  };
-
-  const quickFill = (acc) => {
-    setEmail(acc.email);
-    setPassword(acc.password);
-    setError("");
   };
 
   return (
@@ -86,34 +72,6 @@ export default function StaffLogin() {
           </CardContent>
         </Card>
 
-        {/* Demo accounts — quick fill */}
-        <Card className="border-0 shadow-sm bg-muted/30">
-          <CardContent className="p-4">
-            <p className="text-xs font-medium text-muted-foreground mb-3 uppercase tracking-wide">
-              Account demo — clicca per compilare
-            </p>
-            <div className="space-y-1.5">
-              {accounts.map(acc => (
-                <button
-                  key={acc.id}
-                  onClick={() => quickFill(acc)}
-                  className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-background transition-colors text-left"
-                >
-                  <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-                    <User className="w-3.5 h-3.5 text-primary" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{acc.nome}</p>
-                    <p className="text-xs text-muted-foreground truncate">{acc.email}</p>
-                  </div>
-                  <Badge variant="outline" className="text-xs">
-                    {ROLES[acc.ruolo]?.label || acc.ruolo}
-                  </Badge>
-                </button>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
       </div>
     </div>
   );

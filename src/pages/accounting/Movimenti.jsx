@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
-import { base44 } from "@/api/base44Client";
+import { api } from "@/api/client";
 import { useOrganization } from "@/hooks/useOrganization";
 import { generateJournalEntry } from "@/lib/journalEntryEngine";
 import { generateReceiptForJournalEntry } from "@/lib/receiptEngine";
@@ -70,17 +70,17 @@ export default function Movimenti() {
   const loadData = useCallback(() => {
     if (!organization) return;
     Promise.all([
-      base44.entities.CausaleOperativa.filter({ organization_id: organization.id, attivo: true }),
-      base44.entities.ChartOfAccount.filter({ organization_id: organization.id }),
-      base44.entities.JournalEntry.filter({ organization_id: organization.id, stato: "confermata" }, "-data_competenza"),
-      base44.entities.AccountingSupplier.filter({ organization_id: organization.id, attivo: true }),
-      base44.entities.Client.filter({ organization_id: organization.id, attivo: true }),
-      base44.entities.Member.list(),
+      api.entities.CausaleOperativa.filter({ organization_id: organization.id, attivo: true }),
+      api.entities.ChartOfAccount.filter({ organization_id: organization.id }),
+      api.entities.JournalEntry.filter({ organization_id: organization.id, stato: "confermata" }, "-data_competenza"),
+      api.entities.AccountingSupplier.filter({ organization_id: organization.id, attivo: true }),
+      api.entities.Client.filter({ organization_id: organization.id, attivo: true }),
+      api.entities.Member.list(),
     ]).then(async ([c, acc, e, sup, cli, mem]) => {
       const entryIds = e.map(x => x.id);
       let allLines = [];
       if (entryIds.length > 0) {
-        allLines = await base44.entities.JournalLine.filter({});
+        allLines = await api.entities.JournalLine.filter({});
         allLines = allLines.filter(l => entryIds.includes(l.journal_entry_id));
       }
       setCausali(c); setAccounts(acc); setEntries(e); setLines(allLines);
@@ -172,7 +172,7 @@ export default function Movimenti() {
       }
       // Se uscita cespite, crea il FixedAsset collegato (logica già in Acquisti.jsx)
       if (eCespite && wizardTipo === "uscita") {
-        await base44.entities.FixedAsset.create({
+        await api.entities.FixedAsset.create({
           organization_id: organization.id,
           nome: selectedCausale.nome_visibile,
           valore_acquisto: Number(wData.importo),

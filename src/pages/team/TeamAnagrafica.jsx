@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { api } from "@/api/client";
 import { useStaffAuth } from "@/lib/StaffAuthContext";
 import { useOrganization } from "@/hooks/useOrganization";
 import { logAction } from "@/lib/auditLog";
@@ -41,7 +41,7 @@ export default function TeamAnagrafica() {
 
   const loadData = async () => {
     if (!organization?.id) return;
-    const colls = await base44.entities.Collaboratore.filter({ organization_id: organization.id });
+    const colls = await api.entities.Collaboratore.filter({ organization_id: organization.id });
     setCollaboratori(colls);
     setLoading(false);
   };
@@ -83,11 +83,11 @@ export default function TeamAnagrafica() {
     };
     const nomeCompleto = `${form.nome} ${form.cognome}`;
     if (editing) {
-      await base44.entities.Collaboratore.update(editing.id, data);
+      await api.entities.Collaboratore.update(editing.id, data);
       await logAction(staffUser, "update", "collaboratore", nomeCompleto, editing.id, "Modifica anagrafica collaboratore");
       toast({ title: "Collaboratore aggiornato" });
     } else {
-      const created = await base44.entities.Collaboratore.create(data);
+      const created = await api.entities.Collaboratore.create(data);
       await logAction(staffUser, "create", "collaboratore", nomeCompleto, created.id, "Nuovo collaboratore");
       toast({ title: "Collaboratore creato" });
     }
@@ -98,7 +98,7 @@ export default function TeamAnagrafica() {
   const toggleAttivo = async (c) => {
     const attivoCorrente = c.attivo !== false;
     const nuovo = !attivoCorrente;
-    await base44.entities.Collaboratore.update(c.id, { attivo: nuovo });
+    await api.entities.Collaboratore.update(c.id, { attivo: nuovo });
     await logAction(staffUser, nuovo ? "activate" : "deactivate", "collaboratore", `${c.nome} ${c.cognome}`, c.id, nuovo ? "Collaboratore riattivato" : "Collaboratore disattivato");
     toast({ title: nuovo ? "Collaboratore riattivato" : "Collaboratore disattivato" });
     loadData();

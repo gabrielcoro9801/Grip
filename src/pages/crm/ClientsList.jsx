@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { api } from "@/api/client";
 import { useOrganization } from "@/hooks/useOrganization";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -24,8 +24,8 @@ export default function ClientsList() {
   const loadData = () => {
     if (!organization) return;
     Promise.all([
-      base44.entities.Client.filter({ organization_id: organization.id }),
-      base44.entities.Member.list(),
+      api.entities.Client.filter({ organization_id: organization.id }),
+      api.entities.Member.list(),
     ]).then(([c, m]) => { setClients(c); setMembers(m); setLoading(false); });
   };
 
@@ -36,7 +36,7 @@ export default function ClientsList() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    await base44.entities.Client.create({
+    await api.entities.Client.create({
       ...form,
       organization_id: organization.id,
       attivo: true,

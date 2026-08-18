@@ -1,54 +1,60 @@
 import { createContext, useContext, useState, useEffect, useCallback } from "react";
-import { base44 } from "@/api/base44Client";
+import { api, getToken, setToken } from "@/api/client";
 
 const MemberAuthContext = createContext(null);
-const STORAGE_KEY = "grip_member_user";
+
+// La sessione del socio mantiene la forma di prima ({ id, nome, email, member_id }),
+// così le pagine del portale continuano a leggere `memberUser.member_id` invariate.
+function toMemberSession(user) {
+  return {
+    id: user.id,
+    nome: user.nome,
+    email: user.email,
+    member_id: user.linked_member_id,
+  };
+}
 
 export function MemberAuthProvider({ children }) {
   const [memberUser, setMemberUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) {
-      try {
-        setMemberUser(JSON.parse(stored));
-      } catch {
-        localStorage.removeItem(STORAGE_KEY);
-      }
+    if (!getToken()) {
+      setLoading(false);
+      return;
     }
-    setLoading(false);
+    api.auth
+      .me()
+      .then((user) => {
+        // Lo stesso token vale per staff e soci: qui accettiamo solo i soci, altrimenti
+        // un utente dello staff autenticato entrerebbe nel portale soci senza avere
+        // un'anagrafica collegata da mostrare.
+        if (user.ruolo === "member" && user.linked_member_id) {
+          setMemberUser(toMemberSession(user));
+        }
+      })
+      .catch(() => setToken(null))
+      .finally(() => setLoading(false));
   }, []);
 
   const login = useCallback(async (email, password) => {
-    const accounts = await base44.entities.StaffAccount.filter({ email, ruolo: "member" });
-    const account = accounts[0];
-    // Generic error — never reveal whether the email exists
-    if (!account) return { ok: false, error: "Credenziali non valide." };
-    if (!account.attivo) return { ok: false, error: "Credenziali non valide." };
-    if (account.password !== password) return { ok: false, error: "Credenziali non valide." };
-    if (!account.linked_member_id) return { ok: false, error: "Credenziali non valide." };
-
-    const userData = {
-      id: account.id,
-      nome: account.nome,
-      email: account.email,
-      member_id: account.linked_member_id,
-    };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(userData));
-    setMemberUser(userData);
-
+    // Messaggio unico per ogni fallimento: non rivelare se l'indirizzo esiste.
+    const invalid = { ok: false, error: "Credenziali non valide." };
     try {
-      await base44.entities.StaffAccount.update(account.id, {
-        last_activity_date: new Date().toISOString(),
-      });
-    } catch {}
-
-    return { ok: true };
+      const user = await api.auth.login(email, password);
+      if (user.ruolo !== "member" || !user.linked_member_id) {
+        api.auth.logout();
+        return invalid;
+      }
+      setMemberUser(toMemberSession(user));
+      return { ok: true };
+    } catch {
+      return invalid;
+    }
   }, []);
 
   const logout = useCallback(() => {
-    localStorage.removeItem(STORAGE_KEY);
+    api.auth.logout();
     setMemberUser(null);
   }, []);
 

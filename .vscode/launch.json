@@ -1,16 +1,14 @@
 {
-    // Use IntelliSense to learn about possible attributes.
-    // Hover to view descriptions of existing attributes.
-    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    // Premi F5: avvia backend + frontend e apre il browser sull'app.
     "version": "0.2.0",
     "configurations": [
         {
             "type": "chrome",
             "request": "launch",
-            "name": "Launch Chrome against localhost",
+            "name": "Avvia Grip",
             "url": "http://localhost:5173",
             "webRoot": "${workspaceFolder}",
-            "preLaunchTask": "npm: dev"
+            "preLaunchTask": "Avvia Grip (backend + frontend)"
         }
     ]
 }

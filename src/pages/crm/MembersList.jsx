@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { api } from "@/api/client";
 import { Link } from "react-router-dom";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -23,8 +23,8 @@ export default function MembersList() {
 
   const loadData = () => {
     Promise.all([
-      base44.entities.Member.list(),
-      base44.entities.Subscription.list(),
+      api.entities.Member.list(),
+      api.entities.Subscription.list(),
     ]).then(([m, s]) => {
       setMembers(m);
       setSubscriptions(s);
@@ -45,7 +45,7 @@ export default function MembersList() {
     // Crea automaticamente il Client collegato in background
     const [nome, ...cognomeParts] = (data.full_name || "").trim().split(" ");
     const cognome = cognomeParts.join(" ");
-    const client = await base44.entities.Client.create({
+    const client = await api.entities.Client.create({
       organization_id: organization?.id || undefined,
       tipo: "privato",
       nome: nome || data.full_name,
@@ -60,7 +60,7 @@ export default function MembersList() {
       return isNaN(num) ? max : Math.max(max, num);
     }, 0);
     const codice_socio = String(maxCode + 1).padStart(6, "0");
-    await base44.entities.Member.create({ ...data, cliente_id: client.id, codice_socio });
+    await api.entities.Member.create({ ...data, cliente_id: client.id, codice_socio });
     setShowForm(false);
     setForm({ full_name: "", email: "", phone: "", date_of_birth: "", address: "", emergency_contact_name: "", emergency_contact_phone: "", gdpr_consent: false });
     loadData();

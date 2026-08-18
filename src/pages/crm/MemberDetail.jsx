@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { api } from "@/api/client";
 import { useOrganization } from "@/hooks/useOrganization";
 import { generateJournalEntry } from "@/lib/journalEntryEngine";
 import { generateReceiptForJournalEntry, regenerateReceiptPdf } from "@/lib/receiptEngine";
@@ -52,22 +52,22 @@ export default function MemberDetail() {
     try {
       // Split into smaller batches to avoid rate limits
       const [m, p] = await Promise.all([
-        base44.entities.Member.get(id),
-        base44.entities.Plan.list(),
+        api.entities.Member.get(id),
+        api.entities.Plan.list(),
       ]);
       const [s, d, r] = await Promise.all([
-        base44.entities.Subscription.filter({ member_id: id }),
-        base44.entities.MemberDocument.filter({ member_id: id }),
-        base44.entities.Receipt.filter({ member_id: id }),
+        api.entities.Subscription.filter({ member_id: id }),
+        api.entities.MemberDocument.filter({ member_id: id }),
+        api.entities.Receipt.filter({ member_id: id }),
       ]);
       const [ep, b, qr, sa, sess, evts, crs] = await Promise.all([
-        base44.entities.ExercisePlan.filter({ member_id: id }),
-        base44.entities.Booking.filter({ member_id: id }),
-        base44.entities.QRAccesso.filter({ cliente_id: id }),
-        base44.entities.StaffAccount.filter({ linked_member_id: id, ruolo: "member" }),
-        base44.entities.Session.list(),
-        base44.entities.Event.list(),
-        base44.entities.Course.list(),
+        api.entities.ExercisePlan.filter({ member_id: id }),
+        api.entities.Booking.filter({ member_id: id }),
+        api.entities.QRAccesso.filter({ cliente_id: id }),
+        api.entities.StaffAccount.filter({ linked_member_id: id, ruolo: "member" }),
+        api.entities.Session.list(),
+        api.entities.Event.list(),
+        api.entities.Course.list(),
       ]);
       const resolvedBookings = b.map(bk => {
         const session = sess.find(s => s.id === bk.session_id);
@@ -118,7 +118,7 @@ export default function MemberDetail() {
       const dataPagamento = subForm.pagato_subito ? subForm.data_pagamento : startDate;
       const endDate = moment(startDate).add(plan.duration_days, "days").format("YYYY-MM-DD");
 
-      const sub = await base44.entities.Subscription.create({
+      const sub = await api.entities.Subscription.create({
         member_id: id, plan_id: plan.id, plan_name: plan.name,
         start_date: startDate, end_date: endDate, status: "active",
         sessions_remaining: plan.sessions_included, price_paid: plan.price,
@@ -126,8 +126,8 @@ export default function MemberDetail() {
 
       // Recupera conti e causale "Incasso abbonamento/quota"
       const [accounts, causali] = await Promise.all([
-        base44.entities.ChartOfAccount.filter({ organization_id: organization.id }),
-        base44.entities.CausaleOperativa.filter({ organization_id: organization.id, attivo: true }),
+        api.entities.ChartOfAccount.filter({ organization_id: organization.id }),
+        api.entities.CausaleOperativa.filter({ organization_id: organization.id, attivo: true }),
       ]);
       const causale = causali.find(c => c.nome_visibile === "Incasso abbonamento/quota");
       if (!causale) throw new Error("Causale 'Incasso abbonamento/quota' non trovata");
@@ -162,7 +162,7 @@ export default function MemberDetail() {
         });
       } else {
         // Crea receipt placeholder "pending" per tracking credito
-        receipt = await base44.entities.Receipt.create({
+        receipt = await api.entities.Receipt.create({
           organization_id: organization.id,
           cliente_id: id, cliente_name: member.full_name,
           member_id: id, member_name: member.full_name,
@@ -176,7 +176,7 @@ export default function MemberDetail() {
       }
 
       if (receipt) {
-        await base44.entities.Revenue.create({
+        await api.entities.Revenue.create({
           receipt_id: receipt.id, member_name: member.full_name,
           plan_name: plan.name, amount: plan.price,
           date: dataPagamento, category: "Subscription",
@@ -209,7 +209,7 @@ export default function MemberDetail() {
 
   const handleNewDoc = async (e) => {
     e.preventDefault();
-    await base44.entities.MemberDocument.create({ member_id: id, ...docForm, caricato_da: docForm.caricato_da || staffUser?.nome || "" });
+    await api.entities.MemberDocument.create({ member_id: id, ...docForm, caricato_da: docForm.caricato_da || staffUser?.nome || "" });
     setShowDocForm(false);
     setDocForm({ document_type: "Certificato Medico", file_name: "", expiry_date: "", notes: "", caricato_da: "" });
     loadData();
@@ -217,7 +217,7 @@ export default function MemberDetail() {
 
   const handleRevokeQR = async () => {
     if (!qrAccess) return;
-    await base44.entities.QRAccesso.update(qrAccess.id, { stato: "revocato" });
+    await api.entities.QRAccesso.update(qrAccess.id, { stato: "revocato" });
     await logAction(staffUser, "deactivate", "member", `QR revocato — ${member?.full_name}`, qrAccess.id, "QR accesso revocato");
     toast({ title: "QR revocato" });
     loadData();
@@ -226,10 +226,10 @@ export default function MemberDetail() {
   const handleRegenerateQR = async () => {
     const newCode = generateQRCode();
     if (qrAccess) {
-      await base44.entities.QRAccesso.update(qrAccess.id, { codice: newCode, stato: "attivo", data_generazione: new Date().toISOString() });
+      await api.entities.QRAccesso.update(qrAccess.id, { codice: newCode, stato: "attivo", data_generazione: new Date().toISOString() });
       await logAction(staffUser, "update", "member", `QR rigenerato — ${member?.full_name}`, qrAccess.id, "QR accesso rigenerato", qrAccess.codice, newCode);
     } else {
-      const created = await base44.entities.QRAccesso.create({
+      const created = await api.entities.QRAccesso.create({
         cliente_id: id,
         cliente_name: member?.full_name || "",
         codice: newCode,
@@ -255,10 +255,10 @@ export default function MemberDetail() {
     setSaving(true);
     try {
       if (portalAccount) {
-        await base44.entities.StaffAccount.update(portalAccount.id, { password: passwordForm.password });
+        await api.entities.StaffAccount.update(portalAccount.id, { password: passwordForm.password });
         await logAction(staffUser, "password_reset", "staff_account", `Portale cliente — ${member?.full_name}`, portalAccount.id, "Password impostata dal CRM");
       } else {
-        const created = await base44.entities.StaffAccount.create({
+        const created = await api.entities.StaffAccount.create({
           nome: member?.full_name || "Cliente",
           email: member?.email || "",
           ruolo: "member",
@@ -285,10 +285,10 @@ export default function MemberDetail() {
       let pwd = "";
       for (let i = 0; i < 10; i++) pwd += chars[Math.floor(Math.random() * chars.length)];
       if (portalAccount) {
-        await base44.entities.StaffAccount.update(portalAccount.id, { password: pwd });
+        await api.entities.StaffAccount.update(portalAccount.id, { password: pwd });
         await logAction(staffUser, "password_reset", "staff_account", `Portale cliente — ${member?.full_name}`, portalAccount.id, "Password generata dal CRM");
       } else {
-        const created = await base44.entities.StaffAccount.create({
+        const created = await api.entities.StaffAccount.create({
           nome: member?.full_name || "Cliente",
           email: member?.email || "",
           ruolo: "member",

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { base44 } from "@/api/base44Client";
+import { api } from "@/api/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -23,8 +23,8 @@ export default function Finance() {
 
   const loadData = () => {
     Promise.all([
-      base44.entities.Revenue.list('-date'),
-      base44.entities.Expense.list('-date'),
+      api.entities.Revenue.list('-date'),
+      api.entities.Expense.list('-date'),
     ]).then(([r, e]) => { setRevenue(r); setExpenses(e); setLoading(false); });
   };
   useEffect(() => { loadData(); }, []);
@@ -51,7 +51,7 @@ export default function Finance() {
 
   const handleExpenseSubmit = async (e) => {
     e.preventDefault();
-    await base44.entities.Expense.create({ ...expForm, amount: Number(expForm.amount) });
+    await api.entities.Expense.create({ ...expForm, amount: Number(expForm.amount) });
     setShowExpenseForm(false);
     setExpForm({ category: "Rent", amount: "", date: new Date().toISOString().split("T")[0], description: "", notes: "" });
     loadData();

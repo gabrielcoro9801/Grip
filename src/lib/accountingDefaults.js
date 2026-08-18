@@ -1,4 +1,4 @@
-import { base44 } from "@/api/base44Client";
+import { api } from "@/api/client";
 
 export const DEFAULT_CHART_OF_ACCOUNTS = [
   { codice: "1.1", nome: "Attrezzature sportive", tipo_conto: "attivo", natura: "dare" },
@@ -55,11 +55,11 @@ export const DEFAULT_CAUSALI = [
 ];
 
 export async function seedChartOfAccounts(organizationId) {
-  const existing = await base44.entities.ChartOfAccount.filter({ organization_id: organizationId });
+  const existing = await api.entities.ChartOfAccount.filter({ organization_id: organizationId });
   const existingCodici = new Set(existing.map(a => a.codice));
   const missing = DEFAULT_CHART_OF_ACCOUNTS.filter(acc => !existingCodici.has(acc.codice));
   if (missing.length > 0) {
-    const created = await base44.entities.ChartOfAccount.bulkCreate(
+    const created = await api.entities.ChartOfAccount.bulkCreate(
       missing.map(acc => ({
         ...acc,
         organization_id: organizationId,
@@ -74,7 +74,7 @@ export async function seedChartOfAccounts(organizationId) {
 }
 
 export async function seedCausaliOperative(organizationId, accounts) {
-  const existing = await base44.entities.CausaleOperativa.filter({ organization_id: organizationId });
+  const existing = await api.entities.CausaleOperativa.filter({ organization_id: organizationId });
   if (existing.length > 0) return existing;
 
   const findAccount = (codice) => accounts.find(a => a.codice === codice);
@@ -96,5 +96,5 @@ export async function seedCausaliOperative(organizationId, accounts) {
     attivo: true,
   })).filter(c => c.conto_contropartita_id);
 
-  return await base44.entities.CausaleOperativa.bulkCreate(causaliData);
+  return await api.entities.CausaleOperativa.bulkCreate(causaliData);
 }

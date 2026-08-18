@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { base44 } from "@/api/base44Client";
+import { api } from "@/api/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -18,7 +18,7 @@ export default function RoomsTab({ data, reload }) {
   const handleCreate = async (e) => {
     e.preventDefault();
     if (!form.name.trim() || !form.capacity || Number(form.capacity) <= 0) return;
-    await base44.entities.Room.create({ ...form, capacity: Number(form.capacity) });
+    await api.entities.Room.create({ ...form, capacity: Number(form.capacity) });
     toast({ title: "Sala creata" });
     setShowForm(false);
     setForm({ name: "", capacity: "", description: "" });

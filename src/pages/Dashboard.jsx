@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { api } from "@/api/client";
 import { Link } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -18,15 +18,15 @@ export default function Dashboard() {
 
   useEffect(() => {
     Promise.all([
-      base44.entities.Member.list(),
-      base44.entities.Subscription.list(),
-      base44.entities.MemberDocument.list(),
-      base44.entities.Booking.list(),
-      base44.entities.Revenue.list(),
-      base44.entities.Expense.list(),
-      base44.entities.Session.list(),
-      base44.entities.Event.list(),
-      base44.entities.Course.list(),
+      api.entities.Member.list(),
+      api.entities.Subscription.list(),
+      api.entities.MemberDocument.list(),
+      api.entities.Booking.list(),
+      api.entities.Revenue.list(),
+      api.entities.Expense.list(),
+      api.entities.Session.list(),
+      api.entities.Event.list(),
+      api.entities.Course.list(),
     ]).then(([m, s, d, b, r, e, sess, evts, crs]) => {
       const resolvedBookings = b.map(bk => {
         const session = sess.find(s => s.id === bk.session_id);

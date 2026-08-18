@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { api } from "@/api/client";
 import { useMemberAuth } from "@/lib/MemberAuthContext";
 import { Card, CardContent } from "@/components/ui/card";
 import { Receipt as ReceiptIcon, Download } from "lucide-react";
@@ -13,7 +13,7 @@ export default function MemberReceipts() {
 
   useEffect(() => {
     if (!memberUser?.member_id) return;
-    base44.entities.Receipt.filter({ member_id: memberUser.member_id }, "-data_emissione").then(recs => {
+    api.entities.Receipt.filter({ member_id: memberUser.member_id }, "-data_emissione").then(recs => {
       setReceipts(recs);
       setLoading(false);
     });

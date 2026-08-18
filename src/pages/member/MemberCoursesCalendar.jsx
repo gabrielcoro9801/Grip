@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
-import { base44 } from "@/api/base44Client";
+import { api } from "@/api/client";
 import { useMemberAuth } from "@/lib/MemberAuthContext";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import CoursesByCategory from "@/components/member/CoursesByCategory";
@@ -23,13 +23,13 @@ export default function MemberCoursesCalendar() {
   const loadData = useCallback(async () => {
     try {
       const [c, cat, inst, ev, sess, r, b] = await Promise.all([
-        base44.entities.Course.list(),
-        base44.entities.Category.list(),
-        base44.entities.Instructor.list(),
-        base44.entities.Event.list("-created_date", 200),
-        base44.entities.Session.list("-date", 500),
-        base44.entities.Room.list(),
-        base44.entities.Booking.list("-created_date", 500),
+        api.entities.Course.list(),
+        api.entities.Category.list(),
+        api.entities.Instructor.list(),
+        api.entities.Event.list("-created_date", 200),
+        api.entities.Session.list("-date", 500),
+        api.entities.Room.list(),
+        api.entities.Booking.list("-created_date", 500),
       ]);
       setCourses(c); setCategories(cat); setInstructors(inst);
       setEvents(ev); setSessions(sess); setRooms(r);
@@ -40,7 +40,7 @@ export default function MemberCoursesCalendar() {
 
   useEffect(() => {
     loadData();
-    const unsub = base44.entities.Booking.subscribe(() => loadData());
+    const unsub = api.entities.Booking.subscribe(() => loadData());
     return unsub;
   }, [loadData]);
 

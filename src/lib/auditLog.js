@@ -1,4 +1,4 @@
-import { base44 } from "@/api/base44Client";
+import { api } from "@/api/client";
 
 /**
  * Registra un'azione nel log di audit.
@@ -12,7 +12,7 @@ import { base44 } from "@/api/base44Client";
 export async function logAction(staffUser, tipo_azione, entita_tipo, entita_nome, entita_id, dettagli, valore_precedente, valore_nuovo) {
   if (!staffUser) return;
   try {
-    await base44.entities.AuditLog.create({
+    await api.entities.AuditLog.create({
       attore_nome: staffUser.nome,
       attore_id: staffUser.id,
       ruolo_attore: staffUser.ruolo || "",

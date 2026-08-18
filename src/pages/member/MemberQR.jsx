@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { api } from "@/api/client";
 import { useMemberAuth } from "@/lib/MemberAuthContext";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -19,16 +19,16 @@ export default function MemberQR() {
     if (!memberUser?.member_id) return;
     (async () => {
       const [m, subs, qrs] = await Promise.all([
-        base44.entities.Member.get(memberUser.member_id),
-        base44.entities.Subscription.filter({ member_id: memberUser.member_id }),
-        base44.entities.QRAccesso.filter({ cliente_id: memberUser.member_id }),
+        api.entities.Member.get(memberUser.member_id),
+        api.entities.Subscription.filter({ member_id: memberUser.member_id }),
+        api.entities.QRAccesso.filter({ cliente_id: memberUser.member_id }),
       ]);
       setMember(m);
       setSubscriptions(subs);
 
       // Auto-generate QR if none exists (static, generated once)
       if (qrs.length === 0) {
-        const newQr = await base44.entities.QRAccesso.create({
+        const newQr = await api.entities.QRAccesso.create({
           cliente_id: memberUser.member_id,
           cliente_name: m?.full_name || memberUser.nome,
           codice: generateQRCode(),

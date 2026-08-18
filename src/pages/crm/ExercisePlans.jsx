@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { api } from "@/api/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -24,10 +24,10 @@ export default function ExercisePlans() {
 
   const loadData = () => {
     Promise.all([
-      base44.entities.ExercisePlan.list(),
-      base44.entities.Exercise.list(),
-      base44.entities.Member.list(),
-      base44.entities.WorkoutLog.list(),
+      api.entities.ExercisePlan.list(),
+      api.entities.Exercise.list(),
+      api.entities.Member.list(),
+      api.entities.WorkoutLog.list(),
     ]).then(([p, e, m, wl]) => {
       setPlans(p); setExercises(e); setMembers(m); setWorkoutLogs(wl); setLoading(false);
     });
@@ -71,7 +71,7 @@ export default function ExercisePlans() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     const member = members.find(m => m.id === form.member_id);
-    await base44.entities.ExercisePlan.create({
+    await api.entities.ExercisePlan.create({
       ...form,
       member_name: member?.full_name || "",
       assigned_date: new Date().toISOString().split("T")[0],
@@ -83,7 +83,7 @@ export default function ExercisePlans() {
 
   const handleNewExercise = async (e) => {
     e.preventDefault();
-    await base44.entities.Exercise.create(exForm);
+    await api.entities.Exercise.create(exForm);
     setShowExLib(false);
     setExForm({ name: "", muscle_group: "Chest", default_sets: 3, default_reps: "10" });
     loadData();

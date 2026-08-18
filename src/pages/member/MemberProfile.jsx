@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { api } from "@/api/client";
 import { useMemberAuth } from "@/lib/MemberAuthContext";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -17,7 +17,7 @@ export default function MemberProfile() {
 
   useEffect(() => {
     if (!memberUser?.member_id) return;
-    base44.entities.Member.get(memberUser.member_id).then(m => {
+    api.entities.Member.get(memberUser.member_id).then(m => {
       setMember(m);
       setLoading(false);
     });
