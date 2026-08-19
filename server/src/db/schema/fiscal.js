@@ -38,6 +38,34 @@ export const fiscalYearData = pgTable('fiscal_year_data', {
 	note: text('note'),
 });
 
+// Fatture verso clienti terzi (tipicamente aziende: affitto sale, sponsorizzazioni).
+// Sono documenti distinti dalle ricevute: la ricevuta accompagna la quota di un socio, la
+// fattura una prestazione commerciale verso terzi e richiede partita IVA, aliquota e una
+// numerazione propria che riparte ogni anno.
+//
+// Questo è il documento di cortesia in PDF. La fattura elettronica (XML verso lo SdI) è
+// obbligatoria e resta da costruire: il PDF non la sostituisce, l'affianca.
+export const invoices = pgTable('invoices', {
+	id: uuid('id').defaultRandom().primaryKey(),
+	organizationId: uuid('organization_id').references(() => organizations.id),
+	clienteId: uuid('cliente_id').notNull().references(() => clients.id),
+	clienteName: varchar('cliente_name', { length: 255 }),
+	clientePiva: varchar('cliente_piva', { length: 32 }),
+	clienteIndirizzo: text('cliente_indirizzo'),
+	journalEntryId: uuid('journal_entry_id').references(() => journalEntries.id),
+	numeroProgressivo: integer('numero_progressivo').notNull(),
+	esercizioFiscale: integer('esercizio_fiscale').notNull(),
+	dataEmissione: date('data_emissione').notNull(),
+	descrizione: text('descrizione'),
+	imponibile: numeric('imponibile', { precision: 12, scale: 2 }).notNull(),
+	iva: numeric('iva', { precision: 12, scale: 2 }).notNull().default('0'),
+	aliquotaIva: numeric('aliquota_iva', { precision: 5, scale: 2 }).notNull().default('0'),
+	totale: numeric('totale', { precision: 12, scale: 2 }).notNull(),
+	stato: varchar('stato', { length: 16 }).notNull().default('emessa'), // bozza | emessa
+	pdfUrl: text('pdf_url'),
+	createdDate: timestamp('created_date', { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const receiptTemplates = pgTable('receipt_templates', {
 	id: uuid('id').defaultRandom().primaryKey(),
 	organizationId: uuid('organization_id').references(() => organizations.id),

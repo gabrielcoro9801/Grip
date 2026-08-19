@@ -79,25 +79,19 @@ export default function CespitiTab({ accounts }) {
         lines.push({ conto_id: contoCespite.id, avere: costoStorico });
       }
 
-      const existing = await api.entities.JournalEntry.filter({ organization_id: organization.id }, "-numero_protocollo", 1);
-      const numero_protocollo = (existing[0]?.numero_protocollo || 0) + 1;
-
-      const entry = await api.entities.JournalEntry.create({
-        organization_id: organization.id,
-        numero_protocollo,
-        data_competenza: cessionData.data_vendita,
-        data_cassa: cessionData.data_vendita,
-        descrizione: `Cessione cespite: ${asset.nome}`,
-        causale: "Cessione cespite",
-        tipo_origine: "cespite_vendita",
-        stato: "confermata",
-        stato_pagamento: "saldata",
-        natura_fiscale: "plusvalenza_patrimoniale",
-      });
-
-      await api.entities.JournalLine.bulkCreate(
+      await api.accounting.createJournalEntry(
+        {
+          organization_id: organization.id,
+          data_competenza: cessionData.data_vendita,
+          data_cassa: cessionData.data_vendita,
+          descrizione: `Cessione cespite: ${asset.nome}`,
+          causale: "Cessione cespite",
+          tipo_origine: "cespite_vendita",
+          stato: "confermata",
+          stato_pagamento: "saldata",
+          natura_fiscale: "plusvalenza_patrimoniale",
+        },
         lines.map((l) => ({
-          journal_entry_id: entry.id,
           conto_id: l.conto_id,
           dare: l.dare || 0,
           avere: l.avere || 0,

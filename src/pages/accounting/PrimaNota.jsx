@@ -4,10 +4,13 @@ import { useOrganization } from "@/hooks/useOrganization";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useStaffAuth } from "@/lib/StaffAuthContext";
+import AllegatiScrittura from "@/components/accounting/AllegatiScrittura";
 import moment from "moment";
 
 export default function PrimaNota() {
   const { organization, loading: orgLoading } = useOrganization();
+  const { staffUser } = useStaffAuth();
   const [entries, setEntries] = useState([]);
   const [lines, setLines] = useState([]);
   const [accounts, setAccounts] = useState([]);
@@ -85,11 +88,12 @@ export default function PrimaNota() {
               <th className="py-3 px-4 font-medium text-muted-foreground">Conti movimentati</th>
               <th className="py-3 px-4 font-medium text-muted-foreground text-right">Dare</th>
               <th className="py-3 px-4 font-medium text-muted-foreground text-right">Avere</th>
+              <th className="py-3 px-4 font-medium text-muted-foreground text-right">Doc.</th>
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 ? (
-              <tr><td colSpan={5} className="text-center py-8 text-muted-foreground">Nessuna registrazione trovata</td></tr>
+              <tr><td colSpan={6} className="text-center py-8 text-muted-foreground">Nessuna registrazione trovata</td></tr>
             ) : rows.map(({ entry, lines: entryLines }) => {
               const totDare = entryLines.reduce((s, l) => s + (l.dare || 0), 0);
               const totAvere = entryLines.reduce((s, l) => s + (l.avere || 0), 0);
@@ -104,6 +108,9 @@ export default function PrimaNota() {
                   </td>
                   <td className="py-3 px-4 text-right font-medium">€{totDare.toFixed(2)}</td>
                   <td className="py-3 px-4 text-right font-medium">€{totAvere.toFixed(2)}</td>
+                  <td className="py-3 px-4 text-right">
+                    <AllegatiScrittura entry={entry} caricatoDa={staffUser?.nome} />
+                  </td>
                 </tr>
               );
             })}

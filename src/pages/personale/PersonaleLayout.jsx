@@ -1,13 +1,14 @@
 import React from "react";
 import { Outlet, Link, useLocation } from "react-router-dom";
 import { useStaffAuth } from "@/lib/StaffAuthContext";
-import { LayoutDashboard, Clock, CalendarDays, CalendarOff, FileSpreadsheet } from "lucide-react";
+import { LayoutDashboard, Clock, CalendarDays, CalendarOff, FileSpreadsheet, Receipt } from "lucide-react";
 
 const allTabs = [
   { label: "Dashboard", path: "/personale", icon: LayoutDashboard, end: true },
   { label: "Timbratura", path: "/personale/timbratura", icon: Clock },
   { label: "Turni", path: "/personale/turni", icon: CalendarDays },
   { label: "Ferie & Permessi", path: "/personale/ferie", icon: CalendarOff },
+  { label: "Cedolini", path: "/personale/cedolini", icon: Receipt, adminOnly: true },
   { label: "Presenze (Export)", path: "/personale/presenze", icon: FileSpreadsheet, adminOnly: true },
 ];
 

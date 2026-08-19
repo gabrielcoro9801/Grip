@@ -28,6 +28,8 @@ export default function MemberDetail() {
   const [subscriptions, setSubscriptions] = useState([]);
   const [documents, setDocuments] = useState([]);
   const [receipts, setReceipts] = useState([]);
+  // abbonamento id → stato_pagamento della scrittura contabile collegata
+  const [pagamentoPerAbbonamento, setPagamentoPerAbbonamento] = useState({});
   const [plans, setPlans] = useState([]);
   const [exercisePlans, setExercisePlans] = useState([]);
   const [bookings, setBookings] = useState([]);
@@ -35,7 +37,9 @@ export default function MemberDetail() {
   const [showSubForm, setShowSubForm] = useState(false);
   const [showDocForm, setShowDocForm] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [subForm, setSubForm] = useState({ plan_id: "", start_date: new Date().toISOString().split("T")[0], data_pagamento: new Date().toISOString().split("T")[0], payment_method: "Cash", pagato_subito: true, data_scadenza: "" });
+  // `istituzionale` parte attivo: la quota versata da un socio è fuori campo IVA. Resta
+  // disattivabile perché lo stesso piano può essere venduto come prestazione commerciale.
+  const [subForm, setSubForm] = useState({ plan_id: "", start_date: new Date().toISOString().split("T")[0], data_pagamento: new Date().toISOString().split("T")[0], payment_method: "Cash", pagato_subito: true, data_scadenza: "", istituzionale: true });
   const [dateError, setDateError] = useState("");
   const [docForm, setDocForm] = useState({ document_type: "Certificato Medico", file_name: "", expiry_date: "", notes: "", caricato_da: "" });
   const [qrAccess, setQrAccess] = useState(null);
@@ -75,6 +79,22 @@ export default function MemberDetail() {
         const course = crs.find(c => c.id === event?.course_id);
         return { ...bk, _course_name: course?.name, _date: session?.date };
       });
+
+      // Lo stato di pagamento di un abbonamento non è salvato sull'abbonamento: la verità
+      // sta sulla scrittura contabile, che può essere saldata da Crediti/Debiti. Lo si
+      // segue attraverso la ricevuta, che collega i due (subscription_id → journal_entry_id).
+      // Così l'etichetta si aggiorna da sé, senza uno stato duplicato da tenere allineato.
+      const entryIds = [...new Set(r.map(rec => rec.journal_entry_id).filter(Boolean))];
+      const entries = await Promise.all(entryIds.map(eid => api.entities.JournalEntry.get(eid).catch(() => null)));
+      const entryById = new Map(entries.filter(Boolean).map(e => [e.id, e]));
+      const statoPerAbbonamento = {};
+      for (const rec of r) {
+        if (rec.subscription_id && rec.journal_entry_id) {
+          statoPerAbbonamento[rec.subscription_id] = entryById.get(rec.journal_entry_id)?.stato_pagamento ?? null;
+        }
+      }
+      setPagamentoPerAbbonamento(statoPerAbbonamento);
+
       setMember(m);
       setSubscriptions(s);
       setDocuments(d);
@@ -112,6 +132,13 @@ export default function MemberDetail() {
     }
     setDateError("");
     if (!organization) { toast({ title: "Organizzazione non pronta", variant: "destructive" }); return; }
+    // La contabilità usa come controparte il Client anagrafico, non il Member: sono due
+    // record distinti collegati da `cliente_id`. Senza questo collegamento la ricevuta
+    // non troverebbe l'intestatario.
+    if (!member?.cliente_id) {
+      toast({ title: "Socio senza anagrafica cliente", description: "Impossibile registrare l'incasso: manca il cliente collegato al socio.", variant: "destructive" });
+      return;
+    }
     setSaving(true);
     try {
       const startDate = subForm.start_date;
@@ -136,20 +163,31 @@ export default function MemberDetail() {
       const metodoMap = { "Cash": "cassa", "Credit Card": "cassa", "Bank Transfer": "banca", "Other": "cassa" };
       const metodo_liquidita = metodoMap[subForm.payment_method] || "cassa";
 
+      // Un incasso istituzionale è fuori campo IVA: si usa una copia della causale con
+      // l'IVA disattivata, senza modificare la causale salvata. Stessa logica del wizard
+      // in Movimenti.jsx — senza di essa una quota associativa movimenterebbe il conto
+      // 4.3 IVA a debito.
+      const isIstituzionale = causale.puo_essere_istituzionale && subForm.istituzionale;
+      const causaleEffettiva = isIstituzionale
+        ? { ...causale, gestisce_iva: false, aliquota_iva_default: 0 }
+        : causale;
+
       // Genera scrittura contabile
       const journalEntry = await generateJournalEntry({
         organization_id: organization.id,
-        causale,
+        causale: causaleEffettiva,
         importo_lordo: plan.price,
         data: dataPagamento,
         metodo_liquidita: subForm.pagato_subito ? metodo_liquidita : undefined,
-        controparte_id: id,
+        controparte_id: member.cliente_id,
         controparte_tipo: "cliente",
         a_credito: !subForm.pagato_subito,
         data_scadenza: subForm.pagato_subito ? undefined : subForm.data_scadenza,
         accounts,
         descrizione: `Abbonamento ${plan.name} — ${member.full_name}`,
         tipo_origine: "incasso_cliente",
+        natura_fiscale: isIstituzionale ? "istituzionale" : "commerciale",
+        controparte_e_socio: causale.puo_essere_istituzionale ? subForm.istituzionale : undefined,
       });
 
       // Genera ricevuta PDF automaticamente (solo se pagato subito = saldata)
@@ -164,7 +202,7 @@ export default function MemberDetail() {
         // Crea receipt placeholder "pending" per tracking credito
         receipt = await api.entities.Receipt.create({
           organization_id: organization.id,
-          cliente_id: id, cliente_name: member.full_name,
+          cliente_id: member.cliente_id, cliente_name: member.full_name,
           member_id: id, member_name: member.full_name,
           subscription_id: sub.id, plan_name: plan.name,
           journal_entry_id: journalEntry.id,
@@ -175,16 +213,8 @@ export default function MemberDetail() {
         });
       }
 
-      if (receipt) {
-        await api.entities.Revenue.create({
-          receipt_id: receipt.id, member_name: member.full_name,
-          plan_name: plan.name, amount: plan.price,
-          date: dataPagamento, category: "Subscription",
-        });
-      }
-
       setShowSubForm(false);
-      setSubForm({ plan_id: "", start_date: new Date().toISOString().split("T")[0], data_pagamento: new Date().toISOString().split("T")[0], payment_method: "Cash", pagato_subito: true, data_scadenza: "" });
+      setSubForm({ plan_id: "", start_date: new Date().toISOString().split("T")[0], data_pagamento: new Date().toISOString().split("T")[0], payment_method: "Cash", pagato_subito: true, data_scadenza: "", istituzionale: true });
       loadData();
       toast({ title: subForm.pagato_subito ? "Abbonamento creato e incassato" : "Abbonamento creato (credito registrato)", description: subForm.pagato_subito ? "Ricevuta PDF generata automaticamente" : "Ricevuta emessa al saldo del credito" });
     } catch (err) {
@@ -378,10 +408,28 @@ export default function MemberDetail() {
                     <div className="text-right">
                       <StatusBadge status={sub.status} />
                       <p className="text-xs text-muted-foreground mt-1">€{sub.price_paid}</p>
+                      {pagamentoPerAbbonamento[sub.id] === "da_incassare" && (
+                        <Badge variant="outline" className="text-xs bg-amber-50 text-amber-700 border-amber-200 mt-1">
+                          <Clock className="w-3 h-3 mr-1" /> Da incassare
+                        </Badge>
+                      )}
+                      {pagamentoPerAbbonamento[sub.id] === "saldata" && (
+                        <Badge variant="outline" className="text-xs bg-emerald-50 text-emerald-700 border-emerald-200 mt-1">
+                          <CheckCircle2 className="w-3 h-3 mr-1" /> Pagato
+                        </Badge>
+                      )}
                     </div>
                   </div>
                 ))}
               </div>
+            )}
+            {/* Il saldo si registra in un solo posto — Crediti/Debiti — per non avere due
+                strade che aggiornano lo stesso stato in modi diversi. */}
+            {Object.values(pagamentoPerAbbonamento).includes("da_incassare") && (
+              <p className="text-xs text-muted-foreground mt-3 pt-3 border-t border-border/50">
+                Gli incassi in sospeso si registrano da{" "}
+                <Link to="/movimenti" className="underline underline-offset-2">Movimenti → Scadenzario</Link>.
+              </p>
             )}
           </CardContent>
         </Card>
@@ -611,6 +659,23 @@ export default function MemberDetail() {
                 <SelectContent>
                   <SelectItem value="true">Sì, pagato</SelectItem>
                   <SelectItem value="false">A credito</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
+              <div>
+                <Label className="cursor-pointer">Quota istituzionale</Label>
+                <p className="text-xs text-muted-foreground">
+                  {subForm.istituzionale
+                    ? "Fuori campo IVA (quota associativa del socio)"
+                    : "Incasso commerciale, soggetto a IVA"}
+                </p>
+              </div>
+              <Select value={subForm.istituzionale ? "true" : "false"} onValueChange={v => setSubForm({...subForm, istituzionale: v === "true"})}>
+                <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="true">Istituzionale</SelectItem>
+                  <SelectItem value="false">Commerciale</SelectItem>
                 </SelectContent>
               </Select>
             </div>

@@ -11,11 +11,12 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Download, Wallet, FileText, Check, AlertTriangle } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import moment from "moment";
 import { useToast } from "@/components/ui/use-toast";
+import { posizioneSoglia, SOGLIA_ESENZIONE } from "../../../shared/compensiSportivi.js";
 
 const MESI = moment.months();
-const SOGLIA_ESCLUSIONE = 15000;
 
 export default function PtCompensiPage() {
   const { staffUser } = useStaffAuth();
@@ -30,6 +31,8 @@ export default function PtCompensiPage() {
   const [mese, setMese] = useState(moment().month());
   const [anno, setAnno] = useState(moment().year());
   const [filterColl, setFilterColl] = useState("all");
+  // Riga in attesa di conferma perché il compenso tocca la soglia di esenzione.
+  const [confermaSoglia, setConfermaSoglia] = useState(null);
 
   const loadData = async () => {
     if (isPT && collaboratoreId) {
@@ -103,11 +106,19 @@ export default function PtCompensiPage() {
       (l) => l.collaboratore_id === coll.id && l.periodo_anno === anno && l.periodo_mese === mese && l.stato === "liquidata"
     );
     const cumulo = cumuloAnnuo(coll.id);
+    // La posizione si valuta includendo il compenso che si sta per erogare: sapere di aver
+    // già sforato serve a poco, sapere che si sta per sforare serve a decidere.
+    const soglia = posizioneSoglia({
+      giaLiquidato: cumulo - (Number(coll.importo_autocertificato_altri_enti) || 0),
+      autocertificatoAltriEnti: Number(coll.importo_autocertificato_altri_enti) || 0,
+      compensoInCorso: giaLiquidato ? 0 : compenso.importo,
+      dataAutocertificazione: coll.data_autocertificazione,
+    });
     return {
       coll, ...compenso, giaLiquidato,
       periodo: `${MESI[mese]} ${anno}`,
       cumulo,
-      superatoSoglia: cumulo > SOGLIA_ESCLUSIONE,
+      soglia,
     };
   };
 
@@ -134,15 +145,42 @@ export default function PtCompensiPage() {
       toast({ title: "Errore", description: "Organizzazione non configurata", variant: "destructive" });
       return;
     }
-    const je = await api.entities.JournalEntry.create({
-      organization_id: organization.id,
-      data_competenza: moment().format("YYYY-MM-DD"),
-      descrizione: `Compenso ${riga.coll.nome} ${riga.coll.cognome} — ${MESI[mese]} ${anno}`,
-      causale: `Liquidazione ${riga.coll.nome} ${riga.coll.cognome}`,
-      tipo_origine: "compenso_pt",
-      stato: "bozza",
-      stato_pagamento: "da_pagare",
-    });
+    // Il momento in cui la soglia conta è questo: dopo aver registrato il compenso,
+    // sapere di averla superata serve solo a rimediare.
+    if (riga.soglia.superaConQuestoCompenso || riga.soglia.giaOltreSoglia || riga.soglia.autocertificazioneMancante) {
+      setConfermaSoglia(riga);
+      return;
+    }
+    await registraCompenso(riga);
+  };
+
+  const registraCompenso = async (riga) => {
+    // Il compenso è un costo non ancora pagato: costo del personale in dare, debito
+    // verso il collaboratore in avere. Il pagamento vero si registra poi da
+    // Crediti/Debiti, come per ogni altro debito.
+    const accounts = await api.entities.ChartOfAccount.filter({ organization_id: organization.id });
+    const contoCosto = accounts.find((a) => a.codice === "7.6");
+    const contoDebito = accounts.find((a) => a.codice === "4.4");
+    if (!contoCosto || !contoDebito) {
+      toast({ title: "Conti mancanti", description: "Servono i conti 7.6 (Costo del personale) e 4.4 (Debiti v/personale).", variant: "destructive" });
+      return;
+    }
+
+    const je = await api.accounting.createJournalEntry(
+      {
+        organization_id: organization.id,
+        data_competenza: moment().format("YYYY-MM-DD"),
+        descrizione: `Compenso ${riga.coll.nome} ${riga.coll.cognome} — ${MESI[mese]} ${anno}`,
+        causale: `Liquidazione ${riga.coll.nome} ${riga.coll.cognome}`,
+        tipo_origine: "compenso_pt",
+        stato: "confermata",
+        stato_pagamento: "da_pagare",
+      },
+      [
+        { conto_id: contoCosto.id, dare: riga.importo, avere: 0 },
+        { conto_id: contoDebito.id, dare: 0, avere: riga.importo },
+      ]
+    );
     const liq = liquidazioni.find((l) => l.collaboratore_id === riga.coll.id && l.periodo_anno === anno && l.periodo_mese === mese);
     if (liq) {
       await api.entities.LiquidazionePT.update(liq.id, {
@@ -152,7 +190,7 @@ export default function PtCompensiPage() {
       });
     }
     await logAction(staffUser, "create", "pt_compenso", `${riga.coll.nome} ${riga.coll.cognome}`, je.id, `Movimento contabile creato per liquidazione €${riga.importo.toFixed(2)}`);
-    toast({ title: "Movimento creato", description: "Da completare in Prima Nota con le righe di contabilità" });
+    toast({ title: "Movimento registrato", description: "Il compenso risulta ora fra i debiti da pagare." });
     loadData();
   };
 
@@ -225,14 +263,64 @@ export default function PtCompensiPage() {
                       {r.numeroSedute} sedute svolte · {r.periodo}
                     </p>
                     <p className="text-lg font-bold mt-1">€{r.importo.toFixed(2)}</p>
+                    {/* Un compenso a zero con delle sedute svolte è quasi sempre una
+                        configurazione incompleta, non un compenso davvero nullo: senza
+                        dirlo, resta uno zero inspiegabile. */}
+                    {r.importo === 0 && r.numeroSedute > 0 && (
+                      <p className="text-xs text-amber-700 mt-1">
+                        {r.coll.tipo_contratto === "percentuale" && !r.coll.percentuale
+                          ? "Percentuale non impostata nell'anagrafica del collaboratore."
+                          : r.coll.tipo_contratto === "a_seduta" && !r.coll.importo_seduta
+                          ? "Importo per seduta non impostato nell'anagrafica del collaboratore."
+                          : r.coll.tipo_contratto === "fisso" && !r.coll.importo_fisso
+                          ? "Importo fisso non impostato nell'anagrafica del collaboratore."
+                          : r.coll.tipo_contratto === "percentuale"
+                          ? "Le sedute del periodo non hanno un importo: la percentuale si calcola su quello."
+                          : "Tipo di contratto non impostato nell'anagrafica del collaboratore."}
+                      </p>
+                    )}
                     <p className="text-xs text-muted-foreground mt-1">
                       Cumulo anno {anno}: €{r.cumulo.toFixed(2)} {r.coll.importo_autocertificato_altri_enti ? `(incl. €${r.coll.importo_autocertificato_altri_enti.toFixed(2)} altri enti)` : ""}
                     </p>
-                    {r.superatoSoglia && (
+                    {/* Senza autocertificazione il cumulo vede solo i compensi di questo
+                        ente: un "sotto soglia" calcolato così non è affidabile, e va detto
+                        prima che qualcuno ci faccia affidamento. */}
+                    {r.soglia.autocertificazioneMancante && (
+                      <div className="flex items-start gap-2 mt-2 p-2 rounded-lg bg-muted border border-border text-xs">
+                        <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5 text-muted-foreground" />
+                        <span className="text-muted-foreground">
+                          Autocertificazione dei compensi da altri enti non raccolta: il cumulo qui
+                          sopra considera solo quanto erogato da questa associazione, quindi la
+                          verifica della soglia non è attendibile. Si registra nell'anagrafica del
+                          collaboratore, in Team.
+                        </span>
+                      </div>
+                    )}
+                    {r.soglia.superaConQuestoCompenso && (
                       <div className="flex items-start gap-2 mt-2 p-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-xs">
                         <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                        <span>Soglia esenzione compensi sportivi (€{SOGLIA_ESCLUSIONE.toLocaleString("it-IT")}) superata: verificare con il commercialista l'applicazione della ritenuta sull'eccedenza. Stima indicativa.</span>
+                        <span>
+                          <strong>Con questo compenso si supera la soglia</strong> di €{SOGLIA_ESENZIONE.toLocaleString("it-IT")}:
+                          il cumulo passerebbe da €{r.soglia.cumuloPrima.toFixed(2)} a €{r.soglia.cumuloDopo.toFixed(2)},
+                          con €{r.soglia.eccedenzaDiQuestoCompenso.toFixed(2)} oltre soglia. Verificare con il
+                          commercialista il trattamento dell'eccedenza prima di erogare. Stima indicativa.
+                        </span>
                       </div>
+                    )}
+                    {r.soglia.giaOltreSoglia && (
+                      <div className="flex items-start gap-2 mt-2 p-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-xs">
+                        <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                        <span>
+                          Soglia di €{SOGLIA_ESENZIONE.toLocaleString("it-IT")} già superata: €{r.soglia.eccedenza.toFixed(2)} oltre
+                          soglia sul cumulo annuo. L'intero compenso in corso è oltre la soglia.
+                          Verificare con il commercialista. Stima indicativa.
+                        </span>
+                      </div>
+                    )}
+                    {!r.soglia.giaOltreSoglia && !r.soglia.superaConQuestoCompenso && r.importo > 0 && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Residuo entro soglia dopo questo compenso: €{Math.max(0, r.soglia.residuoDisponibile - r.importo).toFixed(2)}
+                      </p>
                     )}
                   </div>
                   <div className="flex gap-2">
@@ -250,8 +338,62 @@ export default function PtCompensiPage() {
         )}
       </div>
       <p className="text-xs text-muted-foreground">
-        "Registra in contabilità" crea un movimento in stato bozza (da pagare) con origine "compenso_pt". Completare le righe di contabilità in Prima Nota.
+        "Registra in contabilità" genera la scrittura del compenso — costo del personale in dare, debito verso il collaboratore in avere — e lo fa comparire fra i debiti da pagare. Il pagamento si registra poi da Crediti/Debiti.
       </p>
+
+      {/* La registrazione non viene impedita: la decisione resta di chi gestisce, ma va
+          presa sapendo. Bloccare sarebbe sbagliato — superare la soglia è legittimo, va
+          solo trattato fiscalmente nel modo giusto. */}
+      <Dialog open={!!confermaSoglia} onOpenChange={(v) => { if (!v) setConfermaSoglia(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>Soglia compensi sportivi</DialogTitle></DialogHeader>
+          {confermaSoglia && (
+            <div className="space-y-3">
+              <p className="text-sm">
+                Compenso a <strong>{confermaSoglia.coll.nome} {confermaSoglia.coll.cognome}</strong> di
+                €{confermaSoglia.importo.toFixed(2)} per {MESI[mese]} {anno}.
+              </p>
+
+              {confermaSoglia.soglia.autocertificazioneMancante && (
+                <div className="p-3 rounded-lg bg-muted border border-border text-sm">
+                  <p className="font-medium">Autocertificazione non raccolta</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Il cumulo considera solo i compensi erogati da questa associazione. Se il
+                    collaboratore ha percepito compensi sportivi da altri enti, la soglia potrebbe
+                    essere già superata senza che risulti qui.
+                  </p>
+                </div>
+              )}
+
+              {(confermaSoglia.soglia.superaConQuestoCompenso || confermaSoglia.soglia.giaOltreSoglia) && (
+                <div className="p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 text-sm space-y-1">
+                  <div className="flex justify-between"><span>Cumulo prima</span><span>€{confermaSoglia.soglia.cumuloPrima.toFixed(2)}</span></div>
+                  <div className="flex justify-between"><span>Cumulo dopo</span><span className="font-medium">€{confermaSoglia.soglia.cumuloDopo.toFixed(2)}</span></div>
+                  <div className="flex justify-between pt-1 border-t border-amber-200">
+                    <span>Oltre la soglia di €{SOGLIA_ESENZIONE.toLocaleString("it-IT")}</span>
+                    <span className="font-bold">€{confermaSoglia.soglia.eccedenza.toFixed(2)}</span>
+                  </div>
+                </div>
+              )}
+
+              <p className="text-xs text-muted-foreground">
+                Superare la soglia non impedisce di erogare il compenso: cambia il trattamento
+                fiscale dell'eccedenza, da concordare con il commercialista. Stima indicativa.
+              </p>
+
+              <div className="flex gap-2">
+                <Button variant="outline" className="flex-1" onClick={() => setConfermaSoglia(null)}>Annulla</Button>
+                <Button
+                  className="flex-1"
+                  onClick={async () => { const r = confermaSoglia; setConfermaSoglia(null); await registraCompenso(r); }}
+                >
+                  Registra comunque
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

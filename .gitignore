@@ -4,3 +4,7 @@ dist/
 .env.local
 server/node_modules/
 server/.env
+
+# File caricati dagli utenti: sono dati, non codice, e in produzione staranno su
+# uno storage esterno.
+server/uploads/

@@ -1,13 +1,15 @@
 import React, { useState, useEffect } from "react";
 import { api } from "@/api/client";
 import { useOrganization } from "@/hooks/useOrganization";
+import { useStaffAuth } from "@/lib/StaffAuthContext";
+import AccessDenied from "@/components/AccessDenied";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
 import PageHeader from "@/components/shared/PageHeader";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2, AlertTriangle } from "lucide-react";
 
 const TIPO_ORIGINE = [
   "manuale", "incasso_cliente", "fattura_fornitore", "pagamento_fornitore",
@@ -19,6 +21,7 @@ const emptyLine = () => ({ conto_id: "", dare: "", avere: "", note: "" });
 
 export default function NewJournalEntry() {
   const { organization, loading: orgLoading } = useOrganization();
+  const { staffUser } = useStaffAuth();
   const [accounts, setAccounts] = useState([]);
   const [header, setHeader] = useState({
     data_competenza: new Date().toISOString().split("T")[0],
@@ -27,6 +30,7 @@ export default function NewJournalEntry() {
     causale: "",
     tipo_origine: "manuale",
     riferimento_documento: "",
+    motivo_manuale: "",
   });
   const [lines, setLines] = useState([emptyLine(), emptyLine()]);
   const [error, setError] = useState("");
@@ -74,21 +78,20 @@ export default function NewJournalEntry() {
       return;
     }
 
+    if (header.tipo_origine === "manuale" && !header.motivo_manuale.trim()) {
+      setError("Indicare il motivo della registrazione manuale.");
+      return;
+    }
+
     setSaving(true);
-    const existingEntries = await api.entities.JournalEntry.filter({ organization_id: organization.id }, "-numero_protocollo", 1);
-    const numero_protocollo = (existingEntries[0]?.numero_protocollo || 0) + 1;
-
-    const entry = await api.entities.JournalEntry.create({
-      ...header,
-      organization_id: organization.id,
-      numero_protocollo,
-      data_cassa: header.data_cassa || undefined,
-      stato,
-    });
-
-    await api.entities.JournalLine.bulkCreate(
+    await api.accounting.createJournalEntry(
+      {
+        ...header,
+        organization_id: organization.id,
+        data_cassa: header.data_cassa || undefined,
+        stato,
+      },
       lines.map(l => ({
-        journal_entry_id: entry.id,
         conto_id: l.conto_id,
         dare: Number(l.dare) || 0,
         avere: Number(l.avere) || 0,
@@ -104,6 +107,7 @@ export default function NewJournalEntry() {
       causale: "",
       tipo_origine: "manuale",
       riferimento_documento: "",
+      motivo_manuale: "",
     });
     setLines([emptyLine(), emptyLine()]);
     setSaving(false);
@@ -111,9 +115,24 @@ export default function NewJournalEntry() {
 
   if (orgLoading) return <div className="flex items-center justify-center h-full"><div className="w-8 h-8 border-4 border-muted border-t-primary rounded-full animate-spin" /></div>;
 
+  // La registrazione manuale scavalca le causali e può movimentare qualsiasi conto:
+  // è l'ultima risorsa quando nessun flusso ordinario copre il caso, non un modo
+  // alternativo di registrare le operazioni di tutti i giorni.
+  if (staffUser?.ruolo !== "admin") {
+    return <AccessDenied message="Le registrazioni manuali sono riservate all'amministratore. Per registrare entrate e uscite usa Movimenti." />;
+  }
+
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-4xl mx-auto space-y-6">
-      <PageHeader title="Nuova registrazione manuale" description="Crea una scrittura contabile con righe Dare/Avere bilanciate" />
+      <PageHeader title="Nuova registrazione manuale" description="Ultima risorsa: da usare solo quando nessun flusso ordinario copre l'operazione" />
+
+      <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 text-sm">
+        <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+        <span>
+          Registra qui solo ciò che non è possibile registrare da <strong>Movimenti</strong>, dal
+          CRM o dagli altri moduli. Queste scritture restano contrassegnate come manuali nel Registro.
+        </span>
+      </div>
 
       <Card className="border-0 shadow-sm">
         <CardContent className="p-4 space-y-3">
@@ -135,6 +154,20 @@ export default function NewJournalEntry() {
               </SelectContent>
             </Select>
           </div>
+          {header.tipo_origine === "manuale" && (
+            <div>
+              <Label>Motivo della registrazione manuale *</Label>
+              <Input
+                required
+                value={header.motivo_manuale}
+                onChange={e => setHeader({...header, motivo_manuale: e.target.value})}
+                placeholder="Es. rettifica errore di imputazione del 12/03"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Resta allegato alla scrittura: serve a chi la rileggerà fra mesi, e al commercialista.
+              </p>
+            </div>
+          )}
         </CardContent>
       </Card>
 

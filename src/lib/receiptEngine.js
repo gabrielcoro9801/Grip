@@ -202,24 +202,27 @@ export async function generateReceiptForJournalEntry(journalEntryId, organizatio
   const isForfettario = organization.regime_fiscale === "forfettario" && !organization.gestione_iva;
   const tipo_documento = isForfettario ? "ricevuta_semplice" : "ricevuta_fiscale";
 
-  // Numero progressivo per esercizio
+  // Il numero progressivo lo assegna il server, in transazione: è un documento fiscale e
+  // due ricevute con lo stesso numero sono un problema che si scopre solo a un controllo.
   const esercizio_fiscale = moment(entry.data_competenza).year();
-  const lastReceipts = await api.entities.Receipt.filter(
-    { organization_id: organization.id, esercizio_fiscale }, "-numero_progressivo", 1
-  );
-  const numero_progressivo = (lastReceipts[0]?.numero_progressivo || 0) + 1;
 
   // Template
   const templates = await api.entities.ReceiptTemplate.filter({ organization_id: organization.id });
   const template = templates[0] || {};
 
+  // Il socio è un record distinto dal cliente anagrafico a cui è intestata la ricevuta:
+  // va risolto seguendo il collegamento, altrimenti la ricevuta non comparirebbe nel
+  // portale soci, che la cerca per member_id. Un cliente può non essere un socio (es.
+  // un'azienda che affitta una sala), nel qual caso il campo resta vuoto.
+  const linkedMembers = await api.entities.Member.filter({ cliente_id: member.id });
+  const linkedMemberId = linkedMembers[0]?.id ?? null;
+
   // Crea receipt
-  const receipt = await api.entities.Receipt.create({
+  const receipt = await api.accounting.createReceipt({
     organization_id: organization.id,
     cliente_id: member.id,
     cliente_name: member.full_name,
     journal_entry_id: journalEntryId,
-    numero_progressivo,
     esercizio_fiscale,
     tipo_documento,
     data_emissione: entry.data_competenza,
@@ -230,7 +233,7 @@ export async function generateReceiptForJournalEntry(journalEntryId, organizatio
     stato: "emessa",
     versione: 1,
     // backward compat
-    member_id: member.id,
+    member_id: linkedMemberId,
     member_name: member.full_name,
     amount: importo_lordo,
     date: entry.data_competenza,
@@ -240,7 +243,7 @@ export async function generateReceiptForJournalEntry(journalEntryId, organizatio
 
   // Genera e carica PDF
   const pdfBlob = await buildReceiptPdfBlob(receipt, organization, template, member);
-  const pdfFile = new File([pdfBlob], `ricevuta-${numero_progressivo}-${esercizio_fiscale}.pdf`, { type: "application/pdf" });
+  const pdfFile = new File([pdfBlob], `ricevuta-${receipt.numero_progressivo}-${esercizio_fiscale}.pdf`, { type: "application/pdf" });
   const { file_url } = await api.integrations.Core.UploadFile({ file: pdfFile });
 
   return await api.entities.Receipt.update(receipt.id, { pdf_url: file_url });
@@ -264,16 +267,13 @@ async function promoteDraftReceipt(draft, entry, organization, lines) {
   const tipo_documento = isForfettario ? "ricevuta_semplice" : "ricevuta_fiscale";
 
   const esercizio_fiscale = moment(entry.data_competenza).year();
-  const lastReceipts = await api.entities.Receipt.filter(
-    { organization_id: organization.id, esercizio_fiscale }, "-numero_progressivo", 1
-  );
-  const numero_progressivo = (lastReceipts[0]?.numero_progressivo || 0) + 1;
 
   const templates = await api.entities.ReceiptTemplate.filter({ organization_id: organization.id });
   const template = templates[0] || {};
 
-  const updated = await api.entities.Receipt.update(draft.id, {
-    numero_progressivo,
+  // La bozza prende il numero solo ora, all'emissione: è il momento in cui diventa un
+  // documento fiscale. Lo assegna il server, in transazione.
+  const updated = await api.accounting.issueReceipt(draft.id, {
     esercizio_fiscale,
     tipo_documento,
     data_emissione: entry.data_competenza,
@@ -288,7 +288,7 @@ async function promoteDraftReceipt(draft, entry, organization, lines) {
   });
 
   const pdfBlob = await buildReceiptPdfBlob(updated, organization, template, member);
-  const pdfFile = new File([pdfBlob], `ricevuta-${numero_progressivo}-${esercizio_fiscale}.pdf`, { type: "application/pdf" });
+  const pdfFile = new File([pdfBlob], `ricevuta-${updated.numero_progressivo}-${esercizio_fiscale}.pdf`, { type: "application/pdf" });
   const { file_url } = await api.integrations.Core.UploadFile({ file: pdfFile });
 
   return await api.entities.Receipt.update(draft.id, { pdf_url: file_url });

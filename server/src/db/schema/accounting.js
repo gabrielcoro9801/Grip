@@ -1,14 +1,26 @@
 // Dominio contabilità: ChartOfAccount, CausaleOperativa, JournalEntry, JournalLine,
-// Loan, LoanInstallment, AccountingSupplier, FixedAsset, Revenue, Expense.
-// Vedi il report dedicato per il modello di partita doppia. Punto centrale segnalato:
-// oggi JournalEntry + JournalLine vengono scritte con due chiamate separate,
-// NON atomiche — qui aggiungiamo solo i vincoli a livello di riga (dare/avere mutuamente
-// esclusivi); l'atomicità multi-tabella va garantita lato applicazione con una
-// transazione DB quando si scrive tramite Drizzle (Fase 2 della roadmap).
-import { pgTable, uuid, varchar, text, boolean, integer, numeric, date, timestamp, check } from 'drizzle-orm/pg-core';
+// Loan, LoanInstallment, AccountingSupplier, FixedAsset.
+// Testata e righe di una registrazione vanno scritte insieme, in transazione: se ne
+// occupa l'endpoint POST /api/journal-entries (server/src/routes/journalEntries.js),
+// che assegna anche il numero di protocollo. Non vanno create tramite l'endpoint
+// generico delle entità, che non può garantire l'atomicità fra le due tabelle.
+import { pgTable, uuid, varchar, text, boolean, integer, numeric, date, timestamp, check, primaryKey } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { organizations } from './common.js';
 import { clients } from './crm.js';
+
+// Contatori dei numeri progressivi, uno per organizzazione e per tipo di documento.
+// Incrementarli con un UPDATE che blocca la riga è ciò che rende impossibile assegnare
+// due volte lo stesso numero: leggere il massimo esistente e sommare 1, come si faceva
+// prima, dà lo stesso numero a due operazioni simultanee.
+// `scope` permette di riusare lo stesso meccanismo per ricevute e codici socio.
+export const numberingCounters = pgTable('numbering_counters', {
+	organizationId: uuid('organization_id').notNull().references(() => organizations.id),
+	scope: varchar('scope', { length: 32 }).notNull(),
+	value: integer('value').notNull().default(0),
+}, (table) => ({
+	pk: primaryKey({ columns: [table.organizationId, table.scope] }),
+}));
 
 export const chartOfAccounts = pgTable('chart_of_accounts', {
 	id: uuid('id').defaultRandom().primaryKey(),
@@ -66,6 +78,9 @@ export const journalEntries = pgTable('journal_entries', {
 	// dentro il proprio initializer funziona perché la callback è valutata pigramente da drizzle-kit.
 	journalEntrySaldoId: uuid('journal_entry_saldo_id').references(() => journalEntries.id),
 	riferimentoDocumento: text('riferimento_documento'),
+	// Obbligatorio sulle registrazioni scritte a mano: sono l'unico modo per movimentare
+	// conti scavalcando le causali, quindi devono dire perché sono state fatte.
+	motivoManuale: text('motivo_manuale'),
 	createdDate: timestamp('created_date', { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -90,14 +105,67 @@ export const journalLines = pgTable('journal_lines', {
 	),
 }));
 
+// Documenti allegati a una scrittura contabile: fatture, cedolini, quietanze, contratti.
+//
+// Sono più d'uno per scrittura di proposito: una registrazione aggregata — per esempio gli
+// stipendi del mese — porta con sé un documento per dipendente. È il modo per tenere il
+// registro leggibile senza perdere il dettaglio, che resta consultabile dove serve.
+export const journalAttachments = pgTable('journal_attachments', {
+	id: uuid('id').defaultRandom().primaryKey(),
+	journalEntryId: uuid('journal_entry_id').notNull().references(() => journalEntries.id, { onDelete: 'cascade' }),
+	fileUrl: text('file_url').notNull(),
+	fileName: varchar('file_name', { length: 255 }).notNull(),
+	// A cosa si riferisce il documento, quando la scrittura ne ha molti: "Cedolino Mario Rossi".
+	descrizione: varchar('descrizione', { length: 255 }),
+	caricatoDa: varchar('caricato_da', { length: 255 }),
+	createdDate: timestamp('created_date', { withTimezone: true }).notNull().defaultNow(),
+});
+
+// Esercizi chiusi. Una volta chiuso un anno, le sue scritture non si toccano più: i dati
+// sono stati usati per una dichiarazione, e modificarli dopo significherebbe avere numeri
+// diversi da quelli presentati, senza che nessuno se ne accorga.
+export const exerciseClosures = pgTable('exercise_closures', {
+	id: uuid('id').defaultRandom().primaryKey(),
+	organizationId: uuid('organization_id').notNull().references(() => organizations.id),
+	anno: integer('anno').notNull(),
+	chiusoIl: timestamp('chiuso_il', { withTimezone: true }).notNull().defaultNow(),
+	chiusoDa: varchar('chiuso_da', { length: 255 }),
+	// Scrittura che gira il risultato dell'esercizio a patrimonio netto: senza, l'anno
+	// successivo il patrimonio non quadrerebbe più, perché mancherebbe l'utile o la
+	// perdita maturati.
+	journalEntryId: uuid('journal_entry_id').references(() => journalEntries.id),
+	risultato: numeric('risultato', { precision: 12, scale: 2 }),
+	note: text('note'),
+});
+
+// Anagrafica delle banche e degli enti finanziatori. Prima era un campo di testo libero
+// sul finanziamento: lo stesso istituto veniva scritto in modi diversi e non era possibile
+// vedere quanto si deve complessivamente a ciascuno.
+export const banks = pgTable('banks', {
+	id: uuid('id').defaultRandom().primaryKey(),
+	organizationId: uuid('organization_id').references(() => organizations.id),
+	nome: varchar('nome', { length: 255 }).notNull(),
+	iban: varchar('iban', { length: 34 }),
+	referente: varchar('referente', { length: 255 }),
+	email: varchar('email', { length: 255 }),
+	telefono: varchar('telefono', { length: 64 }),
+	note: text('note'),
+	attivo: boolean('attivo').notNull().default(true),
+});
+
 export const loans = pgTable('loans', {
 	id: uuid('id').defaultRandom().primaryKey(),
 	organizationId: uuid('organization_id').references(() => organizations.id),
+	bancaId: uuid('banca_id').references(() => banks.id),
+	// Mantenuto per i finanziamenti inseriti prima dell'anagrafica banche: resta come
+	// etichetta quando banca_id non è valorizzato.
 	enteFinanziatore: varchar('ente_finanziatore', { length: 255 }).notNull(),
 	capitaleErogato: numeric('capitale_erogato', { precision: 12, scale: 2 }).notNull(),
 	tassoInteresse: numeric('tasso_interesse', { precision: 5, scale: 2 }),
 	dataInizio: date('data_inizio').notNull(),
 	numeroRateTotali: integer('numero_rate_totali').notNull(),
+	// Serve a calcolare il piano: da questa dipendono il tasso di periodo e le scadenze.
+	periodicita: varchar('periodicita', { length: 16 }).notNull().default('mensile'),
 	note: text('note'),
 });
 
@@ -122,6 +190,42 @@ export const accountingSuppliers = pgTable('accounting_suppliers', {
 	email: varchar('email', { length: 255 }),
 	telefono: varchar('telefono', { length: 64 }),
 	attivo: boolean('attivo').notNull().default(true),
+	// Da questi due campi dipende se un pagamento è soggetto a ritenuta d'acconto:
+	// è dovuta sui professionisti persona fisica, non sulle società e non su chi è in
+	// regime forfettario. Senza saperlo, il pagamento verrebbe fatto per l'intero importo
+	// quando invece una quota va versata all'erario.
+	tipoSoggetto: varchar('tipo_soggetto', { length: 32 }), // societa | professionista | ditta_individuale | altro
+	regimeForfettario: boolean('regime_forfettario').notNull().default(false),
+	aliquotaRitenuta: numeric('aliquota_ritenuta', { precision: 5, scale: 2 }), // di norma 20% sui professionisti
+});
+
+// Ordini ai fornitori. Esistono per separare il momento in cui si ordina da quello in cui
+// il costo sorge davvero: ordinare non è un fatto contabile, ricevere sì. La scrittura
+// nasce quindi alla consegna, non prima — altrimenti la contabilità registrerebbe costi
+// per merce che potrebbe non arrivare mai.
+//
+// Lo stato "pagato" non è un campo: si legge dalla scrittura collegata, che il pagamento
+// da Crediti/Debiti porta a "saldata". Tenerlo anche qui significherebbe avere due
+// versioni della stessa verità, destinate prima o poi a divergere.
+export const purchaseOrders = pgTable('purchase_orders', {
+	id: uuid('id').defaultRandom().primaryKey(),
+	organizationId: uuid('organization_id').references(() => organizations.id),
+	numeroOrdine: integer('numero_ordine'),
+	fornitoreId: uuid('fornitore_id').notNull().references(() => accountingSuppliers.id),
+	dataOrdine: date('data_ordine').notNull(),
+	descrizione: text('descrizione').notNull(),
+	importoPrevisto: numeric('importo_previsto', { precision: 12, scale: 2 }).notNull(),
+	contoCostoId: uuid('conto_costo_id').references(() => chartOfAccounts.id),
+	naturaFiscale: varchar('natura_fiscale', { length: 32 }), // istituzionale | commerciale | promiscua
+	stato: varchar('stato', { length: 16 }).notNull().default('ordinato'), // ordinato | consegnato | fatturato | annullato
+	dataConsegna: date('data_consegna'),
+	// Valorizzata alla consegna: è la scrittura che rileva il costo e il debito.
+	journalEntryId: uuid('journal_entry_id').references(() => journalEntries.id),
+	numeroFattura: varchar('numero_fattura', { length: 64 }),
+	dataFattura: date('data_fattura'),
+	importoFatturato: numeric('importo_fatturato', { precision: 12, scale: 2 }),
+	note: text('note'),
+	createdDate: timestamp('created_date', { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const fixedAssets = pgTable('fixed_assets', {
@@ -137,24 +241,8 @@ export const fixedAssets = pgTable('fixed_assets', {
 	acquirente: varchar('acquirente', { length: 255 }),
 });
 
-// Ledger riassuntivo/legacy separato da JournalEntry, usato per reportistica rapida
-// in Dashboard/Finance. ⚠️ nessun organization_id osservato in nessuna call site:
-// mantenuto nullable qui, da chiarire prima del cutover se sia davvero cross-tenant.
-export const revenues = pgTable('revenues', {
-	id: uuid('id').defaultRandom().primaryKey(),
-	receiptId: uuid('receipt_id'), // FK -> receipts.id, aggiunta da fiscal.js per evitare import circolare
-	memberName: varchar('member_name', { length: 255 }),
-	planName: varchar('plan_name', { length: 255 }),
-	amount: numeric('amount', { precision: 12, scale: 2 }).notNull(),
-	date: date('date').notNull(),
-	category: varchar('category', { length: 64 }),
-});
-
-export const expenses = pgTable('expenses', {
-	id: uuid('id').defaultRandom().primaryKey(),
-	category: varchar('category', { length: 32 }).notNull(), // Rent | Utilities | Equipment | Supplies | Insurance | Marketing | Maintenance | Other
-	amount: numeric('amount', { precision: 12, scale: 2 }).notNull(),
-	date: date('date').notNull(),
-	description: text('description'),
-	notes: text('notes'),
-});
+// Le tabelle `revenues` ed `expenses` erano un registro riassuntivo parallelo alla
+// partita doppia: ogni abbonamento veniva scritto due volte, una su JournalEntry/
+// JournalLine e una qui. Sono state rimosse — la contabilità in partita doppia è
+// l'unica fonte di verità, e ricavi e costi si ricavano dalle righe sui conti di
+// tipo "ricavo" e "costo".

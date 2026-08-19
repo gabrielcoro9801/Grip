@@ -3,6 +3,7 @@ import { api } from "@/api/client";
 import { useOrganization } from "@/hooks/useOrganization";
 import { generateJournalEntry } from "@/lib/journalEntryEngine";
 import { generateReceiptForJournalEntry } from "@/lib/receiptEngine";
+import { generateInvoiceForJournalEntry } from "@/lib/invoiceEngine";
 import { logAction } from "@/lib/auditLog";
 import { useStaffAuth } from "@/lib/StaffAuthContext";
 import { Card, CardContent } from "@/components/ui/card";
@@ -18,13 +19,18 @@ import CreditiDebiti from "@/pages/accounting/CreditiDebiti";
 import PrimaNota from "@/pages/accounting/PrimaNota";
 import AccountingSuppliers from "@/pages/accounting/AccountingSuppliers";
 import IvaReport from "@/components/accounting/IvaReport";
+import GestioneIstituzionaleReport from "@/components/accounting/GestioneIstituzionaleReport";
+import AcquistiTab from "@/components/accounting/AcquistiTab";
+import CassaBancaReport from "@/components/accounting/CassaBancaReport";
+import FattureTab from "@/components/accounting/FattureTab";
 import CespitiTab from "@/components/accounting/CespitiTab";
 import PageHeader from "@/components/shared/PageHeader";
 import {
   Ticket, Users, Dumbbell, Package, Building, PlusCircle, Home, Zap,
   Truck, Landmark, Briefcase, MinusCircle, TrendingUp, TrendingDown,
-  Wallet, ArrowLeft, ArrowRight, Download, CheckCircle2, Clock
+  Wallet, ArrowLeft, ArrowRight, Download, CheckCircle2, Clock, Receipt
 } from "lucide-react";
+import { ritenutaDovuta, calcolaRitenuta } from "../../../shared/ritenuta.js";
 import moment from "moment";
 import { useToast } from "@/components/ui/use-toast";
 
@@ -64,6 +70,9 @@ export default function Movimenti() {
   const [dataScadenza, setDataScadenza] = useState("");
   const [controparteId, setControparteId] = useState("");
   const [controparteESocio, setControparteESocio] = useState(false);
+  // Solo per le uscite: a quale attività serve il costo. "promiscua" è il caso più comune
+  // in una palestra (affitto, utenze servono sia i soci sia l'attività commerciale).
+  const [naturaCosto, setNaturaCosto] = useState("promiscua");
   const [eCespite, setECespite] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -109,25 +118,34 @@ export default function Movimenti() {
   }, [lines, accounts, entries, dateFrom, dateTo]);
 
   const movimenti = useMemo(() => {
+    const tipoConto = new Map(accounts.map(a => [a.id, a.tipo_conto]));
     return entries
       .filter(e => !dateFrom || e.data_competenza >= dateFrom)
       .filter(e => !dateTo || e.data_competenza <= dateTo)
       .map(e => {
         const entryLines = lines.filter(l => l.journal_entry_id === e.id);
         const totDare = entryLines.reduce((s, l) => s + (l.dare || 0), 0);
-        const totAvere = entryLines.reduce((s, l) => s + (l.avere || 0), 0);
         const causale = causali.find(c => c.id === e.causale_operativa_id);
-        const isEntrata = causale?.tipo === "entrata";
+
+        // Il verso si ricava dalle righe, non dalla causale: saldi, compensi, cessioni
+        // di cespiti e registrazioni manuali non hanno una causale, e prima di questo
+        // venivano semplicemente esclusi dal registro — un registro contabile che omette
+        // delle scritture non è un registro.
+        const haRicavo = entryLines.some(l => tipoConto.get(l.conto_id) === "ricavo" && (l.avere || 0) > 0);
+        const haCosto = entryLines.some(l => tipoConto.get(l.conto_id) === "costo" && (l.dare || 0) > 0);
+
         return {
           ...e,
           causaleObj: causale,
           importo: totDare,
-          isEntrata,
+          // Le scritture che non toccano ricavi né costi (per esempio il saldo di un
+          // debito, che sposta solo valori patrimoniali) restano senza segno.
+          isEntrata: causale ? causale.tipo === "entrata" : haRicavo,
+          senzaSegno: !causale && !haRicavo && !haCosto,
           stato_pagamento: e.stato_pagamento,
         };
-      })
-      .filter(e => e.causaleObj); // only entries from causali
-  }, [entries, lines, causali, dateFrom, dateTo]);
+      });
+  }, [entries, lines, causali, accounts, dateFrom, dateTo]);
 
   const openWizard = (tipo) => {
     setWizardTipo(tipo);
@@ -138,6 +156,7 @@ export default function Movimenti() {
     setDataScadenza("");
     setControparteId("");
     setControparteESocio(false);
+    setNaturaCosto("promiscua");
     setECespite(false);
     setWizardOpen(true);
   };
@@ -151,7 +170,27 @@ export default function Movimenti() {
       const virtualCausale = isIstituzionale
         ? { ...selectedCausale, gestisce_iva: false, aliquota_iva_default: 0 }
         : selectedCausale;
-      const natura_fiscale = isIstituzionale ? "istituzionale" : "commerciale";
+      // Sulle entrate la natura discende dall'essere il pagante un socio; sulle uscite
+      // dall'attività che il costo serve, indicata esplicitamente.
+      const natura_fiscale = selectedCausale.tipo === "uscita"
+        ? naturaCosto
+        : isIstituzionale ? "istituzionale" : "commerciale";
+
+      // Se il fornitore è soggetto a ritenuta, una quota del compenso non gli spetta: va
+      // versata all'erario. La scrittura lo riflette invece di limitarsi ad avvisare.
+      const fornitorePagato = selectedCausale.tipo_controparte === "fornitore"
+        ? suppliers.find(s => s.id === controparteId)
+        : null;
+      let ritenuta;
+      if (ritenutaDovuta(fornitorePagato)) {
+        const contoRitenuta = accounts.find(a => a.codice === "4.10");
+        if (!contoRitenuta) {
+          throw new Error("Manca il conto 4.10 (Erario c/ritenute lavoro autonomo) nel piano dei conti.");
+        }
+        const { ritenuta: importo } = calcolaRitenuta(fornitorePagato, Number(wData.importo));
+        ritenuta = { importo, conto_id: contoRitenuta.id };
+      }
+
       const journalEntry = await generateJournalEntry({
         organization_id: organization.id,
         causale: virtualCausale,
@@ -165,10 +204,20 @@ export default function Movimenti() {
         accounts,
         natura_fiscale,
         controparte_e_socio: selectedCausale.puo_essere_istituzionale ? controparteESocio : undefined,
+        ritenuta,
       });
-      // Genera ricevuta automaticamente per incassi cliente saldati
+      // Il documento da emettere dipende da chi ha pagato: a un'azienda si emette fattura,
+      // a un privato una ricevuta. Non bloccante: se la generazione fallisce, il movimento
+      // resta registrato e il documento si può rigenerare.
       if (!aCredito && journalEntry.tipo_origine === "incasso_cliente") {
-        try { await generateReceiptForJournalEntry(journalEntry.id, organization, accounts); } catch (e) { /* non bloccante */ }
+        const cliente = clients.find(c => c.id === controparteId);
+        try {
+          if (cliente?.tipo === "azienda") {
+            await generateInvoiceForJournalEntry(journalEntry.id, organization, accounts);
+          } else {
+            await generateReceiptForJournalEntry(journalEntry.id, organization, accounts);
+          }
+        } catch (e) { /* non bloccante */ }
       }
       // Se uscita cespite, crea il FixedAsset collegato (logica già in Acquisti.jsx)
       if (eCespite && wizardTipo === "uscita") {
@@ -221,9 +270,13 @@ export default function Movimenti() {
         <TabsList>
           <TabsTrigger value="registro">Registro</TabsTrigger>
           <TabsTrigger value="scadenzario">Scadenzario</TabsTrigger>
+          <TabsTrigger value="cassa">Cassa e banca</TabsTrigger>
           <TabsTrigger value="prima-nota">Prima Nota</TabsTrigger>
+          <TabsTrigger value="acquisti">Acquisti</TabsTrigger>
+          <TabsTrigger value="fatture">Fatture</TabsTrigger>
           <TabsTrigger value="fornitori">Fornitori</TabsTrigger>
           <TabsTrigger value="iva">IVA</TabsTrigger>
+          <TabsTrigger value="istituzionale">Istituzionale</TabsTrigger>
           <TabsTrigger value="cespiti">Cespiti</TabsTrigger>
         </TabsList>
 
@@ -298,18 +351,32 @@ export default function Movimenti() {
               <tr key={m.id} className="border-b border-border/50 hover:bg-muted/30">
                 <td className="py-3 px-4 text-muted-foreground whitespace-nowrap">{moment(m.data_competenza).format("DD/MM/YYYY")}</td>
                 <td className="py-3 px-4">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     {m.causaleObj && <CausaleIcon name={m.causaleObj.icona} className="w-4 h-4 text-muted-foreground" />}
                     <span>{m.descrizione}</span>
+                    {/* Le scritture manuali scavalcano le causali: vanno riconosciute a
+                        colpo d'occhio quando si rilegge il registro. */}
+                    {m.tipo_origine === "manuale" && (
+                      <Badge
+                        variant="outline"
+                        className="border-amber-300 bg-amber-50 text-amber-800 text-xs"
+                        title={m.motivo_manuale || undefined}
+                      >
+                        Manuale
+                      </Badge>
+                    )}
                   </div>
+                  {m.tipo_origine === "manuale" && m.motivo_manuale && (
+                    <p className="text-xs text-muted-foreground mt-0.5">{m.motivo_manuale}</p>
+                  )}
                 </td>
                 <td className="py-3 px-4">
                   {m.stato_pagamento === "saldata" && <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 text-xs">Saldata</Badge>}
                   {m.stato_pagamento === "da_incassare" && <Badge className="bg-amber-100 text-amber-700 border-amber-200 text-xs"><Clock className="w-3 h-3 mr-1" />Da incassare</Badge>}
                   {m.stato_pagamento === "da_pagare" && <Badge className="bg-amber-100 text-amber-700 border-amber-200 text-xs"><Clock className="w-3 h-3 mr-1" />Da pagare</Badge>}
                 </td>
-                <td className={`py-3 px-4 text-right font-medium ${m.isEntrata ? "text-emerald-600" : "text-red-500"}`}>
-                  {m.isEntrata ? "+" : "−"}€{m.importo.toLocaleString("it-IT", { minimumFractionDigits: 2 })}
+                <td className={`py-3 px-4 text-right font-medium ${m.senzaSegno ? "text-muted-foreground" : m.isEntrata ? "text-emerald-600" : "text-red-500"}`}>
+                  {m.senzaSegno ? "" : m.isEntrata ? "+" : "−"}€{m.importo.toLocaleString("it-IT", { minimumFractionDigits: 2 })}
                 </td>
               </tr>
             ))}
@@ -331,8 +398,24 @@ export default function Movimenti() {
           <AccountingSuppliers />
         </TabsContent>
 
+        <TabsContent value="fatture" className="mt-4">
+          <FattureTab organization={organization} />
+        </TabsContent>
+
+        <TabsContent value="cassa" className="mt-4">
+          <CassaBancaReport entries={entries} lines={lines} accounts={accounts} />
+        </TabsContent>
+
+        <TabsContent value="acquisti" className="mt-4">
+          <AcquistiTab organization={organization} accounts={accounts} reloadMovimenti={loadData} />
+        </TabsContent>
+
         <TabsContent value="iva" className="mt-4">
           <IvaReport entries={entries} lines={lines} accounts={accounts} />
+        </TabsContent>
+
+        <TabsContent value="istituzionale" className="mt-4">
+          <GestioneIstituzionaleReport entries={entries} lines={lines} accounts={accounts} />
         </TabsContent>
 
         <TabsContent value="cespiti" className="mt-4">
@@ -474,6 +557,46 @@ export default function Movimenti() {
                     <Label htmlFor="controparte_socio" className="font-normal cursor-pointer">La controparte è un socio / tesserato</Label>
                     <p className="text-xs text-muted-foreground mt-0.5">Incasso istituzionale (fuori campo IVA). Disabilita se il pagamento è commerciale.</p>
                   </div>
+                </div>
+              )}
+              {/* Avvisa prima di pagare, non dopo: la ritenuta va trattenuta al momento del
+                  pagamento, e accorgersene a versamento avvenuto significa doverla recuperare. */}
+              {selectedCausale.tipo_controparte === "fornitore" && controparteId && (() => {
+                const fornitore = suppliers.find(s => s.id === controparteId);
+                if (!ritenutaDovuta(fornitore)) return null;
+                const { ritenuta, netto, aliquota } = calcolaRitenuta(fornitore, Number(wData.importo) || 0);
+                return (
+                  <div className="flex items-start gap-2 p-3 rounded-lg bg-purple-50 border border-purple-200 text-purple-900 text-sm">
+                    <Receipt className="w-4 h-4 mt-0.5 shrink-0" />
+                    <div>
+                      <p className="font-medium">Pagamento soggetto a ritenuta d'acconto ({aliquota}%)</p>
+                      <p className="text-xs mt-0.5">
+                        Al fornitore vanno €{netto.toLocaleString("it-IT", { minimumFractionDigits: 2 })};
+                        €{ritenuta.toLocaleString("it-IT", { minimumFractionDigits: 2 })} restano da versare all'erario.
+                        La registrazione tiene il costo per intero e separa la ritenuta come debito
+                        verso l'erario, da versare con l'F24.
+                      </p>
+                    </div>
+                  </div>
+                );
+              })()}
+              {/* Per un'entrata l'istituzionalità dipende da chi paga; per un costo dipende
+                  da cosa serve, quindi va indicata a parte. Serve al report della gestione
+                  istituzionale: senza, i costi non sarebbero attribuibili. */}
+              {selectedCausale.tipo === "uscita" && (
+                <div className="p-3 rounded-lg border border-border bg-muted/30">
+                  <Label>A quale attività serve questo costo</Label>
+                  <Select value={naturaCosto} onValueChange={setNaturaCosto}>
+                    <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="promiscua">Entrambe — costo promiscuo (affitto, utenze…)</SelectItem>
+                      <SelectItem value="istituzionale">Solo attività istituzionale</SelectItem>
+                      <SelectItem value="commerciale">Solo attività commerciale</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    I costi promiscui restano da ripartire: il report li tiene separati invece di attribuirli d'ufficio.
+                  </p>
                 </div>
               )}
               <div className="flex justify-between">

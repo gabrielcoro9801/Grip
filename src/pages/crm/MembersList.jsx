@@ -54,13 +54,9 @@ export default function MembersList() {
       telefono: data.phone || "",
       attivo: true,
     });
-    // Genera codice socio progressivo a 6 cifre
-    const maxCode = members.reduce((max, m) => {
-      const num = parseInt(m.codice_socio, 10);
-      return isNaN(num) ? max : Math.max(max, num);
-    }, 0);
-    const codice_socio = String(maxCode + 1).padStart(6, "0");
-    await api.entities.Member.create({ ...data, cliente_id: client.id, codice_socio });
+    // Il codice socio lo assegna il server: calcolarlo qui sul massimo fra i soci caricati
+    // in pagina assegnerebbe lo stesso codice a due iscrizioni contemporanee.
+    await api.entities.Member.create({ ...data, cliente_id: client.id });
     setShowForm(false);
     setForm({ full_name: "", email: "", phone: "", date_of_birth: "", address: "", emergency_contact_name: "", emergency_contact_phone: "", gdpr_consent: false });
     loadData();

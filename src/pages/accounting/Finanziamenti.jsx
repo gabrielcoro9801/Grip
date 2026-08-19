@@ -2,7 +2,6 @@ import React, { useState, useEffect, useCallback } from "react";
 import { api } from "@/api/client";
 import { useOrganization } from "@/hooks/useOrganization";
 import { settleLoanInstallment } from "@/lib/journalEntryEngine";
-import { useStaffAuth } from "@/lib/StaffAuthContext";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -12,9 +11,13 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import PageHeader from "@/components/shared/PageHeader";
-import { Plus, Landmark, CheckCircle2, Clock, ChevronDown, ChevronRight } from "lucide-react";
+import { Plus, Landmark, CheckCircle2, Clock, ChevronDown, ChevronRight, Table2 } from "lucide-react";
 import moment from "moment";
 import { useToast } from "@/components/ui/use-toast";
+import { calcolaPianoAmmortamento, totaleInteressi, PERIODICITA } from "../../../shared/ammortamento.js";
+
+const oggi = () => new Date().toISOString().split("T")[0];
+const fmt = (n) => Number(n || 0).toLocaleString("it-IT", { minimumFractionDigits: 2 });
 
 export default function Finanziamenti() {
   const { organization, loading: orgLoading } = useOrganization();
@@ -29,45 +32,100 @@ export default function Finanziamenti() {
   const [payData, setPayData] = useState({ metodo_liquidita: "banca", data: new Date().toISOString().split("T")[0] });
   const [saving, setSaving] = useState(false);
   const [loanForm, setLoanForm] = useState({
-    ente_finanziatore: "", capitale_erogato: "", tasso_interesse: "",
-    data_inizio: new Date().toISOString().split("T")[0], numero_rate_totali: "", note: "",
+    banca_id: "", ente_finanziatore: "", capitale_erogato: "", tasso_interesse: "",
+    data_inizio: oggi(), numero_rate_totali: "", periodicita: "mensile", note: "",
   });
   const [showInstallmentForm, setShowInstallmentForm] = useState(null); // loanId
   const [instForm, setInstForm] = useState({ numero_rata: "", data_scadenza: "", quota_capitale: "", quota_interessi: "" });
+  const [banche, setBanche] = useState([]);
+  const [showBancaForm, setShowBancaForm] = useState(false);
+  const [bancaForm, setBancaForm] = useState({ nome: "", iban: "", referente: "", email: "", telefono: "" });
+  const [pianoAperto, setPianoAperto] = useState(null); // loan di cui si sta guardando il piano
 
   const loadData = useCallback(() => {
     if (!organization) return;
     Promise.all([
       api.entities.Loan.filter({ organization_id: organization.id }),
       api.entities.ChartOfAccount.filter({ organization_id: organization.id }),
-    ]).then(async ([l, a]) => {
+      api.entities.Bank.filter({ organization_id: organization.id, attivo: true }),
+    ]).then(async ([l, a, b]) => {
       const loanIds = l.map(x => x.id);
       let insts = [];
       if (loanIds.length > 0) {
         insts = await api.entities.LoanInstallment.filter({});
         insts = insts.filter(i => loanIds.includes(i.loan_id));
       }
-      setLoans(l); setInstallments(insts); setAccounts(a); setLoading(false);
+      setLoans(l); setInstallments(insts); setAccounts(a); setBanche(b); setLoading(false);
     });
   }, [organization]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
+  const bancaById = new Map(banche.map(b => [b.id, b]));
+  const nomeEnte = (loan) => bancaById.get(loan.banca_id)?.nome || loan.ente_finanziatore;
+
+  /** Piano teorico ricalcolato dai parametri: è una proiezione, non dati salvati. */
+  const pianoDi = (loan) => calcolaPianoAmmortamento(
+    Number(loan.capitale_erogato), Number(loan.tasso_interesse) || 0,
+    Number(loan.numero_rate_totali), loan.data_inizio, loan.periodicita || "mensile",
+  );
+
+  const handleCreateBanca = async (e) => {
+    e.preventDefault();
+    const b = await api.entities.Bank.create({ ...bancaForm, organization_id: organization.id, attivo: true });
+    toast({ title: "Banca registrata", description: b.nome });
+    setShowBancaForm(false);
+    setBancaForm({ nome: "", iban: "", referente: "", email: "", telefono: "" });
+    setLoanForm(f => ({ ...f, banca_id: b.id }));
+    loadData();
+  };
+
   const handleCreateLoan = async (e) => {
     e.preventDefault();
-    const loan = await api.entities.Loan.create({
+    const banca = bancaById.get(loanForm.banca_id);
+    await api.entities.Loan.create({
       organization_id: organization.id,
-      ente_finanziatore: loanForm.ente_finanziatore,
+      banca_id: loanForm.banca_id || null,
+      // Il nome resta anche come testo: se un domani la banca venisse rimossa
+      // dall'anagrafica, il finanziamento continuerebbe a dire da chi proviene.
+      ente_finanziatore: banca?.nome || loanForm.ente_finanziatore,
       capitale_erogato: Number(loanForm.capitale_erogato),
       tasso_interesse: Number(loanForm.tasso_interesse) || undefined,
       data_inizio: loanForm.data_inizio,
       numero_rate_totali: Number(loanForm.numero_rate_totali),
+      periodicita: loanForm.periodicita,
       note: loanForm.note || undefined,
     });
-    toast({ title: "Finanziamento creato", description: loanForm.ente_finanziatore });
+    toast({ title: "Finanziamento creato", description: banca?.nome || loanForm.ente_finanziatore });
     setShowLoanForm(false);
-    setLoanForm({ ente_finanziatore: "", capitale_erogato: "", tasso_interesse: "", data_inizio: new Date().toISOString().split("T")[0], numero_rate_totali: "", note: "" });
+    setLoanForm({ banca_id: "", ente_finanziatore: "", capitale_erogato: "", tasso_interesse: "", data_inizio: oggi(), numero_rate_totali: "", periodicita: "mensile", note: "" });
     loadData();
+  };
+
+  /**
+   * Genera la sola rata successiva, precompilata dal piano teorico.
+   * Le rate non vengono create tutte insieme: fino a quando non arriva la scadenza,
+   * una rata è una previsione, non un debito da mostrare fra le scadenze aperte.
+   */
+  const generaProssimaRata = async (loan) => {
+    const esistenti = installments.filter(i => i.loan_id === loan.id);
+    const prossimoNumero = esistenti.length + 1;
+    if (prossimoNumero > Number(loan.numero_rate_totali)) {
+      toast({ title: "Piano completo", description: "Tutte le rate previste sono già state generate." });
+      return;
+    }
+    const riga = pianoDi(loan).find(r => r.numero_rata === prossimoNumero);
+    if (!riga) {
+      toast({ title: "Impossibile calcolare la rata", description: "Verifica capitale, tasso e numero di rate.", variant: "destructive" });
+      return;
+    }
+    setShowInstallmentForm(loan.id);
+    setInstForm({
+      numero_rata: String(riga.numero_rata),
+      data_scadenza: riga.data_scadenza,
+      quota_capitale: String(riga.quota_capitale),
+      quota_interessi: String(riga.quota_interessi),
+    });
   };
 
   const handleAddInstallment = async (e) => {
@@ -127,9 +185,11 @@ export default function Finanziamenti() {
                     {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                     <Landmark className="w-5 h-5 text-primary" />
                     <div>
-                      <h3 className="font-medium">{loan.ente_finanziatore}</h3>
+                      <h3 className="font-medium">{nomeEnte(loan)}</h3>
                       <p className="text-xs text-muted-foreground">
-                        Capitale: €{Number(loan.capitale_erogato).toLocaleString("it-IT", { minimumFractionDigits: 2 })} ·
+                        Capitale: €{fmt(loan.capitale_erogato)} ·
+                        {loan.tasso_interesse ? ` ${loan.tasso_interesse}% ·` : ""}
+                        {" "}{PERIODICITA[loan.periodicita]?.label || "Mensile"} ·
                         Rate: {pagate.length}/{loan.numero_rate_totali}
                       </p>
                     </div>
@@ -139,15 +199,25 @@ export default function Finanziamenti() {
 
                 {isExpanded && (
                   <div className="mt-4 space-y-3">
-                    <div className="flex justify-between items-center">
-                      <p className="text-sm text-muted-foreground">Piano rate ({loanInsts.length} rate)</p>
-                      <Button size="sm" variant="outline" onClick={() => { setShowInstallmentForm(loan.id); setInstForm({ numero_rata: String(loanInsts.length + 1), data_scadenza: "", quota_capitale: "", quota_interessi: "" }); }}>
-                        <Plus className="w-3.5 h-3.5 mr-1" /> Rata
-                      </Button>
+                    <div className="flex justify-between items-center flex-wrap gap-2">
+                      <p className="text-sm text-muted-foreground">
+                        Rate generate: {loanInsts.length} di {loan.numero_rate_totali}
+                      </p>
+                      <div className="flex gap-2">
+                        <Button size="sm" variant="ghost" onClick={() => setPianoAperto(loan)}>
+                          <Table2 className="w-3.5 h-3.5 mr-1" /> Piano di ammortamento
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={() => generaProssimaRata(loan)}>
+                          <Plus className="w-3.5 h-3.5 mr-1" /> Genera prossima rata
+                        </Button>
+                      </div>
                     </div>
 
                     {loanInsts.length === 0 ? (
-                      <p className="text-xs text-muted-foreground text-center py-3">Nessuna rata inserita</p>
+                      <p className="text-xs text-muted-foreground text-center py-3">
+                        Nessuna rata generata. Il piano completo è consultabile, ma le rate diventano
+                        debiti da pagare solo quando le generi, una alla volta.
+                      </p>
                     ) : (
                       <div className="border border-border rounded-lg overflow-hidden">
                         <table className="w-full text-xs">
@@ -202,25 +272,147 @@ export default function Finanziamenti() {
         <DialogContent className="max-w-md">
           <DialogHeader><DialogTitle>Nuovo finanziamento</DialogTitle></DialogHeader>
           <form onSubmit={handleCreateLoan} className="space-y-3">
-            <div><Label>Ente finanziatore *</Label><Input required value={loanForm.ente_finanziatore} onChange={e => setLoanForm({ ...loanForm, ente_finanziatore: e.target.value })} placeholder="es. Unicredit" /></div>
+            <div>
+              <div className="flex items-center justify-between">
+                <Label>Banca / ente finanziatore *</Label>
+                <Button type="button" variant="ghost" size="sm" className="h-6 text-xs" onClick={() => setShowBancaForm(true)}>
+                  <Plus className="w-3 h-3 mr-1" /> Nuova banca
+                </Button>
+              </div>
+              <Select value={loanForm.banca_id} onValueChange={v => setLoanForm({ ...loanForm, banca_id: v })}>
+                <SelectTrigger><SelectValue placeholder="Seleziona banca" /></SelectTrigger>
+                <SelectContent>
+                  {banche.map(b => <SelectItem key={b.id} value={b.id}>{b.nome}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              {banche.length === 0 && <p className="text-xs text-muted-foreground mt-1">Registra prima una banca.</p>}
+            </div>
             <div className="grid grid-cols-2 gap-3">
               <div><Label>Capitale erogato (€) *</Label><Input type="number" step="0.01" required value={loanForm.capitale_erogato} onChange={e => setLoanForm({ ...loanForm, capitale_erogato: e.target.value })} /></div>
-              <div><Label>Tasso interesse (%)</Label><Input type="number" step="0.01" value={loanForm.tasso_interesse} onChange={e => setLoanForm({ ...loanForm, tasso_interesse: e.target.value })} /></div>
+              <div><Label>Tasso interesse annuo (%)</Label><Input type="number" step="0.01" value={loanForm.tasso_interesse} onChange={e => setLoanForm({ ...loanForm, tasso_interesse: e.target.value })} /></div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div><Label>Data inizio *</Label><Input type="date" required value={loanForm.data_inizio} onChange={e => setLoanForm({ ...loanForm, data_inizio: e.target.value })} /></div>
               <div><Label>Numero rate totali *</Label><Input type="number" required value={loanForm.numero_rate_totali} onChange={e => setLoanForm({ ...loanForm, numero_rate_totali: e.target.value })} /></div>
             </div>
+            <div>
+              <Label>Periodicità delle rate *</Label>
+              <Select value={loanForm.periodicita} onValueChange={v => setLoanForm({ ...loanForm, periodicita: v })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {Object.entries(PERIODICITA).map(([k, v]) => <SelectItem key={k} value={k}>{v.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Anteprima del piano prima di salvare: la rata è il dato che conta davvero
+                per capire se il finanziamento è sostenibile. */}
+            {(() => {
+              const anteprima = calcolaPianoAmmortamento(
+                Number(loanForm.capitale_erogato), Number(loanForm.tasso_interesse) || 0,
+                Number(loanForm.numero_rate_totali), loanForm.data_inizio, loanForm.periodicita,
+              );
+              if (anteprima.length === 0) return null;
+              return (
+                <div className="p-3 rounded-lg bg-muted/40 text-sm space-y-1">
+                  <div className="flex justify-between"><span className="text-muted-foreground">Rata costante</span><span className="font-medium">€{fmt(anteprima[0].rata)}</span></div>
+                  <div className="flex justify-between"><span className="text-muted-foreground">Interessi totali</span><span className="font-medium">€{fmt(totaleInteressi(anteprima))}</span></div>
+                  <div className="flex justify-between"><span className="text-muted-foreground">Ultima scadenza</span><span className="font-medium">{moment(anteprima[anteprima.length - 1].data_scadenza).format("DD/MM/YYYY")}</span></div>
+                </div>
+              );
+            })()}
+
             <div><Label>Note</Label><Textarea value={loanForm.note} onChange={e => setLoanForm({ ...loanForm, note: e.target.value })} /></div>
-            <Button type="submit" className="w-full">Crea finanziamento</Button>
+            <Button type="submit" className="w-full" disabled={!loanForm.banca_id}>Crea finanziamento</Button>
           </form>
         </DialogContent>
       </Dialog>
 
-      {/* Dialog: aggiungi rata */}
+      {/* Dialog: nuova banca */}
+      <Dialog open={showBancaForm} onOpenChange={setShowBancaForm}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>Nuova banca</DialogTitle></DialogHeader>
+          <form onSubmit={handleCreateBanca} className="space-y-3">
+            <div><Label>Nome *</Label><Input required value={bancaForm.nome} onChange={e => setBancaForm({ ...bancaForm, nome: e.target.value })} placeholder="es. Banca Popolare" /></div>
+            <div><Label>IBAN</Label><Input value={bancaForm.iban} onChange={e => setBancaForm({ ...bancaForm, iban: e.target.value })} /></div>
+            <div><Label>Referente</Label><Input value={bancaForm.referente} onChange={e => setBancaForm({ ...bancaForm, referente: e.target.value })} /></div>
+            <div className="grid grid-cols-2 gap-3">
+              <div><Label>Email</Label><Input type="email" value={bancaForm.email} onChange={e => setBancaForm({ ...bancaForm, email: e.target.value })} /></div>
+              <div><Label>Telefono</Label><Input value={bancaForm.telefono} onChange={e => setBancaForm({ ...bancaForm, telefono: e.target.value })} /></div>
+            </div>
+            <Button type="submit" className="w-full">Registra banca</Button>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog: piano di ammortamento (proiezione ricalcolata, non dati salvati) */}
+      <Dialog open={!!pianoAperto} onOpenChange={(v) => { if (!v) setPianoAperto(null); }}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Piano di ammortamento — {pianoAperto && nomeEnte(pianoAperto)}</DialogTitle>
+          </DialogHeader>
+          {pianoAperto && (() => {
+            const piano = pianoDi(pianoAperto);
+            const generate = installments.filter(i => i.loan_id === pianoAperto.id).length;
+            return (
+              <div className="space-y-3">
+                <div className="grid grid-cols-3 gap-3 text-sm">
+                  <div className="p-3 rounded-lg bg-muted/40">
+                    <p className="text-xs text-muted-foreground">Rata costante</p>
+                    <p className="font-bold">€{fmt(piano[0]?.rata)}</p>
+                  </div>
+                  <div className="p-3 rounded-lg bg-muted/40">
+                    <p className="text-xs text-muted-foreground">Interessi totali</p>
+                    <p className="font-bold">€{fmt(totaleInteressi(piano))}</p>
+                  </div>
+                  <div className="p-3 rounded-lg bg-muted/40">
+                    <p className="text-xs text-muted-foreground">Totale da restituire</p>
+                    <p className="font-bold">€{fmt(Number(pianoAperto.capitale_erogato) + totaleInteressi(piano))}</p>
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Proiezione calcolata su capitale, tasso e durata. Le rate già generate sono
+                  evidenziate: quelle successive diventeranno debiti da pagare solo quando le genererai.
+                </p>
+                <div className="border border-border rounded-lg overflow-hidden max-h-80 overflow-y-auto">
+                  <table className="w-full text-xs">
+                    <thead className="sticky top-0 bg-muted/60">
+                      <tr className="border-b border-border text-left">
+                        <th className="py-2 px-3 font-medium text-muted-foreground">Rata</th>
+                        <th className="py-2 px-3 font-medium text-muted-foreground">Scadenza</th>
+                        <th className="py-2 px-3 font-medium text-muted-foreground text-right">Capitale</th>
+                        <th className="py-2 px-3 font-medium text-muted-foreground text-right">Interessi</th>
+                        <th className="py-2 px-3 font-medium text-muted-foreground text-right">Rata</th>
+                        <th className="py-2 px-3 font-medium text-muted-foreground text-right">Residuo</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {piano.map(r => (
+                        <tr key={r.numero_rata} className={`border-b border-border/50 ${r.numero_rata <= generate ? "bg-emerald-50/50" : ""}`}>
+                          <td className="py-1.5 px-3">{r.numero_rata}</td>
+                          <td className="py-1.5 px-3">{moment(r.data_scadenza).format("DD/MM/YYYY")}</td>
+                          <td className="py-1.5 px-3 text-right">€{fmt(r.quota_capitale)}</td>
+                          <td className="py-1.5 px-3 text-right">€{fmt(r.quota_interessi)}</td>
+                          <td className="py-1.5 px-3 text-right font-medium">€{fmt(r.rata)}</td>
+                          <td className="py-1.5 px-3 text-right text-muted-foreground">€{fmt(r.capitale_residuo)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog: genera rata (precompilata dal piano, correggibile) */}
       <Dialog open={!!showInstallmentForm} onOpenChange={(v) => { if (!v) setShowInstallmentForm(null); }}>
         <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>Aggiungi rata</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>Genera rata</DialogTitle></DialogHeader>
+          <p className="text-xs text-muted-foreground -mt-2">
+            Valori calcolati dal piano di ammortamento. Correggili se la banca ha applicato importi diversi.
+          </p>
           <form onSubmit={handleAddInstallment} className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
               <div><Label>Numero rata *</Label><Input type="number" required value={instForm.numero_rata} onChange={e => setInstForm({ ...instForm, numero_rata: e.target.value })} /></div>
@@ -231,7 +423,7 @@ export default function Finanziamenti() {
               <div><Label>Quota interessi (€) *</Label><Input type="number" step="0.01" required value={instForm.quota_interessi} onChange={e => setInstForm({ ...instForm, quota_interessi: e.target.value })} /></div>
             </div>
             <p className="text-xs text-muted-foreground">Inserisci i valori dal piano di ammortamento fornito dalla banca.</p>
-            <Button type="submit" className="w-full">Aggiungi rata</Button>
+            <Button type="submit" className="w-full">Genera rata</Button>
           </form>
         </DialogContent>
       </Dialog>

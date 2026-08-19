@@ -70,20 +70,42 @@ npm run db:migrate    # la applica
 
 `npm run db:studio` apre un'interfaccia web per esplorare i dati.
 
+## Endpoint dedicati
+
+Alcune operazioni non passano dall'endpoint generico delle entità, perché richiedono una
+transazione o un numero progressivo assegnato dal server:
+
+| Endpoint | Perché non è generico |
+|---|---|
+| `POST /api/journal-entries` | testata e righe insieme, protocollo dal contatore |
+| `POST /api/purchase-orders/:id/deliver` | la consegna genera il costo, in transazione col cambio di stato |
+| `POST /api/invoices` · `POST /api/receipts` · `PUT /api/receipts/:id/issue` | numerazione fiscale progressiva per esercizio |
+| `POST /api/payroll-runs` | scrittura aggregata degli stipendi, previa verifica dei cedolini |
+| `POST /api/exercise-closures` | chiusura d'esercizio e destinazione del risultato |
+
+La creazione diretta di `JournalEntry` e `JournalLine` dall'endpoint generico è bloccata:
+non potrebbe garantire l'atomicità fra le due tabelle.
+
+Tutte le numerazioni progressive passano da `src/lib/numbering.js`, che le prende dalla
+tabella `numbering_counters` con un incremento che blocca la riga. Il vecchio metodo —
+leggere il massimo esistente e sommare uno — assegnava lo stesso numero a due operazioni
+simultanee.
+
 ## Punti aperti
 
 Cose consapevolmente lasciate indietro, da affrontare prima di un uso in produzione:
 
-- **Numerazione progressiva** (protocollo registrazioni, codice socio, numero ricevuta):
-  calcolata dal frontend leggendo il massimo esistente e sommando 1. Con più utenti in
-  contemporanea due operazioni possono ottenere lo stesso numero: va spostata su una
-  sequenza del database.
-- **Atomicità della partita doppia**: testata e righe di una registrazione contabile sono
-  scritte con due chiamate separate, quindi un errore a metà lascia una registrazione
-  senza righe. Serve un endpoint transazionale dedicato.
-- **Permessi lato server**: l'API distingue autenticato da non autenticato, ma non applica
-  i ruoli; il controllo per modulo (`src/lib/permissions.js`) vive solo nel frontend, quindi
-  limita cosa si vede, non cosa si può chiedere all'API.
+- **Permessi lato server applicati solo in parte.** I ruoli sono verificati sulle modifiche
+  (`src/auth/authorize.js`), ma la mappa entità → modulo copre per ora le aree sensibili —
+  piano dei conti, causali, finanziamenti, profilo fiscale, fornitori, acquisti, template
+  ricevuta, cedolini, account staff. Le altre entità restano scrivibili da qualunque utente
+  autenticato dello staff. L'elenco va stretto man mano che ogni area viene verificata.
+- **Nessun controllo sulla lettura.** I ruoli limitano cosa si può modificare, non cosa si
+  può leggere: un utente autenticato può interrogare qualsiasi entità.
 - **Aggiornamenti in tempo reale**: `subscribe()` sul client non fa nulla. L'unico punto
   che lo usa è il calendario corsi del portale soci, che si aggiorna al ricaricamento.
 - **CORS aperto** a qualsiasi origine: va ristretto al dominio del frontend.
+- **`JWT_SECRET`** ha un default di sviluppo: in produzione è obbligatorio impostarlo
+  (il server si rifiuta di partire senza, se `NODE_ENV=production`).
+- **Storage file su disco locale**: `src/routes/uploads.js` va sostituito con uno storage
+  S3-compatible prima di un deploy su più istanze.

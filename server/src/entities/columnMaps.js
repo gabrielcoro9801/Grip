@@ -23,16 +23,31 @@ export function getColumnMaps(table) {
 	return result;
 }
 
-// I form dell'interfaccia inviano stringa vuota per i campi opzionali lasciati in
-// bianco. Un datastore senza schema la accettava; qui le colonne hanno tipi reali e
-// Postgres rifiuta '' per date, numeri, booleani e uuid. Su quelle colonne la stringa
-// vuota significa "non valorizzato", cioè NULL — solo per le colonne testuali va
-// conservata com'è, perché lì '' è un valore legittimo e distinto da NULL.
 const TEXT_LIKE = /^(varchar|text|char)/i;
+const TIMESTAMP_LIKE = /^timestamp/i;
 
-function normalizeEmptyString(column, value) {
-	if (value !== '') return value;
-	return TEXT_LIKE.test(column.getSQLType()) ? value : null;
+// Adatta un valore in arrivo dal client al tipo reale della colonna. Il datastore
+// precedente non aveva schema e accettava qualsiasi cosa; qui le colonne sono tipizzate,
+// quindi due abitudini diffuse nel frontend vanno tradotte:
+//
+// - la stringa vuota dei campi lasciati in bianco, che per date, numeri, booleani e uuid
+//   significa "non valorizzato", cioè NULL (nelle colonne testuali invece è un valore
+//   legittimo e va conservata);
+// - le date inviate come stringa ISO (`new Date().toISOString()`), che il driver si
+//   aspetta invece come oggetto Date.
+function normalizeValue(column, value) {
+	const sqlType = column.getSQLType();
+
+	if (value === '') {
+		return TEXT_LIKE.test(sqlType) ? value : null;
+	}
+	if (typeof value === 'string' && TIMESTAMP_LIKE.test(sqlType)) {
+		const parsed = new Date(value);
+		// Una stringa non interpretabile come data viene lasciata passare così com'è:
+		// meglio l'errore esplicito del database che una data inventata.
+		return Number.isNaN(parsed.getTime()) ? value : parsed;
+	}
+	return value;
 }
 
 // Traduce un oggetto con chiavi snake_case (dal body della request) in un oggetto
@@ -44,7 +59,7 @@ export function translateToJs(table, snakeCaseObj) {
 	const out = {};
 	for (const [key, value] of Object.entries(snakeCaseObj ?? {})) {
 		const jsKey = dbNameToJsKey[key];
-		if (jsKey) out[jsKey] = normalizeEmptyString(dbNameToColumn[key], value);
+		if (jsKey) out[jsKey] = normalizeValue(dbNameToColumn[key], value);
 	}
 	return out;
 }

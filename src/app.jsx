@@ -20,13 +20,13 @@ import TimbraturaPage from '@/pages/personale/TimbraturaPage';
 import TurniPage from '@/pages/personale/TurniPage';
 import FeriePermessiPage from '@/pages/personale/FeriePermessiPage';
 import PresenzeExportPage from '@/pages/personale/PresenzeExportPage';
+import CedoliniPage from '@/pages/personale/CedoliniPage';
 import PtLayout from '@/pages/pt/PtLayout';
 import PtPortal from '@/pages/pt/PtPortal';
 import PtSedutePage from '@/pages/pt/PtSedutePage';
 import PtCompensiPage from '@/pages/pt/PtCompensiPage';
 import TeamLayout from '@/pages/team/TeamLayout';
 import TeamAnagrafica from '@/pages/team/TeamAnagrafica';
-import Finance from '@/pages/Finance';
 import CalendarPage from '@/pages/CalendarPage';
 import { MemberAuthProvider } from '@/lib/MemberAuthContext';
 import MemberLayout from '@/pages/member/MemberLayout';
@@ -44,6 +44,8 @@ import NewJournalEntry from '@/pages/accounting/NewJournalEntry';
 import Movimenti from '@/pages/accounting/Movimenti';
 import CausaliOperative from '@/pages/accounting/CausaliOperative';
 import Finanziamenti from '@/pages/accounting/Finanziamenti';
+import Bilancio from '@/pages/accounting/Bilancio';
+import FineEsercizio from '@/pages/accounting/FineEsercizio';
 import Admin from '@/pages/admin/Admin';
 import AuditLogPage from '@/pages/admin/AuditLogPage';
 import ProfiloFiscale from '@/pages/settings/ProfiloFiscale';
@@ -91,6 +93,7 @@ const AppRoutes = () => {
             <Route path="turni" element={<TurniPage />} />
             <Route path="ferie" element={<FeriePermessiPage />} />
             <Route path="presenze" element={<PresenzeExportPage />} />
+            <Route path="cedolini" element={<CedoliniPage />} />
           </Route>
           <Route path="/pt" element={<PermissionGate module="pt_esterni"><PtLayout /></PermissionGate>}>
             <Route index element={<PtPortal />} />
@@ -111,6 +114,8 @@ const AppRoutes = () => {
             <Route path="nuova-registrazione" element={<NewJournalEntry />} />
             <Route path="causali" element={<CausaliOperative />} />
             <Route path="finanziamenti" element={<Finanziamenti />} />
+            <Route path="bilancio" element={<Bilancio />} />
+            <Route path="fine-esercizio" element={<FineEsercizio />} />
           </Route>
           <Route path="/admin" element={<PermissionGate module="admin_users"><Admin /></PermissionGate>} />
           <Route path="/receipt-template" element={<PermissionGate module="receipt_template"><ReceiptTemplatePage /></PermissionGate>} />

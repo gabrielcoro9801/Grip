@@ -1,12 +1,14 @@
 import React from "react";
 import { Outlet, Link, useLocation } from "react-router-dom";
-import { BookOpen, PlusCircle, Truck, Settings, Landmark } from "lucide-react";
+import { BookOpen, PlusCircle, Settings, Landmark, Scale, CalendarCheck } from "lucide-react";
 
 const tabs = [
   { label: "Piano dei conti", path: "/contabilita", icon: BookOpen },
   { label: "Nuova registrazione", path: "/contabilita/nuova-registrazione", icon: PlusCircle },
   { label: "Causali operative", path: "/contabilita/causali", icon: Settings },
   { label: "Finanziamenti", path: "/contabilita/finanziamenti", icon: Landmark },
+  { label: "Bilancio", path: "/contabilita/bilancio", icon: Scale },
+  { label: "Fine esercizio", path: "/contabilita/fine-esercizio", icon: CalendarCheck },
 ];
 
 export default function AccountingLayout() {

@@ -12,8 +12,10 @@ export default function Dashboard() {
   const [subscriptions, setSubscriptions] = useState([]);
   const [documents, setDocuments] = useState([]);
   const [bookings, setBookings] = useState([]);
-  const [revenue, setRevenue] = useState([]);
-  const [expenses, setExpenses] = useState([]);
+  // Ricavi e costi si leggono dalla contabilità in partita doppia, unica fonte di verità.
+  const [entries, setEntries] = useState([]);
+  const [lines, setLines] = useState([]);
+  const [accounts, setAccounts] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -22,12 +24,13 @@ export default function Dashboard() {
       api.entities.Subscription.list(),
       api.entities.MemberDocument.list(),
       api.entities.Booking.list(),
-      api.entities.Revenue.list(),
-      api.entities.Expense.list(),
+      api.entities.JournalEntry.list(),
+      api.entities.JournalLine.list(),
+      api.entities.ChartOfAccount.list(),
       api.entities.Session.list(),
       api.entities.Event.list(),
       api.entities.Course.list(),
-    ]).then(([m, s, d, b, r, e, sess, evts, crs]) => {
+    ]).then(([m, s, d, b, je, jl, acc, sess, evts, crs]) => {
       const resolvedBookings = b.map(bk => {
         const session = sess.find(s => s.id === bk.session_id);
         const event = evts.find(e => e.id === session?.event_id);
@@ -38,8 +41,9 @@ export default function Dashboard() {
       setSubscriptions(s);
       setDocuments(d);
       setBookings(resolvedBookings);
-      setRevenue(r);
-      setExpenses(e);
+      setEntries(je);
+      setLines(jl);
+      setAccounts(acc);
       setLoading(false);
     });
   }, []);
@@ -84,8 +88,18 @@ export default function Dashboard() {
 
   // KPIs
   const activeMembers = subscriptions.filter(s => s.status === "active").length;
-  const totalRevenue = revenue.reduce((sum, r) => sum + (r.amount || 0), 0);
-  const totalExpenses = expenses.reduce((sum, e) => sum + (e.amount || 0), 0);
+
+  // Ricavi e costi si ricavano dalle righe di partita doppia: i conti di ricavo hanno
+  // saldo in avere, quelli di costo in dare. Si contano solo le scritture confermate,
+  // per non gonfiare i totali con le bozze.
+  const confirmedEntryIds = new Set(entries.filter(e => e.stato === "confermata").map(e => e.id));
+  const accountsByType = (tipo) => new Set(accounts.filter(a => a.tipo_conto === tipo).map(a => a.id));
+  const sumLines = (contoIds, colonna) => lines
+    .filter(l => confirmedEntryIds.has(l.journal_entry_id) && contoIds.has(l.conto_id))
+    .reduce((sum, l) => sum + (l[colonna] || 0), 0);
+
+  const totalRevenue = sumLines(accountsByType("ricavo"), "avere");
+  const totalExpenses = sumLines(accountsByType("costo"), "dare");
 
   const kpis = [
     { label: "Soci attivi", value: activeMembers, icon: Users, color: "text-emerald-600", bg: "bg-emerald-50" },

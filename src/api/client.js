@@ -81,15 +81,71 @@ const ENTITY_NAMES = [
 	'Member', 'Client', 'Subscription', 'Plan', 'MemberDocument', 'QRAccesso',
 	'Course', 'Category', 'Instructor', 'Event', 'Session', 'Room', 'Booking',
 	'ChartOfAccount', 'CausaleOperativa', 'JournalEntry', 'JournalLine', 'Loan', 'LoanInstallment',
-	'AccountingSupplier', 'FixedAsset', 'Revenue', 'Expense',
-	'FiscalProfileSnapshot', 'FiscalYearData', 'ReceiptTemplate', 'Receipt',
-	'Collaboratore', 'StaffAccount', 'Timbratura', 'Turno', 'RichiestaFeriePermesso', 'SedutaPT', 'LiquidazionePT',
+	'AccountingSupplier', 'FixedAsset', 'PurchaseOrder', 'Bank', 'ExerciseClosure', 'JournalAttachment',
+	'FiscalProfileSnapshot', 'FiscalYearData', 'ReceiptTemplate', 'Receipt', 'Invoice',
+	'Collaboratore', 'StaffAccount', 'Timbratura', 'Turno', 'RichiestaFeriePermesso', 'SedutaPT', 'LiquidazionePT', 'Payslip', 'PayrollRun',
 	'Exercise', 'ExercisePlan', 'WorkoutLog',
 	'Organization', 'AuditLog',
 ];
 
 export const api = {
 	entities: Object.fromEntries(ENTITY_NAMES.map((name) => [name, buildEntityClient(name)])),
+
+	// Le registrazioni contabili non passano da `entities`: testata e righe devono essere
+	// scritte insieme, in transazione, e il numero di protocollo lo assegna il server.
+	accounting: {
+		createJournalEntry(entry, lines) {
+			return request('/api/journal-entries', { method: 'POST', body: { entry, lines } });
+		},
+
+		markSettled(entryId, journalEntrySaldoId) {
+			return request(`/api/journal-entries/${entryId}/settle`, {
+				method: 'PUT',
+				body: { journal_entry_saldo_id: journalEntrySaldoId },
+			});
+		},
+
+		// Registra la consegna di un ordine: è il momento in cui nasce il costo, quindi il
+		// server crea la scrittura contabile insieme al cambio di stato, in transazione.
+		deliverPurchaseOrder(orderId, { data_consegna, importo, conto_costo_id }) {
+			return request(`/api/purchase-orders/${orderId}/deliver`, {
+				method: 'POST',
+				body: { data_consegna, importo, conto_costo_id },
+			});
+		},
+
+		// Il numero di fattura lo assegna il server in transazione: dev'essere progressivo
+		// per esercizio, senza salti né duplicati.
+		createInvoice(dati) {
+			return request('/api/invoices', { method: 'POST', body: dati });
+		},
+
+		// Ricevute: stesso motivo delle fatture. Due momenti in cui il numero viene
+		// assegnato — alla creazione se l'incasso è già saldato, all'emissione se era
+		// una bozza in attesa del pagamento.
+		createReceipt(dati) {
+			return request('/api/receipts', { method: 'POST', body: dati });
+		},
+
+		issueReceipt(receiptId, dati) {
+			return request(`/api/receipts/${receiptId}/issue`, { method: 'PUT', body: dati });
+		},
+
+		// Registra gli stipendi del mese: una sola scrittura aggregata, generata dal server
+		// che verifica la coerenza dei cedolini prima di scrivere.
+		createPayrollRun({ organization_id, periodo_anno, periodo_mese, data_registrazione }) {
+			return request('/api/payroll-runs', {
+				method: 'POST',
+				body: { organization_id, periodo_anno, periodo_mese, data_registrazione },
+			});
+		},
+
+		// Chiude un esercizio: gira il risultato a patrimonio netto e blocca le scritture
+		// su quell'anno. Operazione irreversibile dall'interfaccia.
+		closeExercise({ organization_id, anno, note }) {
+			return request('/api/exercise-closures', { method: 'POST', body: { organization_id, anno, note } });
+		},
+	},
 
 	auth: {
 		async login(email, password) {

@@ -13,7 +13,22 @@ export const DEFAULT_CHART_OF_ACCOUNTS = [
   { codice: "4.1", nome: "Debiti v/fornitori", tipo_conto: "passivo", natura: "avere" },
   { codice: "4.2", nome: "Debiti v/banche", tipo_conto: "passivo", natura: "avere" },
   { codice: "4.3", nome: "IVA a debito", tipo_conto: "passivo", natura: "avere", gestisce_iva: true },
-  { codice: "4.4", nome: "Debiti v/personale", tipo_conto: "passivo", natura: "avere" },
+  // Il lordo del cedolino si divide fra chi lo riceve davvero e chi lo riceve al posto suo:
+  // il netto al dipendente, l'IRPEF all'erario, i contributi all'INPS, la cessione del
+  // quinto alla finanziaria. Sono debiti distinti, con scadenze e destinatari diversi.
+  { codice: "4.4", nome: "Dipendenti c/retribuzioni", tipo_conto: "passivo", natura: "avere" },
+  { codice: "4.5", nome: "Erario c/ritenute dipendenti", tipo_conto: "passivo", natura: "avere" },
+  { codice: "4.6", nome: "INPS c/contributi", tipo_conto: "passivo", natura: "avere" },
+  // Il TFR maturato e non ancora liquidato: si accumula fino alla cessazione del rapporto,
+  // a meno che il dipendente lo destini a un fondo pensione, nel qual caso viene versato.
+  { codice: "4.7", nome: "Fondo TFR", tipo_conto: "passivo", natura: "avere" },
+  { codice: "4.8", nome: "INAIL c/premi", tipo_conto: "passivo", natura: "avere" },
+  // Trattenute operate sul netto e girate a terzi: cessione del quinto, quote sindacali,
+  // pignoramenti. Non sono un costo dell'ente, sono denaro del dipendente che transita.
+  { codice: "4.9", nome: "Terzi c/trattenute", tipo_conto: "passivo", natura: "avere" },
+  // Tenuta distinta da 4.5 perché nell'F24 sono codici tributo diversi: sapere quanto è
+  // ritenuta su lavoro autonomo e quanto su lavoro dipendente serve a compilarlo.
+  { codice: "4.10", nome: "Erario c/ritenute lavoro autonomo", tipo_conto: "passivo", natura: "avere" },
   { codice: "5.1", nome: "Capitale sociale", tipo_conto: "patrimonio_netto", natura: "avere" },
   { codice: "5.2", nome: "Utili/perdite a nuovo", tipo_conto: "patrimonio_netto", natura: "avere" },
   { codice: "6.1", nome: "Ricavi — Abbonamenti/quote", tipo_conto: "ricavo", natura: "avere" },
@@ -28,10 +43,16 @@ export const DEFAULT_CHART_OF_ACCOUNTS = [
   { codice: "7.3", nome: "Fornitori vari", tipo_conto: "costo", natura: "dare" },
   { codice: "7.4", nome: "Ammortamenti", tipo_conto: "costo", natura: "dare" },
   { codice: "7.5", nome: "Interessi passivi", tipo_conto: "costo", natura: "dare" },
-  { codice: "7.6", nome: "Costo del personale", tipo_conto: "costo", natura: "dare" },
+  { codice: "7.6", nome: "Salari e stipendi", tipo_conto: "costo", natura: "dare" },
   { codice: "7.7", nome: "Spese generali", tipo_conto: "costo", natura: "dare" },
   { codice: "7.8", nome: "Compensi amministratori", tipo_conto: "costo", natura: "dare" },
   { codice: "7.9", nome: "Minusvalenze patrimoniali", tipo_conto: "costo", natura: "dare" },
+  // Costi del personale che nel cedolino non compaiono, perché non riguardano il dipendente
+  // ma restano a carico dell'ente. Tenerli separati dal lordo è ciò che rende leggibile
+  // quanto costa davvero una persona.
+  { codice: "7.10", nome: "Oneri sociali", tipo_conto: "costo", natura: "dare" },
+  { codice: "7.11", nome: "Accantonamento TFR", tipo_conto: "costo", natura: "dare" },
+  { codice: "7.12", nome: "Premio INAIL", tipo_conto: "costo", natura: "dare" },
 ];
 
 // Definizione causali di sistema: codice_conto → lookup by codice

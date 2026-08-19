@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { api } from "@/api/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -17,13 +18,13 @@ export default function CoursesTab({ data, reload }) {
   const [showCatDialog, setShowCatDialog] = useState(false);
   const [showInstDialog, setShowInstDialog] = useState(false);
   const [editing, setEditing] = useState(null);
-  const [form, setForm] = useState({ name: "", category_id: "", instructor_id: "", description: "" });
+  const [form, setForm] = useState({ name: "", category_id: "", instructor_id: "", description: "", tipo_incarico: "" });
   const [catForm, setCatForm] = useState({ name: "", color: "#3b82f6" });
   const [instForm, setInstForm] = useState({ full_name: "", tax_id: "", contact_email: "", contact_phone: "", notes: "" });
 
   const openCreate = () => {
     setEditing(null);
-    setForm({ name: "", category_id: "", instructor_id: "", description: "" });
+    setForm({ name: "", category_id: "", instructor_id: "", description: "", tipo_incarico: "" });
     setShowCourseForm(true);
   };
 
@@ -34,19 +35,37 @@ export default function CoursesTab({ data, reload }) {
       category_id: course.category_id || "",
       instructor_id: course.instructor_id || "",
       description: course.description || "",
+      tipo_incarico: course.tipo_incarico || "",
     });
     setShowCourseForm(true);
   };
 
+  // A che titolo l'istruttore tiene il corso. Se ha un solo collegamento la risposta è
+  // già determinata dall'anagrafica; serve sceglierlo solo quando li ha entrambi.
+  const istruttoreSelezionato = instructors.find(i => i.id === form.instructor_id);
+  const haEntrambiITitoli = !!(istruttoreSelezionato?.collaboratore_id && istruttoreSelezionato?.fornitore_id);
+  const incaricoImplicito = istruttoreSelezionato?.collaboratore_id
+    ? "interno"
+    : istruttoreSelezionato?.fornitore_id
+    ? "esterno"
+    : null;
+
   const handleSave = async (e) => {
     e.preventDefault();
     if (!form.name.trim() || !form.category_id || !form.instructor_id) return;
+    if (haEntrambiITitoli && !form.tipo_incarico) {
+      toast({ title: "Indica a che titolo", description: "Questo istruttore fa parte del team ed è anche fornitore: scegli quale dei due vale per questo corso.", variant: "destructive" });
+      return;
+    }
+    // Quando il titolo è determinato dall'anagrafica lo si salva comunque, così il corso
+    // conserva la scelta anche se in futuro l'istruttore acquisisce l'altro collegamento.
+    const payload = { ...form, tipo_incarico: haEntrambiITitoli ? form.tipo_incarico : incaricoImplicito };
     try {
       if (editing) {
-        await api.entities.Course.update(editing.id, form);
+        await api.entities.Course.update(editing.id, payload);
         toast({ title: "Corso aggiornato" });
       } else {
-        await api.entities.Course.create(form);
+        await api.entities.Course.create(payload);
         toast({ title: "Corso creato" });
       }
       setShowCourseForm(false);
@@ -98,7 +117,15 @@ export default function CoursesTab({ data, reload }) {
                 </div>
                 <div className="space-y-1 text-xs text-muted-foreground">
                   <div>Categoria: <span className="text-foreground font-medium">{catName(course.category_id)}</span></div>
-                  <div>Istruttore: <span className="text-foreground font-medium">{instName(course.instructor_id)}</span></div>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span>Istruttore: <span className="text-foreground font-medium">{instName(course.instructor_id)}</span></span>
+                    {course.tipo_incarico === "interno" && (
+                      <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">Team</Badge>
+                    )}
+                    {course.tipo_incarico === "esterno" && (
+                      <Badge variant="outline" className="text-xs bg-purple-50 text-purple-700 border-purple-200">Fornitore</Badge>
+                    )}
+                  </div>
                   {course.description && <p className="mt-2">{course.description}</p>}
                 </div>
               </CardContent>
@@ -132,7 +159,36 @@ export default function CoursesTab({ data, reload }) {
                 </SelectContent>
               </Select>
               {instructors.length === 0 && <p className="text-xs text-muted-foreground mt-1">Crea prima un istruttore.</p>}
+              {istruttoreSelezionato && !istruttoreSelezionato.collaboratore_id && !istruttoreSelezionato.fornitore_id && (
+                <p className="text-xs text-amber-700 mt-1">
+                  Questo istruttore non è collegato né al team né a un fornitore: dalla scheda Istruttori indica a che titolo collabora.
+                </p>
+              )}
+              {!haEntrambiITitoli && incaricoImplicito && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  {incaricoImplicito === "interno"
+                    ? "Persona del team: le ore rientrano nel compenso periodico."
+                    : "Fornitore esterno: la prestazione si paga contro fattura."}
+                </p>
+              )}
             </div>
+
+            {haEntrambiITitoli && (
+              <div>
+                <Label>A che titolo tiene questo corso *</Label>
+                <Select value={form.tipo_incarico} onValueChange={v => setForm({ ...form, tipo_incarico: v })}>
+                  <SelectTrigger><SelectValue placeholder="Scegli" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="interno">Persona del team — ore nel compenso periodico</SelectItem>
+                    <SelectItem value="esterno">Fornitore esterno — prestazione contro fattura</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Questo istruttore fa parte del team ed è anche fornitore: va detto quale dei due vale per questo corso.
+                </p>
+              </div>
+            )}
+
             <div><Label>Descrizione</Label><Textarea value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} /></div>
             <Button type="submit" className="w-full" disabled={!form.name.trim() || !form.category_id || !form.instructor_id}>
               {editing ? "Salva" : "Crea corso"}

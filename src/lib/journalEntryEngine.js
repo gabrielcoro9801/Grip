@@ -25,6 +25,8 @@ export async function generateJournalEntry(params) {
     controparte_id, controparte_tipo, a_credito, data_scadenza,
     accounts, descrizione, tipo_origine,
     natura_fiscale, controparte_e_socio,
+    // { importo, conto_id } quando il pagamento è soggetto a ritenuta d'acconto.
+    ritenuta,
   } = params;
 
   // 1. Scorpora IVA
@@ -49,6 +51,16 @@ export async function generateJournalEntry(params) {
   const isEntrata = causale.tipo === "entrata";
   const lines = [];
 
+  // Sui compensi a professionisti una quota non va al fornitore ma all'erario. Il costo
+  // resta intero — la ritenuta non è uno sconto — mentre il lato avere si divide fra chi
+  // riceve davvero il denaro e l'erario, a cui lo si versa per conto suo.
+  const importoRitenuta = ritenuta?.importo > 0 ? ritenuta.importo : 0;
+  const daPagare = importo_lordo - importoRitenuta;
+  if (importoRitenuta > 0 && !ritenuta.conto_id) {
+    throw new Error("Manca il conto su cui registrare la ritenuta d'acconto");
+  }
+  const rigaRitenuta = () => ({ conto_id: ritenuta.conto_id, avere: importoRitenuta });
+
   // 3. Costruisci righe
   if (!a_credito) {
     // Movimento di liquidità
@@ -58,7 +70,8 @@ export async function generateJournalEntry(params) {
       if (iva > 0) lines.push({ conto_id: contoIVAdebito.id, avere: iva, importo_iva: iva, aliquota_iva: causale.aliquota_iva_default });
     } else {
       lines.push({ conto_id: contoContropartita.id, dare: importo_lordo, controparte_tipo, controparte_id, importo_iva: iva > 0 ? iva : undefined, aliquota_iva: iva > 0 ? causale.aliquota_iva_default : undefined });
-      lines.push({ conto_id: contoLiquidita.id, avere: importo_lordo });
+      lines.push({ conto_id: contoLiquidita.id, avere: daPagare });
+      if (importoRitenuta > 0) lines.push(rigaRitenuta());
     }
   } else {
     // Movimento a credito/debito
@@ -68,7 +81,10 @@ export async function generateJournalEntry(params) {
       if (iva > 0) lines.push({ conto_id: contoIVAdebito.id, avere: iva, importo_iva: iva, aliquota_iva: causale.aliquota_iva_default });
     } else {
       lines.push({ conto_id: contoContropartita.id, dare: importo_lordo, importo_iva: iva > 0 ? iva : undefined, aliquota_iva: iva > 0 ? causale.aliquota_iva_default : undefined });
-      lines.push({ conto_id: contoCreditoDebito.id, avere: importo_lordo, controparte_tipo, controparte_id });
+      // Al fornitore si deve solo il netto: la ritenuta è già un debito verso l'erario,
+      // che si versa con l'F24 indipendentemente da quando si paga il fornitore.
+      lines.push({ conto_id: contoCreditoDebito.id, avere: daPagare, controparte_tipo, controparte_id });
+      if (importoRitenuta > 0) lines.push(rigaRitenuta());
     }
   }
 
@@ -77,28 +93,22 @@ export async function generateJournalEntry(params) {
     ? (isEntrata ? "da_incassare" : "da_pagare")
     : "saldata";
 
-  const existing = await api.entities.JournalEntry.filter({ organization_id }, "-numero_protocollo", 1);
-  const numero_protocollo = (existing[0]?.numero_protocollo || 0) + 1;
-
-  const entry = await api.entities.JournalEntry.create({
-    organization_id,
-    numero_protocollo,
-    data_competenza: data,
-    data_cassa: a_credito ? undefined : data,
-    descrizione: descrizione || causale.nome_visibile,
-    causale: causale.nome_visibile,
-    causale_operativa_id: causale.id,
-    tipo_origine: tipo_origine || (isEntrata ? "incasso_cliente" : "pagamento_fornitore"),
-    stato: "confermata",
-    stato_pagamento,
-    data_scadenza: a_credito ? data_scadenza : undefined,
-    natura_fiscale,
-  });
-
-  // 5. Crea JournalLines
-  await api.entities.JournalLine.bulkCreate(
+  // 5. Scrive testata e righe insieme: il numero di protocollo lo assegna il server.
+  const entry = await api.accounting.createJournalEntry(
+    {
+      organization_id,
+      data_competenza: data,
+      data_cassa: a_credito ? undefined : data,
+      descrizione: descrizione || causale.nome_visibile,
+      causale: causale.nome_visibile,
+      causale_operativa_id: causale.id,
+      tipo_origine: tipo_origine || (isEntrata ? "incasso_cliente" : "pagamento_fornitore"),
+      stato: "confermata",
+      stato_pagamento,
+      data_scadenza: a_credito ? data_scadenza : undefined,
+      natura_fiscale,
+    },
     lines.map(l => ({
-      journal_entry_id: entry.id,
       conto_id: l.conto_id,
       dare: l.dare || 0,
       avere: l.avere || 0,
@@ -163,34 +173,27 @@ export async function settleJournalEntry(originalEntry, accounts, metodo_liquidi
     lines.push({ conto_id: contoLiquidita.id, avere: importoSaldo });
   }
 
-  const existing = await api.entities.JournalEntry.filter({ organization_id: originalEntry.organization_id }, "-numero_protocollo", 1);
-  const numero_protocollo = (existing[0]?.numero_protocollo || 0) + 1;
-
-  const newEntry = await api.entities.JournalEntry.create({
-    organization_id: originalEntry.organization_id,
-    numero_protocollo,
-    data_competenza: dataCassa,
-    data_cassa: dataCassa,
-    descrizione: `Saldo: ${originalEntry.descrizione}`,
-    causale: `Saldo`,
-    tipo_origine: "manuale",
-    stato: "confermata",
-    stato_pagamento: "saldata",
-  });
-
-  await api.entities.JournalLine.bulkCreate(
+  const newEntry = await api.accounting.createJournalEntry(
+    {
+      organization_id: originalEntry.organization_id,
+      data_competenza: dataCassa,
+      data_cassa: dataCassa,
+      descrizione: `Saldo: ${originalEntry.descrizione}`,
+      causale: `Saldo`,
+      // Origine distinta da "manuale": è una scrittura generata dal sistema al saldo di
+      // un credito o debito, non una registrazione digitata a mano.
+      tipo_origine: "saldo",
+      stato: "confermata",
+      stato_pagamento: "saldata",
+    },
     lines.map(l => ({
-      journal_entry_id: newEntry.id,
       conto_id: l.conto_id,
       dare: l.dare || 0,
       avere: l.avere || 0,
     }))
   );
 
-  await api.entities.JournalEntry.update(originalEntry.id, {
-    stato_pagamento: "saldata",
-    journal_entry_saldo_id: newEntry.id,
-  });
+  await api.accounting.markSettled(originalEntry.id, newEntry.id);
 
   return newEntry;
 }
@@ -213,24 +216,18 @@ export async function settleLoanInstallment(installment, loan, accounts, metodo_
     { conto_id: contoLiquidita.id, avere: totale },
   ];
 
-  const existing = await api.entities.JournalEntry.filter({ organization_id: loan.organization_id }, "-numero_protocollo", 1);
-  const numero_protocollo = (existing[0]?.numero_protocollo || 0) + 1;
-
-  const entry = await api.entities.JournalEntry.create({
-    organization_id: loan.organization_id,
-    numero_protocollo,
-    data_competenza: dataPagamento,
-    data_cassa: dataPagamento,
-    descrizione: `Rata ${installment.numero_rata} — ${loan.ente_finanziatore}`,
-    causale: "Pagamento rata prestito",
-    tipo_origine: "rata_prestito",
-    stato: "confermata",
-    stato_pagamento: "saldata",
-  });
-
-  await api.entities.JournalLine.bulkCreate(
+  const entry = await api.accounting.createJournalEntry(
+    {
+      organization_id: loan.organization_id,
+      data_competenza: dataPagamento,
+      data_cassa: dataPagamento,
+      descrizione: `Rata ${installment.numero_rata} — ${loan.ente_finanziatore}`,
+      causale: "Pagamento rata prestito",
+      tipo_origine: "rata_prestito",
+      stato: "confermata",
+      stato_pagamento: "saldata",
+    },
     lines.map(l => ({
-      journal_entry_id: entry.id,
       conto_id: l.conto_id,
       dare: l.dare || 0,
       avere: l.avere || 0,

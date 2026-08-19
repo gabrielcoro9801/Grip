@@ -5,40 +5,57 @@ import { eq, and, asc, desc } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { entityRegistry } from '../entities/registry.js';
 import { getColumnMaps, translateToJs, translateToSnakeCase, translateManyToSnakeCase } from '../entities/columnMaps.js';
-import { applyWriteTransform, stripHiddenFields, stripHiddenFieldsMany } from '../entities/hooks.js';
+import { applyWriteTransform, stripHiddenFields, stripHiddenFieldsMany, CREATE_FORBIDDEN } from '../entities/hooks.js';
 import { getUserFromRequest } from '../auth/tokens.js';
+import { canWriteEntity } from '../auth/authorize.js';
+import { memberPuoLeggere, memberPuoScrivere, colonnaProprietario, nascondiCampiPerSocio, forzaProprietario } from '../auth/memberScope.js';
+import { staffAccounts } from '../db/schema/index.js';
+import { registerPgErrorHandler } from './errorHandler.js';
 
-// Traduce i codici errore Postgres più comuni in risposte 400 leggibili invece del
-// generico 500 — un client (es. un form del frontend) deve poter distinguere un
-// proprio errore di input da un guasto del server.
-const PG_ERROR_MESSAGES = {
-	23503: 'Riferimento a un record inesistente (foreign key non valida).',
-	23505: 'Valore duplicato su un campo che deve essere univoco.',
-	23502: 'Campo obbligatorio mancante.',
-	23514: 'Valore non valido per un vincolo del campo (check constraint).',
-};
+const WRITE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
 export default async function entityRoutes(fastify) {
-	fastify.setErrorHandler((error, request, reply) => {
-		const message = PG_ERROR_MESSAGES[error.code];
-		if (message) {
-			reply.code(400).send({ error: message, detail: error.detail });
-			return;
-		}
-		request.log.error(error);
-		reply.code(500).send({ error: 'Errore interno del server' });
-	});
+	registerPgErrorHandler(fastify);
 
 	// Tutti i dati applicativi richiedono un utente autenticato: senza questo controllo
 	// l'intero database (anagrafiche soci, contabilità, account) sarebbe leggibile e
 	// scrivibile da chiunque raggiunga la porta del server.
 	fastify.addHook('preHandler', async (request, reply) => {
-		if (!getUserFromRequest(request)) {
+		const user = getUserFromRequest(request);
+		if (!user) {
 			return reply.code(401).send({ error: 'Non autenticato.' });
 		}
 		const { name } = request.params;
 		if (name && !entityRegistry[name]) {
 			return reply.code(404).send({ error: `Entità sconosciuta: ${name}` });
+		}
+		// Il ruolo viene applicato sulle modifiche: nascondere un pulsante non impedisce
+		// di chiamare l'API, quindi il controllo dell'interfaccia da solo non protegge nulla.
+		const scrittura = WRITE_METHODS.has(request.method);
+		const consentito = user.ruolo === 'member'
+			? memberPuoScrivere(name)
+			: canWriteEntity(user.ruolo, name);
+		if (name && scrittura && !consentito) {
+			return reply.code(403).send({ error: 'Il tuo ruolo non consente questa modifica.' });
+		}
+
+		// Un socio entra in un'area che deve mostrargli i propri dati: tutto il resto —
+		// contabilità, account, cedolini, anagrafiche degli altri — non lo riguarda.
+		if (user.ruolo === 'member' && name) {
+			if (!memberPuoLeggere(name)) {
+				return reply.code(403).send({ error: 'Non consentito.' });
+			}
+			// Il socio a cui l'account è collegato si legge dal database e non dal token:
+			// così revocare il collegamento ha effetto subito.
+			const [account] = await db
+				.select({ memberId: staffAccounts.linkedMemberId })
+				.from(staffAccounts)
+				.where(eq(staffAccounts.id, user.sub))
+				.limit(1);
+			if (!account?.memberId) {
+				return reply.code(403).send({ error: 'Account non collegato a un socio.' });
+			}
+			request.memberId = account.memberId;
 		}
 	});
 
@@ -63,6 +80,15 @@ export default async function entityRoutes(fastify) {
 				return eq(column, value);
 			})
 			.filter(Boolean);
+
+		// Al socio si restituiscono solo le righe che lo riguardano: il filtro è imposto
+		// qui, non chiesto al client, perché il client può sempre ometterlo.
+		if (request.memberId) {
+			const colonna = colonnaProprietario(entityName);
+			if (colonna && dbNameToColumn[colonna]) {
+				conditions.push(eq(dbNameToColumn[colonna], request.memberId));
+			}
+		}
 		if (conditions.length) query = query.where(and(...conditions));
 
 		if (_sort) {
@@ -73,7 +99,8 @@ export default async function entityRoutes(fastify) {
 		if (_limit) query = query.limit(parseInt(_limit, 10));
 
 		const rows = await query;
-		return stripHiddenFieldsMany(entityName, translateManyToSnakeCase(table, rows));
+		const risultato = stripHiddenFieldsMany(entityName, translateManyToSnakeCase(table, rows));
+		return request.memberId ? nascondiCampiPerSocio(entityName, risultato) : risultato;
 	});
 
 	// GET /api/entities/:name/:id
@@ -83,14 +110,31 @@ export default async function entityRoutes(fastify) {
 		const { dbNameToColumn } = getColumnMaps(table);
 		const [row] = await db.select().from(table).where(eq(dbNameToColumn.id, request.params.id)).limit(1);
 		if (!row) return reply.code(404).send({ error: 'Non trovato' });
-		return stripHiddenFields(entityName, translateToSnakeCase(table, row));
+
+		// Chiedere un record per id non deve aggirare il filtro: senza questo controllo
+		// basterebbe indovinare un identificativo per leggere la scheda di un altro socio.
+		if (request.memberId) {
+			const colonna = colonnaProprietario(entityName);
+			if (colonna && String(row[getColumnMaps(table).dbNameToJsKey[colonna]]) !== String(request.memberId)) {
+				return reply.code(404).send({ error: 'Non trovato' });
+			}
+		}
+
+		const risultato = stripHiddenFields(entityName, translateToSnakeCase(table, row));
+		return request.memberId ? nascondiCampiPerSocio(entityName, risultato) : risultato;
 	});
 
 	// POST /api/entities/:name
 	fastify.post('/api/entities/:name', async (request, reply) => {
 		const entityName = request.params.name;
+		if (CREATE_FORBIDDEN[entityName]) {
+			return reply.code(400).send({ error: CREATE_FORBIDDEN[entityName] });
+		}
 		const table = entityRegistry[entityName];
-		const body = await applyWriteTransform(entityName, request.body);
+		let body = await applyWriteTransform(entityName, request.body);
+		// Un socio crea solo record intestati a sé: l'appartenenza la impone il server,
+		// altrimenti basterebbe cambiare un identificativo nella richiesta.
+		if (request.memberId) body = forzaProprietario(entityName, body, request.memberId);
 		const [row] = await db.insert(table).values(translateToJs(table, body)).returning();
 		reply.code(201);
 		return stripHiddenFields(entityName, translateToSnakeCase(table, row));
@@ -99,6 +143,9 @@ export default async function entityRoutes(fastify) {
 	// POST /api/entities/:name/bulk  (bulkCreate)
 	fastify.post('/api/entities/:name/bulk', async (request, reply) => {
 		const entityName = request.params.name;
+		if (CREATE_FORBIDDEN[entityName]) {
+			return reply.code(400).send({ error: CREATE_FORBIDDEN[entityName] });
+		}
 		const table = entityRegistry[entityName];
 		const source = Array.isArray(request.body) ? request.body : [];
 		const items = [];

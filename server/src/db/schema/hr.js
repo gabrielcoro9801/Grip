@@ -27,6 +27,55 @@ export const collaboratori = pgTable('collaboratori', {
 	importoSeduta: numeric('importo_seduta', { precision: 12, scale: 2 }),
 	importoAutocertificatoAltriEnti: numeric('importo_autocertificato_altri_enti', { precision: 12, scale: 2 }),
 	dataAutocertificazione: date('data_autocertificazione'),
+	// Dove va a finire il TFR maturato: se resta in azienda si accumula nel fondo e si
+	// liquida alla cessazione; se il dipendente lo destina a previdenza complementare
+	// diventa un versamento periodico, quindi un debito da pagare come i contributi.
+	// È una scelta del singolo dipendente, non dell'ente.
+	destinazioneTfr: varchar('destinazione_tfr', { length: 16 }).notNull().default('azienda'), // azienda | fondo_pensione
+});
+
+// Cedolino mensile di un dipendente.
+//
+// Il calcolo del cedolino resta fuori dal sistema — lo fa il consulente del lavoro. Qui si
+// registrano le voci macro che servono alla contabilità, con il documento allegato.
+//
+// La ragione per cui le voci sono così tante: "costo del personale" e "quanto ricevi in
+// busta" divergono in due direzioni. Parte del lordo non arriva al dipendente (IRPEF,
+// contributi a suo carico, cessione del quinto: sono debiti verso terzi), e parte del costo
+// non è nel cedolino (contributi a carico ente, TFR). Tenerle distinte è l'unico modo per
+// far dire al conto economico quanto costa davvero una persona.
+export const payslips = pgTable('payslips', {
+	id: uuid('id').defaultRandom().primaryKey(),
+	organizationId: uuid('organization_id').references(() => organizations.id),
+	collaboratoreId: uuid('collaboratore_id').notNull().references(() => collaboratori.id),
+	periodoAnno: integer('periodo_anno').notNull(),
+	periodoMese: integer('periodo_mese').notNull(), // 0-based, coerente con il resto dell'app
+
+	// Composizione del lordo: le prime quattro voci devono sommare al lordo.
+	retribuzioneLorda: numeric('retribuzione_lorda', { precision: 12, scale: 2 }).notNull(),
+	nettoDipendente: numeric('netto_dipendente', { precision: 12, scale: 2 }).notNull(),
+	ritenuteIrpef: numeric('ritenute_irpef', { precision: 12, scale: 2 }).notNull().default('0'),
+	contributiDipendente: numeric('contributi_dipendente', { precision: 12, scale: 2 }).notNull().default('0'),
+	trattenuteTerzi: numeric('trattenute_terzi', { precision: 12, scale: 2 }).notNull().default('0'),
+
+	// Costi che il cedolino non mostra perché non riguardano il dipendente.
+	contributiAzienda: numeric('contributi_azienda', { precision: 12, scale: 2 }).notNull().default('0'),
+	accantonamentoTfr: numeric('accantonamento_tfr', { precision: 12, scale: 2 }).notNull().default('0'),
+
+	note: text('note'),
+	createdDate: timestamp('created_date', { withTimezone: true }).notNull().defaultNow(),
+});
+
+// Registrazione contabile di un mese di stipendi: una sola scrittura aggregata, con i
+// cedolini dei singoli dipendenti allegati alla scrittura.
+export const payrollRuns = pgTable('payroll_runs', {
+	id: uuid('id').defaultRandom().primaryKey(),
+	organizationId: uuid('organization_id').references(() => organizations.id),
+	periodoAnno: integer('periodo_anno').notNull(),
+	periodoMese: integer('periodo_mese').notNull(),
+	journalEntryId: uuid('journal_entry_id').references(() => journalEntries.id),
+	costoTotale: numeric('costo_totale', { precision: 12, scale: 2 }),
+	registratoIl: timestamp('registrato_il', { withTimezone: true }).notNull().defaultNow(),
 });
 
 // Account di login per staff e member (ruolo="member"). Tabella di autenticazione,

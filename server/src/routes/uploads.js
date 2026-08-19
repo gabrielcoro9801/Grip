@@ -10,6 +10,7 @@ import { createWriteStream } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
 import { pipeline } from 'node:stream/promises';
 import path from 'node:path';
+import { getUserFromRequest } from '../auth/tokens.js';
 
 const ALLOWED_MIME = new Set([
 	'application/pdf',
@@ -22,6 +23,18 @@ const ALLOWED_MIME = new Set([
 
 export default async function uploadRoutes(fastify, options) {
 	const { uploadDir, publicBaseUrl } = options;
+
+	// L'endpoint scrive file sul disco del server: senza autenticazione chiunque
+	// raggiunga la porta può riempirlo, e i file caricati sono poi serviti pubblicamente
+	// da /uploads/*. Caricano solo ricevute, fatture, allegati e logo: tutte cose dello
+	// staff, quindi il portale soci non ha ragione di passare di qui.
+	fastify.addHook('preHandler', async (request, reply) => {
+		const user = getUserFromRequest(request);
+		if (!user) return reply.code(401).send({ error: 'Non autenticato.' });
+		if (user.ruolo === 'member') {
+			return reply.code(403).send({ error: 'Il tuo ruolo non consente di caricare file.' });
+		}
+	});
 
 	fastify.post('/api/uploads', async (request, reply) => {
 		const data = await request.file();
