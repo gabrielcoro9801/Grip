@@ -12,6 +12,7 @@ import { Download, RefreshCw, CheckCircle2, Clock, FileText } from "lucide-react
 import moment from "moment";
 import { Link } from "react-router-dom";
 import { useToast } from "@/components/ui/use-toast";
+import { puo } from "@/lib/permissions";
 
 export default function ReceiptsList() {
   const { organization } = useOrganization();
@@ -111,7 +112,7 @@ export default function ReceiptsList() {
                     ) : (
                       <span className="text-xs text-muted-foreground">—</span>
                     )}
-                    {staffUser?.ruolo === "admin" && r.stato === "emessa" && (
+                    {puo(staffUser?.ruolo, "rigenerare_documento") && r.stato === "emessa" && (
                       <Button size="sm" variant="ghost" className="h-7" onClick={() => handleRegenerate(r.id)} disabled={regenerating === r.id}>
                         <RefreshCw className={`w-3.5 h-3.5 ${regenerating === r.id ? "animate-spin" : ""}`} />
                       </Button>

@@ -13,11 +13,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Clock, LogIn, LogOut, Pencil } from "lucide-react";
 import moment from "moment";
 import { useToast } from "@/components/ui/use-toast";
+import { puo } from "@/lib/permissions";
 
 export default function TimbraturaPage() {
   const { staffUser } = useStaffAuth();
   const { toast } = useToast();
-  const isAdmin = staffUser?.ruolo === "admin";
+  // Chi gestisce il personale vede i dati di tutti; un dipendente vede i propri.
+  const gestisceTutti = puo(staffUser?.ruolo, "gestire_personale");
   const empId = staffUser?.linked_collaboratore_id;
   const { organization } = useOrganization();
   const [loading, setLoading] = useState(true);
@@ -28,7 +30,7 @@ export default function TimbraturaPage() {
   const [editValue, setEditValue] = useState("");
 
   const loadData = async () => {
-    if (isAdmin) {
+    if (gestisceTutti) {
       if (!organization?.id) return;
       const [tims, emps] = await Promise.all([
         api.entities.Timbratura.list("-data_ora_server", 200),
@@ -81,11 +83,11 @@ export default function TimbraturaPage() {
     loadData();
   };
 
-  const filtered = isAdmin && filterEmp !== "all" ? timbrature.filter((t) => t.dipendente_id === filterEmp) : timbrature;
+  const filtered = gestisceTutti && filterEmp !== "all" ? timbrature.filter((t) => t.dipendente_id === filterEmp) : timbrature;
 
   if (loading) return <div className="flex items-center justify-center h-64"><div className="w-8 h-8 border-4 border-muted border-t-primary rounded-full animate-spin" /></div>;
 
-  if (!isAdmin && !empId) {
+  if (!gestisceTutti && !empId) {
     return <p className="text-sm text-muted-foreground">Profilo non collegato a un dipendente.</p>;
   }
 
@@ -93,7 +95,7 @@ export default function TimbraturaPage() {
     <div className="space-y-6">
       <h1 className="text-2xl font-heading font-bold">Timbratura</h1>
 
-      {!isAdmin && (
+      {!gestisceTutti && (
         <Card className="border-0 shadow-sm">
           <CardContent className="p-6 flex flex-col items-center gap-4">
             <div className={`w-20 h-20 rounded-full flex items-center justify-center ${isClockedIn ? "bg-emerald-100" : "bg-muted"}`}>
@@ -110,7 +112,7 @@ export default function TimbraturaPage() {
         </Card>
       )}
 
-      {isAdmin && (
+      {gestisceTutti && (
         <div className="flex items-center gap-3">
           <Select value={filterEmp} onValueChange={setFilterEmp}>
             <SelectTrigger className="w-60"><SelectValue placeholder="Tutti i dipendenti" /></SelectTrigger>
@@ -131,7 +133,7 @@ export default function TimbraturaPage() {
                   <th className="py-3 px-4 font-medium text-muted-foreground">Dipendente</th>
                   <th className="py-3 px-4 font-medium text-muted-foreground">Tipo</th>
                   <th className="py-3 px-4 font-medium text-muted-foreground">Data/Ora</th>
-                  {isAdmin && <th className="py-3 px-4 font-medium text-muted-foreground text-right">Azioni</th>}
+                  {gestisceTutti && <th className="py-3 px-4 font-medium text-muted-foreground text-right">Azioni</th>}
                 </tr>
               </thead>
               <tbody>
@@ -145,7 +147,7 @@ export default function TimbraturaPage() {
                       {moment(t.data_ora_server).format("DD/MM/YYYY HH:mm:ss")}
                       {t.corretta_da && <span className="block text-xs text-amber-600">Corretta da {t.corretta_da}</span>}
                     </td>
-                    {isAdmin && (
+                    {gestisceTutti && (
                       <td className="py-3 px-4 text-right">
                         <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { setEditTarget(t); setEditValue(moment(t.data_ora_server).format("YYYY-MM-DDTHH:mm")); }}>
                           <Pencil className="w-3.5 h-3.5" />

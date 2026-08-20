@@ -15,8 +15,9 @@ export const TIPI_SOGGETTO = {
 	altro: { label: 'Altro', descrizione: 'Ente pubblico, soggetto estero, altro' },
 };
 
-// Aliquota ordinaria sui compensi di lavoro autonomo.
-export const ALIQUOTA_RITENUTA_ORDINARIA = 20;
+// L'aliquota ordinaria non è più una costante: è un valore di legge, letto dai parametri
+// fiscali per la data del pagamento. Resta comunque prevalente quella indicata sul singolo
+// fornitore, perché alcune categorie hanno aliquote proprie.
 
 /** La ritenuta è dovuta solo ai professionisti persona fisica fuori dal regime forfettario. */
 export function ritenutaDovuta(fornitore) {
@@ -30,11 +31,16 @@ export function ritenutaDovuta(fornitore) {
  * quanto resta da versare all'erario. Il costo per l'associazione resta l'importo lordo:
  * la ritenuta non è uno sconto, è una parte del compenso trattenuta e girata altrove.
  */
-export function calcolaRitenuta(fornitore, importoLordo) {
+export function calcolaRitenuta(fornitore, importoLordo, aliquotaOrdinaria) {
 	if (!ritenutaDovuta(fornitore)) {
 		return { ritenuta: 0, netto: importoLordo, aliquota: 0 };
 	}
-	const aliquota = Number(fornitore.aliquota_ritenuta) || ALIQUOTA_RITENUTA_ORDINARIA;
+	const aliquota = Number(fornitore.aliquota_ritenuta) || Number(aliquotaOrdinaria);
+	if (!Number.isFinite(aliquota) || aliquota <= 0) {
+		throw new Error(
+			"Non è nota l'aliquota della ritenuta d'acconto: indicala sul fornitore o fra i parametri fiscali.",
+		);
+	}
 	const ritenuta = Math.round(importoLordo * aliquota) / 100;
 	return { ritenuta, netto: importoLordo - ritenuta, aliquota };
 }

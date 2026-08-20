@@ -11,6 +11,8 @@ import * as schema from './schema/index.js';
 // dentro il range in cui un numero JavaScript è esatto.
 pg.types.setTypeParser(pg.types.builtins.NUMERIC, (value) => (value === null ? null : Number(value)));
 
-const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
+// Esportato perché un processo che non è il server — i test, uno script — deve poter
+// chiudere le connessioni, altrimenti resta appeso a fine esecuzione.
+export const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
 
 export const db = drizzle(pool, { schema });

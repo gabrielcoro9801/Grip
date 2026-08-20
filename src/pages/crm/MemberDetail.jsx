@@ -18,6 +18,7 @@ import { generateQRCode, getQRImageUrl } from "@/lib/qrUtils";
 import { logAction } from "@/lib/auditLog";
 import moment from "moment";
 import { useToast } from "@/components/ui/use-toast";
+import { puo } from "@/lib/permissions";
 
 export default function MemberDetail() {
   const { id } = useParams();
@@ -499,7 +500,7 @@ export default function MemberDetail() {
                           <Button size="icon" variant="ghost" className="h-7 w-7"><Download className="w-3.5 h-3.5" /></Button>
                         </a>
                       )}
-                      {staffUser?.ruolo === "admin" && r.stato === "emessa" && r.pdf_url && (
+                      {puo(staffUser?.ruolo, "rigenerare_documento") && r.stato === "emessa" && r.pdf_url && (
                         <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleRegenerateReceipt(r.id)} disabled={saving}>
                           <RefreshCw className="w-3.5 h-3.5" />
                         </Button>

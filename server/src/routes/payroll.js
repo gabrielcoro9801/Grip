@@ -14,11 +14,12 @@ import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
 	payslips, payrollRuns, collaboratori,
-	journalEntries, journalLines, chartOfAccounts, numberingCounters,
+	journalEntries, journalLines, numberingCounters,
 } from '../db/schema/index.js';
 import { translateToSnakeCase } from '../entities/columnMaps.js';
 import { getUserFromRequest } from '../auth/tokens.js';
 import { canAccess } from '../../../shared/permissions.js';
+import { contiPerRuoli } from '../lib/contiSistema.js';
 import { registerPgErrorHandler } from './errorHandler.js';
 import { anniChiusi } from './exerciseClosures.js';
 
@@ -26,16 +27,19 @@ import { anniChiusi } from './exerciseClosures.js';
 // qualche spicciolo di differenza è fisiologico, un euro no.
 const TOLLERANZA = 0.02;
 
-const CONTI = {
-	salari: '7.6',
-	oneriSociali: '7.10',
-	accantonamentoTfr: '7.11',
-	dipendenti: '4.4',
-	erario: '4.5',
-	inps: '4.6',
-	fondoTfr: '4.7',
-	terzi: '4.9',
-};
+// Il costo del personale si spezza su otto conti: parte va al dipendente, parte all'erario,
+// parte agli enti, parte resta accantonata. Si cercano per il compito che svolgono, non per
+// il numero: la numerazione appartiene all'ente e al suo commercialista.
+const RUOLI_CEDOLINO = [
+	'salari',
+	'oneri_sociali',
+	'accantonamento_tfr',
+	'dipendenti_retribuzioni',
+	'erario_ritenute_dipendenti',
+	'inps',
+	'fondo_tfr',
+	'terzi_trattenute',
+];
 
 async function nextProtocolNumber(tx, organizationId) {
 	const result = await tx.execute(sql`
@@ -151,29 +155,20 @@ export default async function payrollRoutes(fastify) {
 		const arr = (v) => Math.round(v * 100) / 100;
 		const costoTotale = arr(tot.lordo + tot.contributiAz + tot.tfr);
 
-		const conti = await db
-			.select()
-			.from(chartOfAccounts)
-			.where(eq(chartOfAccounts.organizationId, organizationId));
-		const perCodice = new Map(conti.map((c) => [c.codice, c]));
-		const mancanti = Object.values(CONTI).filter((codice) => !perCodice.has(codice));
-		if (mancanti.length > 0) {
-			return reply.code(400).send({
-				error: `Mancano dei conti nel piano dei conti: ${mancanti.join(', ')}. Il piano predefinito li contiene: aggiungili prima di registrare gli stipendi.`,
-			});
-		}
+		const { conti: contiRuolo, errore } = await contiPerRuoli(organizationId, RUOLI_CEDOLINO);
+		if (errore) return reply.code(400).send({ error: errore });
 
 		const righe = [
-			{ codice: CONTI.salari, dare: arr(tot.lordo) },
-			{ codice: CONTI.oneriSociali, dare: arr(tot.contributiAz) },
-			{ codice: CONTI.accantonamentoTfr, dare: arr(tot.tfr) },
-			{ codice: CONTI.dipendenti, avere: arr(tot.netto) },
-			{ codice: CONTI.erario, avere: arr(tot.irpef) },
+			{ ruolo: 'salari', dare: arr(tot.lordo) },
+			{ ruolo: 'oneri_sociali', dare: arr(tot.contributiAz) },
+			{ ruolo: 'accantonamento_tfr', dare: arr(tot.tfr) },
+			{ ruolo: 'dipendenti_retribuzioni', avere: arr(tot.netto) },
+			{ ruolo: 'erario_ritenute_dipendenti', avere: arr(tot.irpef) },
 			// L'INPS incassa sia la quota trattenuta al dipendente sia quella dell'ente,
 			// più il TFR di chi lo destina a previdenza complementare.
-			{ codice: CONTI.inps, avere: arr(tot.contributiDip + tot.contributiAz + tot.tfrDaVersare) },
-			{ codice: CONTI.fondoTfr, avere: arr(tot.tfr - tot.tfrDaVersare) },
-			{ codice: CONTI.terzi, avere: arr(tot.terzi) },
+			{ ruolo: 'inps', avere: arr(tot.contributiDip + tot.contributiAz + tot.tfrDaVersare) },
+			{ ruolo: 'fondo_tfr', avere: arr(tot.tfr - tot.tfrDaVersare) },
+			{ ruolo: 'terzi_trattenute', avere: arr(tot.terzi) },
 		].filter((r) => (r.dare ?? 0) > 0 || (r.avere ?? 0) > 0);
 
 		const totDare = righe.reduce((s, r) => s + (r.dare ?? 0), 0);
@@ -207,7 +202,7 @@ export default async function payrollRoutes(fastify) {
 			await tx.insert(journalLines).values(
 				righe.map((r) => ({
 					journalEntryId: entry.id,
-					contoId: perCodice.get(r.codice).id,
+					contoId: contiRuolo[r.ruolo].id,
 					dare: String(r.dare ?? 0),
 					avere: String(r.avere ?? 0),
 				}))

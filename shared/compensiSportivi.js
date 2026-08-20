@@ -9,7 +9,10 @@
 // sottostimato, e un "sotto soglia" calcolato su dati parziali è peggio di nessuna
 // informazione — dà per tranquillo qualcosa che non lo è.
 
-export const SOGLIA_ESENZIONE = 15000;
+// La soglia arriva da fuori, letta dai parametri fiscali per l'anno del compenso: è un
+// valore di legge che è già cambiato (era 10.000 prima della riforma dello sport) e che
+// cambierà ancora. Applicare quella di oggi a un compenso del 2022 darebbe una risposta
+// sbagliata su una cosa che ha conseguenze fiscali per la persona.
 
 /**
  * Posizione di un collaboratore rispetto alla soglia, tenendo conto del compenso che si
@@ -20,13 +23,19 @@ export const SOGLIA_ESENZIONE = 15000;
  * @param {number} p.autocertificatoAltriEnti quanto dichiarato percepito da altri enti
  * @param {number} p.compensoInCorso compenso che si sta per erogare (0 se nessuno)
  * @param {string|null} p.dataAutocertificazione data dell'autocertificazione, se raccolta
+ * @param {number} p.soglia soglia di esenzione in vigore nell'anno del compenso
  */
 export function posizioneSoglia({
 	giaLiquidato = 0,
 	autocertificatoAltriEnti = 0,
 	compensoInCorso = 0,
 	dataAutocertificazione = null,
+	soglia,
 } = {}) {
+	const SOGLIA_ESENZIONE = Number(soglia);
+	if (!Number.isFinite(SOGLIA_ESENZIONE)) {
+		throw new Error("Serve la soglia di esenzione in vigore nell'anno: va letta dai parametri fiscali.");
+	}
 	const cumuloPrima = Number(giaLiquidato) + Number(autocertificatoAltriEnti);
 	const cumuloDopo = cumuloPrima + Number(compensoInCorso);
 

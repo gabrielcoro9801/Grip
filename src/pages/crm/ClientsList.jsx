@@ -4,13 +4,11 @@ import { useOrganization } from "@/hooks/useOrganization";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Textarea } from "@/components/ui/textarea";
 import PageHeader from "@/components/shared/PageHeader";
-import { Plus, Search, Mail, Phone, Building, User, Link2 } from "lucide-react";
+import ClientForm from "@/components/crm/ClientForm";
+import { datiMancantiCliente } from "../../../shared/fatturaElettronica.js";
+import { Plus, Search, Mail, Phone, Building, User, Link2, Pencil, FileWarning } from "lucide-react";
 
 export default function ClientsList() {
   const { organization } = useOrganization();
@@ -18,8 +16,8 @@ export default function ClientsList() {
   const [members, setMembers] = useState([]);
   const [search, setSearch] = useState("");
   const [showForm, setShowForm] = useState(false);
+  const [editing, setEditing] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [form, setForm] = useState({ tipo: "privato", nome: "", cognome: "", ragione_sociale: "", email: "", telefono: "", codice_fiscale_piva: "", note: "" });
 
   const loadData = () => {
     if (!organization) return;
@@ -34,17 +32,8 @@ export default function ClientsList() {
   const displayName = (c) => c.tipo === "azienda" ? (c.ragione_sociale || "—") : [c.nome, c.cognome].filter(Boolean).join(" ") || "—";
   const linkedMember = (clientId) => members.find(m => m.cliente_id === clientId);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    await api.entities.Client.create({
-      ...form,
-      organization_id: organization.id,
-      attivo: true,
-    });
-    setShowForm(false);
-    setForm({ tipo: "privato", nome: "", cognome: "", ragione_sociale: "", email: "", telefono: "", codice_fiscale_piva: "", note: "" });
-    loadData();
-  };
+  const apriNuovo = () => { setEditing(null); setShowForm(true); };
+  const apriModifica = (c) => { setEditing(c); setShowForm(true); };
 
   const filtered = clients.filter(c => {
     const name = displayName(c).toLowerCase();
@@ -56,7 +45,7 @@ export default function ClientsList() {
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
       <PageHeader title="Clienti" description={`${clients.length} clienti registrati`}>
-        <Button onClick={() => setShowForm(true)} size="sm">
+        <Button onClick={apriNuovo} size="sm">
           <Plus className="w-4 h-4 mr-1" /> Nuovo cliente
         </Button>
       </PageHeader>
@@ -70,6 +59,9 @@ export default function ClientsList() {
         {filtered.map(c => {
           const linked = linkedMember(c.id);
           const name = displayName(c);
+          // Segnalato solo per le aziende: a loro si emette fattura, quindi è lì che i dati
+          // incompleti diventano un problema il giorno dell'emissione.
+          const mancanti = c.tipo === "azienda" ? datiMancantiCliente(c) : [];
           return (
             <Card key={c.id} className="border-0 shadow-sm">
               <CardContent className="p-4">
@@ -80,9 +72,12 @@ export default function ClientsList() {
                       : <User className="w-5 h-5 text-primary" />
                     }
                   </div>
-                  <div className="flex gap-1">
+                  <div className="flex items-center gap-1">
                     {c.tipo === "azienda" && <Badge variant="outline" className="text-xs">Azienda</Badge>}
                     {linked && <Badge className="bg-blue-100 text-blue-700 border-blue-200 text-xs"><Link2 className="w-3 h-3 mr-1" />Associato</Badge>}
+                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => apriModifica(c)} title="Modifica cliente">
+                      <Pencil className="w-3.5 h-3.5" />
+                    </Button>
                   </div>
                 </div>
                 <h3 className="font-medium text-sm">{name}</h3>
@@ -91,6 +86,17 @@ export default function ClientsList() {
                   {c.email && <span className="flex items-center gap-1"><Mail className="w-3 h-3" />{c.email}</span>}
                   {c.telefono && <span className="flex items-center gap-1"><Phone className="w-3 h-3" />{c.telefono}</span>}
                 </div>
+                {mancanti.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => apriModifica(c)}
+                    className="mt-3 flex items-center gap-1 text-xs text-amber-700 hover:underline"
+                    title={mancanti.join("; ")}
+                  >
+                    <FileWarning className="w-3.5 h-3.5" />
+                    Fattura elettronica: {mancanti.length} {mancanti.length === 1 ? "dato mancante" : "dati mancanti"}
+                  </button>
+                )}
               </CardContent>
             </Card>
           );
@@ -98,38 +104,13 @@ export default function ClientsList() {
         {filtered.length === 0 && <p className="text-sm text-muted-foreground col-span-full text-center py-8">Nessun cliente trovato</p>}
       </div>
 
-      <Dialog open={showForm} onOpenChange={setShowForm}>
-        <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>Nuovo cliente occasionale</DialogTitle></DialogHeader>
-          <form onSubmit={handleSubmit} className="space-y-3">
-            <div>
-              <Label>Tipo cliente *</Label>
-              <Select value={form.tipo} onValueChange={v => setForm({ ...form, tipo: v })}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="privato">Privato</SelectItem>
-                  <SelectItem value="azienda">Azienda</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            {form.tipo === "privato" ? (
-              <div className="grid grid-cols-2 gap-3">
-                <div><Label>Nome *</Label><Input required value={form.nome} onChange={e => setForm({ ...form, nome: e.target.value })} /></div>
-                <div><Label>Cognome *</Label><Input required value={form.cognome} onChange={e => setForm({ ...form, cognome: e.target.value })} /></div>
-              </div>
-            ) : (
-              <div><Label>Ragione sociale *</Label><Input required value={form.ragione_sociale} onChange={e => setForm({ ...form, ragione_sociale: e.target.value })} /></div>
-            )}
-            <div className="grid grid-cols-2 gap-3">
-              <div><Label>Email</Label><Input type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} /></div>
-              <div><Label>Telefono</Label><Input value={form.telefono} onChange={e => setForm({ ...form, telefono: e.target.value })} /></div>
-            </div>
-            <div><Label>Codice Fiscale / P.IVA</Label><Input value={form.codice_fiscale_piva} onChange={e => setForm({ ...form, codice_fiscale_piva: e.target.value })} /></div>
-            <div><Label>Note</Label><Textarea value={form.note} onChange={e => setForm({ ...form, note: e.target.value })} /></div>
-            <Button type="submit" className="w-full">Crea cliente</Button>
-          </form>
-        </DialogContent>
-      </Dialog>
+      <ClientForm
+        open={showForm}
+        onClose={() => setShowForm(false)}
+        organization={organization}
+        cliente={editing}
+        onSaved={loadData}
+      />
     </div>
   );
 }

@@ -5,7 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
-import { Download, FileText, AlertTriangle } from "lucide-react";
+import { Download, FileText, AlertTriangle, FileCode2 } from "lucide-react";
+import { useToast } from "@/components/ui/use-toast";
 import moment from "moment";
 
 const fmt = (n) => Number(n || 0).toLocaleString("it-IT", { minimumFractionDigits: 2 });
@@ -18,9 +19,34 @@ const fmt = (n) => Number(n || 0).toLocaleString("it-IT", { minimumFractionDigit
  */
 export default function FattureTab({ organization }) {
   const annoCorrente = new Date().getFullYear();
+  const { toast } = useToast();
   const [fatture, setFatture] = useState([]);
   const [loading, setLoading] = useState(true);
   const [esercizio, setEsercizio] = useState(annoCorrente);
+  const [scaricando, setScaricando] = useState(null);
+
+  // Il file lo costruisce il server dai dati anagrafici correnti; qui si consegna al
+  // browser. Se manca qualcosa il server risponde con l'elenco puntuale dei campi, che
+  // viene mostrato: sapere *cosa* aprire è la differenza fra correggerlo e cercarlo.
+  const scaricaXml = async (fattura) => {
+    setScaricando(fattura.id);
+    try {
+      const { xml, nome } = await api.accounting.downloadInvoiceXml(fattura.id);
+      const url = URL.createObjectURL(new Blob([xml], { type: "application/xml" }));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = nome;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      toast({
+        title: "Fattura elettronica non generabile",
+        description: err.mancanti?.length ? err.mancanti.join(" · ") : err.message,
+        variant: "destructive",
+      });
+    }
+    setScaricando(null);
+  };
 
   const loadData = useCallback(async () => {
     if (!organization) return;
@@ -104,7 +130,7 @@ export default function FattureTab({ organization }) {
                 <th className="py-2.5 px-4 font-medium text-muted-foreground text-right">Imponibile</th>
                 <th className="py-2.5 px-4 font-medium text-muted-foreground text-right">IVA</th>
                 <th className="py-2.5 px-4 font-medium text-muted-foreground text-right">Totale</th>
-                <th className="py-2.5 px-4 font-medium text-muted-foreground text-right">PDF</th>
+                <th className="py-2.5 px-4 font-medium text-muted-foreground text-right">Documenti</th>
               </tr>
             </thead>
             <tbody>
@@ -120,14 +146,27 @@ export default function FattureTab({ organization }) {
                   <td className="py-2.5 px-4 text-right">€{fmt(f.imponibile)}</td>
                   <td className="py-2.5 px-4 text-right text-muted-foreground">€{fmt(f.iva)}</td>
                   <td className="py-2.5 px-4 text-right font-medium">€{fmt(f.totale)}</td>
-                  <td className="py-2.5 px-4 text-right">
-                    {f.pdf_url ? (
-                      <a href={f.pdf_url} target="_blank" rel="noopener noreferrer">
-                        <Button size="icon" variant="ghost" className="h-7 w-7"><Download className="w-3.5 h-3.5" /></Button>
-                      </a>
-                    ) : (
-                      <Badge variant="outline" className="text-xs">senza PDF</Badge>
-                    )}
+                  <td className="py-2.5 px-4">
+                    <div className="flex items-center justify-end gap-1">
+                      {f.pdf_url ? (
+                        <a href={f.pdf_url} target="_blank" rel="noopener noreferrer" title="Scarica il PDF di cortesia">
+                          <Button size="icon" variant="ghost" className="h-7 w-7"><Download className="w-3.5 h-3.5" /></Button>
+                        </a>
+                      ) : (
+                        <Badge variant="outline" className="text-xs">senza PDF</Badge>
+                      )}
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 text-xs gap-1"
+                        disabled={scaricando === f.id}
+                        onClick={() => scaricaXml(f)}
+                        title="Scarica il file XML da trasmettere allo SdI"
+                      >
+                        <FileCode2 className="w-3.5 h-3.5" />
+                        {scaricando === f.id ? "…" : "XML"}
+                      </Button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -139,9 +178,12 @@ export default function FattureTab({ organization }) {
       <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50/60 border border-amber-200 text-xs text-amber-900">
         <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
         <span>
-          Questi PDF sono <strong>documenti di cortesia</strong>. Verso soggetti con partita IVA
-          la fattura elettronica in formato XML trasmessa allo SdI è obbligatoria: il PDF non la
-          sostituisce. La trasmissione allo SdI non è ancora implementata.
+          Il PDF è un <strong>documento di cortesia</strong> e non sostituisce la fattura: verso un
+          soggetto con partita IVA la fattura è il file <strong>XML</strong>. L'applicazione lo
+          genera, ma <strong>non lo trasmette</strong>: scaricalo e invialo allo SdI tu o il tuo
+          commercialista, dal portale Fatture e Corrispettivi o dal canale che già usate. Resta a
+          vostro carico anche la conservazione a norma per dieci anni, che è un obbligo distinto
+          dall'invio.
         </span>
       </div>
     </div>

@@ -12,8 +12,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import PageHeader from "@/components/shared/PageHeader";
 import { AlertTriangle, Download, Lock, Calculator, FileSpreadsheet, CheckCircle2 } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
-import { stimaIres, COEFFICIENTE_REDDITIVITA } from "../../../shared/ires.js";
+import { stimaIres } from "../../../shared/ires.js";
+import { useParametriFiscali } from "@/hooks/useParametriFiscali";
 import moment from "moment";
+import { puo } from "@/lib/permissions";
 
 const fmt = (n) => Number(n || 0).toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const euro = (n) => `${n < 0 ? "−" : ""}€${fmt(Math.abs(n))}`;
@@ -62,6 +64,18 @@ export default function FineEsercizio() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
+  // Aliquota e coefficiente sono quelli in vigore *nell'esercizio che si chiude*, non quelli
+  // di oggi: chiudere il 2026 nel 2028 deve dare lo stesso numero di allora.
+  const { parametri, dettaglio: dettaglioFiscale } = useParametriFiscali();
+
+  // Gli ultimi giorni dell'esercizio sono la data che decide quali valori applicare.
+  const dataRiferimento = `${anno}-12-31`;
+  const aliquotaIres = dettaglioFiscale("aliquota_ires", dataRiferimento);
+  const coefficiente398 = dettaglioFiscale("coefficiente_redditivita_398", dataRiferimento);
+  const parametriIres = aliquotaIres && coefficiente398
+    ? { aliquota: aliquotaIres.valore, coefficiente: coefficiente398.valore }
+    : null;
+
   const dati = useMemo(() => {
     const contoById = new Map(accounts.map((a) => [a.id, a]));
     const dellAnno = new Map(
@@ -85,12 +99,12 @@ export default function FineEsercizio() {
       if (conto.tipo_conto === "ricavo") {
         // Le plusvalenze concorrono per intero all'imponibile, gli altri proventi
         // commerciali solo per il coefficiente di redditività: vanno tenuti distinti.
-        if (e.natura_fiscale === "plusvalenza_patrimoniale" || conto.codice === "6.7") plusvalenze += avere;
+        if (e.natura_fiscale === "plusvalenza_patrimoniale" || conto.ruolo_sistema === "plusvalenze") plusvalenze += avere;
         else if (e.natura_fiscale === "commerciale") proventiCommerciali += avere;
         else if (e.natura_fiscale === "istituzionale") proventiIstituzionali += avere;
       }
       if (conto.tipo_conto === "costo") totaleCosti += dare;
-      if (conto.codice === "4.3") ivaADebito += avere;
+      if (conto.ruolo_sistema === "iva_debito") ivaADebito += avere;
 
       const chiave = conto.id;
       const acc = perConto.get(chiave) || { conto, dare: 0, avere: 0 };
@@ -99,19 +113,20 @@ export default function FineEsercizio() {
     }
 
     return {
-      ires: stimaIres(proventiCommerciali, plusvalenze),
+      ires: parametriIres ? stimaIres(proventiCommerciali, plusvalenze, parametriIres) : null,
       proventiIstituzionali, totaleCosti, ivaADebito,
       perConto: [...perConto.values()].sort((a, b) => a.conto.codice.localeCompare(b.conto.codice)),
       numeroScritture: dellAnno.size,
       scrittureAnno: dellAnno,
     };
-  }, [entries, lines, accounts, anno]);
+  }, [entries, lines, accounts, anno, parametriIres]);
 
   const chiusuraAnno = chiusure.find((c) => c.anno === anno);
-  const isAdmin = staffUser?.ruolo === "admin";
+  const puoChiudere = puo(staffUser?.ruolo, "chiudere_esercizio");
 
   const esportaRiepilogo = () => {
     const i = dati.ires;
+    if (!i) return;
     scaricaCsv(`riepilogo-fiscale-${anno}.csv`, [
       ["Ente", organization?.ragione_sociale || organization?.nome || ""],
       ["Partita IVA / C.F.", organization?.piva_cf || ""],
@@ -209,6 +224,17 @@ export default function FineEsercizio() {
             </div>
           </div>
 
+          {!i ? (
+            <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 text-sm">
+              <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+              <span>
+                Non sono noti aliquota IRES e coefficiente di redditività in vigore nel {anno}:
+                senza, la stima non si può fare. Vanno aggiunti fra i parametri fiscali indicando
+                da quando valgono — meglio nessun numero che un numero calcolato su un'aliquota
+                sbagliata.
+              </span>
+            </div>
+          ) : (
           <div className="space-y-1.5 text-sm">
             <div className="flex justify-between"><span className="text-muted-foreground">Proventi commerciali</span><span>{euro(i.proventiCommerciali)}</span></div>
             <div className="flex justify-between">
@@ -222,17 +248,20 @@ export default function FineEsercizio() {
               <span>{euro(i.imposta)}</span>
             </div>
           </div>
+          )}
 
+          {i && (
           <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 text-xs">
             <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
             <span>
               <strong>Stima indicativa.</strong> In regime 398/1991 il reddito si determina applicando il
-              coefficiente del {COEFFICIENTE_REDDITIVITA}% ai proventi commerciali: i costi effettivi non
+              coefficiente del {i?.coefficiente}% ai proventi commerciali: i costi effettivi non
               incidono, mentre le plusvalenze concorrono per intero. Non sono considerate variazioni
               fiscali, perdite pregresse né agevolazioni. Da verificare sempre con il commercialista
               prima di qualunque versamento.
             </span>
           </div>
+          )}
         </CardContent>
       </Card>
 
@@ -293,7 +322,7 @@ export default function FineEsercizio() {
                 una dichiarazione: modificarli dopo significherebbe avere numeri diversi da quelli
                 presentati, senza che nessuno se ne accorga.
               </p>
-              {!isAdmin ? (
+              {!puoChiudere ? (
                 <p className="text-sm text-muted-foreground italic">Solo un amministratore può chiudere un esercizio.</p>
               ) : (
                 <Button variant="destructive" onClick={() => setConfermaChiusura(true)} disabled={dati.numeroScritture === 0}>

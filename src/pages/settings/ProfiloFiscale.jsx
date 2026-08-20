@@ -9,6 +9,7 @@ import SnapshotView from "@/components/profilo-fiscale/SnapshotView";
 import SnapshotForm from "@/components/profilo-fiscale/SnapshotForm";
 import SnapshotStorico from "@/components/profilo-fiscale/SnapshotStorico";
 import FiscalYearTable from "@/components/profilo-fiscale/FiscalYearTable";
+import DatiFatturazione from "@/components/profilo-fiscale/DatiFatturazione";
 import { useToast } from "@/components/ui/use-toast";
 
 export default function ProfiloFiscale() {
@@ -65,7 +66,7 @@ export default function ProfiloFiscale() {
       <div className="flex items-start gap-3 p-4 rounded-lg bg-blue-50 border border-blue-200 text-blue-800">
         <Info className="w-5 h-5 flex-shrink-0 mt-0.5" />
         <p className="text-sm">
-          Queste informazioni servono a tracciare l'inquadramento fiscale del tuo ente nel tempo. Al momento non influenzano nessun'altra funzione dell'app: nessun calcolo, nessun blocco. Verifica sempre i dati con il tuo commercialista.
+          Gli snapshot qui sotto tracciano l'inquadramento fiscale del tuo ente nel tempo: non influenzano nessun calcolo dell'app, servono a ricostruire com'era la situazione a una certa data. I <strong>dati per la fattura elettronica</strong>, invece, vengono usati davvero — finiscono nel file trasmesso allo SdI. Verifica sempre con il tuo commercialista.
         </p>
       </div>
 
@@ -86,6 +87,8 @@ export default function ProfiloFiscale() {
           <SnapshotStorico snapshots={storico} currentId={currentSnapshot?.id} onEdit={handleEditSnapshot} onDelete={handleDeleteSnapshot} />
         </CardContent>
       </Card>
+
+      <DatiFatturazione organization={organization} onSaved={loadData} />
 
       <FiscalYearTable organization={organization} years={fiscalYears} onRefresh={loadData} />
 

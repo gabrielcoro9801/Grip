@@ -433,6 +433,85 @@ un database tipizzato.
   reali continuano a funzionare, sia la ricevuta emessa subito sia la bozza che prende il
   numero al saldo del credito.
 
+- [x] **Fattura elettronica — il file sì, la trasmissione no (per scelta).** Il PDF che l'app
+  genera è un documento di cortesia: verso un soggetto con partita IVA la fattura *è* il
+  file XML, e finché non arriva allo SdI la fattura non è stata emessa.
+
+  **L'applicazione produce il file e si ferma lì.** La trasmissione resta di chi emette o
+  del suo commercialista, dal portale Fatture e Corrispettivi o dal canale che già usano.
+  È una decisione presa consapevolmente e non un pezzo mancante: collegarsi allo SdI
+  richiede di accreditare un canale per ogni ente — con certificato qualificato, se diretto
+  — e porta con sé la conservazione a norma per dieci anni, che è un obbligo di legge
+  distinto dall'invio. Resta un'evolutiva possibile, non un debito.
+
+  Si scarica dalla scheda **Fatture** in Movimenti, accanto al PDF. Il file è costruito al
+  momento e non archiviato: i dati anagrafici possono essere corretti dopo l'emissione, e
+  una copia salvata resterebbe indietro senza che nessuno se ne accorga. Il nome segue la
+  convenzione dello SdI (`IT<partitaIVA>_<progressivo>.xml`) con un progressivo che non
+  torna mai indietro, perché due file omonimi vengono scartati come duplicati anche a
+  distanza di anni.
+
+  Fatto: `shared/fatturaElettronica.js` costruisce l'XML nel formato FatturaPA 1.2.2, e i
+  campi che il tracciato richiede e che il database non aveva sono stati aggiunti — partita
+  IVA e codice fiscale separati (erano un unico campo `piva_cf`, e per un'ASD sono due
+  numeri diversi), sede scomposta in via/civico/CAP/comune/provincia, codice del regime
+  fiscale, e per il cliente il **codice destinatario o la PEC**, che è il dato da cui
+  dipende se la fattura arriva. L'indirizzo del cliente non era proprio memorizzato.
+
+  Due scelte da giustificare. **L'ordine degli elementi è imposto dal codice**, non lasciato
+  alla concatenazione di stringhe: lo schema li dichiara come sequenza e un elemento nel
+  posto sbagliato fa scartare l'intera fattura. **I dati mancanti si segnalano, non si
+  indovinano** (`datiMancanti()`): una fattura scartata si corregge e si ritrasmette, una
+  accettata con un codice di natura IVA inventato è un errore fiscale che resta — e nel
+  frattempo il numero progressivo è stato consumato.
+
+  *Verificato:* 19 test su `server/test/fattura-elettronica.test.js` — sequenza degli
+  elementi, importi col punto decimale, escape dei caratteri speciali, persona fisica con
+  nome e cognome invece della denominazione, PEC esclusa quando c'è un codice destinatario
+  valido (indicarle entrambe è un errore di tracciato), rifiuto di costruire con aliquota a
+  zero senza natura. **Non ancora verificato:** validazione contro l'XSD ufficiale e
+  accettazione reale dello SdI — quella arriva con la prima trasmissione.
+
+  **Da decidere:** il codice di regime fiscale per la L. 398/1991. Il tracciato non ne ha
+  uno dedicato e si usa RF18 ("Altro"), ma va confermato col commercialista dell'ente:
+  l'applicazione non lo sceglie da sé.
+
+  **Interfaccia per compilare i nuovi campi.** I dati dell'ente stanno in *Profilo Fiscale*
+  → "Dati per la fattura elettronica", quelli del cliente nella sua scheda, in una sezione
+  che si apre da sola per le aziende — cioè per i clienti a cui la fattura va emessa.
+  In entrambi i punti la verifica di cosa manca è mostrata mentre si compila, invece di
+  lasciarla scoprire da una fattura scartata giorni dopo; nell'elenco clienti chi non è
+  pronto porta un avviso che apre direttamente la scheda.
+
+  Nel farlo è emerso che **i clienti non erano modificabili**: esisteva solo la creazione,
+  quindi alle schede già registrate non ci sarebbe stato modo di aggiungere i dati.
+  Aggiunta la modifica.
+
+  **Anagrafica cliente completa anche per i casi che il tracciato tratta a parte.** Oltre a
+  partita IVA, codice fiscale, sede e recapito: se il cliente è una **Pubblica
+  Amministrazione** — per un'ASD il caso concreto è la convenzione o il contributo di un
+  Comune — la fattura viaggia su un tracciato diverso (FPA12), il recapito è il Codice
+  Univoco Ufficio di sei caratteri invece di sette, e non esiste il ripiego della PEC o del
+  cassetto fiscale. Aggiunta anche la **scissione dei pagamenti**, che va dichiarata nel
+  documento: se l'IVA la versa l'ente direttamente all'erario, chi emette incassa solo
+  l'imponibile, e non saperlo prima significa aspettarsi un importo che non arriverà.
+
+  *Verificato nel browser:* compilati i dati reali dell'ente e di un cliente azienda, gli
+  avvisi spariscono man mano; il file si scarica davvero dalla scheda Fatture, 2.296 byte,
+  `IT01234567891_00002.xml`, con numero, destinatario e totale corretti. Scaricandolo di
+  nuovo il progressivo avanza, quindi nessun nome duplicato. Con un dato mancante la
+  risposta elenca **quale** campo manca, non un errore generico. Marcando il cliente come
+  PA il file passa a FPA12 con `EsigibilitaIVA` a S. 24 test automatici, nessun errore HTTP
+  o JS su tutte le pagine staff e del portale.
+
+  *Difetto trovato e corretto durante la verifica:* il file si scaricava col nome
+  `fattura.xml` invece di quello previsto. Il browser non espone `content-disposition` al
+  JavaScript di un'altra origine se il server non lo dichiara fra gli header esposti — e
+  un file trasmesso con un nome inventato sarebbe stato scartato.
+
+  **Non verificato:** validazione contro l'XSD ufficiale e accettazione reale dello SdI.
+  Arrivano con la prima trasmissione, che oggi avviene fuori dall'applicazione.
+
 ## Da chiarire
 
 - **I file caricati restano leggibili senza autenticazione.** L'upload ora richiede un

@@ -4,7 +4,7 @@
 // occupa l'endpoint POST /api/journal-entries (server/src/routes/journalEntries.js),
 // che assegna anche il numero di protocollo. Non vanno create tramite l'endpoint
 // generico delle entità, che non può garantire l'atomicità fra le due tabelle.
-import { pgTable, uuid, varchar, text, boolean, integer, numeric, date, timestamp, check, primaryKey } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, text, boolean, integer, numeric, date, timestamp, check, primaryKey, uniqueIndex } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { organizations } from './common.js';
 import { clients } from './crm.js';
@@ -25,18 +25,30 @@ export const numberingCounters = pgTable('numbering_counters', {
 export const chartOfAccounts = pgTable('chart_of_accounts', {
 	id: uuid('id').defaultRandom().primaryKey(),
 	organizationId: uuid('organization_id').references(() => organizations.id),
-	// Chiave logica usata dal motore di business (es. "2.1" Cassa, "4.3" IVA a debito).
-	// Univocità applicativa per organizzazione, non ancora un vincolo DB in questo scaffold
-	// iniziale: da aggiungere con un unique index (organization_id, codice) prima del cutover.
+	// Etichetta scelta dall'ente e dal suo commercialista: si può cambiare quando si vuole.
+	// Le scritture puntano all'identificativo, quindi rinumerare un conto si riflette
+	// ovunque senza toccare i dati. Univoco per organizzazione, perché due conti con lo
+	// stesso numero renderebbero ambiguo qualunque riferimento umano.
 	codice: varchar('codice', { length: 16 }).notNull(),
 	nome: varchar('nome', { length: 255 }).notNull(),
 	tipoConto: varchar('tipo_conto', { length: 32 }), // attivo | passivo | patrimonio_netto | ricavo | costo
 	natura: varchar('natura', { length: 16 }), // dare | avere
 	contoPadreId: uuid('conto_padre_id'),
 	gestisceIva: boolean('gestisce_iva').default(false),
-	sistema: boolean('sistema').notNull().default(false), // conti seed, non cancellabili
+	// Il compito che questo conto svolge per il motore contabile: 'cassa', 'iva_debito',
+	// 'debiti_fornitori'… Il catalogo è in shared/contiSistema.js. È il legame che prima
+	// passava dal codice, ed è il motivo per cui ora il codice è libero.
+	// Un ruolo appartiene a un solo conto per organizzazione.
+	ruoloSistema: varchar('ruolo_sistema', { length: 40 }),
+	sistema: boolean('sistema').notNull().default(false), // creato dal seed
 	attivo: boolean('attivo').notNull().default(true),
-});
+}, (table) => ({
+	codiceUnivoco: uniqueIndex('chart_of_accounts_codice_univoco').on(table.organizationId, table.codice),
+	// Indice parziale: i conti senza ruolo sono la maggioranza e non devono collidere fra loro.
+	ruoloUnivoco: uniqueIndex('chart_of_accounts_ruolo_univoco')
+		.on(table.organizationId, table.ruoloSistema)
+		.where(sql`${table.ruoloSistema} IS NOT NULL`),
+}));
 
 export const causaliOperative = pgTable('causali_operative', {
 	id: uuid('id').defaultRandom().primaryKey(),
@@ -48,7 +60,10 @@ export const causaliOperative = pgTable('causali_operative', {
 	richiedeControparte: boolean('richiede_controparte').notNull().default(false),
 	tipoControparte: varchar('tipo_controparte', { length: 16 }), // cliente | fornitore
 	gestisceIva: boolean('gestisce_iva').notNull().default(false),
-	aliquotaIvaDefault: numeric('aliquota_iva_default', { precision: 5, scale: 2 }).default('22'),
+	// Nessun valore predefinito: l'aliquota ordinaria è legge e cambia nel tempo, quindi
+	// va scelta da chi crea la causale leggendola dai parametri fiscali. Un 22 silenzioso
+	// qui sopravviverebbe a qualunque cambio di aliquota.
+	aliquotaIvaDefault: numeric('aliquota_iva_default', { precision: 5, scale: 2 }).default('0'),
 	permetteACredito: boolean('permette_a_credito').notNull().default(false),
 	contoCreditoDebitoId: uuid('conto_credito_debito_id').references(() => chartOfAccounts.id),
 	puoEssereIstituzionale: boolean('puo_essere_istituzionale').notNull().default(false),

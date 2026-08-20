@@ -12,9 +12,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Label } from "@/components/ui/label";
 import { Download, Wallet, FileText, Check, AlertTriangle } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { trovaContoPerRuolo } from "../../../shared/contiSistema.js";
 import moment from "moment";
 import { useToast } from "@/components/ui/use-toast";
-import { posizioneSoglia, SOGLIA_ESENZIONE } from "../../../shared/compensiSportivi.js";
+import { posizioneSoglia } from "../../../shared/compensiSportivi.js";
+import { useParametriFiscali } from "@/hooks/useParametriFiscali";
 
 const MESI = moment.months();
 
@@ -23,6 +25,9 @@ export default function PtCompensiPage() {
   const { toast } = useToast();
   const { organization } = useOrganization();
   const isPT = staffUser?.ruolo === "pt";
+  // La soglia è quella in vigore nell'anno del compenso, non quella di oggi: è già
+  // cambiata una volta e ha conseguenze fiscali per la persona.
+  const { dettaglio: dettaglioFiscale } = useParametriFiscali();
   const collaboratoreId = staffUser?.linked_collaboratore_id;
   const [loading, setLoading] = useState(true);
   const [collaboratori, setCollaboratori] = useState([]);
@@ -30,6 +35,8 @@ export default function PtCompensiPage() {
   const [liquidazioni, setLiquidazioni] = useState([]);
   const [mese, setMese] = useState(moment().month());
   const [anno, setAnno] = useState(moment().year());
+  // La soglia dell'anno selezionato, per i testi che la citano.
+  const sogliaVisualizzata = (dettaglioFiscale("soglia_compensi_sportivi", `${anno}-12-31`)?.valore ?? 0).toLocaleString("it-IT");
   const [filterColl, setFilterColl] = useState("all");
   // Riga in attesa di conferma perché il compenso tocca la soglia di esenzione.
   const [confermaSoglia, setConfermaSoglia] = useState(null);
@@ -102,6 +109,8 @@ export default function PtCompensiPage() {
   const calcolaRiga = (coll) => {
     const svolte = sedute.filter((s) => s.collaboratore_id === coll.id && s.stato === "svolta");
     const compenso = calcCompensoPT(coll, svolte, anno, mese);
+    const sogliaAnno = dettaglioFiscale("soglia_compensi_sportivi", `${anno}-12-31`)?.valore;
+    if (sogliaAnno === undefined) return null;
     const giaLiquidato = liquidazioni.find(
       (l) => l.collaboratore_id === coll.id && l.periodo_anno === anno && l.periodo_mese === mese && l.stato === "liquidata"
     );
@@ -113,6 +122,7 @@ export default function PtCompensiPage() {
       autocertificatoAltriEnti: Number(coll.importo_autocertificato_altri_enti) || 0,
       compensoInCorso: giaLiquidato ? 0 : compenso.importo,
       dataAutocertificazione: coll.data_autocertificazione,
+      soglia: sogliaAnno,
     });
     return {
       coll, ...compenso, giaLiquidato,
@@ -159,10 +169,12 @@ export default function PtCompensiPage() {
     // verso il collaboratore in avere. Il pagamento vero si registra poi da
     // Crediti/Debiti, come per ogni altro debito.
     const accounts = await api.entities.ChartOfAccount.filter({ organization_id: organization.id });
-    const contoCosto = accounts.find((a) => a.codice === "7.6");
-    const contoDebito = accounts.find((a) => a.codice === "4.4");
+    const contoCosto = trovaContoPerRuolo(accounts, "salari");
+    const contoDebito = trovaContoPerRuolo(accounts, "dipendenti_retribuzioni");
     if (!contoCosto || !contoDebito) {
-      toast({ title: "Conti mancanti", description: "Servono i conti 7.6 (Costo del personale) e 4.4 (Debiti v/personale).", variant: "destructive" });
+      // Si nomina il compito, non il numero: chi ha rinumerato il piano dei conti non
+      // saprebbe cosa cercare con un codice.
+      toast({ title: "Conti mancanti", description: "Servono un conto per i salari e uno per i debiti verso il personale. Assegnali dal piano dei conti.", variant: "destructive" });
       return;
     }
 
@@ -300,7 +312,7 @@ export default function PtCompensiPage() {
                       <div className="flex items-start gap-2 mt-2 p-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-xs">
                         <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
                         <span>
-                          <strong>Con questo compenso si supera la soglia</strong> di €{SOGLIA_ESENZIONE.toLocaleString("it-IT")}:
+                          <strong>Con questo compenso si supera la soglia</strong> di €{sogliaVisualizzata}:
                           il cumulo passerebbe da €{r.soglia.cumuloPrima.toFixed(2)} a €{r.soglia.cumuloDopo.toFixed(2)},
                           con €{r.soglia.eccedenzaDiQuestoCompenso.toFixed(2)} oltre soglia. Verificare con il
                           commercialista il trattamento dell'eccedenza prima di erogare. Stima indicativa.
@@ -311,7 +323,7 @@ export default function PtCompensiPage() {
                       <div className="flex items-start gap-2 mt-2 p-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-xs">
                         <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
                         <span>
-                          Soglia di €{SOGLIA_ESENZIONE.toLocaleString("it-IT")} già superata: €{r.soglia.eccedenza.toFixed(2)} oltre
+                          Soglia di €{sogliaVisualizzata} già superata: €{r.soglia.eccedenza.toFixed(2)} oltre
                           soglia sul cumulo annuo. L'intero compenso in corso è oltre la soglia.
                           Verificare con il commercialista. Stima indicativa.
                         </span>
@@ -370,7 +382,7 @@ export default function PtCompensiPage() {
                   <div className="flex justify-between"><span>Cumulo prima</span><span>€{confermaSoglia.soglia.cumuloPrima.toFixed(2)}</span></div>
                   <div className="flex justify-between"><span>Cumulo dopo</span><span className="font-medium">€{confermaSoglia.soglia.cumuloDopo.toFixed(2)}</span></div>
                   <div className="flex justify-between pt-1 border-t border-amber-200">
-                    <span>Oltre la soglia di €{SOGLIA_ESENZIONE.toLocaleString("it-IT")}</span>
+                    <span>Oltre la soglia di €{sogliaVisualizzata}</span>
                     <span className="font-bold">€{confermaSoglia.soglia.eccedenza.toFixed(2)}</span>
                   </div>
                 </div>

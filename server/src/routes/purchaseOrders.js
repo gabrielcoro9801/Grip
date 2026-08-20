@@ -6,15 +6,15 @@
 // mai stato registrato — un buco che nessuno noterebbe finché non manca il debito.
 import { eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { purchaseOrders, journalEntries, journalLines, chartOfAccounts, numberingCounters, accountingSuppliers } from '../db/schema/index.js';
+import { purchaseOrders, journalEntries, journalLines, numberingCounters, accountingSuppliers } from '../db/schema/index.js';
 import { ritenutaDovuta, calcolaRitenuta } from '../../../shared/ritenuta.js';
 import { translateToSnakeCase } from '../entities/columnMaps.js';
 import { getUserFromRequest } from '../auth/tokens.js';
 import { canWriteEntity } from '../auth/authorize.js';
+import { contiPerRuoli } from '../lib/contiSistema.js';
+import { parametroFiscale } from '../lib/parametriFiscali.js';
 import { registerPgErrorHandler } from './errorHandler.js';
 
-const CODICE_DEBITI_FORNITORI = '4.1';
-const CODICE_RITENUTE_LAVORO_AUTONOMO = '4.10';
 
 async function nextProtocolNumber(tx, organizationId) {
 	const result = await tx.execute(sql`
@@ -65,14 +65,9 @@ export default async function purchaseOrderRoutes(fastify) {
 		const contoCosto = contoCostoId ?? ordine.contoCostoId;
 		if (!contoCosto) return reply.code(400).send({ error: 'Indicare il conto di costo su cui registrare la fornitura.' });
 
-		const [contoDebiti] = await db
-			.select()
-			.from(chartOfAccounts)
-			.where(sql`${chartOfAccounts.organizationId} = ${ordine.organizationId} AND ${chartOfAccounts.codice} = ${CODICE_DEBITI_FORNITORI}`)
-			.limit(1);
-		if (!contoDebiti) {
-			return reply.code(400).send({ error: `Manca il conto ${CODICE_DEBITI_FORNITORI} (Debiti v/fornitori) nel piano dei conti.` });
-		}
+		const { conti: contiRuolo, errore } = await contiPerRuoli(ordine.organizationId, ['debiti_fornitori']);
+		if (errore) return reply.code(400).send({ error: errore });
+		const contoDebiti = contiRuolo.debiti_fornitori;
 
 		// Se il fornitore è un professionista soggetto a ritenuta, parte del compenso non
 		// gli spetta: va versata all'erario. Il costo resta intero, il debito verso di lui
@@ -90,20 +85,19 @@ export default async function purchaseOrderRoutes(fastify) {
 			}
 			: null;
 
+		// Il conto della ritenuta si pretende solo quando la ritenuta è dovuta: un ente che
+		// non paga mai professionisti non deve essere costretto ad averlo.
 		let contoRitenuta = null;
 		let importoRitenuta = 0;
 		if (ritenutaDovuta(fornitoreSnake)) {
-			[contoRitenuta] = await db
-				.select()
-				.from(chartOfAccounts)
-				.where(sql`${chartOfAccounts.organizationId} = ${ordine.organizationId} AND ${chartOfAccounts.codice} = ${CODICE_RITENUTE_LAVORO_AUTONOMO}`)
-				.limit(1);
-			if (!contoRitenuta) {
-				return reply.code(400).send({
-					error: `Il fornitore è soggetto a ritenuta ma manca il conto ${CODICE_RITENUTE_LAVORO_AUTONOMO} (Erario c/ritenute lavoro autonomo) nel piano dei conti.`,
-				});
+			const { conti, errore: erroreRitenuta } = await contiPerRuoli(ordine.organizationId, ['erario_ritenute_autonomi']);
+			if (erroreRitenuta) {
+				return reply.code(400).send({ error: `Il fornitore è soggetto a ritenuta d'acconto. ${erroreRitenuta}` });
 			}
-			importoRitenuta = calcolaRitenuta(fornitoreSnake, importoEffettivo).ritenuta;
+			contoRitenuta = conti.erario_ritenute_autonomi;
+			// L'aliquota è quella in vigore alla data della consegna, non quella di oggi.
+			const aliquotaOrdinaria = await parametroFiscale("aliquota_ritenuta_acconto", dataConsegna);
+			importoRitenuta = calcolaRitenuta(fornitoreSnake, importoEffettivo, aliquotaOrdinaria).ritenuta;
 		}
 
 		const aggiornato = await db.transaction(async (tx) => {

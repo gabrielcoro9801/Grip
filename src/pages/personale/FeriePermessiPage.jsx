@@ -14,6 +14,7 @@ import { Plus, Check, X, Hourglass } from "lucide-react";
 import moment from "moment";
 import { useToast } from "@/components/ui/use-toast";
 import { calcFerieResidue } from "@/lib/presenzeUtils";
+import { puo } from "@/lib/permissions";
 
 const STATO_LABEL = { in_attesa: "In attesa", approvata: "Approvata", rifiutata: "Rifiutata" };
 const STATO_VARIANT = { in_attesa: "secondary", approvata: "default", rifiutata: "destructive" };
@@ -21,7 +22,8 @@ const STATO_VARIANT = { in_attesa: "secondary", approvata: "default", rifiutata:
 export default function FeriePermessiPage() {
   const { staffUser } = useStaffAuth();
   const { toast } = useToast();
-  const isAdmin = staffUser?.ruolo === "admin";
+  // Chi gestisce il personale vede i dati di tutti; un dipendente vede i propri.
+  const gestisceTutti = puo(staffUser?.ruolo, "gestire_personale");
   const empId = staffUser?.linked_collaboratore_id;
   const [loading, setLoading] = useState(true);
   const [richieste, setRichieste] = useState([]);
@@ -30,7 +32,7 @@ export default function FeriePermessiPage() {
   const [form, setForm] = useState({ tipo: "ferie", data_inizio: "", data_fine: "", ore: "", motivazione: "" });
 
   const loadData = async () => {
-    if (isAdmin) {
+    if (gestisceTutti) {
       const r = await api.entities.RichiestaFeriePermesso.list("-created_date", 200);
       setRichieste(r);
     } else if (empId) {
@@ -80,7 +82,7 @@ export default function FeriePermessiPage() {
 
   if (loading) return <div className="flex items-center justify-center h-64"><div className="w-8 h-8 border-4 border-muted border-t-primary rounded-full animate-spin" /></div>;
 
-  if (!isAdmin && !empId) {
+  if (!gestisceTutti && !empId) {
     return <p className="text-sm text-muted-foreground">Profilo non collegato a un dipendente.</p>;
   }
 
@@ -90,10 +92,10 @@ export default function FeriePermessiPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-heading font-bold">Ferie & Permessi</h1>
-        {!isAdmin && <Button size="sm" onClick={() => setShowForm(true)}><Plus className="w-4 h-4 mr-1" /> Nuova richiesta</Button>}
+        {!gestisceTutti && <Button size="sm" onClick={() => setShowForm(true)}><Plus className="w-4 h-4 mr-1" /> Nuova richiesta</Button>}
       </div>
 
-      {!isAdmin && employee && (
+      {!gestisceTutti && employee && (
         <Card className="border-0 shadow-sm bg-emerald-50/50">
           <CardContent className="p-4 flex items-center gap-3">
             <Hourglass className="w-5 h-5 text-emerald-600" />
@@ -123,11 +125,11 @@ export default function FeriePermessiPage() {
                       {moment(r.data_inizio).format("DD/MM/YYYY")}
                       {r.data_fine && r.data_fine !== r.data_inizio && ` → ${moment(r.data_fine).format("DD/MM/YYYY")}`}
                     </p>
-                    {isAdmin && <p className="text-xs text-muted-foreground mt-0.5">{r.dipendente_nome}</p>}
+                    {gestisceTutti && <p className="text-xs text-muted-foreground mt-0.5">{r.dipendente_nome}</p>}
                     {r.motivazione && <p className="text-xs text-muted-foreground mt-1 italic">"{r.motivazione}"</p>}
                     {r.approvato_da && <p className="text-xs text-muted-foreground mt-1">Gestita da {r.approvato_da}</p>}
                   </div>
-                  {isAdmin && r.stato === "in_attesa" && (
+                  {gestisceTutti && r.stato === "in_attesa" && (
                     <div className="flex gap-2">
                       <Button size="sm" onClick={() => handleApprove(r, true)}><Check className="w-4 h-4 mr-1" /> Approva</Button>
                       <Button size="sm" variant="outline" onClick={() => handleApprove(r, false)}><X className="w-4 h-4 mr-1" /> Rifiuta</Button>

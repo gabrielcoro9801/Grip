@@ -33,8 +33,14 @@ const ENTITY_MODULES = {
 // da qui si creano gli account e si assegnano i ruoli, cioè si decide chi può fare cosa.
 const ADMIN_ONLY_WRITE = new Set(['StaffAccount']);
 
+// Aliquote e soglie di legge: non sono configurazione dell'ente e non si modificano
+// dall'applicazione. Cambiano quando cambia una norma, e allora si aggiunge una riga con
+// una migrazione — così resta traccia di cosa valeva prima.
+const SOLA_LETTURA = new Set(['ParametroFiscale']);
+
 export function canWriteEntity(role, entityName) {
 	if (role === 'member') return false;
+	if (SOLA_LETTURA.has(entityName)) return false;
 	if (ADMIN_ONLY_WRITE.has(entityName)) return role === 'admin';
 
 	const modulo = ENTITY_MODULES[entityName];

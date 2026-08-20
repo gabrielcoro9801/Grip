@@ -4,13 +4,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { AlertTriangle } from "lucide-react";
+import { trovaContoPerRuolo } from "../../../shared/contiSistema.js";
 
 export default function IvaReport({ entries, lines, accounts }) {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
 
   const contoIVADebito = useMemo(
-    () => accounts.find(a => a.codice === "4.3"),
+    () => trovaContoPerRuolo(accounts, "iva_debito"),
     [accounts]
   );
 

@@ -1,0 +1,2 @@
+ALTER TABLE "clients" ADD COLUMN "pubblica_amministrazione" boolean DEFAULT false NOT NULL;--> statement-breakpoint
+ALTER TABLE "clients" ADD COLUMN "scissione_pagamenti" boolean DEFAULT false NOT NULL;

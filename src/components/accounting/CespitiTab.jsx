@@ -3,6 +3,7 @@ import { api } from "@/api/client";
 import { useOrganization } from "@/hooks/useOrganization";
 import { useStaffAuth } from "@/lib/StaffAuthContext";
 import { logAction } from "@/lib/auditLog";
+import { contoPerRuolo, trovaContoPerRuolo, ContoDiSistemaMancante } from "../../../shared/contiSistema.js";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -56,23 +57,23 @@ export default function CespitiTab({ accounts }) {
       const costoStorico = asset.valore_acquisto;
       const differenza = valoreVendita - costoStorico;
 
-      const findAccount = (codice) => accounts.find((a) => a.codice === codice);
-      const contoLiquidita = cessionData.metodo_liquidita === "banca" ? findAccount("2.2") : findAccount("2.1");
-      const contoPlusvalenza = findAccount("6.7");
-      const contoMinusvalenza = findAccount("7.9");
+      // I conti si cercano per il compito che svolgono, non per il numero: la numerazione
+      // del piano dei conti appartiene all'ente e può cambiare quando vuole.
+      const contoLiquidita = contoPerRuolo(accounts, cessionData.metodo_liquidita === "banca" ? "banca" : "cassa");
+      const contoPlusvalenza = trovaContoPerRuolo(accounts, "plusvalenze");
+      const contoMinusvalenza = trovaContoPerRuolo(accounts, "minusvalenze");
       const contoCespite = accounts.find((a) => a.id === asset.conto_id);
 
-      if (!contoLiquidita) throw new Error("Conto liquidità non trovato");
       if (!contoCespite) throw new Error("Conto originale del cespite non trovato");
 
       const lines = [];
       lines.push({ conto_id: contoLiquidita.id, dare: valoreVendita });
       if (differenza > 0) {
-        if (!contoPlusvalenza) throw new Error("Conto 6.7 (Plusvalenze) non trovato nel piano dei conti");
+        if (!contoPlusvalenza) throw new ContoDiSistemaMancante("plusvalenze");
         lines.push({ conto_id: contoCespite.id, avere: costoStorico });
         lines.push({ conto_id: contoPlusvalenza.id, avere: differenza });
       } else if (differenza < 0) {
-        if (!contoMinusvalenza) throw new Error("Conto 7.9 (Minusvalenze) non trovato nel piano dei conti");
+        if (!contoMinusvalenza) throw new ContoDiSistemaMancante("minusvalenze");
         lines.push({ conto_id: contoMinusvalenza.id, dare: -differenza });
         lines.push({ conto_id: contoCespite.id, avere: costoStorico });
       } else {

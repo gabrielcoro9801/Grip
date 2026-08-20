@@ -12,6 +12,7 @@ import { Plus, PackageCheck, FileText, Ban, Receipt, AlertCircle, Info } from "l
 import { useToast } from "@/components/ui/use-toast";
 import { ritenutaDovuta, calcolaRitenuta } from "../../../shared/ritenuta.js";
 import moment from "moment";
+import { useParametriFiscali } from "@/hooks/useParametriFiscali";
 
 const oggi = () => new Date().toISOString().split("T")[0];
 
@@ -41,6 +42,10 @@ const fmt = (n) => Number(n || 0).toLocaleString("it-IT", { minimumFractionDigit
 
 export default function AcquistiTab({ organization, accounts, reloadMovimenti }) {
   const { toast } = useToast();
+  const { dettaglio: dettaglioFiscale } = useParametriFiscali();
+  // Anteprima della ritenuta: usa l'aliquota di oggi perché la consegna non è ancora
+  // avvenuta. Al momento della consegna il server ricalcola con quella della data effettiva.
+  const aliquotaRitenutaOrdinaria = dettaglioFiscale("aliquota_ritenuta_acconto", new Date().toISOString().slice(0, 10))?.valore;
   const [ordini, setOrdini] = useState([]);
   const [fornitori, setFornitori] = useState([]);
   const [entryById, setEntryById] = useState(new Map());
@@ -165,7 +170,7 @@ export default function AcquistiTab({ organization, accounts, reloadMovimenti })
             const fornitore = fornitoreById.get(o.fornitore_id);
             const conto = contoById.get(o.conto_costo_id);
             const ritenuta = ritenutaDovuta(fornitore)
-              ? calcolaRitenuta(fornitore, Number(o.importo_previsto) || 0)
+              ? calcolaRitenuta(fornitore, Number(o.importo_previsto) || 0, aliquotaRitenutaOrdinaria)
               : null;
             return (
               <Card key={o.id} className="border-0 shadow-sm">

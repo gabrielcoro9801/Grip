@@ -6,9 +6,15 @@ import { eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { staffAccounts } from '../db/schema/index.js';
 import { signToken, getUserFromRequest } from '../auth/tokens.js';
+import { matriceCorrente } from '../../../shared/permissions.js';
 
 // Ciò che il client può vedere di un account: mai l'hash della password.
+//
+// Include i permessi del suo ruolo, perché la matrice non è più una costante del codice:
+// l'interfaccia deve sapere cosa mostrare, e deve saperlo da chi la decide. Sono i permessi
+// del solo ruolo dell'utente — gli altri non lo riguardano.
 function toPublicUser(account) {
+	const matrice = matriceCorrente();
 	return {
 		id: account.id,
 		nome: account.nome,
@@ -17,6 +23,8 @@ function toPublicUser(account) {
 		attivo: account.attivo,
 		linked_collaboratore_id: account.linkedCollaboratoreId,
 		linked_member_id: account.linkedMemberId,
+		permessi: matrice.permessi[account.ruolo] ?? {},
+		capacita: matrice.capacita[account.ruolo] ?? [],
 	};
 }
 

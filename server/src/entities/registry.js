@@ -33,6 +33,9 @@ export const entityRegistry = {
 	PayrollRun: schema.payrollRuns,
 	FiscalProfileSnapshot: schema.fiscalProfileSnapshots,
 	FiscalYearData: schema.fiscalYearData,
+	// Aliquote e soglie di legge, con la data da cui valgono. Sola lettura di fatto: le
+	// modifiche passano da una migrazione, perché sono legge e non configurazione dell'ente.
+	ParametroFiscale: schema.parametriFiscali,
 	ReceiptTemplate: schema.receiptTemplates,
 	Receipt: schema.receipts,
 	Invoice: schema.invoices,

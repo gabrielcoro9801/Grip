@@ -38,6 +38,32 @@ export const clients = pgTable('clients', {
 	email: varchar('email', { length: 255 }),
 	telefono: varchar('telefono', { length: 64 }),
 	codiceFiscalePiva: varchar('codice_fiscale_piva', { length: 32 }),
+
+	// --- Dati richiesti dalla fattura elettronica.
+	// `codice_fiscale_piva` resta per i documenti di cortesia, dove basta un'unica riga;
+	// il tracciato dello SdI però li vuole distinti, e la sede scomposta.
+	partitaIva: varchar('partita_iva', { length: 16 }),
+	codiceFiscale: varchar('codice_fiscale', { length: 16 }),
+	indirizzoVia: varchar('indirizzo_via', { length: 60 }),
+	indirizzoCivico: varchar('indirizzo_civico', { length: 8 }),
+	indirizzoCap: varchar('indirizzo_cap', { length: 5 }),
+	indirizzoComune: varchar('indirizzo_comune', { length: 60 }),
+	indirizzoProvincia: varchar('indirizzo_provincia', { length: 2 }),
+	indirizzoNazione: varchar('indirizzo_nazione', { length: 2 }).default('IT'),
+	// È il dato che decide se la fattura arriva: lo SdI la consegna al codice destinatario
+	// o, in mancanza, alla PEC. Senza nessuno dei due resta nel cassetto fiscale.
+	// Per una Pubblica Amministrazione il codice è il Codice Univoco Ufficio, di sei
+	// caratteri invece di sette.
+	codiceDestinatario: varchar('codice_destinatario', { length: 7 }),
+	pec: varchar('pec', { length: 256 }),
+	// Una PA cambia il formato di trasmissione della fattura (FPA12 invece di FPR12): non è
+	// un dettaglio anagrafico ma un tracciato diverso. Per un'ASD il caso concreto è la
+	// convenzione o il contributo di un Comune.
+	pubblicaAmministrazione: boolean('pubblica_amministrazione').notNull().default(false),
+	// Scissione dei pagamenti: l'IVA la versa il committente direttamente all'erario, non
+	// la incassa chi emette. Cambia quanto si riceve, quindi va saputo prima di fatturare.
+	scissionePagamenti: boolean('scissione_pagamenti').notNull().default(false),
+
 	note: text('note'),
 	attivo: boolean('attivo').notNull().default(true),
 	createdDate: timestamp('created_date', { withTimezone: true }).notNull().defaultNow(),

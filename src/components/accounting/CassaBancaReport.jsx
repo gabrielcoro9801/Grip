@@ -123,7 +123,7 @@ export default function CassaBancaReport({ entries, lines, accounts }) {
                   <p className="text-xs text-muted-foreground mt-0.5">al {moment(dateTo).format("DD/MM/YYYY")}</p>
                 </div>
                 <div className="bg-muted p-2 rounded-lg">
-                  {conto.codice === "2.1" ? <Wallet className="w-5 h-5 text-muted-foreground" /> : <Landmark className="w-5 h-5 text-muted-foreground" />}
+                  {conto.ruolo_sistema === "cassa" ? <Wallet className="w-5 h-5 text-muted-foreground" /> : <Landmark className="w-5 h-5 text-muted-foreground" />}
                 </div>
               </div>
             </CardContent>

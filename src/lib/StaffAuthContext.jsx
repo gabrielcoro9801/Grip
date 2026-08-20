@@ -1,5 +1,20 @@
 import { createContext, useContext, useState, useEffect, useCallback } from "react";
 import { api, getToken, setToken } from "@/api/client";
+import { impostaMatrice, ripristinaMatricePredefinita } from "@/lib/permissions";
+
+/**
+ * I permessi del ruolo arrivano dal server insieme all'utente: la matrice non è più una
+ * costante del codice, e l'ente può averla ridefinita. Applicarli qui — nel punto in cui si
+ * stabilisce chi è l'utente — fa sì che ogni controllo nelle pagine risponda secondo la
+ * configurazione vera, senza che nessuna pagina debba saperlo.
+ */
+function applicaPermessiDi(user) {
+  if (!user?.ruolo) return;
+  impostaMatrice({
+    permessi: { [user.ruolo]: user.permessi ?? {} },
+    capacita: { [user.ruolo]: user.capacita ?? [] },
+  });
+}
 
 const StaffAuthContext = createContext(null);
 
@@ -17,7 +32,7 @@ export function StaffAuthProvider({ children }) {
     }
     api.auth
       .me()
-      .then(setStaffUser)
+      .then((user) => { applicaPermessiDi(user); setStaffUser(user); })
       .catch(() => setToken(null))
       .finally(() => setLoading(false));
   }, []);
@@ -31,6 +46,7 @@ export function StaffAuthProvider({ children }) {
         api.auth.logout();
         return { ok: false, error: "Questo account può accedere solo al portale soci." };
       }
+      applicaPermessiDi(user);
       setStaffUser(user);
       return { ok: true };
     } catch (error) {
@@ -40,6 +56,9 @@ export function StaffAuthProvider({ children }) {
 
   const logout = useCallback(() => {
     api.auth.logout();
+    // Uscendo si torna ai valori predefiniti: lasciare in memoria i permessi di chi se ne
+    // è andato significherebbe che la schermata di accesso ragiona con i suoi.
+    ripristinaMatricePredefinita();
     setStaffUser(null);
   }, []);
 

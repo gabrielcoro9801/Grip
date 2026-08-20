@@ -10,7 +10,8 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Plus, Pencil, Receipt, AlertTriangle } from "lucide-react";
-import { TIPI_SOGGETTO, ALIQUOTA_RITENUTA_ORDINARIA, ritenutaDovuta, motivoEsenzione } from "../../../shared/ritenuta.js";
+import { TIPI_SOGGETTO, ritenutaDovuta, motivoEsenzione } from "../../../shared/ritenuta.js";
+import { useParametriFiscali } from "@/hooks/useParametriFiscali";
 
 const emptyForm = {
   ragione_sociale: "", piva_cf: "", iban: "", conto_costo_default_id: "", email: "", telefono: "",
@@ -19,6 +20,8 @@ const emptyForm = {
 
 export default function AccountingSuppliers() {
   const { organization, loading: orgLoading } = useOrganization();
+  const { dettaglio: dettaglioFiscale } = useParametriFiscali();
+  const aliquotaOrdinaria = dettaglioFiscale("aliquota_ritenuta_acconto", new Date().toISOString().slice(0, 10))?.valore ?? "—";
   const [suppliers, setSuppliers] = useState([]);
   const [accounts, setAccounts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -112,7 +115,7 @@ export default function AccountingSuppliers() {
                 {s.regime_forfettario && <Badge variant="outline" className="text-xs">Forfettario</Badge>}
                 {ritenutaDovuta(s) && (
                   <Badge variant="outline" className="text-xs bg-purple-50 text-purple-700 border-purple-200">
-                    <Receipt className="w-3 h-3 mr-1" /> Ritenuta {Number(s.aliquota_ritenuta) || ALIQUOTA_RITENUTA_ORDINARIA}%
+                    <Receipt className="w-3 h-3 mr-1" /> Ritenuta {Number(s.aliquota_ritenuta) || aliquotaOrdinaria}%
                   </Badge>
                 )}
               </div>
@@ -181,10 +184,10 @@ export default function AccountingSuppliers() {
                     <Input
                       type="number" step="0.01" className="w-28"
                       value={form.aliquota_ritenuta}
-                      placeholder={String(ALIQUOTA_RITENUTA_ORDINARIA)}
+                      placeholder={String(aliquotaOrdinaria)}
                       onChange={e => setForm({...form, aliquota_ritenuta: e.target.value})}
                     />
-                    <p className="text-xs text-muted-foreground mt-1">Vuoto: si applica l'aliquota ordinaria del {ALIQUOTA_RITENUTA_ORDINARIA}%.</p>
+                    <p className="text-xs text-muted-foreground mt-1">Vuoto: si applica l'aliquota ordinaria del {aliquotaOrdinaria}%.</p>
                   </div>
                 </div>
               ) : (

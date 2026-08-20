@@ -82,7 +82,7 @@ const ENTITY_NAMES = [
 	'Course', 'Category', 'Instructor', 'Event', 'Session', 'Room', 'Booking',
 	'ChartOfAccount', 'CausaleOperativa', 'JournalEntry', 'JournalLine', 'Loan', 'LoanInstallment',
 	'AccountingSupplier', 'FixedAsset', 'PurchaseOrder', 'Bank', 'ExerciseClosure', 'JournalAttachment',
-	'FiscalProfileSnapshot', 'FiscalYearData', 'ReceiptTemplate', 'Receipt', 'Invoice',
+	'FiscalProfileSnapshot', 'FiscalYearData', 'ParametroFiscale', 'ReceiptTemplate', 'Receipt', 'Invoice',
 	'Collaboratore', 'StaffAccount', 'Timbratura', 'Turno', 'RichiestaFeriePermesso', 'SedutaPT', 'LiquidazionePT', 'Payslip', 'PayrollRun',
 	'Exercise', 'ExercisePlan', 'WorkoutLog',
 	'Organization', 'AuditLog',
@@ -120,6 +120,22 @@ export const api = {
 			return request('/api/invoices', { method: 'POST', body: dati });
 		},
 
+		// Scarica il file XML della fattura elettronica.
+		// Non passa da `request()` perché la risposta è un file, non JSON: l'errore però
+		// sì, e porta con sé l'elenco dei dati mancanti, che va riportato al chiamante
+		// invece di ridursi a un generico "errore".
+		async downloadInvoiceXml(id) {
+			const res = await fetch(`${API_BASE}/api/invoices/${id}/xml`, { headers: authHeaders() });
+			if (!res.ok) {
+				const payload = await res.json().catch(() => ({}));
+				const error = new Error(payload.error || `Errore HTTP ${res.status}`);
+				error.mancanti = payload.mancanti;
+				throw error;
+			}
+			const nome = /filename="([^"]+)"/.exec(res.headers.get('content-disposition') || '')?.[1] || 'fattura.xml';
+			return { xml: await res.text(), nome };
+		},
+
 		// Ricevute: stesso motivo delle fatture. Due momenti in cui il numero viene
 		// assegnato — alla creazione se l'incasso è già saldato, all'emissione se era
 		// una bozza in attesa del pagamento.
@@ -140,10 +156,31 @@ export const api = {
 			});
 		},
 
+		// Crea piano dei conti e causali per un ente che non li ha ancora. Idempotente.
+		bootstrapContabilita(organizationId) {
+			return request(`/api/organizations/${organizationId}/bootstrap-contabilita`, { method: 'POST' });
+		},
+
 		// Chiude un esercizio: gira il risultato a patrimonio netto e blocca le scritture
 		// su quell'anno. Operazione irreversibile dall'interfaccia.
 		closeExercise({ organization_id, anno, note }) {
 			return request('/api/exercise-closures', { method: 'POST', body: { organization_id, anno, note } });
+		},
+	},
+
+	// Configurazione dei ruoli: la matrice dei permessi non è più una costante del codice.
+	ruoli: {
+		lista(organizationId) {
+			return request(`/api/ruoli?organization_id=${organizationId}`);
+		},
+		salva(id, dati) {
+			return request(`/api/ruoli/${id}`, { method: 'PUT', body: dati });
+		},
+		crea(dati) {
+			return request('/api/ruoli', { method: 'POST', body: dati });
+		},
+		elimina(id) {
+			return request(`/api/ruoli/${id}`, { method: 'DELETE' });
 		},
 	},
 

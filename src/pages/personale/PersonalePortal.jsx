@@ -8,10 +8,12 @@ import { Link } from "react-router-dom";
 import { Clock, CalendarDays, CalendarOff, Hourglass, Users, TrendingUp, AlertCircle } from "lucide-react";
 import moment from "moment";
 import { calcOreMese, calcFerieResidue } from "@/lib/presenzeUtils";
+import { puo } from "@/lib/permissions";
 
 export default function PersonalePortal() {
   const { staffUser } = useStaffAuth();
-  const isAdmin = staffUser?.ruolo === "admin";
+  // Chi gestisce il personale vede i dati di tutti; un dipendente vede i propri.
+  const gestisceTutti = puo(staffUser?.ruolo, "gestire_personale");
   const empId = staffUser?.linked_collaboratore_id;
   const { organization } = useOrganization();
   const [loading, setLoading] = useState(true);
@@ -27,7 +29,7 @@ export default function PersonalePortal() {
     const year = now.year();
     const month = now.month();
 
-    if (isAdmin) {
+    if (gestisceTutti) {
       if (!organization?.id) return;
       Promise.all([
         api.entities.Collaboratore.filter({ organization_id: organization.id, tipo_rapporto: "dipendente" }),
@@ -59,7 +61,7 @@ export default function PersonalePortal() {
 
   if (loading) return <div className="flex items-center justify-center h-64"><div className="w-8 h-8 border-4 border-muted border-t-primary rounded-full animate-spin" /></div>;
 
-  if (!isAdmin && !empId) {
+  if (!gestisceTutti && !empId) {
     return (
       <div className="flex flex-col items-center justify-center h-64 text-center">
         <AlertCircle className="w-10 h-10 text-amber-500 mb-3" />
@@ -74,7 +76,7 @@ export default function PersonalePortal() {
   const month = now.month();
   const monthLabel = now.format("MMMM YYYY");
 
-  if (isAdmin) {
+  if (gestisceTutti) {
     const todayStr = now.format("YYYY-MM-DD");
     const timbratureOggi = timbrature.filter((t) => moment(t.data_ora_server).format("YYYY-MM-DD") === todayStr);
     return (

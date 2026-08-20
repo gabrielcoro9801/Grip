@@ -13,11 +13,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Plus, Trash2, Clock, MapPin } from "lucide-react";
 import moment from "moment";
 import { useToast } from "@/components/ui/use-toast";
+import { puo } from "@/lib/permissions";
 
 export default function TurniPage() {
   const { staffUser } = useStaffAuth();
   const { toast } = useToast();
-  const isAdmin = staffUser?.ruolo === "admin";
+  // Chi gestisce il personale vede i dati di tutti; un dipendente vede i propri.
+  const gestisceTutti = puo(staffUser?.ruolo, "gestire_personale");
   const empId = staffUser?.linked_collaboratore_id;
   const { organization } = useOrganization();
   const [loading, setLoading] = useState(true);
@@ -36,7 +38,7 @@ export default function TurniPage() {
   });
 
   const loadData = async () => {
-    if (isAdmin) {
+    if (gestisceTutti) {
       if (!organization?.id) return;
       const [tur, emps, rms] = await Promise.all([
         api.entities.Turno.list("-data", 200),
@@ -91,7 +93,7 @@ export default function TurniPage() {
 
   if (loading) return <div className="flex items-center justify-center h-64"><div className="w-8 h-8 border-4 border-muted border-t-primary rounded-full animate-spin" /></div>;
 
-  if (!isAdmin && !empId) {
+  if (!gestisceTutti && !empId) {
     return <p className="text-sm text-muted-foreground">Profilo non collegato a un dipendente.</p>;
   }
 
@@ -104,7 +106,7 @@ export default function TurniPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-heading font-bold">Turni</h1>
-        {isAdmin && <Button size="sm" onClick={() => setShowForm(true)}><Plus className="w-4 h-4 mr-1" /> Nuovo turno</Button>}
+        {gestisceTutti && <Button size="sm" onClick={() => setShowForm(true)}><Plus className="w-4 h-4 mr-1" /> Nuovo turno</Button>}
       </div>
 
       <div>
@@ -127,9 +129,9 @@ export default function TurniPage() {
                           <MapPin className="w-3 h-3" /> {t.sala_nome}
                         </div>
                       )}
-                      {isAdmin && <p className="text-xs text-muted-foreground mt-1">{t.dipendente_nome}</p>}
+                      {gestisceTutti && <p className="text-xs text-muted-foreground mt-1">{t.dipendente_nome}</p>}
                     </div>
-                    {isAdmin && (
+                    {gestisceTutti && (
                       <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleDelete(t)}>
                         <Trash2 className="w-3.5 h-3.5 text-destructive" />
                       </Button>
@@ -152,7 +154,7 @@ export default function TurniPage() {
                 <tr className="border-b border-border text-left bg-muted/30">
                   <th className="py-3 px-4 font-medium text-muted-foreground">Data</th>
                   <th className="py-3 px-4 font-medium text-muted-foreground">Orario</th>
-                  {isAdmin && <th className="py-3 px-4 font-medium text-muted-foreground">Dipendente</th>}
+                  {gestisceTutti && <th className="py-3 px-4 font-medium text-muted-foreground">Dipendente</th>}
                   <th className="py-3 px-4 font-medium text-muted-foreground">Sala</th>
                 </tr>
               </thead>
@@ -161,7 +163,7 @@ export default function TurniPage() {
                   <tr key={t.id} className="border-b border-border/50">
                     <td className="py-3 px-4 capitalize">{moment(t.data).format("ddd DD MMM")}</td>
                     <td className="py-3 px-4 text-muted-foreground">{t.ora_inizio}–{t.ora_fine}</td>
-                    {isAdmin && <td className="py-3 px-4">{t.dipendente_nome}</td>}
+                    {gestisceTutti && <td className="py-3 px-4">{t.dipendente_nome}</td>}
                     <td className="py-3 px-4 text-muted-foreground">{t.sala_nome || "—"}</td>
                   </tr>
                 ))}

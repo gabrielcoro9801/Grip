@@ -57,23 +57,29 @@ ricreare l'account admin.
 
 ## Accesso
 
-Credenziali iniziali create dal seed:
-
-| Email | Password | Ruolo |
-|---|---|---|
-| `admin@grip.local` | `admin1234` | admin |
-
-Cambia questa password dopo il primo accesso. Da **Admin & Utenti** puoi creare gli altri
-account (reception, istruttore, PT, dipendente) e gli account dei soci per il portale.
-
 Ci sono due aree con accessi distinti:
-- **Gestionale** (`/`) — per lo staff, protetto dal login staff
-- **Portale soci** (`/member-portal`) — per i soci, richiede un account con ruolo `member`
-  collegato a un'anagrafica socio
+- **Gestionale** (`/`) — per lo staff
+- **Portale soci** (`/member-portal`) — richiede un account con ruolo `member` collegato a
+  un'anagrafica socio
 
-Nel database di sviluppo esiste anche `giulia@grip.local` / `socio1234`, un socio con
-abbonamento e scheda di allenamento, usato per provare il portale. Non lo crea il seed:
-esiste solo nel database attuale.
+L'unico account che crea il seed è l'amministratore (`admin@grip.local` / `admin1234`, o
+quello che indichi in `SEED_ADMIN_PASSWORD`). **Cambia la password dopo il primo accesso.**
+Da **Admin & Utenti** si creano gli altri account, e si definiscono i ruoli.
+
+### Account nel database di sviluppo
+
+Non li crea il seed: esistono solo nel database attuale, e servono a provare l'applicazione
+dai diversi punti di vista.
+
+| Email | Password | Ruolo | A cosa serve |
+|---|---|---|---|
+| `admin@grip.local` | `admin1234` | Admin | Vede tutto |
+| `reception@grip.local` | `reception1234` | Reception | Soci e movimenti, non la contabilità avanzata né gli account |
+| `tesoriere@grip.local` | `tesoriere1234` | Tesoriere | Ruolo **creato dall'interfaccia**: contabilità e pagamenti, nessun accesso ai soci |
+| `giulia@grip.local` | `socio1234` | Socio | Portale soci, con abbonamento e scheda di allenamento |
+
+Il *Tesoriere* è utile per due prove: che il menu si riduca davvero secondo i permessi, e che
+un ruolo senza gestione utenti non possa concedersi niente.
 
 ## Stato del progetto
 
@@ -85,7 +91,100 @@ e vendita ad altre ASD). Il registro dettagliato — cosa è stato fatto, come �
 verificato e cosa è rimasto fuori — è in [docs/roadmap-contabilita.md](docs/roadmap-contabilita.md).
 È il documento da leggere per riprendere il filo: questo elenco ne è solo il riassunto.
 
-### Ultima sessione — 19 agosto 2026: permessi e superfici esposte
+### 20 agosto 2026
+
+Una giornata sola, su un filo conduttore: **un valore scritto nel codice è un valore che
+nessuno può correggere quando cambia** — e in un gestionale venduto a più associazioni,
+prima o poi cambia.
+
+#### Il piano dei conti è dell'ente
+
+Il motore contabile cercava i conti per numero — `"2.1"` la cassa, `"4.1"` i debiti verso
+fornitori — in **33 punti**. Per questo i conti che contano erano bloccati nell'interfaccia,
+senza matita né cestino: rinumerarli avrebbe rotto il cedolino o, peggio, spostato una
+scrittura sul conto sbagliato in silenzio.
+
+Ora il legame passa da un **compito** assegnato al conto (`ruolo_sistema`): il motore chiede
+*"il conto che fa da cassa"*, non *"il conto 2.1"*. Codice e nome sono liberi su ogni conto,
+e le scritture puntano all'identificativo — rinumerare si riflette ovunque, registro
+compreso. Il catalogo dei 18 compiti è in `shared/contiSistema.js`; la schermata *Piano dei
+conti* mostra chi svolge cosa e avvisa sui compiti scoperti.
+
+Aggiunti i vincoli che mancavano: un codice non si ripete, un compito appartiene a un conto
+solo. L'eliminazione dice *quanti movimenti* la impediscono invece di riportare un errore di
+chiave esterna.
+
+Per renderlo verificabile ho estratto la partita doppia in una funzione pura
+(`shared/scritture.js`) e l'ho coperta di test. **Lo scandaglio sugli arrotondamenti ha
+trovato un difetto reale**: con IVA al 4% il vecchio calcolo sbilanciava la scrittura di un
+centesimo su circa 4.000 importi su 200.000. Al 22%, 10% e 5% mai.
+
+#### La fattura elettronica: l'app produce il file, non lo trasmette
+
+`shared/fatturaElettronica.js` costruisce l'XML in formato FatturaPA 1.2.2, scaricabile dalla
+scheda **Fatture**. **La trasmissione allo SdI resta fuori dall'applicazione, per scelta**:
+collegarsi richiede di accreditare un canale per ogni ente e porta con sé la conservazione a
+norma per dieci anni, obbligo distinto dall'invio. È un'evolutiva possibile, non un pezzo
+mancante — e l'interfaccia lo dice.
+
+I campi che il tracciato richiede e che il database non aveva sono stati aggiunti: partita
+IVA e codice fiscale separati, sede scomposta, codice del regime fiscale, e per il cliente il
+**codice destinatario o la PEC**. L'anagrafica copre anche i clienti **Pubblica
+Amministrazione** e la **scissione dei pagamenti**. Emerso strada facendo: i clienti non erano
+modificabili, esisteva solo la creazione.
+
+#### Via i valori cablati
+
+**Le aliquote hanno una data.** `ALIQUOTA_IRES = 24`, `SOGLIA_ESENZIONE = 15000` e le altre
+erano costanti applicate a qualunque data. Ma l'app calcola anche esercizi passati: dopo un
+cambio di legge, ricalcolare un anno vecchio avrebbe dato un numero sbagliato con l'aria di
+essere giusto. Ora vivono nella tabella `parametri_fiscali` con la loro decorrenza e la
+norma che le stabilisce, e i calcoli **si rifiutano di procedere** se per quella data il
+valore non è noto.
+
+**I quattordici `ruolo === "admin"` sparsi nell'interfaccia non ci sono più.** La matrice dei
+permessi non poteva esprimere la differenza fra un dipendente e un amministratore dentro
+"Personale" — hanno gli stessi permessi sul modulo, ma uno vede i propri dati e l'altro
+quelli di tutti. Ora ci sono **capacità nominate** (`gestire_personale`,
+`chiudere_esercizio`, `rigenerare_documento`, `registrazione_manuale`), in un posto solo.
+
+**La contabilità la crea il server.** Piano dei conti e causali li seminava il browser al
+caricamento della pagina: lo scheletro contabile dell'ente lo costruiva chi apriva l'app per
+primo. Ora è `npm run db:seed`, o un endpoint riservato all'amministratore. L'aliquota IVA
+delle causali predefinite non è più `22` scritto undici volte: si legge dai parametri
+fiscali.
+
+**Segreti e ambiente.** Con `NODE_ENV=production` il server si rifiuta di partire senza
+`JWT_SECRET` e `CORS_ORIGIN`, e il seed senza `SEED_ADMIN_PASSWORD`, dicendo cosa manca e
+perché. In sviluppo tutto parte come prima.
+
+**I ruoli sono dell'ente.** La matrice dei permessi sta ora nella tabella `ruoli` e si
+configura da *Admin & Utenti*, dove si possono anche **creare ruoli nuovi** partendo dalla
+copia di uno esistente. Tre protezioni restano nel codice e non hanno una schermata che le
+allenti — al socio non si assegnano permessi da lì, l'amministratore non può perdere la
+gestione utenti (o nessuno rientrerebbe più), e **nessuno può concedere un permesso che non
+possiede**, altrimenti delegare la gestione utenti equivarrebbe a delegare tutto.
+
+**Il form del piano dei conti non parla più in contabilese.** Chiede *che cosa registra il
+conto* e ricava tipo e natura, invece di chiedere "attivo o passivo" a chi commercialista non
+è — e sbagliare quella classificazione non dà errore, produce solo un bilancio storto. La
+natura è derivata ma non imposta: i conti rettificativi esistono, e il fondo ammortamento è
+già nel piano predefinito.
+
+#### Cose che mancavano
+
+**I piani di allenamento si modificano.** La pagina sapeva solo crearli. Ora ogni scheda ha
+matita e cestino: si cambiano nome, note ed esercizi, con serie, ripetizioni, peso e RPE. Il
+socio resta bloccato in modifica — riassegnare un piano lascerebbe i suoi allenamenti
+agganciati a una scheda intestata a un altro — e l'eliminazione dice quanti allenamenti la
+impediscono e di chi.
+
+**I clienti si modificano.** Anche lì esisteva solo la creazione, e senza modifica non ci
+sarebbe stato modo di aggiungere i dati per la fattura elettronica alle schede già registrate.
+
+131 test.
+
+### 19 agosto 2026 — permessi e superfici esposte
 
 Il portale soci era aperto sull'intero database. Tre correzioni, tutte lato server:
 
@@ -103,19 +202,34 @@ Il portale soci era aperto sull'intero database. Tre correzioni, tutte lato serv
 - **L'upload non chiedeva l'autenticazione**: era un deposito di file aperto sul disco del
   server, con i file poi serviti pubblicamente.
 
-Verificato con 43 controlli su richieste HTTP reali e un giro del browser su tutte le
-pagine del portale e sulle 28 pagine staff, senza errori. Il flusso ricevuta completo
-(scrittura, PDF, upload, emissione) continua a funzionare.
+Verificato con un giro del browser su tutte le pagine del portale e sulle 28 pagine staff,
+senza errori; il flusso ricevuta completo (scrittura, PDF, upload, emissione) continua a
+funzionare. Il confine è ora coperto da un test di regressione — `cd server && npm test` —
+così se qualcuno riapre una di queste porte se ne accorge subito.
 
 ### Da riprendere
 
-Nessuno di questi punti blocca l'uso dell'app: sono scelte rimaste aperte, non lavori a metà.
+**Un difetto da correggere.** `receiptEngine.js` decide il tipo di ricevuta confrontando
+`organization.regime_fiscale === "forfettario"`. Quella stringa non corrisponde a niente: il
+campo è `null` e nessun punto dell'applicazione lo scrive: chi compila il profilo fiscale
+scrive su un'altra tabella e con un altro vocabolario (`"Legge 398/1991"`), e da oggi esiste
+pure `regime_fiscale_codice` con `RF18`. Tre nomi per la stessa cosa, e il confronto è sempre
+falso — quindi **ogni ricevuta esce come "RICEVUTA FISCALE"**, anche per un'ASD in 398 senza
+gestione IVA, che dovrebbe emetterne una semplice. Va scelto quale campo è la fonte della
+verità (il codice del tracciato è il candidato migliore) e fatto guardare a tutti lo stesso.
+
+**Due duplicazioni innocue.** I valori predefiniti `giorni_ferie_anno: 26` e
+`soglia_settimanale_ore: 40` sono ripetuti in quattro punti — sono già per collaboratore in
+banca dati e modificabili, ma cambiarne il default significa trovarli tutti. E
+`const MESI = moment.months()` è la stessa riga in tre pagine.
+
+I punti seguenti invece non bloccano nulla: sono scelte rimaste aperte, non lavori a metà.
 
 **Serve una tua decisione:**
 
-- **Fatturazione elettronica allo SdI.** Oggi si emette un PDF di cortesia, che non
-  sostituisce la fattura elettronica — ed è dichiarato nell'interfaccia. Serve scegliere il
-  canale di trasmissione (intermediario o invio diretto) prima di costruire il resto.
+- **Codice del regime fiscale per la L. 398/1991.** Il tracciato non ne ha uno dedicato e si
+  usa RF18 ("Altro"): va confermato dal commercialista dell'ente. L'app lo lascia scegliere,
+  non lo impone. Da rivedere insieme dopo che il commercialista avrà visto le prime fatture.
 - **Riparto dei costi promiscui** fra attività istituzionale e commerciale: serve un
   criterio concordato col commercialista, non è una scelta tecnica.
 - **Ore e tariffa oraria di un istruttore interno**: manca il modello (tariffa base,
@@ -139,6 +253,18 @@ Nessuno di questi punti blocca l'uso dell'app: sono scelte rimaste aperte, non l
 - **Aggiornamenti in tempo reale** nel calendario corsi del portale soci: un solo punto di
   consumo, sostituibile con SSE su Postgres `LISTEN/NOTIFY`.
 - **Conto dedicato al TFR destinato a previdenza complementare.**
+- **Nessun backup, e nessun deployment.** La contabilità sta in PostgreSQL su un PC e i PDF
+  in `server/uploads/`: né l'uno né l'altro vengono copiati da nessuna parte, e i documenti
+  fiscali vanno conservati dieci anni. L'app inoltre gira in locale con due terminali.
+  Finché è un ambiente di prova non si perde nulla; **il giorno in cui un cliente inserisce
+  dati veri diventano le due cose più urgenti in assoluto**, prima di qualsiasi funzionalità.
+
+**Evolutive rinviate per scelta, non debito:**
+
+- **Trasmissione allo SdI dall'applicazione.** Oggi l'XML si scarica e lo si invia dal
+  proprio canale. Se un giorno servisse automatizzarlo, la scelta è fra intermediario via
+  API (che copre anche la conservazione decennale) e invio diretto via SdICoop o PEC; nel
+  primo caso va deciso chi tiene il contratto — ogni ASD il proprio, o uno solo per tutti.
 
 ## Struttura
 
@@ -162,4 +288,5 @@ richieste HTTP dirette.
 | `npm run build` | build di produzione in `dist/` |
 | `npm run lint` | controllo statico del codice |
 | `cd server && npm start` | avvia il backend |
+| `cd server && npm test` | test dei permessi (serve il database, non il server avviato) |
 | `cd server && npm run db:studio` | interfaccia web per esplorare il database |

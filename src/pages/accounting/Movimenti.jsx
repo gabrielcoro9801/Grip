@@ -31,6 +31,8 @@ import {
   Wallet, ArrowLeft, ArrowRight, Download, CheckCircle2, Clock, Receipt
 } from "lucide-react";
 import { ritenutaDovuta, calcolaRitenuta } from "../../../shared/ritenuta.js";
+import { trovaContoPerRuolo, ContoDiSistemaMancante } from "../../../shared/contiSistema.js";
+import { useParametriFiscali } from "@/hooks/useParametriFiscali";
 import moment from "moment";
 import { useToast } from "@/components/ui/use-toast";
 
@@ -49,6 +51,8 @@ export default function Movimenti() {
   const { organization, loading: orgLoading } = useOrganization();
   const { staffUser } = useStaffAuth();
   const { toast } = useToast();
+  // L'aliquota della ritenuta è quella in vigore alla data del movimento, non quella di oggi.
+  const { dettaglio: dettaglioFiscale } = useParametriFiscali();
   const [causali, setCausali] = useState([]);
   const [accounts, setAccounts] = useState([]);
   const [entries, setEntries] = useState([]);
@@ -183,11 +187,10 @@ export default function Movimenti() {
         : null;
       let ritenuta;
       if (ritenutaDovuta(fornitorePagato)) {
-        const contoRitenuta = accounts.find(a => a.codice === "4.10");
-        if (!contoRitenuta) {
-          throw new Error("Manca il conto 4.10 (Erario c/ritenute lavoro autonomo) nel piano dei conti.");
-        }
-        const { ritenuta: importo } = calcolaRitenuta(fornitorePagato, Number(wData.importo));
+        const contoRitenuta = trovaContoPerRuolo(accounts, "erario_ritenute_autonomi");
+        if (!contoRitenuta) throw new ContoDiSistemaMancante("erario_ritenute_autonomi");
+        const aliquotaOrdinaria = dettaglioFiscale("aliquota_ritenuta_acconto", wData.data)?.valore;
+        const { ritenuta: importo } = calcolaRitenuta(fornitorePagato, Number(wData.importo), aliquotaOrdinaria);
         ritenuta = { importo, conto_id: contoRitenuta.id };
       }
 
@@ -564,7 +567,7 @@ export default function Movimenti() {
               {selectedCausale.tipo_controparte === "fornitore" && controparteId && (() => {
                 const fornitore = suppliers.find(s => s.id === controparteId);
                 if (!ritenutaDovuta(fornitore)) return null;
-                const { ritenuta, netto, aliquota } = calcolaRitenuta(fornitore, Number(wData.importo) || 0);
+                const { ritenuta, netto, aliquota } = calcolaRitenuta(fornitore, Number(wData.importo) || 0, dettaglioFiscale("aliquota_ritenuta_acconto", wData.data)?.valore);
                 return (
                   <div className="flex items-start gap-2 p-3 rounded-lg bg-purple-50 border border-purple-200 text-purple-900 text-sm">
                     <Receipt className="w-4 h-4 mt-0.5 shrink-0" />

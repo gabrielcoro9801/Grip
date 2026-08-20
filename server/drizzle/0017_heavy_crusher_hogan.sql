@@ -1,0 +1,1 @@
+ALTER TABLE "causali_operative" ALTER COLUMN "aliquota_iva_default" SET DEFAULT '0';

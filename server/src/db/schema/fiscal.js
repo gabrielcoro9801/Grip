@@ -1,5 +1,5 @@
 // Dominio fiscale: FiscalProfileSnapshot, FiscalYearData, ReceiptTemplate, Receipt.
-import { pgTable, uuid, varchar, text, boolean, integer, numeric, date, timestamp } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, text, boolean, integer, numeric, date, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
 import { organizations } from './common.js';
 import { clients, members, subscriptions } from './crm.js';
 import { journalEntries } from './accounting.js';
@@ -109,3 +109,24 @@ export const receipts = pgTable('receipts', {
 	pdfUrl: text('pdf_url'),
 	rigenerataIl: timestamp('rigenerata_il', { withTimezone: true }),
 });
+
+/**
+ * Aliquote e soglie di legge, con la data da cui valgono.
+ *
+ * Erano costanti nel codice, senza data. L'applicazione però calcola anche numeri di
+ * esercizi passati: quando una legge cambia un valore, ricalcolare un anno vecchio con
+ * l'aliquota nuova darebbe un risultato sbagliato, e sbagliato in silenzio.
+ *
+ * Non hanno `organization_id`: sono legge dello Stato, uguali per tutti gli enti. Quando un
+ * valore cambia si aggiunge una riga, non si modifica quella esistente.
+ */
+export const parametriFiscali = pgTable('parametri_fiscali', {
+	id: uuid('id').defaultRandom().primaryKey(),
+	chiave: varchar('chiave', { length: 64 }).notNull(),
+	valore: numeric('valore', { precision: 14, scale: 4 }).notNull(),
+	validoDal: date('valido_dal').notNull(),
+	// La norma che lo stabilisce: senza, fra tre anni nessuno saprà da dove viene il numero.
+	note: text('note'),
+}, (table) => ({
+	chiaveDataUnivoca: uniqueIndex('parametri_fiscali_chiave_data').on(table.chiave, table.validoDal),
+}));

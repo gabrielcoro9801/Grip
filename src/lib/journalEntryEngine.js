@@ -1,99 +1,59 @@
 import { api } from "@/api/client";
+import {
+  costruisciRigheScrittura,
+  costruisciRigheSaldo,
+  costruisciRigheRata,
+} from "../../shared/scritture.js";
 
 /**
- * Motore di generazione scrittura contabile da causale operativa.
- * Genera JournalEntry + JournalLine bilanciate in partita doppia.
+ * Generazione delle scritture contabili a partire da una causale operativa.
+ *
+ * Qui resta solo l'orchestrazione: leggere quel che serve, chiamare il server, aggiornare
+ * i record collegati. La costruzione delle righe — la parte che decide su quale conto va
+ * quale importo — vive in `shared/scritture.js`, dove è una funzione pura e coperta da
+ * test. Prima era mescolata a queste chiamate, e quindi verificabile solo a mano.
+ *
+ * I conti non si cercano più per numero ma per **ruolo** (`shared/contiSistema.js`): il
+ * codice del conto appartiene all'associazione e al suo commercialista, e cambiarlo non
+ * deve rompere niente.
+ */
+
+/**
+ * Registra un'operazione generata da una causale operativa.
  *
  * @param {Object} params
  * @param {string} params.organization_id
- * @param {Object} params.causale - CausaleOperativa object
+ * @param {Object} params.causale causale operativa
  * @param {number} params.importo_lordo
- * @param {string} params.data - data competenza (YYYY-MM-DD)
- * @param {string} params.metodo_liquidita - "cassa" | "banca"
+ * @param {string} params.data data di competenza (YYYY-MM-DD)
+ * @param {"cassa"|"banca"} params.metodo_liquidita
  * @param {string} [params.controparte_id]
- * @param {string} [params.controparte_tipo] - "cliente" | "fornitore"
+ * @param {"cliente"|"fornitore"} [params.controparte_tipo]
  * @param {boolean} params.a_credito
  * @param {string} [params.data_scadenza]
- * @param {Array} params.accounts - ChartOfAccount[] dell'organizzazione
- * @param {string} [params.descrizione]
- * @param {string} [params.tipo_origine]
- * @returns {Promise<Object>} JournalEntry creata
+ * @param {Array} params.accounts piano dei conti dell'organizzazione
+ * @param {Object} [params.ritenuta] `{ importo }` se il compenso è soggetto a ritenuta
+ * @returns {Promise<Object>} la scrittura creata, con imponibile e IVA scorporati
  */
 export async function generateJournalEntry(params) {
   const {
     organization_id, causale, importo_lordo, data, metodo_liquidita,
     controparte_id, controparte_tipo, a_credito, data_scadenza,
-    accounts, descrizione, tipo_origine,
-    natura_fiscale, controparte_e_socio,
-    // { importo, conto_id } quando il pagamento è soggetto a ritenuta d'acconto.
+    accounts, descrizione, tipo_origine, natura_fiscale, controparte_e_socio,
     ritenuta,
   } = params;
 
-  // 1. Scorpora IVA
-  let imponibile = importo_lordo;
-  let iva = 0;
-  if (causale.gestisce_iva && causale.aliquota_iva_default) {
-    imponibile = importo_lordo / (1 + causale.aliquota_iva_default / 100);
-    iva = importo_lordo - imponibile;
-  }
+  const { imponibile, iva, righe, statoPagamento } = costruisciRigheScrittura({
+    causale,
+    importoLordo: importo_lordo,
+    conti: accounts,
+    aCredito: a_credito,
+    metodoLiquidita: metodo_liquidita,
+    controparteId: controparte_id,
+    controparteTipo: controparte_tipo,
+    ritenuta,
+  });
 
-  // 2. Lookup conti
-  const findAccount = (codice) => accounts.find(a => a.codice === codice);
-  const contoLiquidita = metodo_liquidita === "banca" ? findAccount("2.2") : findAccount("2.1");
-  const contoIVAdebito = findAccount("4.3");
-  const contoContropartita = accounts.find(a => a.id === causale.conto_contropartita_id);
-  const contoCreditoDebito = causale.conto_credito_debito_id
-    ? accounts.find(a => a.id === causale.conto_credito_debito_id)
-    : null;
-
-  if (!contoContropartita) throw new Error("Conto contropartita non trovato");
-
-  const isEntrata = causale.tipo === "entrata";
-  const lines = [];
-
-  // Sui compensi a professionisti una quota non va al fornitore ma all'erario. Il costo
-  // resta intero — la ritenuta non è uno sconto — mentre il lato avere si divide fra chi
-  // riceve davvero il denaro e l'erario, a cui lo si versa per conto suo.
-  const importoRitenuta = ritenuta?.importo > 0 ? ritenuta.importo : 0;
-  const daPagare = importo_lordo - importoRitenuta;
-  if (importoRitenuta > 0 && !ritenuta.conto_id) {
-    throw new Error("Manca il conto su cui registrare la ritenuta d'acconto");
-  }
-  const rigaRitenuta = () => ({ conto_id: ritenuta.conto_id, avere: importoRitenuta });
-
-  // 3. Costruisci righe
-  if (!a_credito) {
-    // Movimento di liquidità
-    if (isEntrata) {
-      lines.push({ conto_id: contoLiquidita.id, dare: importo_lordo });
-      lines.push({ conto_id: contoContropartita.id, avere: imponibile, controparte_tipo, controparte_id });
-      if (iva > 0) lines.push({ conto_id: contoIVAdebito.id, avere: iva, importo_iva: iva, aliquota_iva: causale.aliquota_iva_default });
-    } else {
-      lines.push({ conto_id: contoContropartita.id, dare: importo_lordo, controparte_tipo, controparte_id, importo_iva: iva > 0 ? iva : undefined, aliquota_iva: iva > 0 ? causale.aliquota_iva_default : undefined });
-      lines.push({ conto_id: contoLiquidita.id, avere: daPagare });
-      if (importoRitenuta > 0) lines.push(rigaRitenuta());
-    }
-  } else {
-    // Movimento a credito/debito
-    if (isEntrata) {
-      lines.push({ conto_id: contoCreditoDebito.id, dare: importo_lordo, controparte_tipo, controparte_id });
-      lines.push({ conto_id: contoContropartita.id, avere: imponibile });
-      if (iva > 0) lines.push({ conto_id: contoIVAdebito.id, avere: iva, importo_iva: iva, aliquota_iva: causale.aliquota_iva_default });
-    } else {
-      lines.push({ conto_id: contoContropartita.id, dare: importo_lordo, importo_iva: iva > 0 ? iva : undefined, aliquota_iva: iva > 0 ? causale.aliquota_iva_default : undefined });
-      // Al fornitore si deve solo il netto: la ritenuta è già un debito verso l'erario,
-      // che si versa con l'F24 indipendentemente da quando si paga il fornitore.
-      lines.push({ conto_id: contoCreditoDebito.id, avere: daPagare, controparte_tipo, controparte_id });
-      if (importoRitenuta > 0) lines.push(rigaRitenuta());
-    }
-  }
-
-  // 4. Crea JournalEntry
-  const stato_pagamento = a_credito
-    ? (isEntrata ? "da_incassare" : "da_pagare")
-    : "saldata";
-
-  // 5. Scrive testata e righe insieme: il numero di protocollo lo assegna il server.
   const entry = await api.accounting.createJournalEntry(
     {
       organization_id,
@@ -102,76 +62,51 @@ export async function generateJournalEntry(params) {
       descrizione: descrizione || causale.nome_visibile,
       causale: causale.nome_visibile,
       causale_operativa_id: causale.id,
-      tipo_origine: tipo_origine || (isEntrata ? "incasso_cliente" : "pagamento_fornitore"),
+      tipo_origine: tipo_origine || (causale.tipo === "entrata" ? "incasso_cliente" : "pagamento_fornitore"),
       stato: "confermata",
-      stato_pagamento,
+      stato_pagamento: statoPagamento,
       data_scadenza: a_credito ? data_scadenza : undefined,
       natura_fiscale,
     },
-    lines.map(l => ({
-      conto_id: l.conto_id,
-      dare: l.dare || 0,
-      avere: l.avere || 0,
-      controparte_tipo: l.controparte_tipo,
-      controparte_id: l.controparte_id,
-      controparte_e_socio: l.controparte_tipo ? controparte_e_socio : undefined,
-      importo_iva: l.importo_iva,
-      aliquota_iva: l.aliquota_iva,
-    }))
+    righe.map((r) => ({
+      ...r,
+      controparte_e_socio: r.controparte_tipo ? controparte_e_socio : undefined,
+    })),
   );
 
   return { ...entry, imponibile, iva };
 }
 
 /**
- * Salda una JournalEntry in stato da_incassare o da_pagare.
- * Crea una nuova JournalEntry di saldo e aggiorna l'originale.
- *
- * @param {Object} originalEntry - JournalEntry da saldare
- * @param {Array} accounts - ChartOfAccount[] dell'organizzazione
- * @param {string} metodo_liquidita - "cassa" | "banca"
- * @param {string} dataCassa - data effettiva (YYYY-MM-DD)
- * @returns {Promise<Object>} nuova JournalEntry di saldo
+ * Salda una scrittura rimasta da incassare o da pagare: crea la registrazione del saldo e
+ * segna l'originale come chiusa.
  */
 export async function settleJournalEntry(originalEntry, accounts, metodo_liquidita, dataCassa) {
-  const findAccount = (codice) => accounts.find(a => a.codice === codice);
-  const contoLiquidita = metodo_liquidita === "banca" ? findAccount("2.2") : findAccount("2.1");
-
-  // Recupera la causale per trovare il conto credito/debito
-  let contoCreditoDebitoId = null;
-  if (originalEntry.causale_operativa_id) {
-    const causale = await api.entities.CausaleOperativa.get(originalEntry.causale_operativa_id);
-    contoCreditoDebitoId = causale?.conto_credito_debito_id;
-  }
-
-  // Fallback: cerca il conto credito/debito dalle righe originali
-  const originalLines = await api.entities.JournalLine.filter({ journal_entry_id: originalEntry.id });
+  // Il conto di credito/debito lo dice la causale; se la scrittura non ne ha una — perché
+  // nata da un altro percorso — lo si ricava dalla riga che porta la controparte.
+  const righeOriginali = await api.entities.JournalLine.filter({ journal_entry_id: originalEntry.id });
 
   let contoCreditoDebito = null;
-  if (contoCreditoDebitoId) {
-    contoCreditoDebito = accounts.find(a => a.id === contoCreditoDebitoId);
+  if (originalEntry.causale_operativa_id) {
+    const causale = await api.entities.CausaleOperativa.get(originalEntry.causale_operativa_id);
+    contoCreditoDebito = accounts.find((a) => a.id === causale?.conto_credito_debito_id) || null;
   }
   if (!contoCreditoDebito) {
-    // Cerca la riga con controparte (il conto di credito/debito)
-    const lineWithControparte = originalLines.find(l => l.controparte_id);
-    if (lineWithControparte) {
-      contoCreditoDebito = accounts.find(a => a.id === lineWithControparte.conto_id);
-    }
+    const rigaConControparte = righeOriginali.find((l) => l.controparte_id);
+    if (rigaConControparte) contoCreditoDebito = accounts.find((a) => a.id === rigaConControparte.conto_id) || null;
   }
   if (!contoCreditoDebito) throw new Error("Conto credito/debito non trovato");
 
-  const isDaIncassare = originalEntry.stato_pagamento === "da_incassare";
-  const importoSaldo = originalLines.find(l => l.conto_id === contoCreditoDebito.id)?.dare
-    || originalLines.find(l => l.conto_id === contoCreditoDebito.id)?.avere || 0;
+  const rigaSaldo = righeOriginali.find((l) => l.conto_id === contoCreditoDebito.id);
+  const importoSaldo = Number(rigaSaldo?.dare) || Number(rigaSaldo?.avere) || 0;
 
-  const lines = [];
-  if (isDaIncassare) {
-    lines.push({ conto_id: contoLiquidita.id, dare: importoSaldo });
-    lines.push({ conto_id: contoCreditoDebito.id, avere: importoSaldo });
-  } else {
-    lines.push({ conto_id: contoCreditoDebito.id, dare: importoSaldo });
-    lines.push({ conto_id: contoLiquidita.id, avere: importoSaldo });
-  }
+  const righe = costruisciRigheSaldo({
+    contoCreditoDebitoId: contoCreditoDebito.id,
+    importo: importoSaldo,
+    conti: accounts,
+    metodoLiquidita: metodo_liquidita,
+    daIncassare: originalEntry.stato_pagamento === "da_incassare",
+  });
 
   const newEntry = await api.accounting.createJournalEntry(
     {
@@ -179,42 +114,28 @@ export async function settleJournalEntry(originalEntry, accounts, metodo_liquidi
       data_competenza: dataCassa,
       data_cassa: dataCassa,
       descrizione: `Saldo: ${originalEntry.descrizione}`,
-      causale: `Saldo`,
-      // Origine distinta da "manuale": è una scrittura generata dal sistema al saldo di
-      // un credito o debito, non una registrazione digitata a mano.
+      causale: "Saldo",
+      // Origine distinta da "manuale": è una scrittura generata dal sistema al saldo di un
+      // credito o debito, non una registrazione digitata a mano.
       tipo_origine: "saldo",
       stato: "confermata",
       stato_pagamento: "saldata",
     },
-    lines.map(l => ({
-      conto_id: l.conto_id,
-      dare: l.dare || 0,
-      avere: l.avere || 0,
-    }))
+    righe,
   );
 
   await api.accounting.markSettled(originalEntry.id, newEntry.id);
-
   return newEntry;
 }
 
-/**
- * Registra il pagamento di una rata di prestito.
- * Dare 4.2 (Debiti v/banche) = quota_capitale + Dare 7.5 (Interessi passivi) = quota_interessi / Avere Cassa/Banca = totale
- */
+/** Registra il pagamento di una rata di finanziamento e segna la rata come pagata. */
 export async function settleLoanInstallment(installment, loan, accounts, metodo_liquidita, dataPagamento) {
-  const findAccount = (codice) => accounts.find(a => a.codice === codice);
-  const contoLiquidita = metodo_liquidita === "banca" ? findAccount("2.2") : findAccount("2.1");
-  const contoDebitiBanche = findAccount("4.2");
-  const contoInteressi = findAccount("7.5");
-
-  const totale = (installment.quota_capitale || 0) + (installment.quota_interessi || 0);
-
-  const lines = [
-    { conto_id: contoDebitiBanche.id, dare: installment.quota_capitale || 0 },
-    { conto_id: contoInteressi.id, dare: installment.quota_interessi || 0 },
-    { conto_id: contoLiquidita.id, avere: totale },
-  ];
+  const righe = costruisciRigheRata({
+    quotaCapitale: installment.quota_capitale,
+    quotaInteressi: installment.quota_interessi,
+    conti: accounts,
+    metodoLiquidita: metodo_liquidita,
+  });
 
   const entry = await api.accounting.createJournalEntry(
     {
@@ -227,11 +148,7 @@ export async function settleLoanInstallment(installment, loan, accounts, metodo_
       stato: "confermata",
       stato_pagamento: "saldata",
     },
-    lines.map(l => ({
-      conto_id: l.conto_id,
-      dare: l.dare || 0,
-      avere: l.avere || 0,
-    }))
+    righe,
   );
 
   await api.entities.LoanInstallment.update(installment.id, {

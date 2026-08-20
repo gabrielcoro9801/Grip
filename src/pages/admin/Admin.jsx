@@ -3,8 +3,8 @@ import { api } from "@/api/client";
 import { useStaffAuth } from "@/lib/StaffAuthContext";
 import { useOrganization } from "@/hooks/useOrganization";
 import { logAction } from "@/lib/auditLog";
-import { ROLES, PERMISSIONS } from "@/lib/permissions";
-import { Card, CardContent } from "@/components/ui/card";
+import { ROLES } from "@/lib/permissions";
+import GestioneRuoli from "@/components/admin/GestioneRuoli";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -197,60 +197,7 @@ export default function Admin() {
       </div>
 
       {/* Matrice permessi */}
-      <Card className="border-0 shadow-sm">
-        <CardContent className="p-4">
-          <h3 className="font-heading font-semibold text-sm mb-3">Matrice permessi per ruolo</h3>
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="border-b border-border text-left">
-                  <th className="py-2 px-3 font-medium text-muted-foreground">Modulo</th>
-                  {Object.values(ROLES).map(r => (
-                    <th key={r.label} className="py-2 px-3 font-medium text-muted-foreground text-center">{r.label}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {Object.entries({
-                  "Anagrafiche clienti": "crm_members",
-                  "Documenti/certificati": "crm_documents",
-                  "Piani di allenamento": "crm_plans",
-                  "Movimenti": "movimenti",
-                  "Finanza": "finance",
-                  "Calendario & Prenotazioni": "calendar",
-                  "Fornitori": "suppliers",
-                  "Team": "team",
-                  "Personale (portale)": "personale",
-                  "PT (portale)": "pt_esterni",
-                  "Admin & Profili": "admin_users",
-                  "Log audit": "audit_log",
-                }).map(([label, mod]) => (
-                  <tr key={mod} className="border-b border-border/50">
-                    <td className="py-2 px-3 font-medium">{label}</td>
-                    {Object.keys(ROLES).map(role => {
-                      const perms = PERMISSIONS[role]?.[mod] || [];
-                      const v = perms.includes("view");
-                      const e = perms.includes("edit");
-                      return (
-                        <td key={role} className="py-2 px-3 text-center">
-                          {e ? (
-                            <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 text-[10px]">V + M</Badge>
-                          ) : v ? (
-                            <Badge variant="outline" className="text-[10px]">V</Badge>
-                          ) : (
-                            <span className="text-muted-foreground text-[10px]">—</span>
-                          )}
-                        </td>
-                      );
-                    })}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <p className="text-xs text-muted-foreground mt-2">V = Visualizzazione · V + M = Visualizzazione e Modifica · — = Nessun accesso</p>
-        </CardContent>
-      </Card>
+      <GestioneRuoli />
 
       {/* Dialog: Crea/Modifica account */}
       <Dialog open={showForm} onOpenChange={setShowForm}>

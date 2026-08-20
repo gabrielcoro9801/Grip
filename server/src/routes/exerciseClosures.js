@@ -11,9 +11,9 @@ import { db } from '../db/client.js';
 import { exerciseClosures, journalEntries, journalLines, chartOfAccounts, numberingCounters } from '../db/schema/index.js';
 import { translateToSnakeCase } from '../entities/columnMaps.js';
 import { getUserFromRequest } from '../auth/tokens.js';
+import { contiPerRuoli } from '../lib/contiSistema.js';
 import { registerPgErrorHandler } from './errorHandler.js';
 
-const CODICE_UTILI_A_NUOVO = '5.2';
 
 async function nextProtocolNumber(tx, organizationId) {
 	const result = await tx.execute(sql`
@@ -124,14 +124,9 @@ export default async function exerciseClosureRoutes(fastify) {
 			return reply.code(400).send({ error: `Nessuna scrittura confermata nel ${anno}: non c'è nulla da chiudere.` });
 		}
 
-		const [contoUtili] = await db
-			.select()
-			.from(chartOfAccounts)
-			.where(and(eq(chartOfAccounts.organizationId, organizationId), eq(chartOfAccounts.codice, CODICE_UTILI_A_NUOVO)))
-			.limit(1);
-		if (!contoUtili) {
-			return reply.code(400).send({ error: `Manca il conto ${CODICE_UTILI_A_NUOVO} (Utili/perdite a nuovo) nel piano dei conti.` });
-		}
+		const { conti: contiRuolo, errore } = await contiPerRuoli(organizationId, ['utili_a_nuovo']);
+		if (errore) return reply.code(400).send({ error: errore });
+		const contoUtili = contiRuolo.utili_a_nuovo;
 
 		// La contropartita porta il risultato a patrimonio netto: in avere se avanzo,
 		// in dare se disavanzo.

@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import PageHeader from "@/components/shared/PageHeader";
-import { Plus, Trash2, Dumbbell } from "lucide-react";
+import { Plus, Trash2, Dumbbell, Pencil, AlertCircle } from "lucide-react";
 import moment from "moment";
 
 export default function ExercisePlans() {
@@ -21,6 +21,8 @@ export default function ExercisePlans() {
   const [showExLib, setShowExLib] = useState(false);
   const [workoutLogs, setWorkoutLogs] = useState([]);
   const [exForm, setExForm] = useState({ name: "", muscle_group: "Chest", default_sets: 3, default_reps: "10" });
+  const [editing, setEditing] = useState(null);
+  const [errore, setErrore] = useState("");
 
   const loadData = () => {
     Promise.all([
@@ -68,17 +70,73 @@ export default function ExercisePlans() {
     setForm({ ...form, exercises: form.exercises.filter((_, i) => i !== idx) });
   };
 
+  const apriNuovo = () => {
+    setEditing(null);
+    setForm({ member_id: "", name: "", notes: "", exercises: [] });
+    setErrore("");
+    setShowForm(true);
+  };
+
+  const apriModifica = (plan) => {
+    setEditing(plan);
+    setForm({
+      member_id: plan.member_id,
+      name: plan.name,
+      notes: plan.notes || "",
+      // Copia profonda: senza, modificando serie o peso si toccherebbe l'oggetto già in
+      // elenco, e annullando resterebbe a schermo il valore nuovo.
+      exercises: (plan.exercises ?? []).map(ex => ({ ...ex })),
+    });
+    setErrore("");
+    setShowForm(true);
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
-    const member = members.find(m => m.id === form.member_id);
-    await api.entities.ExercisePlan.create({
-      ...form,
-      member_name: member?.full_name || "",
-      assigned_date: new Date().toISOString().split("T")[0],
-    });
-    setShowForm(false);
-    setForm({ member_id: "", name: "", notes: "", exercises: [] });
-    loadData();
+    setErrore("");
+    try {
+      if (editing) {
+        // Il socio non si cambia in modifica: gli allenamenti già registrati sono suoi e
+        // resterebbero agganciati a un piano intestato a un altro. Per un'altra persona
+        // si crea un piano nuovo.
+        await api.entities.ExercisePlan.update(editing.id, {
+          name: form.name,
+          notes: form.notes,
+          exercises: form.exercises,
+        });
+      } else {
+        const member = members.find(m => m.id === form.member_id);
+        await api.entities.ExercisePlan.create({
+          ...form,
+          member_name: member?.full_name || "",
+          assigned_date: new Date().toISOString().split("T")[0],
+        });
+      }
+      setShowForm(false);
+      setEditing(null);
+      setForm({ member_id: "", name: "", notes: "", exercises: [] });
+      loadData();
+    } catch (err) {
+      setErrore(err.message);
+    }
+  };
+
+  const handleDelete = async (plan) => {
+    setErrore("");
+    // Gli allenamenti registrati puntano al piano: eliminarlo cancellerebbe il filo che
+    // lega una sessione a quello che il socio doveva fare quel giorno.
+    const collegati = workoutLogs.filter(l => l.plan_id === plan.id).length;
+    if (collegati > 0) {
+      setErrore(`"${plan.name}" ha ${collegati} ${collegati === 1 ? "allenamento registrato" : "allenamenti registrati"} e non può essere eliminato: si perderebbe lo storico di ${plan.member_name}. Puoi però modificarlo.`);
+      return;
+    }
+    if (!confirm(`Eliminare il piano "${plan.name}" di ${plan.member_name}?`)) return;
+    try {
+      await api.entities.ExercisePlan.delete(plan.id);
+      loadData();
+    } catch (err) {
+      setErrore(err.message);
+    }
   };
 
   const handleNewExercise = async (e) => {
@@ -97,7 +155,7 @@ export default function ExercisePlans() {
         <Button size="sm" variant="outline" onClick={() => setShowExLib(true)}>
           <Plus className="w-4 h-4 mr-1" /> Aggiungi alla Libreria
         </Button>
-        <Button size="sm" onClick={() => { setForm({ member_id: "", name: "", notes: "", exercises: [] }); setShowForm(true); }}>
+        <Button size="sm" onClick={apriNuovo}>
           <Plus className="w-4 h-4 mr-1" /> Nuovo Piano
         </Button>
       </PageHeader>
@@ -114,6 +172,13 @@ export default function ExercisePlans() {
         </div>
       </div>
 
+      {errore && !showForm && (
+        <div className="flex items-start gap-2 p-3 mb-4 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-sm">
+          <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+          <span>{errore}</span>
+        </div>
+      )}
+
       {/* Plans Grid */}
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {plans.map(plan => {
@@ -121,7 +186,17 @@ export default function ExercisePlans() {
           return (
           <Card key={plan.id} className="border-0 shadow-sm">
             <CardContent className="p-4">
-              <h3 className="font-heading font-semibold">{plan.name}</h3>
+              <div className="flex items-start justify-between gap-2">
+                <h3 className="font-heading font-semibold">{plan.name}</h3>
+                <div className="flex items-center gap-0.5 shrink-0">
+                  <Button variant="ghost" size="icon" className="h-7 w-7" title="Modifica piano" onClick={() => apriModifica(plan)}>
+                    <Pencil className="w-3.5 h-3.5" />
+                  </Button>
+                  <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" title="Elimina piano" onClick={() => handleDelete(plan)}>
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </Button>
+                </div>
+              </div>
               <p className="text-xs text-muted-foreground">{plan.member_name} · {moment(plan.assigned_date).format("D MMM YYYY")}</p>
               <p className="text-xs text-muted-foreground mb-3">Sessioni registrate: {stats.count}{stats.lastDate ? ` · Ultima: ${moment(stats.lastDate).format("D MMM YYYY")}` : ""}</p>
               <div className="space-y-1.5">
@@ -143,17 +218,32 @@ export default function ExercisePlans() {
         })}
       </div>
 
-      {/* New Plan Dialog */}
-      <Dialog open={showForm} onOpenChange={setShowForm}>
+      {/* Creazione e modifica di un piano: stessa finestra, stessi campi. */}
+      <Dialog open={showForm} onOpenChange={(v) => { setShowForm(v); if (!v) setEditing(null); }}>
         <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>Nuovo Piano di Allenamento</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle>{editing ? `Modifica «${editing.name}»` : "Nuovo Piano di Allenamento"}</DialogTitle>
+          </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-3">
+            {errore && (
+              <div className="flex items-start gap-2 p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-sm">
+                <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+                <span>{errore}</span>
+              </div>
+            )}
             <div>
               <Label>Socio *</Label>
-              <Select value={form.member_id} onValueChange={v => setForm({...form, member_id: v})}>
+              {/* In modifica il socio è bloccato: gli allenamenti già registrati sono suoi
+                  e resterebbero agganciati a un piano intestato a un altro. */}
+              <Select value={form.member_id} onValueChange={v => setForm({...form, member_id: v})} disabled={Boolean(editing)}>
                 <SelectTrigger><SelectValue placeholder="Seleziona socio" /></SelectTrigger>
                 <SelectContent>{members.map(m => <SelectItem key={m.id} value={m.id}>{m.full_name}</SelectItem>)}</SelectContent>
               </Select>
+              {editing && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  Un piano resta della persona a cui è stato assegnato. Per qualcun altro, creane uno nuovo.
+                </p>
+              )}
             </div>
             <div><Label>Nome Piano *</Label><Input required value={form.name} onChange={e => setForm({...form, name: e.target.value})} /></div>
 
@@ -199,7 +289,9 @@ export default function ExercisePlans() {
             </div>
 
             <div><Label>Note</Label><Textarea value={form.notes} onChange={e => setForm({...form, notes: e.target.value})} /></div>
-            <Button type="submit" className="w-full" disabled={!form.member_id || !form.name}>Crea Piano</Button>
+            <Button type="submit" className="w-full" disabled={!form.member_id || !form.name}>
+              {editing ? "Salva modifiche" : "Crea Piano"}
+            </Button>
           </form>
         </DialogContent>
       </Dialog>
