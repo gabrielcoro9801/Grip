@@ -251,6 +251,14 @@ va messo su **Full (strict)** (passo 4).
 eseguita, quindi `dist/` non esiste e il server pubblica solo l'API. Controlla nei log del
 deploy che `npm run build` sia passato.
 
+**Il sito si apre ma è senza grafica**, come HTML grezzo. Alla build sono mancati
+`tailwind.config.js` o `postcss.config.js`: senza, PostCSS non elabora Tailwind e produce un
+CSS di un paio di kB invece di ~75. Il modo in cui fallisce è insidioso — **la build riesce e
+non scrive niente nei log**, il sito funziona, solo senza stili.
+
+Il `Dockerfile` li copia e verifica la dimensione del CSS prodotto, fermando il deploy se è
+troppo piccolo. Se il sintomo ricompare, è lì che si guarda.
+
 **La home si apre ma `/health` mostra la pagina 404 dell'applicazione.** È il caso opposto e
 il più insidioso: il server Node non è mai partito, e Railway sta servendo `dist/` con il
 proprio file server statico. Sembra tutto a posto perché le pagine ci sono, ma l'API non

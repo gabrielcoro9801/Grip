@@ -25,11 +25,25 @@ RUN npm ci
 
 # `shared/` serve anche al frontend: permessi e ruoli sono gli stessi dei due
 # lati, e vivono lì apposta per non poter divergere.
-COPY vite.config.js jsconfig.json index.html ./
+# `tailwind.config.js` e `postcss.config.js` non sono facoltativi: senza, PostCSS
+# non elabora Tailwind e la build riesce comunque, ma produce un CSS vuoto. Il
+# risultato è un sito che funziona e si presenta come HTML senza stili — un
+# errore che non compare in nessun log.
+COPY vite.config.js jsconfig.json index.html tailwind.config.js postcss.config.js components.json ./
 COPY src ./src
 COPY shared ./shared
 
 RUN npm run build
+
+# Il modo in cui questo fallisce è insidioso: senza le config di Tailwind la
+# build **riesce**, non scrive niente nei log, e produce un CSS di 2 kB invece
+# di 75. Il sito si apre e funziona, solo senza stili. Non basta quindi
+# verificare che il file esista: si controlla che sia grande abbastanza da
+# contenere davvero le classi generate.
+RUN test -n "$(find dist/assets -name '*.css' -size +20k -print -quit)" \
+    || (echo "ERRORE: il CSS prodotto è troppo piccolo — Tailwind non ha generato le classi." \
+        && echo "Controlla che tailwind.config.js e postcss.config.js siano copiati nell'immagine." \
+        && ls -la dist/assets && exit 1)
 
 # --- Fase 2: l'immagine che gira --------------------------------------------
 FROM node:22-alpine AS runtime
