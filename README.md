@@ -81,6 +81,24 @@ dai diversi punti di vista.
 Il *Tesoriere* è utile per due prove: che il menu si riduca davvero secondo i permessi, e che
 un ruolo senza gestione utenti non possa concedersi niente.
 
+## Metterlo online
+
+L'applicazione è due cose separate, da pubblicare separatamente: il **frontend** è un insieme
+di file statici (`npm run build` → `dist/`), il **backend** un programma che resta acceso e
+parla con PostgreSQL.
+
+La guida operativa è in **[docs/deploy.md](docs/deploy.md)**: come funzionano commit e push,
+il backend su Railway, il frontend su Cloudflare Pages, il DNS di `gripcore.it`, e l'ordine
+in cui vanno fatti i passi. Include anche cosa guardare quando qualcosa non funziona.
+
+Due punti che si sbagliano quasi sempre, e che lì sono spiegati per esteso:
+
+- **I file caricati vanno su un volume persistente.** Su una piattaforma a container il disco
+  si azzera a ogni deploy: senza volume, le ricevute già emesse spariscono e nessuno se ne
+  accorge finché non prova ad aprirne una.
+- **`VITE_API_BASE_URL` va impostata prima della build.** Vite la incorpora nel codice
+  compilato: cambiarla dopo richiede di ricostruire, non basta riavviare.
+
 ## Stato del progetto
 
 **L'uscita da base44 è completa.** Nessuna sua libreria, nessun riferimento nel codice,

@@ -16,7 +16,7 @@ const publicBaseUrl = config.publicBaseUrl || `http://localhost:${port}`;
 // @fastify/static rifiuta di avviarsi se la cartella non esiste ancora: alla prima
 // esecuzione (nessun upload effettuato) andrebbe in errore senza questa creazione.
 const serverRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-await mkdir(path.join(serverRoot, 'uploads'), { recursive: true });
+await mkdir(config.uploadDir || path.join(serverRoot, 'uploads'), { recursive: true });
 
 // I permessi si leggono dalla banca dati prima di servire qualunque richiesta: partire
 // con quelli predefiniti e sostituirli dopo significherebbe una finestra in cui i controlli

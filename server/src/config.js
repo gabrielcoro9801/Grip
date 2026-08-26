@@ -52,6 +52,16 @@ export const config = {
 	})(),
 
 	publicBaseUrl: process.env.PUBLIC_BASE_URL,
+
+	/**
+	 * Dove finiscono i file caricati (ricevute, fatture, logo).
+	 *
+	 * In locale è `server/uploads/`. In produzione **deve** puntare a un disco che
+	 * sopravvive al deploy: su una piattaforma a container il filesystem si azzera a ogni
+	 * rilascio, e le ricevute già emesse sparirebbero senza che nessuno se ne accorga
+	 * finché qualcuno non prova ad aprirne una.
+	 */
+	uploadDir: process.env.UPLOAD_DIR || null,
 };
 
 /**

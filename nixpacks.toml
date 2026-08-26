@@ -1,0 +1,22 @@
+# Config per Railway/Nixpacks — backend.
+#
+# Il backend vive in server/, ma importa file da shared/ (un livello sopra),
+# condivisa apposta con il frontend perché ruoli e permessi restino identici
+# sui due lati (vedi src/lib/permissions.js). Impostare "Root Directory" su
+# server/ nel pannello Railway spezzerebbe questi import, perché escluderebbe
+# shared/ dal contesto di build — per questo il Root Directory va lasciato
+# vuoto (radice del repo), e qui diciamo esplicitamente di installare e
+# avviare solo il backend, ignorando il frontend.
+
+[phases.install]
+cmds = ["npm install --prefix server --omit=dev"]
+
+# Le migrazioni si applicano a ogni rilascio, prima di accettare richieste.
+#
+# Due ragioni per farlo qui e non a mano: una modifica allo schema arriva in
+# produzione solo così, e un server avviato su uno schema vecchio risponderebbe
+# con errori incomprensibili invece di non partire affatto. `db:deploy` usa il
+# migratore incluso in drizzle-orm, non drizzle-kit, che con --omit=dev non
+# viene installato.
+[start]
+cmd = "npm --prefix server run db:deploy && node server/src/index.js"

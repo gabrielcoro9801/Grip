@@ -19,7 +19,7 @@ import { ENTITY_NAMES } from './entities/registry.js';
 import { config } from './config.js';
 
 const serverRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const UPLOAD_DIR = path.join(serverRoot, 'uploads');
+const UPLOAD_DIR = config.uploadDir || path.join(serverRoot, 'uploads');
 
 export function buildApp({ publicBaseUrl = 'http://localhost:3001', logger = true } = {}) {
 	const app = Fastify({ logger });
