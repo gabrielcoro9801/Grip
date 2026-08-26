@@ -117,26 +117,30 @@ un avviso nei log nessuno lo legge, e il server resterebbe acceso e insicuro.
 
 ### 2.3 Build e avvio
 
-Due file nella radice dicono a Railway cosa fare: [`railway.json`](../railway.json) fissa il
-builder e il comando di avvio, [`nixpacks.toml`](../nixpacks.toml) descrive le fasi di
-installazione e build.
+La build è descritta da un [`Dockerfile`](../Dockerfile), e [`railway.json`](../railway.json)
+dice a Railway di usarlo.
 
-**Perché servono entrambi.** Railway ha introdotto un builder che riconosce il tipo di
-progetto da sé. Vedendo un'app Vite nella radice conclude "sito statico": esegue la build,
-serve `dist/` con il proprio file server e **non avvia mai il server Node**. Il sintomo è
-subdolo perché la home funziona — sono le pagine, e ci sono — ma ogni rotta dell'API
-restituisce il 404 del frontend invece di JSON. `railway.json` toglie il dubbio dichiarando
-`"builder": "NIXPACKS"` e ripetendo lo start command.
+**Perché un Dockerfile e non il builder automatico.** I builder automatici deducono il tipo di
+progetto dalla struttura del repository, e qui la struttura è ambigua: nella radice c'è
+un'app Vite, in `server/` un backend Node. Railway concludeva "sito statico", eseguiva la
+build e serviva `dist/` con il proprio file server **senza mai avviare il server Node**.
 
-Contiene anche `healthcheckPath: /health`: Railway considera riuscito un rilascio solo se
-quella rotta risponde, e `/health` è servita da Fastify. Se un giorno il server tornasse a non
+Il sintomo è il peggiore possibile perché sembra funzionare: la home mostra l'applicazione —
+le pagine ci sono davvero — ma l'API non esiste, e ogni chiamata restituisce la pagina 404 del
+frontend invece di JSON. Con un Dockerfile non c'è niente da dedurre: è scritto. In più non
+dipende da un builder che può cambiare o essere dichiarato deprecato, come è successo a
+Nixpacks.
+
+`railway.json` contiene anche `healthcheckPath: /health`, che è servita da Fastify: Railway
+considera riuscito un rilascio solo se quella rotta risponde. Se il server tornasse a non
 avviarsi, il deploy **fallirebbe** invece di andare a buon fine servendo la cosa sbagliata.
 
-Una sola cosa da controllare nel pannello:
+Nel pannello, sotto **Settings → Build**, il builder deve risultare **Dockerfile**. Se è
+forzato a qualcos'altro, il pannello vince sul file.
 
-- **Root Directory deve restare vuoto.** Il backend sta in `server/` ma importa da `shared/`,
-  che sta un livello sopra, e il frontend si costruisce dalla radice: puntando la root su
-  `server/` si rompono entrambe le cose.
+**Root Directory deve restare vuoto.** Il backend sta in `server/` ma importa da `shared/`,
+che sta un livello sopra, e il frontend si costruisce dalla radice: puntando la root su
+`server/` si rompono entrambe le cose.
 
 Le migrazioni girano a ogni rilascio (`npm run db:deploy`). È così che una modifica allo
 schema arriva in produzione; se falliscono il deploy si ferma, invece di avviare un server su
@@ -181,8 +185,9 @@ forzi a un valore diverso da quello su cui Railway instrada — per esempio copi
 
 ## 3. Il frontend (non serve fare niente)
 
-Railway lo costruisce insieme al backend: `nixpacks.toml` esegue `npm run build`, che produce
-`dist/`, e il server la pubblica. Non c'è un secondo servizio da creare.
+Railway lo costruisce insieme al backend: la prima fase del `Dockerfile` esegue
+`npm run build`, che produce `dist/`, e il server la pubblica. Non c'è un secondo servizio da
+creare.
 
 **`VITE_API_BASE_URL` non serve.** Il frontend chiama l'API con percorsi relativi, perché è lo
 stesso indirizzo. La variabile esiste ancora come scappatoia se un giorno si volessero separare
@@ -252,9 +257,9 @@ proprio file server statico. Sembra tutto a posto perché le pagine ci sono, ma 
 esiste e nulla funziona oltre la schermata di accesso.
 
 Si riconosce così: `/health` deve rispondere `{"ok":true,...}` in JSON. Se restituisce HTML,
-è questo. La causa è il builder automatico che scambia il progetto per un sito statico —
-`railway.json` lo impedisce, ma va assicurarsi che nel pannello **Settings → Build** il
-builder non sia forzato a qualcos'altro.
+è questo. La causa è il builder automatico che scambia il progetto per un sito statico: il
+Dockerfile lo impedisce, ma va controllato che nel pannello **Settings → Build** il builder
+risulti **Dockerfile** e non sia forzato ad altro.
 
 **Ricaricando una pagina interna esce un 404.** Non dovrebbe: il server risponde con
 `index.html` su tutte le rotte che non sono API o file. Se succede, `dist/` non c'è (vedi

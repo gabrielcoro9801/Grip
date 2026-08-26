@@ -1,0 +1,22 @@
+# Cosa NON entra nel contesto di build.
+#
+# Serve a due cose: non spedire al motore di build centinaia di megabyte di
+# dipendenze già installate (sono lente da copiare e vengono comunque
+# reinstallate), e non far finire nell'immagine file che non devono uscire dal
+# PC — a partire dai .env, che contengono password.
+node_modules
+server/node_modules
+dist
+
+.env
+.env.local
+server/.env
+
+# Dati, non codice: gli upload di sviluppo non c'entrano nulla con l'immagine.
+server/uploads
+
+.git
+.github
+docs
+server/test
+*.log
