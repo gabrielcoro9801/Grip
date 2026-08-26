@@ -4,7 +4,20 @@
 // La forma dei metodi è volutamente identica a quella usata in tutta l'applicazione
 // (list/filter/get/create/update/delete/bulkCreate), così le pagine e i componenti
 // non hanno dovuto cambiare logica quando il datastore è stato sostituito.
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
+/**
+ * Dove sta il backend.
+ *
+ * In produzione è **lo stesso indirizzo del sito**: il server Fastify serve sia le pagine
+ * sia l'API, quindi basta un percorso relativo. Da lì discendono due semplificazioni che
+ * valgono più di quanto sembri — niente CORS da configurare, perché non c'è nessuna chiamata
+ * fra domini diversi, e nessun indirizzo da tenere aggiornato in due posti.
+ *
+ * In sviluppo invece sono due processi separati (Vite sulla 5173, il server sulla 3001), e
+ * l'indirizzo serve per forza. `VITE_API_BASE_URL` resta come scappatoia se un giorno si
+ * volessero separare di nuovo.
+ */
+const API_BASE = import.meta.env.VITE_API_BASE_URL
+	?? (import.meta.env.DEV ? 'http://localhost:3001' : '');
 
 const TOKEN_KEY = 'grip_auth_token';
 

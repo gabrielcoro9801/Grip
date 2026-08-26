@@ -83,21 +83,26 @@ un ruolo senza gestione utenti non possa concedersi niente.
 
 ## Metterlo online
 
-L'applicazione è due cose separate, da pubblicare separatamente: il **frontend** è un insieme
-di file statici (`npm run build` → `dist/`), il **backend** un programma che resta acceso e
-parla con PostgreSQL.
+In produzione **un servizio solo serve tutto**: il server Fastify pubblica sia le pagine
+dell'applicazione (`npm run build` → `dist/`) sia l'API, sullo stesso indirizzo. Costa un po'
+in prestazioni rispetto a una CDN, irrilevante a questa scala, e in cambio toglie di mezzo il
+CORS — non c'è nessuna chiamata fra domini diversi — un secondo pannello e un secondo dominio.
+
+In sviluppo restano due processi separati, come sempre: Vite sulla 5173, il server sulla 3001.
 
 La guida operativa è in **[docs/deploy.md](docs/deploy.md)**: come funzionano commit e push,
-il backend su Railway, il frontend su Cloudflare Pages, il DNS di `gripcore.it`, e l'ordine
-in cui vanno fatti i passi. Include anche cosa guardare quando qualcosa non funziona.
+Railway, il DNS di `gripcore.it`, l'ordine in cui vanno fatti i passi e cosa guardare quando
+qualcosa non funziona.
 
-Due punti che si sbagliano quasi sempre, e che lì sono spiegati per esteso:
+Tre punti che si sbagliano quasi sempre, spiegati lì per esteso:
 
-- **I file caricati vanno su un volume persistente.** Su una piattaforma a container il disco
-  si azzera a ogni deploy: senza volume, le ricevute già emesse spariscono e nessuno se ne
-  accorge finché non prova ad aprirne una.
-- **`VITE_API_BASE_URL` va impostata prima della build.** Vite la incorpora nel codice
-  compilato: cambiarla dopo richiede di ricostruire, non basta riavviare.
+- **I file caricati vanno su un volume persistente** (`UPLOAD_DIR`). Su una piattaforma a
+  container il disco si azzera a ogni deploy: senza volume, le ricevute già emesse spariscono
+  e nessuno se ne accorge finché non prova ad aprirne una.
+- **Non impostare `PORT` fra le variabili di Railway.** La assegna la piattaforma; forzandola
+  il dominio risponde *"application failed to respond"*.
+- **Cloudflare su SSL/TLS "Full (strict)".** Su *Flexible* si ottiene un ciclo infinito di
+  redirect, con un errore che non dice perché.
 
 ## Stato del progetto
 

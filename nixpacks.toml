@@ -1,15 +1,30 @@
-# Config per Railway/Nixpacks — backend.
+# Config per Railway/Nixpacks.
 #
-# Il backend vive in server/, ma importa file da shared/ (un livello sopra),
-# condivisa apposta con il frontend perché ruoli e permessi restino identici
-# sui due lati (vedi src/lib/permissions.js). Impostare "Root Directory" su
-# server/ nel pannello Railway spezzerebbe questi import, perché escluderebbe
-# shared/ dal contesto di build — per questo il Root Directory va lasciato
-# vuoto (radice del repo), e qui diciamo esplicitamente di installare e
-# avviare solo il backend, ignorando il frontend.
+# Un servizio solo serve tutto: le pagine dell'applicazione e l'API, sullo
+# stesso indirizzo. Costa un po' in prestazioni rispetto a una CDN — irrilevante
+# per un gestionale usato da qualche persona — e in cambio toglie di mezzo il
+# CORS (nessuna chiamata fra domini diversi), un secondo pannello e un secondo
+# dominio da tenere allineato.
+#
+# Il "Root Directory" nel pannello Railway va lasciato **vuoto**: il backend sta
+# in server/ ma importa da shared/, un livello sopra, e il frontend va costruito
+# dalla radice. Puntando la root su server/ si romperebbero entrambe le cose.
+
+[phases.setup]
+# Il frontend serve solo a produrre dist/: le sue dipendenze non finiscono
+# nell'immagine finale, ma servono durante la build.
+nixPkgs = ["nodejs"]
 
 [phases.install]
-cmds = ["npm install --prefix server --omit=dev"]
+cmds = [
+  "npm install",
+  "npm install --prefix server --omit=dev",
+]
+
+[phases.build]
+# Produce dist/, che il server pubblica come sito. Senza questo passaggio
+# l'applicazione risponderebbe solo sull'API e il dominio mostrerebbe un 404.
+cmds = ["npm run build"]
 
 # Le migrazioni si applicano a ogni rilascio, prima di accettare richieste.
 #

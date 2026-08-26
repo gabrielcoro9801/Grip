@@ -7,13 +7,17 @@ solo *cosa*.
 Architettura di destinazione:
 
 ```
-                     gripcore.it  ──►  frontend (React, file statici)
-   browser  ──►                                    │
-                 api.gripcore.it  ──►  backend (Fastify)  ──►  PostgreSQL
+   browser  ──►  gripcore.it  ──►  Railway  ──►  PostgreSQL
+                                (pagine + API)
 ```
 
-Frontend e backend sono due cose separate e vanno pubblicate separatamente: il primo è un
-insieme di file che il browser scarica, il secondo un programma che resta acceso.
+**Un servizio solo serve tutto.** Il server Fastify pubblica sia le pagine dell'applicazione —
+la cartella `dist/` prodotta da `npm run build` — sia l'API, sullo stesso indirizzo.
+
+Costa un po' in prestazioni rispetto a una CDN dedicata, irrilevante per un gestionale usato da
+qualche persona, e in cambio toglie di mezzo tre cose: il **CORS**, perché non c'è nessuna
+chiamata fra domini diversi; un **secondo pannello** da configurare; e un **secondo dominio**
+da tenere allineato al primo.
 
 ---
 
@@ -98,8 +102,8 @@ Sempre sotto **Variables** del servizio backend:
 | `DATABASE_URL` | `${{Postgres.DATABASE_URL}}` | riferimento, non copia |
 | `NODE_ENV` | `production` | attiva i controlli: senza, il server parte con le impostazioni di sviluppo |
 | `JWT_SECRET` | una stringa lunga e casuale | firma i token: con un segreto noto chiunque può firmarsi un accesso da amministratore |
-| `CORS_ORIGIN` | `https://gripcore.it,https://www.gripcore.it` | da quali siti il browser può chiamare l'API |
-| `PUBLIC_BASE_URL` | `https://api.gripcore.it` | entra negli URL delle ricevute PDF |
+| `CORS_ORIGIN` | `https://gripcore.it` | con un servizio solo non serve davvero, ma il server la pretende |
+| `PUBLIC_BASE_URL` | `https://gripcore.it` | entra negli URL delle ricevute PDF |
 | `UPLOAD_DIR` | `/data/uploads` | vedi 2.4 |
 
 Il segreto lo generi così:
@@ -153,51 +157,46 @@ password scritta nel codice sorgente.
 
 ### 2.6 Il dominio
 
-**Settings → Networking → Custom Domain** → `api.gripcore.it`. Railway ti dà un valore CNAME
-da mettere su Cloudflare (passo 4).
+**Settings → Networking → Custom Domain** → `gripcore.it`. Railway ti dà il valore da mettere
+su Cloudflare (passo 4).
+
+**Non impostare `PORT` fra le variabili.** Railway la assegna da sé e il codice la legge: se la
+forzi a un valore diverso da quello su cui Railway instrada — per esempio copiando il
+`PORT=3001` del `.env` locale — il dominio risponde *"application failed to respond"*.
 
 ---
 
-## 3. Il frontend
+## 3. Il frontend (non serve fare niente)
 
-Il frontend è un insieme di file statici: `npm run build` produce la cartella `dist/`, e
-quella va servita. Non serve un server acceso.
+Railway lo costruisce insieme al backend: `nixpacks.toml` esegue `npm run build`, che produce
+`dist/`, e il server la pubblica. Non c'è un secondo servizio da creare.
 
-Poiché il DNS è già su Cloudflare, **Cloudflare Pages** è la scelta naturale: si collega allo
-stesso repository GitHub, ricostruisce a ogni push, e il dominio si configura da solo.
+**`VITE_API_BASE_URL` non serve.** Il frontend chiama l'API con percorsi relativi, perché è lo
+stesso indirizzo. La variabile esiste ancora come scappatoia se un giorno si volessero separare
+di nuovo, ma lasciandola vuota va tutto da sé.
 
-Su Cloudflare → **Workers & Pages → Create → Pages → Connect to Git**, scegli il repository:
-
-| Impostazione | Valore |
-|---|---|
-| Build command | `npm run build` |
-| Build output directory | `dist` |
-| Root directory | *(vuoto)* |
-| Variabile `VITE_API_BASE_URL` | `https://api.gripcore.it` |
-
-`VITE_API_BASE_URL` dice al frontend dove trovare il backend. **Va impostata prima della
-build**: Vite la incorpora nel codice compilato, quindi cambiarla dopo richiede di rifare la
-build, non basta riavviare.
-
-Per la stessa ragione: tutto ciò che comincia per `VITE_` **è visibile a chiunque apra il
-sito**. Lì non vanno mai segreti, solo indirizzi. Le password stanno nelle variabili del
-backend, che il browser non vede mai.
+Vale comunque la pena saperlo: tutto ciò che comincia per `VITE_` **è visibile a chiunque apra
+il sito**, perché Vite lo incorpora nel codice compilato. Lì non vanno mai segreti, solo
+indirizzi. Le password stanno nelle variabili del backend, che il browser non vede mai.
 
 ---
 
 ## 4. Il DNS su Cloudflare
 
-Nella zona `gripcore.it`, sezione **DNS → Records**:
+Nella zona `gripcore.it`, sezione **DNS → Records**: serve solo il record che punta a Railway,
+e Railway lo indica quando aggiungi il dominio (passo 2.6).
 
-| Tipo | Nome | Valore | Proxy |
-|---|---|---|---|
-| CNAME | `api` | l'indirizzo che ti dà Railway | 🟠 attivo |
-| CNAME | `@` e `www` | li crea Cloudflare Pages da solo | 🟠 attivo |
+Su Register.it i nameserver devono già puntare a Cloudflare — si verifica dal pannello
+Cloudflare, la zona deve risultare **Active**.
 
-Su Register.it i nameserver devono già puntare a Cloudflare — dici che l'avete fatto; si
-verifica dal pannello Cloudflare, la zona deve risultare **Active**.
+### SSL/TLS: mettilo su "Full (strict)"
 
-Il certificato HTTPS lo emettono Cloudflare e Railway da soli. Può volerci qualche minuto.
+Cloudflare → **SSL/TLS → Overview**. Se resta su **Flexible**, Cloudflare parla in HTTP con
+Railway che si aspetta HTTPS, e il risultato è un **ciclo infinito di redirect**: il sito non
+si apre e l'errore non dice perché. È il problema più frequente quando Railway segnala
+*"Cloudflare proxy detected"*.
+
+Il certificato lo emettono Cloudflare e Railway da soli. Può volerci qualche minuto.
 
 ---
 
@@ -205,18 +204,16 @@ Il certificato HTTPS lo emettono Cloudflare e Railway da soli. Può volerci qual
 
 Le dipendenze contano: fare i passi in ordine sbagliato produce errori che sembrano bug.
 
-1. **Push del codice su GitHub** — Railway e Pages costruiscono da lì, non dal tuo PC
-2. **Database su Railway** e variabile collegata
+1. **Push del codice su GitHub** — Railway costruisce da lì, non dal tuo PC
+2. **Database su Railway** e variabile collegata con un riferimento
 3. **Variabili del backend** (`NODE_ENV`, `JWT_SECRET`, `CORS_ORIGIN`, `PUBLIC_BASE_URL`)
-4. **Volume** e `UPLOAD_DIR`
-5. **Deploy del backend** — verifica che `https://<url-railway>/health` risponda `{"ok":true}`
-6. **Seed**, una volta sola
-7. **Dominio** `api.gripcore.it` su Railway + record su Cloudflare
-8. **Cloudflare Pages** con `VITE_API_BASE_URL` che punta al dominio del punto 7
-9. **Dominio** `gripcore.it` su Pages
+4. **Volume** su `/data` e `UPLOAD_DIR` — prima di emettere qualunque ricevuta
+5. **Deploy** — verifica che `/health` risponda `{"ok":true,"entities":45}`
+6. **Seed**, una volta sola, per creare il primo amministratore
+7. **Dominio** `gripcore.it` su Railway + record su Cloudflare + SSL su Full (strict)
 
-Il punto 8 dipende dal 7: costruendo il frontend prima che l'API abbia il suo dominio,
-punterebbe a un indirizzo che non esiste, e per correggerlo servirebbe una nuova build.
+Il punto 4 prima del 6 non è un dettaglio: se emetti ricevute senza volume, il primo deploy
+successivo cancella i PDF.
 
 ---
 
@@ -225,12 +222,20 @@ punterebbe a un indirizzo che non esiste, e per correggerlo servirebbe una nuova
 **Il backend non parte.** Guarda i log su Railway: se manca una variabile obbligatoria il
 messaggio dice quale e perché. È il caso più frequente.
 
-**Il sito si apre ma è vuoto, e la console del browser dice `CORS`.** `CORS_ORIGIN` sul backend
-non contiene l'indirizzo esatto del frontend. Deve combaciare compreso `https://`, senza barra
-finale, e con `www` elencato a parte se lo usate.
+**Il dominio risponde "application failed to respond".** Quasi sempre è la porta: se hai
+impostato `PORT` a mano fra le variabili, il server ascolta su quella mentre Railway instrada
+altrove. **Non impostare `PORT`**: Railway la assegna e il codice la legge da sé.
 
-**Il sito si apre ma il login non funziona.** `VITE_API_BASE_URL` punta altrove — probabilmente
-è rimasta a `localhost`. Si corregge cambiando la variabile su Pages **e rifacendo la build**.
+**Il sito entra in un ciclo di redirect e non si apre.** Cloudflare è su SSL/TLS *Flexible*:
+va messo su **Full (strict)** (passo 4).
+
+**Il dominio mostra un 404 invece dell'applicazione.** La build del frontend non è stata
+eseguita, quindi `dist/` non esiste e il server pubblica solo l'API. Controlla nei log del
+deploy che `npm run build` sia passato.
+
+**Ricaricando una pagina interna esce un 404.** Non dovrebbe: il server risponde con
+`index.html` su tutte le rotte che non sono API o file. Se succede, `dist/` non c'è (vedi
+sopra).
 
 **Le ricevute vecchie non si scaricano più.** È il volume mancante (2.4): i file sono stati
 cancellati da un deploy. Da lì in avanti si evita, ma quelli persi vanno rigenerati.
@@ -246,7 +251,7 @@ succede, il nome del file va corretto con `git mv`.
 - **Non c'è backup del database.** Railway ne fa di suoi, ma vanno verificati e provati: un
   backup mai ripristinato non è un backup. I documenti fiscali vanno conservati dieci anni.
 - **Un ambiente solo.** Chi lavora sul proprio ramo non ha un posto dove provarlo online se
-  non mandandolo in produzione. Cloudflare Pages costruisce le anteprime dei rami in
-  automatico; per il backend servirebbe un secondo servizio Railway con un suo database.
+  non mandandolo in produzione. Servirebbe un secondo servizio Railway, con un suo database,
+  collegato a un ramo diverso da main.
 - **I file caricati sono raggiungibili senza autenticazione** da chi ne conosce l'URL: il nome
   è casuale, ma il limite resta (vedi il README principale).
