@@ -117,13 +117,26 @@ un avviso nei log nessuno lo legge, e il server resterebbe acceso e insicuro.
 
 ### 2.3 Build e avvio
 
-Il file [`nixpacks.toml`](../nixpacks.toml) nella radice dice già tutto a Railway. Due cose da
-**non** toccare nel pannello:
+Due file nella radice dicono a Railway cosa fare: [`railway.json`](../railway.json) fissa il
+builder e il comando di avvio, [`nixpacks.toml`](../nixpacks.toml) descrive le fasi di
+installazione e build.
+
+**Perché servono entrambi.** Railway ha introdotto un builder che riconosce il tipo di
+progetto da sé. Vedendo un'app Vite nella radice conclude "sito statico": esegue la build,
+serve `dist/` con il proprio file server e **non avvia mai il server Node**. Il sintomo è
+subdolo perché la home funziona — sono le pagine, e ci sono — ma ogni rotta dell'API
+restituisce il 404 del frontend invece di JSON. `railway.json` toglie il dubbio dichiarando
+`"builder": "NIXPACKS"` e ripetendo lo start command.
+
+Contiene anche `healthcheckPath: /health`: Railway considera riuscito un rilascio solo se
+quella rotta risponde, e `/health` è servita da Fastify. Se un giorno il server tornasse a non
+avviarsi, il deploy **fallirebbe** invece di andare a buon fine servendo la cosa sbagliata.
+
+Una sola cosa da controllare nel pannello:
 
 - **Root Directory deve restare vuoto.** Il backend sta in `server/` ma importa da `shared/`,
-  che sta un livello sopra: puntando la root su `server/` quegli import si rompono.
-- **Non impostare uno Start Command** nel pannello: sovrascriverebbe quello del file, che
-  applica le migrazioni prima di avviare.
+  che sta un livello sopra, e il frontend si costruisce dalla radice: puntando la root su
+  `server/` si rompono entrambe le cose.
 
 Le migrazioni girano a ogni rilascio (`npm run db:deploy`). È così che una modifica allo
 schema arriva in produzione; se falliscono il deploy si ferma, invece di avviare un server su
@@ -232,6 +245,16 @@ va messo su **Full (strict)** (passo 4).
 **Il dominio mostra un 404 invece dell'applicazione.** La build del frontend non è stata
 eseguita, quindi `dist/` non esiste e il server pubblica solo l'API. Controlla nei log del
 deploy che `npm run build` sia passato.
+
+**La home si apre ma `/health` mostra la pagina 404 dell'applicazione.** È il caso opposto e
+il più insidioso: il server Node non è mai partito, e Railway sta servendo `dist/` con il
+proprio file server statico. Sembra tutto a posto perché le pagine ci sono, ma l'API non
+esiste e nulla funziona oltre la schermata di accesso.
+
+Si riconosce così: `/health` deve rispondere `{"ok":true,...}` in JSON. Se restituisce HTML,
+è questo. La causa è il builder automatico che scambia il progetto per un sito statico —
+`railway.json` lo impedisce, ma va assicurarsi che nel pannello **Settings → Build** il
+builder non sia forzato a qualcos'altro.
 
 **Ricaricando una pagina interna esce un 404.** Non dovrebbe: il server risponde con
 `index.html` su tutte le rotte che non sono API o file. Se succede, `dist/` non c'è (vedi

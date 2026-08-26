@@ -35,3 +35,10 @@ cmds = ["npm run build"]
 # viene installato.
 [start]
 cmd = "npm --prefix server run db:deploy && node server/src/index.js"
+
+# Nota: `railway.json` accanto a questo file fissa il builder su NIXPACKS e
+# ripete lo start command. Serve perché Railway ha introdotto un builder nuovo
+# che rileva il tipo di progetto da sé: vedendo un'app Vite nella radice
+# concludeva "sito statico", serviva dist/ e non avviava mai il server Node.
+# Il sintomo era subdolo — la home funzionava, ma ogni rotta dell'API
+# restituiva la pagina 404 del frontend invece di JSON.
