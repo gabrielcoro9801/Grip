@@ -24,7 +24,31 @@ const ADMIN_PASSWORD = process.env.SEED_ADMIN_PASSWORD
 		? PASSWORD_DI_SVILUPPO
 		: null);
 
+/**
+ * Su quale database stiamo per scrivere, in chiaro e senza la password.
+ *
+ * Il seed di produzione si lancia dal proprio PC (`railway run …`), che inietta le variabili
+ * dell'ambiente remoto. Se l'iniezione non avviene — CLI non collegata, progetto sbagliato —
+ * il comando riesce lo stesso, ma semina il database di sviluppo: si resta convinti di aver
+ * creato l'amministratore in produzione, e ci si accorge del contrario provando ad accedere.
+ * Stampare l'indirizzo toglie il dubbio prima, non dopo.
+ */
+function descriviDatabase() {
+	try {
+		const u = new URL(process.env.DATABASE_URL);
+		return `${u.hostname}${u.port ? `:${u.port}` : ''}${u.pathname}`;
+	} catch {
+		return '(DATABASE_URL non leggibile)';
+	}
+}
+
 async function seed() {
+	console.log(`Database: ${descriviDatabase()}`);
+	if (/^(localhost|127\.0\.0\.1)$/.test(new URL(process.env.DATABASE_URL ?? 'http://x').hostname)) {
+		console.log('⚠️  È un database locale. Per la produzione serve `railway run`.');
+	}
+	console.log('');
+
 	if (!ADMIN_PASSWORD) {
 		console.error('SEED_ADMIN_PASSWORD non impostata.');
 		console.error('Con NODE_ENV=production il primo account non può nascere con una password');

@@ -160,17 +160,51 @@ seri, i file vanno su uno storage esterno (Cloudflare R2, già nel vostro perime
 
 ### 2.5 Il primo account
 
-Il database appena creato è vuoto: nessun account, nessun piano dei conti. Una volta sola,
-dalla shell di Railway (`railway run` da terminale, o il pannello):
+Il database appena creato è vuoto: nessun account, nessun piano dei conti. Le migrazioni
+girano da sole a ogni deploy, il seed **no** — va lanciato a mano, una volta sola.
+
+**Railway non ha un terminale nel browser.** Si usa la sua CLI, dal proprio PC:
 
 ```bash
-SEED_ADMIN_EMAIL=tu@gripcore.it SEED_ADMIN_PASSWORD='scegline-una-lunga' \
-SEED_ORGANIZZAZIONE='Nome associazione' npm --prefix server run db:seed
+npm install -g @railway/cli
+railway login          # apre il browser per l'accesso
+railway link           # scegli il progetto e il servizio
 ```
 
-Crea l'organizzazione, il piano dei conti, le causali, i ruoli e il primo amministratore.
-In produzione **pretende** `SEED_ADMIN_PASSWORD`: il primo account non può nascere con una
+Poi il seed vero e proprio:
+
+```bash
+railway run npm --prefix server run db:seed
+```
+
+`railway run` esegue il comando **sul tuo computer**, ma con le variabili d'ambiente del
+servizio remoto — quindi `DATABASE_URL` punta al PostgreSQL di produzione. È il motivo per cui
+funziona senza una shell dentro il container.
+
+Le variabili del primo account vanno passate qui, perché su Railway non ci sono:
+
+```bash
+SEED_ADMIN_EMAIL=tu@gripcore.it \
+SEED_ADMIN_PASSWORD='scegline-una-lunga' \
+SEED_ORGANIZZAZIONE='Nome associazione' \
+railway run npm --prefix server run db:seed
+```
+
+**Guarda la prima riga che stampa**: dice su quale database sta scrivendo. Se leggi
+`localhost:5432/grip_dev` e un avviso, le variabili remote non sono arrivate e staresti
+seminando il database di sviluppo — il comando riuscirebbe lo stesso, lasciandoti convinto di
+aver creato l'amministratore in produzione. In quel caso ricontrolla `railway link`.
+
+Il seed crea organizzazione, piano dei conti, causali, ruoli e primo amministratore. In
+produzione **pretende** `SEED_ADMIN_PASSWORD`: il primo account non può nascere con una
 password scritta nel codice sorgente.
+
+### Come sai se è stato fatto
+
+Prova ad accedere. Attenzione a non farti ingannare dall'API: un login con credenziali
+sbagliate risponde `401 Credenziali non valide` **sia** se l'account non esiste **sia** se
+esiste e la password è errata. Quel 401 dimostra che il database risponde, non che il seed sia
+passato.
 
 ### 2.6 Il dominio
 
