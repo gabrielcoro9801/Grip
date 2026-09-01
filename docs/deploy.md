@@ -185,8 +185,8 @@ Le variabili del primo account vanno passate qui, perché su Railway non ci sono
 
 ```bash
 SEED_ADMIN_EMAIL=tu@gripcore.it \
-SEED_ADMIN_PASSWORD='scegline-una-lunga' \
-SEED_ORGANIZZAZIONE='Nome associazione' \
+SEED_ADMIN_PASSWORD=BananaMarcia88 \
+SEED_ORGANIZZAZIONE=GripCore \
 railway run npm --prefix server run db:seed
 ```
 
