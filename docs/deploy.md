@@ -206,6 +206,23 @@ sbagliate risponde `401 Credenziali non valide` **sia** se l'account non esiste 
 esiste e la password è errata. Quel 401 dimostra che il database risponde, non che il seed sia
 passato.
 
+### Se resti chiuso fuori
+
+`db:seed` è idempotente: rilanciandolo su un account che esiste già **lascia la password
+invariata** e stampa "password invariata". Non serve quindi a rientrare se l'hai sbagliata o
+dimenticata — e la schermata da cui si gestiscono gli account è dietro il login.
+
+Per questo c'è uno script apposta:
+
+```bash
+RESET_EMAIL=tu@gripcore.it RESET_PASSWORD='nuova-lunga-almeno-12' \
+railway run npm --prefix server run db:reset-admin
+```
+
+Cambia la password, riporta il ruolo ad `admin` e riattiva l'account se era disattivato:
+se si arriva a usarlo è perché serve rientrare, e un account declassato non risolverebbe.
+Rifiuta password sotto i dodici caratteri — quell'account può tutto ed è esposto su internet.
+
 ### 2.6 Il dominio
 
 **Settings → Networking → Custom Domain** → `gripcore.it`. Railway ti dà il valore da mettere
