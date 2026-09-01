@@ -160,44 +160,37 @@ seri, i file vanno su uno storage esterno (Cloudflare R2, già nel vostro perime
 
 ### 2.5 Il primo account
 
-Il database appena creato è vuoto: nessun account, nessun piano dei conti. Le migrazioni
-girano da sole a ogni deploy, il seed **no** — va lanciato a mano, una volta sola.
+> ⚠️ **Mai scrivere una password vera in questo file.** È versionato e finisce su GitHub, dove
+> resta nella cronologia anche dopo averla tolta. I valori qui sotto sono segnaposto: quelli
+> veri vivono solo nelle variabili del servizio.
 
-**Railway non ha un terminale nel browser.** Si usa la sua CLI, dal proprio PC:
+Il database appena creato è vuoto: nessun account, nessun piano dei conti. E per crearne uno
+bisognerebbe essere autenticati — la schermata degli utenti è dietro il login.
 
-```bash
-npm install -g @railway/cli
-railway login          # apre il browser per l'accesso
-railway link           # scegli il progetto e il servizio
+**Non serve fare niente a mano.** Basta impostare queste variabili fra quelle del servizio, dal
+pannello Railway:
+
+```
+SEED_ADMIN_EMAIL     = tu@gripcore.it
+SEED_ADMIN_PASSWORD  = (una password lunga, scelta lì)
+SEED_ORGANIZZAZIONE  = Nome dell'associazione        (facoltativa)
 ```
 
-Poi il seed vero e proprio:
+Al primo avvio, **se e solo se non esiste nessun account**, il server crea l'organizzazione, il
+piano dei conti, le causali, i ruoli e l'amministratore, e lo scrive nei log. Dal secondo avvio
+non fa più nulla, perché la condizione non è più vera.
 
-```bash
-railway run npm --prefix server run db:seed
-```
+Succede dall'interno del container, dove il database è raggiungibile senza aprire niente.
+L'alternativa sarebbe stata esporre PostgreSQL su internet o abilitare un accesso SSH alla
+macchina solo per creare il primo account: due cose sgradevoli da chiedere a ogni associazione
+che installa Grip.
 
-`railway run` esegue il comando **sul tuo computer**, ma con le variabili d'ambiente del
-servizio remoto — quindi `DATABASE_URL` punta al PostgreSQL di produzione. È il motivo per cui
-funziona senza una shell dentro il container.
+Se le variabili mancano il server parte lo stesso, ma avvisa nei log che nessuno potrà
+accedere.
 
-Le variabili del primo account vanno passate qui, perché su Railway non ci sono:
-
-```bash
-SEED_ADMIN_EMAIL=tu@gripcore.it \
-SEED_ADMIN_PASSWORD=BananaMarcia88 \
-SEED_ORGANIZZAZIONE=GripCore \
-railway run npm --prefix server run db:seed
-```
-
-**Guarda la prima riga che stampa**: dice su quale database sta scrivendo. Se leggi
-`localhost:5432/grip_dev` e un avviso, le variabili remote non sono arrivate e staresti
-seminando il database di sviluppo — il comando riuscirebbe lo stesso, lasciandoti convinto di
-aver creato l'amministratore in produzione. In quel caso ricontrolla `railway link`.
-
-Il seed crea organizzazione, piano dei conti, causali, ruoli e primo amministratore. In
-produzione **pretende** `SEED_ADMIN_PASSWORD`: il primo account non può nascere con una
-password scritta nel codice sorgente.
+> Esiste anche `npm run db:seed`, che fa la stessa cosa da riga di comando: serve in locale.
+> Dal proprio PC **non funziona sulla produzione**, perché `DATABASE_URL` punta alla rete
+> privata di Railway (`postgres.railway.internal`), che da fuori non si risolve.
 
 ### Come sai se è stato fatto
 

@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { buildApp } from './app.js';
 import { config, verificaConfigurazione, segretoDiSviluppoInUso } from './config.js';
 import { caricaMatriceIniziale } from './lib/ruoli.js';
+import { creaAmministratoreIniziale } from './lib/primoAccesso.js';
 
 // Si controlla prima di qualunque altra cosa: partire e scoprire dopo che manca il segreto
 // dei token significa aver già servito richieste.
@@ -24,6 +25,12 @@ await mkdir(config.uploadDir || path.join(serverRoot, 'uploads'), { recursive: t
 await caricaMatriceIniziale();
 
 const app = buildApp({ publicBaseUrl });
+
+// Se il database è vuoto non potrebbe accedere nessuno: la schermata da cui si creano gli
+// account è dietro il login. Il primo amministratore nasce quindi qui, dall'interno, dalle
+// variabili del servizio — evitando di dover esporre il database o aprire un accesso SSH
+// alla macchina solo per cominciare.
+await creaAmministratoreIniziale(app.log);
 
 if (segretoDiSviluppoInUso()) {
 	app.log.warn("JWT_SECRET non impostato: si sta usando il segreto di sviluppo. Va bene in locale, mai altrove.");
