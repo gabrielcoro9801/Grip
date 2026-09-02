@@ -6,7 +6,7 @@
 // mai stato registrato — un buco che nessuno noterebbe finché non manca il debito.
 import { eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { purchaseOrders, journalEntries, journalLines, numberingCounters, accountingSuppliers } from '../db/schema/index.js';
+import { purchaseOrders, journalEntries, journalLines, numberingCounters, accountingSuppliers, chartOfAccounts } from '../db/schema/index.js';
 import { ritenutaDovuta, calcolaRitenuta } from '../../../shared/ritenuta.js';
 import { translateToSnakeCase } from '../entities/columnMaps.js';
 import { getUserFromRequest } from '../auth/tokens.js';
@@ -14,6 +14,8 @@ import { canWriteEntity } from '../auth/authorize.js';
 import { contiPerRuoli } from '../lib/contiSistema.js';
 import { parametroFiscale } from '../lib/parametriFiscali.js';
 import { registerPgErrorHandler } from './errorHandler.js';
+import { erroreEsercizioChiuso } from './exerciseClosures.js';
+import { erroreNaturaFiscale } from '../../../shared/naturaFiscale.js';
 
 
 async function nextProtocolNumber(tx, organizationId) {
@@ -55,6 +57,11 @@ export default async function purchaseOrderRoutes(fastify) {
 			return reply.code(400).send({ error: `L'ordine è in stato "${ordine.stato}": solo un ordine ancora da consegnare può essere ricevuto.` });
 		}
 
+		// La consegna è uno dei quattro punti che inseriscono in journal_entries: senza
+		// questo controllo era l'unico dei quattro a poter scrivere in un esercizio chiuso.
+		const erroreEsercizio = await erroreEsercizioChiuso(ordine.organizationId, dataConsegna);
+		if (erroreEsercizio) return reply.code(400).send({ error: erroreEsercizio });
+
 		// Alla consegna può emergere che la quantità ricevuta vale meno o più del previsto:
 		// il costo da registrare è quello effettivo, non quello stimato all'ordine.
 		const importoEffettivo = Number(importo ?? ordine.importoPrevisto);
@@ -64,6 +71,21 @@ export default async function purchaseOrderRoutes(fastify) {
 
 		const contoCosto = contoCostoId ?? ordine.contoCostoId;
 		if (!contoCosto) return reply.code(400).send({ error: 'Indicare il conto di costo su cui registrare la fornitura.' });
+
+		// Stessa validazione che vale per le registrazioni manuali: la natura fiscale non è
+		// verificata solo dal CHECK del database, perché quello non sa se serviva davvero.
+		const [contoCostoRow] = await db
+			.select({ tipoConto: chartOfAccounts.tipoConto })
+			.from(chartOfAccounts)
+			.where(eq(chartOfAccounts.id, contoCosto))
+			.limit(1);
+		const erroreNatura = erroreNaturaFiscale({
+			tipoOrigine: 'ordine_fornitore',
+			naturaFiscale: ordine.naturaFiscale,
+			righe: [{ conto_id: contoCosto }],
+			contiPerId: contoCostoRow ? { [contoCosto]: { tipo_conto: contoCostoRow.tipoConto } } : {},
+		});
+		if (erroreNatura) return reply.code(400).send({ error: erroreNatura });
 
 		const { conti: contiRuolo, errore } = await contiPerRuoli(ordine.organizationId, ['debiti_fornitori']);
 		if (errore) return reply.code(400).send({ error: errore });

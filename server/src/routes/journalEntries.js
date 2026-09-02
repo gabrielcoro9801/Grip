@@ -9,14 +9,15 @@
 // Lo stesso vale per il numero di protocollo: assegnarlo leggendo il massimo esistente e
 // sommando 1 fa sì che due operazioni simultanee ottengano lo stesso numero. Qui arriva da
 // un contatore incrementato dentro la transazione.
-import { eq, sql } from 'drizzle-orm';
+import { eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { journalEntries, journalLines, numberingCounters } from '../db/schema/index.js';
+import { journalEntries, journalLines, chartOfAccounts, numberingCounters } from '../db/schema/index.js';
 import { translateToJs, translateToSnakeCase } from '../entities/columnMaps.js';
 import { getUserFromRequest } from '../auth/tokens.js';
 import { canCreateManualEntry, canWriteEntity } from '../auth/authorize.js';
 import { registerPgErrorHandler } from './errorHandler.js';
-import { anniChiusi } from './exerciseClosures.js';
+import { erroreEsercizioChiuso } from './exerciseClosures.js';
+import { erroreNaturaFiscale } from '../../../shared/naturaFiscale.js';
 
 const SCOPE = 'journal_entry';
 
@@ -71,13 +72,8 @@ export default async function journalEntryRoutes(fastify) {
 		// dichiarazione. La scrittura di chiusura è l'unica eccezione, perché è proprio
 		// l'operazione che chiude l'anno.
 		if (entryInput.data_competenza && entryInput.tipo_origine !== 'chiusura_esercizio') {
-			const anno = Number(String(entryInput.data_competenza).slice(0, 4));
-			const chiusi = await anniChiusi(entryInput.organization_id);
-			if (chiusi.has(anno)) {
-				return reply.code(400).send({
-					error: `L'esercizio ${anno} è chiuso: non è possibile aggiungere o modificare registrazioni con quella data di competenza.`,
-				});
-			}
+			const erroreEsercizio = await erroreEsercizioChiuso(entryInput.organization_id, entryInput.data_competenza);
+			if (erroreEsercizio) return reply.code(400).send({ error: erroreEsercizio });
 		}
 
 		// Le registrazioni manuali sono l'unica via per movimentare conti scavalcando le
@@ -105,6 +101,24 @@ export default async function journalEntryRoutes(fastify) {
 				});
 			}
 		}
+
+		// La natura fiscale va verificata qui, non lasciata al CHECK del database: il CHECK
+		// scarta solo i valori fuori enum, non sa dire se la registrazione ne aveva davvero
+		// bisogno perché tocca un conto di ricavo o di costo.
+		const contiCoinvolti = await db
+			.select({ id: chartOfAccounts.id, tipoConto: chartOfAccounts.tipoConto })
+			.from(chartOfAccounts)
+			.where(inArray(chartOfAccounts.id, linesInput.map((l) => l.conto_id).filter(Boolean)));
+		const contiPerId = Object.fromEntries(
+			contiCoinvolti.map((c) => [c.id, { tipo_conto: c.tipoConto }])
+		);
+		const erroreNatura = erroreNaturaFiscale({
+			tipoOrigine: entryInput.tipo_origine,
+			naturaFiscale: entryInput.natura_fiscale,
+			righe: linesInput,
+			contiPerId,
+		});
+		if (erroreNatura) return reply.code(400).send({ error: erroreNatura });
 
 		const created = await db.transaction(async (tx) => {
 			// Il numero arriva sempre dal contatore: un valore inviato dal client verrebbe
@@ -135,6 +149,17 @@ export default async function journalEntryRoutes(fastify) {
 	// scrittura di saldo. Resta separato perché aggiorna una registrazione già esistente.
 	fastify.put('/api/journal-entries/:id/settle', async (request, reply) => {
 		const { journal_entry_saldo_id: saldoId } = request.body ?? {};
+
+		const [originale] = await db
+			.select({ organizationId: journalEntries.organizationId, dataCompetenza: journalEntries.dataCompetenza })
+			.from(journalEntries)
+			.where(eq(journalEntries.id, request.params.id))
+			.limit(1);
+		if (!originale) return reply.code(404).send({ error: 'Registrazione non trovata.' });
+
+		const erroreEsercizio = await erroreEsercizioChiuso(originale.organizationId, originale.dataCompetenza);
+		if (erroreEsercizio) return reply.code(400).send({ error: erroreEsercizio });
+
 		const [row] = await db
 			.update(journalEntries)
 			.set({ statoPagamento: 'saldata', journalEntrySaldoId: saldoId ?? null })

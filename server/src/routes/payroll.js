@@ -21,7 +21,7 @@ import { getUserFromRequest } from '../auth/tokens.js';
 import { canAccess } from '../../../shared/permissions.js';
 import { contiPerRuoli } from '../lib/contiSistema.js';
 import { registerPgErrorHandler } from './errorHandler.js';
-import { anniChiusi } from './exerciseClosures.js';
+import { erroreEsercizioChiuso } from './exerciseClosures.js';
 
 // Tolleranza sul controllo delle identità: i cedolini sono arrotondati al centesimo e
 // qualche spicciolo di differenza è fisiologico, un euro no.
@@ -86,10 +86,8 @@ export default async function payrollRoutes(fastify) {
 		}
 
 		const dataCompetenza = dataRegistrazione || `${anno}-${String(mese + 1).padStart(2, '0')}-01`;
-		const chiusi = await anniChiusi(organizationId);
-		if (chiusi.has(Number(String(dataCompetenza).slice(0, 4)))) {
-			return reply.code(400).send({ error: `L'esercizio ${String(dataCompetenza).slice(0, 4)} è chiuso.` });
-		}
+		const erroreEsercizio = await erroreEsercizioChiuso(organizationId, dataCompetenza);
+		if (erroreEsercizio) return reply.code(400).send({ error: erroreEsercizio });
 
 		const [giaRegistrato] = await db
 			.select()

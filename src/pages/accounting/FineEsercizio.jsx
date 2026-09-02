@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import PageHeader from "@/components/shared/PageHeader";
-import { AlertTriangle, Download, Lock, Calculator, FileSpreadsheet, CheckCircle2 } from "lucide-react";
+import { AlertTriangle, Download, Lock, Calculator, FileSpreadsheet, CheckCircle2, Split } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { stimaIres } from "../../../shared/ires.js";
 import { useParametriFiscali } from "@/hooks/useParametriFiscali";
@@ -85,6 +85,12 @@ export default function FineEsercizio() {
     let proventiCommerciali = 0;
     let plusvalenze = 0;
     let proventiIstituzionali = 0;
+    // Proventi promiscui (servono sia l'attività istituzionale sia quella commerciale) o
+    // senza natura fiscale indicata: non appartengono né all'uno né all'altro totale, e
+    // sommarli d'ufficio a uno dei due significherebbe dichiarare come commerciale — o come
+    // istituzionale — un provento che non lo è per forza. Restano una voce a parte, da
+    // ripartire con un criterio concordato col commercialista.
+    let proventiDaRipartire = 0;
     let totaleCosti = 0;
     let ivaADebito = 0;
     const perConto = new Map();
@@ -102,6 +108,7 @@ export default function FineEsercizio() {
         if (e.natura_fiscale === "plusvalenza_patrimoniale" || conto.ruolo_sistema === "plusvalenze") plusvalenze += avere;
         else if (e.natura_fiscale === "commerciale") proventiCommerciali += avere;
         else if (e.natura_fiscale === "istituzionale") proventiIstituzionali += avere;
+        else proventiDaRipartire += avere;
       }
       if (conto.tipo_conto === "costo") totaleCosti += dare;
       if (conto.ruolo_sistema === "iva_debito") ivaADebito += avere;
@@ -114,7 +121,7 @@ export default function FineEsercizio() {
 
     return {
       ires: parametriIres ? stimaIres(proventiCommerciali, plusvalenze, parametriIres) : null,
-      proventiIstituzionali, totaleCosti, ivaADebito,
+      proventiIstituzionali, proventiDaRipartire, totaleCosti, ivaADebito,
       perConto: [...perConto.values()].sort((a, b) => a.conto.codice.localeCompare(b.conto.codice)),
       numeroScritture: dellAnno.size,
       scrittureAnno: dellAnno,
@@ -135,6 +142,7 @@ export default function FineEsercizio() {
       ["Voce", "Importo"],
       ["Proventi commerciali", i.proventiCommerciali.toFixed(2)],
       ["Proventi istituzionali", dati.proventiIstituzionali.toFixed(2)],
+      ["Proventi da ripartire (natura promiscua o non indicata)", dati.proventiDaRipartire.toFixed(2)],
       ["Plusvalenze patrimoniali", i.plusvalenze.toFixed(2)],
       ["Totale oneri (non rilevanti in regime 398/1991)", dati.totaleCosti.toFixed(2)],
       ["IVA a debito registrata", dati.ivaADebito.toFixed(2)],
@@ -264,6 +272,30 @@ export default function FineEsercizio() {
           )}
         </CardContent>
       </Card>
+
+      {/* Proventi da ripartire: natura promiscua o non indicata, esclusi dai due totali qui sopra */}
+      {dati.proventiDaRipartire > 0 && (
+        <Card className="border-0 shadow-sm border-l-4 border-l-amber-400">
+          <CardContent className="p-5">
+            <div className="flex items-start gap-3">
+              <div className="bg-amber-50 p-2 rounded-lg"><Split className="w-5 h-5 text-amber-700" /></div>
+              <div className="flex-1">
+                <div className="flex items-center justify-between gap-4">
+                  <p className="font-heading font-semibold">Proventi da ripartire</p>
+                  <span className="font-bold text-amber-700">{euro(dati.proventiDaRipartire)}</span>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Proventi con natura fiscale promiscua — servono sia l'attività istituzionale sia
+                  quella commerciale — o senza natura fiscale indicata. Non entrano nella stima IRES
+                  qui sopra, che considera solo i proventi già attribuiti alla gestione commerciale:
+                  attribuirli d'ufficio a un totale o all'altro darebbe alla stima un numero certo che
+                  non lo è. Vanno rivisti e ripartiti con un criterio concordato con il commercialista.
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Export */}
       <Card className="border-0 shadow-sm">

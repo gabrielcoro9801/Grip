@@ -87,7 +87,12 @@ export const journalEntries = pgTable('journal_entries', {
 	stato: varchar('stato', { length: 16 }).notNull().default('bozza'), // bozza | confermata
 	statoPagamento: varchar('stato_pagamento', { length: 16 }), // saldata | da_incassare | da_pagare
 	dataScadenza: date('data_scadenza'),
-	naturaFiscale: varchar('natura_fiscale', { length: 32 }), // commerciale | istituzionale | plusvalenza_patrimoniale
+	// NULL resta legale: è il caso delle scritture tecniche (chiusura esercizio, saldi, rate
+	// di finanziamento, compensi PT) che non movimentano conti economici e quindi non hanno
+	// una natura fiscale da dichiarare. Dove serve, l'obbligatorietà è verificata lato
+	// server da shared/naturaFiscale.js, non qui: il CHECK garantisce solo che, se c'è un
+	// valore, sia uno dei quattro ammessi.
+	naturaFiscale: varchar('natura_fiscale', { length: 32 }), // istituzionale | commerciale | promiscua | plusvalenza_patrimoniale
 	// FK auto-referenziale: collega la scrittura originale (da_incassare/da_pagare) alla
 	// scrittura di saldo generata da settleJournalEntry(). Il riferimento a `journalEntries`
 	// dentro il proprio initializer funziona perché la callback è valutata pigramente da drizzle-kit.
@@ -97,7 +102,12 @@ export const journalEntries = pgTable('journal_entries', {
 	// conti scavalcando le causali, quindi devono dire perché sono state fatte.
 	motivoManuale: text('motivo_manuale'),
 	createdDate: timestamp('created_date', { withTimezone: true }).notNull().defaultNow(),
-});
+}, (table) => ({
+	naturaFiscaleValida: check(
+		'journal_entries_natura_fiscale_valida',
+		sql`${table.naturaFiscale} IS NULL OR ${table.naturaFiscale} IN ('istituzionale', 'commerciale', 'promiscua', 'plusvalenza_patrimoniale')`
+	),
+}));
 
 export const journalLines = pgTable('journal_lines', {
 	id: uuid('id').defaultRandom().primaryKey(),
@@ -231,7 +241,7 @@ export const purchaseOrders = pgTable('purchase_orders', {
 	descrizione: text('descrizione').notNull(),
 	importoPrevisto: numeric('importo_previsto', { precision: 12, scale: 2 }).notNull(),
 	contoCostoId: uuid('conto_costo_id').references(() => chartOfAccounts.id),
-	naturaFiscale: varchar('natura_fiscale', { length: 32 }), // istituzionale | commerciale | promiscua
+	naturaFiscale: varchar('natura_fiscale', { length: 32 }), // istituzionale | commerciale | promiscua | plusvalenza_patrimoniale
 	stato: varchar('stato', { length: 16 }).notNull().default('ordinato'), // ordinato | consegnato | fatturato | annullato
 	dataConsegna: date('data_consegna'),
 	// Valorizzata alla consegna: è la scrittura che rileva il costo e il debito.
@@ -241,7 +251,12 @@ export const purchaseOrders = pgTable('purchase_orders', {
 	importoFatturato: numeric('importo_fatturato', { precision: 12, scale: 2 }),
 	note: text('note'),
 	createdDate: timestamp('created_date', { withTimezone: true }).notNull().defaultNow(),
-});
+}, (table) => ({
+	naturaFiscaleValida: check(
+		'purchase_orders_natura_fiscale_valida',
+		sql`${table.naturaFiscale} IS NULL OR ${table.naturaFiscale} IN ('istituzionale', 'commerciale', 'promiscua', 'plusvalenza_patrimoniale')`
+	),
+}));
 
 export const fixedAssets = pgTable('fixed_assets', {
 	id: uuid('id').defaultRandom().primaryKey(),

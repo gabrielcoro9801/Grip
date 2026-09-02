@@ -27,6 +27,10 @@ const ENTITY_MODULES = {
 	Bank: 'finance',
 	Payslip: 'personale',
 	PayrollRun: 'personale',
+	// Il registro: scriverci senza il permesso "finance" era possibile fino ad ora solo
+	// perché mancavano da questa mappa — non perché fosse una scelta.
+	JournalEntry: 'finance',
+	JournalLine: 'finance',
 };
 
 // Entità che solo un amministratore può modificare, a prescindere dalla matrice:

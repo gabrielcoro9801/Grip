@@ -38,6 +38,25 @@ export async function anniChiusi(organizationId) {
 	return new Set(righe.map((r) => r.anno));
 }
 
+/**
+ * Se una data di competenza cade in un esercizio già chiuso, il messaggio da mostrare;
+ * altrimenti null. Esiste come funzione condivisa — invece di ripetere la stessa query e
+ * lo stesso controllo in ogni rotta che scrive in journal_entries — perché prima di questa
+ * versione mancava del tutto in un percorso su quattro (l'ordine fornitore alla consegna),
+ * ed era il modo più facile per far sopravvivere una scrittura a un esercizio dichiarato
+ * già chiuso.
+ *
+ * L'anno si ricava dai primi quattro caratteri della data: un'assunzione di anno solare che
+ * regge finché l'esercizio coincide con l'anno civile. Non è generalizzata qui apposta.
+ */
+export async function erroreEsercizioChiuso(organizationId, dataCompetenza) {
+	if (!dataCompetenza) return null;
+	const anno = Number(String(dataCompetenza).slice(0, 4));
+	const chiusi = await anniChiusi(organizationId);
+	if (!chiusi.has(anno)) return null;
+	return `L'esercizio ${anno} è chiuso: non è possibile aggiungere o modificare registrazioni con quella data di competenza.`;
+}
+
 export default async function exerciseClosureRoutes(fastify) {
 	registerPgErrorHandler(fastify);
 
