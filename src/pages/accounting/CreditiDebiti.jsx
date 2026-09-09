@@ -14,6 +14,8 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { AlertTriangle, CheckCircle2, Clock } from "lucide-react";
 import moment from "moment";
 import { useToast } from "@/components/ui/use-toast";
+import { LoadingState } from "@/components/shared/Spinner";
+import { formatData, formatEuro } from "@/lib/format";
 
 export default function CreditiDebiti() {
   const { organization, loading: orgLoading } = useOrganization();
@@ -166,9 +168,9 @@ export default function CreditiDebiti() {
       <tr key={`${item.type}-${item.id}`} className="border-b border-border/50 hover:bg-muted/30">
         <td className="py-3 px-4">{item.descrizione}</td>
         <td className="py-3 px-4 text-muted-foreground text-sm">{item.controparte || "—"}</td>
-        <td className="py-3 px-4 text-right font-medium">€{Number(item.importo).toLocaleString("it-IT", { minimumFractionDigits: 2 })}</td>
+        <td className="py-3 px-4 text-right font-medium">{formatEuro(Number(item.importo))}</td>
         <td className="py-3 px-4 text-muted-foreground whitespace-nowrap">
-          {item.data_scadenza ? moment(item.data_scadenza).format("DD/MM/YYYY") : "—"}
+          {item.data_scadenza ? formatData(item.data_scadenza) : "—"}
         </td>
         <td className="py-3 px-4">
           {isOverdue ? (
@@ -188,7 +190,7 @@ export default function CreditiDebiti() {
     );
   };
 
-  if (orgLoading || loading) return <div className="flex items-center justify-center h-full"><div className="w-8 h-8 border-4 border-muted border-t-primary rounded-full animate-spin" /></div>;
+  if (orgLoading || loading) return <LoadingState minHeight="h-full" />;
 
   return (
     <div className="space-y-6">
@@ -251,7 +253,7 @@ export default function CreditiDebiti() {
             <div className="space-y-3">
               <div className="p-3 rounded-lg bg-muted/40 text-sm space-y-1">
                 <div className="font-medium">{payTarget.descrizione}</div>
-                <div className="flex justify-between"><span className="text-muted-foreground">Importo</span><span className="font-medium">€{Number(payTarget.importo).toFixed(2)}</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">Importo</span><span className="font-medium">{formatEuro(Number(payTarget.importo))}</span></div>
               </div>
               <div>
                 <Label>Metodo pagamento</Label>

@@ -4,11 +4,11 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Info, Users, Store, Split } from "lucide-react";
+import { formatEuro, formatNumero } from "@/lib/format";
 
-const fmt = (n) => n.toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 // Il segno va prima del simbolo di valuta: "−€100,00", non "€-100,00".
-const euro = (n) => `${n < 0 ? "−" : ""}€${fmt(Math.abs(n))}`;
+const euro = (n) => `${n < 0 ? "−" : ""}${formatEuro(Math.abs(n))}`;
 
 /**
  * Separa la gestione istituzionale (le quote dei soci e i costi che le servono) da quella
@@ -126,11 +126,11 @@ export default function GestioneIstituzionaleReport({ entries, lines, accounts }
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Proventi</span>
-                    <span className="font-medium text-emerald-600">€{fmt(proventi[col.chiave])}</span>
+                    <span className="font-medium text-emerald-600">{formatEuro(proventi[col.chiave])}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Costi diretti</span>
-                    <span className="font-medium text-red-500">−€{fmt(costi[col.chiave])}</span>
+                    <span className="font-medium text-red-500">−{formatEuro(costi[col.chiave])}</span>
                   </div>
                   <div className="flex justify-between pt-2 border-t border-border">
                     <span className="font-medium">Saldo</span>
@@ -153,7 +153,7 @@ export default function GestioneIstituzionaleReport({ entries, lines, accounts }
               <div className="flex-1">
                 <div className="flex items-center justify-between gap-4">
                   <p className="font-heading font-semibold">Costi promiscui da ripartire</p>
-                  <span className="font-bold text-amber-700">€{fmt(costi.promiscua)}</span>
+                  <span className="font-bold text-amber-700">{formatEuro(costi.promiscua)}</span>
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">
                   Costi che servono entrambe le attività (affitto, utenze e simili). Non sono
@@ -172,7 +172,7 @@ export default function GestioneIstituzionaleReport({ entries, lines, accounts }
           <CardContent className="p-5">
             <p className="font-medium text-sm">Movimenti senza natura indicata</p>
             <p className="text-xs text-muted-foreground mt-1">
-              €{fmt(proventi.non_indicata)} di proventi e €{fmt(costi.non_indicata)} di costi non
+              {formatEuro(proventi.non_indicata)} di proventi e {formatEuro(costi.non_indicata)} di costi non
               risultano attribuiti né alla gestione istituzionale né a quella commerciale, quindi
               non compaiono nei totali qui sopra. Sono registrazioni inserite prima che la
               distinzione fosse tracciata, o registrazioni manuali: vanno riviste perché il

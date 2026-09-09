@@ -6,8 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Wallet, Landmark, Info, Download } from "lucide-react";
 import moment from "moment";
+import { formatData, formatEuro, formatNumero, toCsvNumber } from "@/lib/format";
 
-const fmt = (n) => Number(n || 0).toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 /**
  * Estratto conto di cassa e banca: mostra il saldo a una data e come ci si è arrivati.
@@ -89,7 +89,7 @@ export default function CassaBancaReport({ entries, lines, accounts }) {
   const esportaCsv = () => {
     const intestazione = "Data,Descrizione,Entrate,Uscite,Saldo\n";
     const corpo = dati.righe
-      .map((r) => `${r.data},"${(r.descrizione || "").replace(/"/g, '""')}",${r.entrata.toFixed(2)},${r.uscita.toFixed(2)},${r.saldo.toFixed(2)}`)
+      .map((r) => `${r.data},"${(r.descrizione || "").replace(/"/g, '""')}",${toCsvNumber(r.entrata)},${toCsvNumber(r.uscita)},${toCsvNumber(r.saldo)}`)
       .join("\n");
     const conto = contiLiquidi.find((c) => c.id === contoSelezionato);
     const blob = new Blob([intestazione + corpo], { type: "text/csv;charset=utf-8;" });
@@ -119,8 +119,8 @@ export default function CassaBancaReport({ entries, lines, accounts }) {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{conto.nome}</p>
-                  <p className={`text-2xl font-bold ${saldo >= 0 ? "" : "text-red-500"}`}>€{fmt(saldo)}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">al {moment(dateTo).format("DD/MM/YYYY")}</p>
+                  <p className={`text-2xl font-bold ${saldo >= 0 ? "" : "text-red-500"}`}>{formatEuro(saldo)}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">al {formatData(dateTo)}</p>
                 </div>
                 <div className="bg-muted p-2 rounded-lg">
                   {conto.ruolo_sistema === "cassa" ? <Wallet className="w-5 h-5 text-muted-foreground" /> : <Landmark className="w-5 h-5 text-muted-foreground" />}
@@ -170,27 +170,27 @@ export default function CassaBancaReport({ entries, lines, accounts }) {
           </thead>
           <tbody>
             <tr className="border-b border-border/50 bg-muted/10">
-              <td className="py-2.5 px-4 text-muted-foreground whitespace-nowrap">{moment(dateFrom).format("DD/MM/YYYY")}</td>
+              <td className="py-2.5 px-4 text-muted-foreground whitespace-nowrap">{formatData(dateFrom)}</td>
               <td className="py-2.5 px-4 text-muted-foreground italic" colSpan={3}>Saldo iniziale</td>
-              <td className="py-2.5 px-4 text-right font-medium">€{fmt(dati.saldoIniziale)}</td>
+              <td className="py-2.5 px-4 text-right font-medium">{formatEuro(dati.saldoIniziale)}</td>
             </tr>
             {dati.righe.length === 0 ? (
               <tr><td colSpan={5} className="text-center py-8 text-muted-foreground">Nessun movimento di liquidità nel periodo</td></tr>
             ) : dati.righe.map((r) => (
               <tr key={r.id} className="border-b border-border/50 hover:bg-muted/20">
-                <td className="py-2.5 px-4 text-muted-foreground whitespace-nowrap">{moment(r.data).format("DD/MM/YYYY")}</td>
+                <td className="py-2.5 px-4 text-muted-foreground whitespace-nowrap">{formatData(r.data)}</td>
                 <td className="py-2.5 px-4">{r.descrizione}</td>
-                <td className="py-2.5 px-4 text-right text-emerald-600">{r.entrata ? `€${fmt(r.entrata)}` : ""}</td>
-                <td className="py-2.5 px-4 text-right text-red-500">{r.uscita ? `€${fmt(r.uscita)}` : ""}</td>
-                <td className={`py-2.5 px-4 text-right font-medium ${r.saldo < 0 ? "text-red-500" : ""}`}>€{fmt(r.saldo)}</td>
+                <td className="py-2.5 px-4 text-right text-emerald-600">{r.entrata ? `${formatEuro(r.entrata)}` : ""}</td>
+                <td className="py-2.5 px-4 text-right text-red-500">{r.uscita ? `${formatEuro(r.uscita)}` : ""}</td>
+                <td className={`py-2.5 px-4 text-right font-medium ${r.saldo < 0 ? "text-red-500" : ""}`}>{formatEuro(r.saldo)}</td>
               </tr>
             ))}
             <tr className="bg-muted/30 font-medium">
-              <td className="py-2.5 px-4 whitespace-nowrap">{moment(dateTo).format("DD/MM/YYYY")}</td>
+              <td className="py-2.5 px-4 whitespace-nowrap">{formatData(dateTo)}</td>
               <td className="py-2.5 px-4">Saldo finale</td>
-              <td className="py-2.5 px-4 text-right text-emerald-600">€{fmt(dati.totaleEntrate)}</td>
-              <td className="py-2.5 px-4 text-right text-red-500">€{fmt(dati.totaleUscite)}</td>
-              <td className={`py-2.5 px-4 text-right font-bold ${dati.saldoFinale < 0 ? "text-red-500" : ""}`}>€{fmt(dati.saldoFinale)}</td>
+              <td className="py-2.5 px-4 text-right text-emerald-600">{formatEuro(dati.totaleEntrate)}</td>
+              <td className="py-2.5 px-4 text-right text-red-500">{formatEuro(dati.totaleUscite)}</td>
+              <td className={`py-2.5 px-4 text-right font-bold ${dati.saldoFinale < 0 ? "text-red-500" : ""}`}>{formatEuro(dati.saldoFinale)}</td>
             </tr>
           </tbody>
         </table>

@@ -15,9 +15,10 @@ import { Plus, Landmark, CheckCircle2, Clock, ChevronDown, ChevronRight, Table2 
 import moment from "moment";
 import { useToast } from "@/components/ui/use-toast";
 import { calcolaPianoAmmortamento, totaleInteressi, PERIODICITA } from "../../../shared/ammortamento.js";
+import { LoadingState } from "@/components/shared/Spinner";
+import { formatData, formatEuro, formatNumero } from "@/lib/format";
 
 const oggi = () => new Date().toISOString().split("T")[0];
-const fmt = (n) => Number(n || 0).toLocaleString("it-IT", { minimumFractionDigits: 2 });
 
 export default function Finanziamenti() {
   const { organization, loading: orgLoading } = useOrganization();
@@ -157,7 +158,7 @@ export default function Finanziamenti() {
     setSaving(false);
   };
 
-  if (orgLoading || loading) return <div className="flex items-center justify-center h-full"><div className="w-8 h-8 border-4 border-muted border-t-primary rounded-full animate-spin" /></div>;
+  if (orgLoading || loading) return <LoadingState minHeight="h-full" />;
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-5xl mx-auto space-y-6">
@@ -187,7 +188,7 @@ export default function Finanziamenti() {
                     <div>
                       <h3 className="font-medium">{nomeEnte(loan)}</h3>
                       <p className="text-xs text-muted-foreground">
-                        Capitale: €{fmt(loan.capitale_erogato)} ·
+                        Capitale: {formatEuro(loan.capitale_erogato)} ·
                         {loan.tasso_interesse ? ` ${loan.tasso_interesse}% ·` : ""}
                         {" "}{PERIODICITA[loan.periodicita]?.label || "Mensile"} ·
                         Rate: {pagate.length}/{loan.numero_rate_totali}
@@ -236,10 +237,10 @@ export default function Finanziamenti() {
                             {loanInsts.map(inst => (
                               <tr key={inst.id} className="border-b border-border/50">
                                 <td className="py-2 px-3 font-medium">{inst.numero_rata}</td>
-                                <td className="py-2 px-3 text-muted-foreground">{moment(inst.data_scadenza).format("DD/MM/YYYY")}</td>
-                                <td className="py-2 px-3 text-right">€{Number(inst.quota_capitale).toFixed(2)}</td>
-                                <td className="py-2 px-3 text-right">€{Number(inst.quota_interessi).toFixed(2)}</td>
-                                <td className="py-2 px-3 text-right font-medium">€{(Number(inst.quota_capitale) + Number(inst.quota_interessi)).toFixed(2)}</td>
+                                <td className="py-2 px-3 text-muted-foreground">{formatData(inst.data_scadenza)}</td>
+                                <td className="py-2 px-3 text-right">{formatEuro(Number(inst.quota_capitale))}</td>
+                                <td className="py-2 px-3 text-right">{formatEuro(Number(inst.quota_interessi))}</td>
+                                <td className="py-2 px-3 text-right font-medium">{formatEuro((Number(inst.quota_capitale) + Number(inst.quota_interessi)))}</td>
                                 <td className="py-2 px-3">
                                   {inst.stato_pagamento === "pagata"
                                     ? <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 text-[10px]"><CheckCircle2 className="w-2.5 h-2.5 mr-0.5" />Pagata</Badge>
@@ -315,9 +316,9 @@ export default function Finanziamenti() {
               if (anteprima.length === 0) return null;
               return (
                 <div className="p-3 rounded-lg bg-muted/40 text-sm space-y-1">
-                  <div className="flex justify-between"><span className="text-muted-foreground">Rata costante</span><span className="font-medium">€{fmt(anteprima[0].rata)}</span></div>
-                  <div className="flex justify-between"><span className="text-muted-foreground">Interessi totali</span><span className="font-medium">€{fmt(totaleInteressi(anteprima))}</span></div>
-                  <div className="flex justify-between"><span className="text-muted-foreground">Ultima scadenza</span><span className="font-medium">{moment(anteprima[anteprima.length - 1].data_scadenza).format("DD/MM/YYYY")}</span></div>
+                  <div className="flex justify-between"><span className="text-muted-foreground">Rata costante</span><span className="font-medium">{formatEuro(anteprima[0].rata)}</span></div>
+                  <div className="flex justify-between"><span className="text-muted-foreground">Interessi totali</span><span className="font-medium">{formatEuro(totaleInteressi(anteprima))}</span></div>
+                  <div className="flex justify-between"><span className="text-muted-foreground">Ultima scadenza</span><span className="font-medium">{formatData(anteprima[anteprima.length - 1].data_scadenza)}</span></div>
                 </div>
               );
             })()}
@@ -359,15 +360,15 @@ export default function Finanziamenti() {
                 <div className="grid grid-cols-3 gap-3 text-sm">
                   <div className="p-3 rounded-lg bg-muted/40">
                     <p className="text-xs text-muted-foreground">Rata costante</p>
-                    <p className="font-bold">€{fmt(piano[0]?.rata)}</p>
+                    <p className="font-bold">{formatEuro(piano[0]?.rata)}</p>
                   </div>
                   <div className="p-3 rounded-lg bg-muted/40">
                     <p className="text-xs text-muted-foreground">Interessi totali</p>
-                    <p className="font-bold">€{fmt(totaleInteressi(piano))}</p>
+                    <p className="font-bold">{formatEuro(totaleInteressi(piano))}</p>
                   </div>
                   <div className="p-3 rounded-lg bg-muted/40">
                     <p className="text-xs text-muted-foreground">Totale da restituire</p>
-                    <p className="font-bold">€{fmt(Number(pianoAperto.capitale_erogato) + totaleInteressi(piano))}</p>
+                    <p className="font-bold">{formatEuro(Number(pianoAperto.capitale_erogato) + totaleInteressi(piano))}</p>
                   </div>
                 </div>
                 <p className="text-xs text-muted-foreground">
@@ -390,11 +391,11 @@ export default function Finanziamenti() {
                       {piano.map(r => (
                         <tr key={r.numero_rata} className={`border-b border-border/50 ${r.numero_rata <= generate ? "bg-emerald-50/50" : ""}`}>
                           <td className="py-1.5 px-3">{r.numero_rata}</td>
-                          <td className="py-1.5 px-3">{moment(r.data_scadenza).format("DD/MM/YYYY")}</td>
-                          <td className="py-1.5 px-3 text-right">€{fmt(r.quota_capitale)}</td>
-                          <td className="py-1.5 px-3 text-right">€{fmt(r.quota_interessi)}</td>
-                          <td className="py-1.5 px-3 text-right font-medium">€{fmt(r.rata)}</td>
-                          <td className="py-1.5 px-3 text-right text-muted-foreground">€{fmt(r.capitale_residuo)}</td>
+                          <td className="py-1.5 px-3">{formatData(r.data_scadenza)}</td>
+                          <td className="py-1.5 px-3 text-right">{formatEuro(r.quota_capitale)}</td>
+                          <td className="py-1.5 px-3 text-right">{formatEuro(r.quota_interessi)}</td>
+                          <td className="py-1.5 px-3 text-right font-medium">{formatEuro(r.rata)}</td>
+                          <td className="py-1.5 px-3 text-right text-muted-foreground">{formatEuro(r.capitale_residuo)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -436,7 +437,7 @@ export default function Finanziamenti() {
             {payTarget && (
               <div className="p-3 rounded-lg bg-muted/40 text-sm space-y-1">
                 <div className="flex justify-between"><span className="text-muted-foreground">Rata</span><span className="font-medium">{payTarget.installment.numero_rata}</span></div>
-                <div className="flex justify-between"><span className="text-muted-foreground">Totale</span><span className="font-medium">€{(Number(payTarget.installment.quota_capitale) + Number(payTarget.installment.quota_interessi)).toFixed(2)}</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">Totale</span><span className="font-medium">{formatEuro((Number(payTarget.installment.quota_capitale) + Number(payTarget.installment.quota_interessi)))}</span></div>
               </div>
             )}
             <div>

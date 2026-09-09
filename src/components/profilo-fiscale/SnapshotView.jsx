@@ -3,8 +3,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import moment from "moment";
 import { Building2, Award, FileText, Receipt } from "lucide-react";
+import { formatData } from "@/lib/format";
 
-const fmtDate = (val) => val ? moment(val).format("D MMM YYYY") : "—";
+const fmtDate = (val) => val ? formatData(val, "media") : "—";
 const fmtBool = (val) => val === true ? "Sì" : val === false ? "No" : "—";
 const fmt = (val) => val || "—";
 

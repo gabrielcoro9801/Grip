@@ -13,6 +13,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { DAYS, DAYS_IT, getDayOfWeekFromDate } from "@/lib/courseValidation";
 import { checkSessionConflict } from "@/lib/eventUtils";
 import { validateSessionWrite } from "@/lib/sessionValidation";
+import { formatData } from "@/lib/format";
 
 const FILTER_OPTIONS = [
   { value: "single", label: "Solo questa sessione" },
@@ -61,10 +62,10 @@ export default function ManageSessions({ data, reload, initialSessionId }) {
   const courseName = (id) => courses.find(c => c.id === id)?.name || "—";
   const eventLabel = (ev) => {
     const name = courseName(ev.course_id);
-    if (ev.recurrence_type === "single") return `${name} — ${moment(ev.start_date).format("DD/MM/YYYY")}`;
+    if (ev.recurrence_type === "single") return `${name} — ${formatData(ev.start_date)}`;
     if (ev.recurrence_type === "custom") return `${name} — date personalizzate`;
     const days = (ev.days_of_week || []).map(d => (DAYS_IT[d] || d).slice(0, 3)).join(", ");
-    return `${name} — ${days} dal ${moment(ev.start_date).format("DD/MM/YYYY")}`;
+    return `${name} — ${days} dal ${formatData(ev.start_date)}`;
   };
 
   // Sessioni attive ordinata per data
@@ -269,7 +270,7 @@ export default function ManageSessions({ data, reload, initialSessionId }) {
                     const course = courseByEvent.get(s.event_id);
                     return (
                       <SelectItem key={s.id} value={s.id}>
-                        {course?.name || "—"} — {moment(s.date).format("DD/MM/YYYY")} {s.start_time}–{s.end_time}
+                        {course?.name || "—"} — {formatData(s.date)} {s.start_time}–{s.end_time}
                       </SelectItem>
                     );
                   })}
@@ -296,7 +297,7 @@ export default function ManageSessions({ data, reload, initialSessionId }) {
                     <SelectTrigger><SelectValue placeholder="Seleziona data di partenza" /></SelectTrigger>
                     <SelectContent>
                       {activeSessions.filter(s => s.event_id === filterEventId).map(s => (
-                        <SelectItem key={s.id} value={s.date}>{moment(s.date).format("DD/MM/YYYY")}</SelectItem>
+                        <SelectItem key={s.id} value={s.date}>{formatData(s.date)}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>

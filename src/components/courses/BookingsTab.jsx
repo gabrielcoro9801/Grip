@@ -7,6 +7,7 @@ import { Trash2 } from "lucide-react";
 import moment from "moment";
 import { useToast } from "@/components/ui/use-toast";
 import { cancelBooking } from "@/lib/bookingUtils";
+import { formatData } from "@/lib/format";
 
 export default function BookingsTab({ data, reload }) {
   const { bookings, sessions, events, courses } = data;
@@ -66,7 +67,7 @@ export default function BookingsTab({ data, reload }) {
               const session = details?.session;
               return (
                 <tr key={b.id} className="border-b border-border/50 hover:bg-muted/30">
-                  <td className="py-3 px-4 text-muted-foreground">{session ? moment(session.date).format("ddd, D MMM") : "—"}</td>
+                  <td className="py-3 px-4 text-muted-foreground">{session ? formatData(session.date, "giorno") : "—"}</td>
                   <td className="py-3 px-4 font-medium">{details?.course?.name || "—"}</td>
                   <td className="py-3 px-4">{b.member_name}</td>
                   <td className="py-3 px-4">

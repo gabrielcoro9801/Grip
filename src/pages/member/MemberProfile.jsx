@@ -8,6 +8,8 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter
 } from "@/components/ui/dialog";
 import moment from "moment";
+import { LoadingState } from "@/components/shared/Spinner";
+import { formatData } from "@/lib/format";
 
 export default function MemberProfile() {
   const { memberUser, logout } = useMemberAuth();
@@ -24,7 +26,7 @@ export default function MemberProfile() {
   }, [memberUser?.member_id]);
 
   if (loading) {
-    return <div className="flex items-center justify-center p-8"><div className="w-8 h-8 border-4 border-muted border-t-primary rounded-full animate-spin" /></div>;
+    return <LoadingState minHeight="p-8" />;
   }
 
   const fields = [
@@ -32,7 +34,7 @@ export default function MemberProfile() {
     { icon: User, label: "Nome completo", value: member?.full_name },
     { icon: Mail, label: "Email", value: member?.email },
     { icon: Phone, label: "Telefono", value: member?.phone },
-    { icon: Calendar, label: "Data di nascita", value: member?.date_of_birth ? moment(member.date_of_birth).format("D MMM YYYY") : null },
+    { icon: Calendar, label: "Data di nascita", value: member?.date_of_birth ? formatData(member.date_of_birth, "media") : null },
     { icon: MapPin, label: "Indirizzo", value: member?.address },
     { icon: Heart, label: "Contatto di emergenza", value: member?.emergency_contact_name ? `${member.emergency_contact_name}${member.emergency_contact_phone ? " — " + member.emergency_contact_phone : ""}` : null },
   ];

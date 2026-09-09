@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Paperclip, Download, Trash2, Upload, AlertCircle } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import moment from "moment";
+import { formatData } from "@/lib/format";
 
 /**
  * Documenti allegati a una scrittura contabile.
@@ -85,7 +86,7 @@ export default function AllegatiScrittura({ entry, caricatoDa, onChange }) {
           </DialogHeader>
           <div className="space-y-4">
             <p className="text-xs text-muted-foreground">
-              {entry?.descrizione || entry?.causale} — {moment(entry?.data_competenza).format("DD/MM/YYYY")}
+              {entry?.descrizione || entry?.causale} — {formatData(entry?.data_competenza)}
             </p>
 
             {allegati.length === 0 ? (
@@ -99,7 +100,7 @@ export default function AllegatiScrittura({ entry, caricatoDa, onChange }) {
                       <p className="text-sm truncate">{a.descrizione || a.file_name}</p>
                       <p className="text-xs text-muted-foreground truncate">
                         {a.descrizione ? `${a.file_name} · ` : ""}
-                        {moment(a.created_date).format("DD/MM/YYYY")}
+                        {formatData(a.created_date)}
                         {a.caricato_da ? ` · ${a.caricato_da}` : ""}
                       </p>
                     </div>

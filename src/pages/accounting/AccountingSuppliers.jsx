@@ -12,6 +12,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Plus, Pencil, Receipt, AlertTriangle } from "lucide-react";
 import { TIPI_SOGGETTO, ritenutaDovuta, motivoEsenzione } from "../../../shared/ritenuta.js";
 import { useParametriFiscali } from "@/hooks/useParametriFiscali";
+import { LoadingState } from "@/components/shared/Spinner";
 
 const emptyForm = {
   ragione_sociale: "", piva_cf: "", iban: "", conto_costo_default_id: "", email: "", telefono: "",
@@ -83,7 +84,7 @@ export default function AccountingSuppliers() {
     return a ? `${a.codice} — ${a.nome}` : null;
   };
 
-  if (orgLoading || loading) return <div className="flex items-center justify-center h-full"><div className="w-8 h-8 border-4 border-muted border-t-primary rounded-full animate-spin" /></div>;
+  if (orgLoading || loading) return <LoadingState minHeight="h-full" />;
 
   return (
     <div className="space-y-6">

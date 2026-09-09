@@ -13,6 +13,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ArrowRightLeft, AlertTriangle } from "lucide-react";
 import moment from "moment";
 import { useToast } from "@/components/ui/use-toast";
+import { LoadingState } from "@/components/shared/Spinner";
+import { formatData, formatEuro } from "@/lib/format";
 
 const STATO_LABEL = { in_uso: "In uso", dismesso: "Dismesso", venduto: "Venduto" };
 const STATO_BADGE = {
@@ -112,12 +114,12 @@ export default function CespitiTab({ accounts }) {
         "fixed_asset",
         asset.nome,
         asset.id,
-        `Cessione per €${valoreVendita.toFixed(2)} (${differenza >= 0 ? "+" : ""}€${differenza.toFixed(2)})`
+        `Cessione per ${formatEuro(valoreVendita)} (${differenza >= 0 ? "+" : ""}${formatEuro(differenza)})`
       );
 
       toast({
         title: "Cessione registrata",
-        description: `${asset.nome} — ${differenza > 0 ? "Plusvalenza" : differenza < 0 ? "Minusvalenza" : "Pareggio"} €${Math.abs(differenza).toFixed(2)}`,
+        description: `${asset.nome} — ${differenza > 0 ? "Plusvalenza" : differenza < 0 ? "Minusvalenza" : "Pareggio"} ${formatEuro(Math.abs(differenza))}`,
       });
       setCessionTarget(null);
       loadData();
@@ -127,7 +129,7 @@ export default function CespitiTab({ accounts }) {
     setSaving(false);
   };
 
-  if (loading) return <div className="flex items-center justify-center h-full"><div className="w-8 h-8 border-4 border-muted border-t-primary rounded-full animate-spin" /></div>;
+  if (loading) return <LoadingState minHeight="h-full" />;
 
   const canEdit = ["admin", "reception"].includes(staffUser?.ruolo);
 
@@ -156,18 +158,18 @@ export default function CespitiTab({ accounts }) {
                 <tr key={a.id} className="border-b border-border/50 hover:bg-muted/30">
                   <td className="py-3 px-4 font-medium">{a.nome}</td>
                   <td className="py-3 px-4 text-muted-foreground">{accountName(a.conto_id)}</td>
-                  <td className="py-3 px-4 text-muted-foreground whitespace-nowrap">{a.data_acquisto ? moment(a.data_acquisto).format("DD/MM/YYYY") : "—"}</td>
-                  <td className="py-3 px-4 text-right font-medium">€{Number(a.valore_acquisto || 0).toLocaleString("it-IT", { minimumFractionDigits: 2 })}</td>
+                  <td className="py-3 px-4 text-muted-foreground whitespace-nowrap">{a.data_acquisto ? formatData(a.data_acquisto) : "—"}</td>
+                  <td className="py-3 px-4 text-right font-medium">{formatEuro(Number(a.valore_acquisto || 0))}</td>
                   <td className="py-3 px-4">
                     <Badge className={`${STATO_BADGE[a.stato] || STATO_BADGE.in_uso} text-xs`}>{STATO_LABEL[a.stato] || "In uso"}</Badge>
                   </td>
                   <td className="py-3 px-4 text-muted-foreground text-xs whitespace-nowrap">
                     {a.stato === "venduto" ? (
                       <div>
-                        <div>{a.data_vendita ? moment(a.data_vendita).format("DD/MM/YYYY") : "—"}</div>
+                        <div>{a.data_vendita ? formatData(a.data_vendita) : "—"}</div>
                         {diff !== null && (
                           <div className={diff >= 0 ? "text-emerald-600 font-medium" : "text-red-500 font-medium"}>
-                            {diff > 0 ? "+" : ""}€{diff.toLocaleString("it-IT", { minimumFractionDigits: 2 })}
+                            {diff > 0 ? "+" : ""}{formatEuro(diff)}
                           </div>
                         )}
                       </div>
@@ -204,7 +206,7 @@ export default function CespitiTab({ accounts }) {
               </div>
               <div className="p-3 rounded-lg bg-muted/40 text-sm space-y-1">
                 <div className="font-medium">{cessionTarget.nome}</div>
-                <div className="flex justify-between"><span className="text-muted-foreground">Costo storico</span><span className="font-medium">€{Number(cessionTarget.valore_acquisto).toFixed(2)}</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">Costo storico</span><span className="font-medium">{formatEuro(Number(cessionTarget.valore_acquisto))}</span></div>
               </div>
               <div><Label>Valore di vendita (€) *</Label><Input type="number" step="0.01" required value={cessionData.valore_vendita} onChange={e => setCessionData({ ...cessionData, valore_vendita: e.target.value })} placeholder="0,00" /></div>
               <div><Label>Data vendita *</Label><Input type="date" required value={cessionData.data_vendita} onChange={e => setCessionData({ ...cessionData, data_vendita: e.target.value })} /></div>

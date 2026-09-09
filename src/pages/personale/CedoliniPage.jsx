@@ -13,9 +13,10 @@ import AllegatiScrittura from "@/components/accounting/AllegatiScrittura";
 import { Plus, Check, AlertTriangle, Info, Pencil, Trash2, Lock } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import moment from "moment";
+import { LoadingState } from "@/components/shared/Spinner";
+import { formatEuro, formatNumero } from "@/lib/format";
 
 const MESI = moment.months();
-const fmt = (n) => Number(n || 0).toLocaleString("it-IT", { minimumFractionDigits: 2 });
 const num = (v) => Number(v) || 0;
 const TOLLERANZA = 0.02;
 
@@ -158,7 +159,7 @@ export default function CedoliniPage() {
     setSaving(false);
   };
 
-  if (loading) return <div className="flex items-center justify-center h-64"><div className="w-8 h-8 border-4 border-muted border-t-primary rounded-full animate-spin" /></div>;
+  if (loading) return <LoadingState minHeight="h-64" />;
 
   return (
     <div className="space-y-5">
@@ -198,22 +199,22 @@ export default function CedoliniPage() {
           <CardContent className="p-5 space-y-3">
             <div className="flex items-center justify-between">
               <p className="font-heading font-semibold">Costo del mese</p>
-              <p className="text-2xl font-bold">€{fmt(totali.costo)}</p>
+              <p className="text-2xl font-bold">{formatEuro(totali.costo)}</p>
             </div>
             {/* Il punto che rende leggibile il costo del personale: quanto esce, a chi, e
                 quanto non è nemmeno nel cedolino. */}
             <div className="grid gap-x-6 gap-y-1 sm:grid-cols-2 text-sm">
-              <div className="flex justify-between"><span className="text-muted-foreground">Retribuzioni lorde</span><span>€{fmt(totali.lordo)}</span></div>
-              <div className="flex justify-between"><span className="text-muted-foreground">Contributi a carico ente</span><span>€{fmt(totali.contributiAz)}</span></div>
-              <div className="flex justify-between"><span className="text-muted-foreground">Accantonamento TFR</span><span>€{fmt(totali.tfr)}</span></div>
-              <div className="flex justify-between font-medium"><span>Costo totale</span><span>€{fmt(totali.costo)}</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">Retribuzioni lorde</span><span>{formatEuro(totali.lordo)}</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">Contributi a carico ente</span><span>{formatEuro(totali.contributiAz)}</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">Accantonamento TFR</span><span>{formatEuro(totali.tfr)}</span></div>
+              <div className="flex justify-between font-medium"><span>Costo totale</span><span>{formatEuro(totali.costo)}</span></div>
             </div>
             <div className="pt-3 border-t border-border grid gap-x-6 gap-y-1 sm:grid-cols-2 text-sm">
               <p className="sm:col-span-2 text-xs text-muted-foreground uppercase tracking-wide">Di cui, del lordo, va a</p>
-              <div className="flex justify-between"><span className="text-muted-foreground">Dipendenti (netto in busta)</span><span>€{fmt(totali.netto)}</span></div>
-              <div className="flex justify-between"><span className="text-muted-foreground">Erario (IRPEF)</span><span>€{fmt(totali.irpef)}</span></div>
-              <div className="flex justify-between"><span className="text-muted-foreground">INPS (quota dipendente)</span><span>€{fmt(totali.contributiDip)}</span></div>
-              <div className="flex justify-between"><span className="text-muted-foreground">Terzi (cessione del quinto e simili)</span><span>€{fmt(totali.terzi)}</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">Dipendenti (netto in busta)</span><span>{formatEuro(totali.netto)}</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">Erario (IRPEF)</span><span>{formatEuro(totali.irpef)}</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">INPS (quota dipendente)</span><span>{formatEuro(totali.contributiDip)}</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">Terzi (cessione del quinto e simili)</span><span>{formatEuro(totali.terzi)}</span></div>
             </div>
           </CardContent>
         </Card>
@@ -244,19 +245,19 @@ export default function CedoliniPage() {
                   <div className="min-w-0">
                     <p className="font-medium">{d ? `${d.nome} ${d.cognome}` : "Dipendente rimosso"}</p>
                     <p className="text-xs text-muted-foreground">
-                      Lordo €{fmt(c.retribuzione_lorda)} · netto €{fmt(c.netto_dipendente)}
-                      {num(c.trattenute_terzi) > 0 && ` · trattenute a terzi €${fmt(c.trattenute_terzi)}`}
+                      Lordo {formatEuro(c.retribuzione_lorda)} · netto {formatEuro(c.netto_dipendente)}
+                      {num(c.trattenute_terzi) > 0 && ` · trattenute a terzi ${formatEuro(c.trattenute_terzi)}`}
                     </p>
                     {!quadra && (
                       <p className="text-xs text-amber-700 mt-0.5">
-                        Non quadra di €{fmt(Math.abs(scarto))}: le voci {scarto > 0 ? "superano" : "non raggiungono"} il lordo.
+                        Non quadra di {formatEuro(Math.abs(scarto))}: le voci {scarto > 0 ? "superano" : "non raggiungono"} il lordo.
                       </p>
                     )}
                   </div>
                   <div className="flex items-center gap-3">
                     <div className="text-right">
                       <p className="text-xs text-muted-foreground">costo per l'ente</p>
-                      <p className="font-bold">€{fmt(costoDi(c))}</p>
+                      <p className="font-bold">{formatEuro(costoDi(c))}</p>
                     </div>
                     {!registrato && (
                       <div className="flex gap-1">
@@ -349,8 +350,8 @@ export default function CedoliniPage() {
               {num(form.retribuzione_lorda) > 0 && (
                 <div className={`text-xs p-2 rounded ${Math.abs(scartoForm.scarto) <= TOLLERANZA ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-900"}`}>
                   {Math.abs(scartoForm.scarto) <= TOLLERANZA
-                    ? `Le voci sommano al lordo: €${fmt(scartoForm.somma)}.`
-                    : `Le voci sommano a €${fmt(scartoForm.somma)}, il lordo è €${fmt(form.retribuzione_lorda)}: mancano €${fmt(Math.abs(scartoForm.scarto))}.`}
+                    ? `Le voci sommano al lordo: ${formatEuro(scartoForm.somma)}.`
+                    : `Le voci sommano a ${formatEuro(scartoForm.somma)}, il lordo è ${formatEuro(form.retribuzione_lorda)}: mancano ${formatEuro(Math.abs(scartoForm.scarto))}.`}
                 </div>
               )}
             </div>
@@ -367,7 +368,7 @@ export default function CedoliniPage() {
               </p>
               {num(form.retribuzione_lorda) > 0 && (
                 <p className="text-sm font-medium">
-                  Costo per l'ente: €{fmt(num(form.retribuzione_lorda) + num(form.contributi_azienda) + num(form.accantonamento_tfr))}
+                  Costo per l'ente: {formatEuro(num(form.retribuzione_lorda) + num(form.contributi_azienda) + num(form.accantonamento_tfr))}
                 </p>
               )}
             </div>

@@ -9,6 +9,8 @@ import { Clock, CalendarDays, CalendarOff, Hourglass, Users, TrendingUp, AlertCi
 import moment from "moment";
 import { calcOreMese, calcFerieResidue } from "@/lib/presenzeUtils";
 import { puo } from "@/lib/permissions";
+import { LoadingState } from "@/components/shared/Spinner";
+import { formatData, formatMeseAnno } from "@/lib/format";
 
 export default function PersonalePortal() {
   const { staffUser } = useStaffAuth();
@@ -59,7 +61,7 @@ export default function PersonalePortal() {
     }
   }, [organization]);
 
-  if (loading) return <div className="flex items-center justify-center h-64"><div className="w-8 h-8 border-4 border-muted border-t-primary rounded-full animate-spin" /></div>;
+  if (loading) return <LoadingState minHeight="h-64" />;
 
   if (!gestisceTutti && !empId) {
     return (
@@ -74,7 +76,7 @@ export default function PersonalePortal() {
   const now = moment();
   const year = now.year();
   const month = now.month();
-  const monthLabel = now.format("MMMM YYYY");
+  const monthLabel = formatMeseAnno(now);
 
   if (gestisceTutti) {
     const todayStr = now.format("YYYY-MM-DD");
@@ -99,8 +101,8 @@ export default function PersonalePortal() {
                     <div>
                       <p className="font-medium text-sm">{r.dipendente_nome}</p>
                       <p className="text-xs text-muted-foreground">
-                        {r.tipo === "ferie" ? "Ferie" : "Permesso"} · {moment(r.data_inizio).format("DD/MM")}
-                        {r.data_fine && r.data_fine !== r.data_inizio ? ` → ${moment(r.data_fine).format("DD/MM")}` : ""}
+                        {r.tipo === "ferie" ? "Ferie" : "Permesso"} · {formatData(r.data_inizio, "giornoMese")}
+                        {r.data_fine && r.data_fine !== r.data_inizio ? ` → ${formatData(r.data_fine, "giornoMese")}` : ""}
                       </p>
                     </div>
                     <Link to="/personale/ferie"><Button size="sm" variant="outline">Gestisci</Button></Link>
@@ -153,7 +155,7 @@ export default function PersonalePortal() {
               <div className="space-y-2">
                 {prossimiTurni.map((t) => (
                   <div key={t.id} className="flex items-center justify-between text-sm">
-                    <span className="font-medium capitalize">{moment(t.data).format("ddd DD MMM")}</span>
+                    <span className="font-medium capitalize">{formatData(t.data, "giorno")}</span>
                     <span className="text-muted-foreground">{t.ora_inizio}–{t.ora_fine} {t.sala_nome ? `· ${t.sala_nome}` : ""}</span>
                   </div>
                 ))}
@@ -172,7 +174,7 @@ export default function PersonalePortal() {
                 {ultimeTimbrature.map((t) => (
                   <div key={t.id} className="flex items-center justify-between text-sm">
                     <span className="font-medium">{t.tipo === "entrata" ? "Entrata" : "Uscita"}</span>
-                    <span className="text-muted-foreground">{moment(t.data_ora_server).format("DD/MM HH:mm")}</span>
+                    <span className="text-muted-foreground">{formatData(t.data_ora_server, "giornoMese", { ora: true })}</span>
                   </div>
                 ))}
               </div>

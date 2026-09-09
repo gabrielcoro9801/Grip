@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { CreditCard, QrCode, FileText, Receipt, User, ChevronRight, Calendar, AlertCircle } from "lucide-react";
 import StatusBadge from "@/components/shared/StatusBadge";
 import moment from "moment";
+import { LoadingState } from "@/components/shared/Spinner";
+import { formatData } from "@/lib/format";
 
 export default function MemberDashboard() {
   const { memberUser } = useMemberAuth();
@@ -28,7 +30,7 @@ export default function MemberDashboard() {
   }, [memberUser?.member_id]);
 
   if (loading) {
-    return <div className="flex items-center justify-center p-8"><div className="w-8 h-8 border-4 border-muted border-t-primary rounded-full animate-spin" /></div>;
+    return <LoadingState minHeight="p-8" />;
   }
 
   const activeSub = subscriptions.find(s => s.status === "active") || subscriptions[0];
@@ -69,8 +71,8 @@ export default function MemberDashboard() {
                 <StatusBadge status={activeSub.status} />
               </div>
               <div className="grid grid-cols-2 gap-1 text-xs text-muted-foreground">
-                <div className="flex items-center gap-1"><Calendar className="w-3 h-3" /> Inizio: {moment(activeSub.start_date).format("D MMM YYYY")}</div>
-                <div className="flex items-center gap-1"><Calendar className="w-3 h-3" /> Fine: {moment(activeSub.end_date).format("D MMM YYYY")}</div>
+                <div className="flex items-center gap-1"><Calendar className="w-3 h-3" /> Inizio: {formatData(activeSub.start_date, "media")}</div>
+                <div className="flex items-center gap-1"><Calendar className="w-3 h-3" /> Fine: {formatData(activeSub.end_date, "media")}</div>
               </div>
               {expiringSoon && (
                 <div className="flex items-center gap-2 p-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-700 text-xs">

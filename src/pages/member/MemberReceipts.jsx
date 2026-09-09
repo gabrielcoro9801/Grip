@@ -5,6 +5,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Receipt as ReceiptIcon, Download } from "lucide-react";
 import StatusBadge from "@/components/shared/StatusBadge";
 import moment from "moment";
+import { LoadingState } from "@/components/shared/Spinner";
+import { formatData, formatEuro } from "@/lib/format";
 
 export default function MemberReceipts() {
   const { memberUser } = useMemberAuth();
@@ -20,7 +22,7 @@ export default function MemberReceipts() {
   }, [memberUser?.member_id]);
 
   if (loading) {
-    return <div className="flex items-center justify-center p-8"><div className="w-8 h-8 border-4 border-muted border-t-primary rounded-full animate-spin" /></div>;
+    return <LoadingState minHeight="p-8" />;
   }
 
   return (
@@ -52,11 +54,11 @@ export default function MemberReceipts() {
                         {rec.plan_name || rec.tipo_documento || "Ricevuta"}
                       </h3>
                       <p className="text-xs text-muted-foreground">
-                        {moment(rec.data_emissione || rec.date).format("D MMM YYYY")}
+                        {formatData(rec.data_emissione || rec.date, "media")}
                         {rec.numero_progressivo && ` · N° ${rec.numero_progressivo}`}
                       </p>
                       <p className="text-sm font-semibold mt-1">
-                        € {(rec.importo_lordo || rec.amount || 0).toFixed(2)}
+                        {formatEuro((rec.importo_lordo || rec.amount || 0))}
                       </p>
                     </div>
                   </div>

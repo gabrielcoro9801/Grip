@@ -1,6 +1,7 @@
 import { api } from "@/api/client";
 import jsPDF from "jspdf";
 import moment from "moment";
+import { formatData } from "@/lib/format";
 
 /**
  * Fatture verso clienti terzi.
@@ -69,7 +70,7 @@ export function buildInvoicePdfBlob(invoice, organization, template) {
   doc.setFont("helvetica", "normal");
   doc.setFontSize(9);
   doc.setTextColor(90);
-  doc.text(`Data ${moment(invoice.data_emissione).format("DD/MM/YYYY")}`, pageW - margin, y, { align: "right" });
+  doc.text(`Data ${formatData(invoice.data_emissione)}`, pageW - margin, y, { align: "right" });
   y += 10;
 
   // Intestatario

@@ -16,9 +16,9 @@ import { stimaIres } from "../../../shared/ires.js";
 import { useParametriFiscali } from "@/hooks/useParametriFiscali";
 import moment from "moment";
 import { puo } from "@/lib/permissions";
-
-const fmt = (n) => Number(n || 0).toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const euro = (n) => `${n < 0 ? "−" : ""}€${fmt(Math.abs(n))}`;
+import { LoadingState } from "@/components/shared/Spinner";
+import { formatData, formatEuro, toCsvNumber } from "@/lib/format";
+const euro = (n) => `${n < 0 ? "−" : ""}${formatEuro(Math.abs(n))}`;
 
 function scaricaCsv(nomeFile, righe) {
   const csv = righe.map((r) => r.map((c) => `"${String(c ?? "").replace(/"/g, '""')}"`).join(",")).join("\n");
@@ -140,18 +140,18 @@ export default function FineEsercizio() {
       ["Esercizio", anno],
       [],
       ["Voce", "Importo"],
-      ["Proventi commerciali", i.proventiCommerciali.toFixed(2)],
-      ["Proventi istituzionali", dati.proventiIstituzionali.toFixed(2)],
-      ["Proventi da ripartire (natura promiscua o non indicata)", dati.proventiDaRipartire.toFixed(2)],
-      ["Plusvalenze patrimoniali", i.plusvalenze.toFixed(2)],
-      ["Totale oneri (non rilevanti in regime 398/1991)", dati.totaleCosti.toFixed(2)],
-      ["IVA a debito registrata", dati.ivaADebito.toFixed(2)],
+      ["Proventi commerciali", toCsvNumber(i.proventiCommerciali)],
+      ["Proventi istituzionali", toCsvNumber(dati.proventiIstituzionali)],
+      ["Proventi da ripartire (natura promiscua o non indicata)", toCsvNumber(dati.proventiDaRipartire)],
+      ["Plusvalenze patrimoniali", toCsvNumber(i.plusvalenze)],
+      ["Totale oneri (non rilevanti in regime 398/1991)", toCsvNumber(dati.totaleCosti)],
+      ["IVA a debito registrata", toCsvNumber(dati.ivaADebito)],
       [],
       ["Stima IRES", ""],
-      [`Reddito da proventi commerciali (${i.coefficiente}%)`, i.redditoDaProventi.toFixed(2)],
-      ["Plusvalenze (per intero)", i.plusvalenze.toFixed(2)],
-      ["Imponibile stimato", i.imponibile.toFixed(2)],
-      [`IRES stimata (${i.aliquota}%)`, i.imposta.toFixed(2)],
+      [`Reddito da proventi commerciali (${i.coefficiente}%)`, toCsvNumber(i.redditoDaProventi)],
+      ["Plusvalenze (per intero)", toCsvNumber(i.plusvalenze)],
+      ["Imponibile stimato", toCsvNumber(i.imponibile)],
+      [`IRES stimata (${i.aliquota}%)`, toCsvNumber(i.imposta)],
       [],
       ["Stima indicativa: non considera variazioni fiscali, perdite pregresse o agevolazioni. Da verificare con il commercialista."],
     ]);
@@ -162,7 +162,7 @@ export default function FineEsercizio() {
       ["Codice", "Conto", "Tipo", "Dare", "Avere", "Saldo"],
       ...dati.perConto.map((v) => [
         v.conto.codice, v.conto.nome, v.conto.tipo_conto || "",
-        v.dare.toFixed(2), v.avere.toFixed(2), (v.dare - v.avere).toFixed(2),
+        toCsvNumber(v.dare), toCsvNumber(v.avere), toCsvNumber((v.dare - v.avere)),
       ]),
     ]);
   };
@@ -177,7 +177,7 @@ export default function FineEsercizio() {
       righe.push([
         e.numero_protocollo, e.data_competenza, e.data_cassa || "", e.descrizione || "",
         e.natura_fiscale || "", c ? `${c.codice} ${c.nome}` : "",
-        Number(l.dare || 0).toFixed(2), Number(l.avere || 0).toFixed(2),
+        toCsvNumber(Number(l.dare || 0)), toCsvNumber(Number(l.avere || 0)),
       ]);
     }
     scaricaCsv(`registro-movimenti-${anno}.csv`, righe);
@@ -198,7 +198,7 @@ export default function FineEsercizio() {
   };
 
   if (orgLoading || loading) {
-    return <div className="flex items-center justify-center h-full"><div className="w-8 h-8 border-4 border-muted border-t-primary rounded-full animate-spin" /></div>;
+    return <LoadingState minHeight="h-full" />;
   }
 
   const i = dati.ires;
@@ -214,7 +214,7 @@ export default function FineEsercizio() {
         </div>
         {chiusuraAnno ? (
           <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200">
-            <Lock className="w-3 h-3 mr-1" /> Chiuso il {moment(chiusuraAnno.chiuso_il).format("DD/MM/YYYY")}
+            <Lock className="w-3 h-3 mr-1" /> Chiuso il {formatData(chiusuraAnno.chiuso_il)}
           </Badge>
         ) : (
           <Badge variant="outline">Aperto · {dati.numeroScritture} registrazioni</Badge>
@@ -336,7 +336,7 @@ export default function FineEsercizio() {
               <div className="flex items-start gap-2 p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-900 text-sm">
                 <CheckCircle2 className="w-4 h-4 mt-0.5 shrink-0" />
                 <div>
-                  <p className="font-medium">Esercizio {anno} chiuso il {moment(chiusuraAnno.chiuso_il).format("DD/MM/YYYY")}</p>
+                  <p className="font-medium">Esercizio {anno} chiuso il {formatData(chiusuraAnno.chiuso_il)}</p>
                   <p className="text-xs mt-0.5">
                     Risultato girato a patrimonio netto: {euro(Number(chiusuraAnno.risultato))}.
                     Le registrazioni con competenza {anno} non sono più modificabili.

@@ -7,6 +7,8 @@ import { Label } from "@/components/ui/label";
 import { useStaffAuth } from "@/lib/StaffAuthContext";
 import AllegatiScrittura from "@/components/accounting/AllegatiScrittura";
 import moment from "moment";
+import { LoadingState } from "@/components/shared/Spinner";
+import { formatData, formatEuro } from "@/lib/format";
 
 export default function PrimaNota() {
   const { organization, loading: orgLoading } = useOrganization();
@@ -54,7 +56,7 @@ export default function PrimaNota() {
       .filter(r => filterConto === "tutti" || r.lines.some(l => l.conto_id === filterConto));
   }, [entries, lines, dateFrom, dateTo, filterConto]);
 
-  if (orgLoading || loading) return <div className="flex items-center justify-center h-full"><div className="w-8 h-8 border-4 border-muted border-t-primary rounded-full animate-spin" /></div>;
+  if (orgLoading || loading) return <LoadingState minHeight="h-full" />;
 
   return (
     <div className="space-y-6">
@@ -99,15 +101,15 @@ export default function PrimaNota() {
               const totAvere = entryLines.reduce((s, l) => s + (l.avere || 0), 0);
               return (
                 <tr key={entry.id} className="border-b border-border/50 hover:bg-muted/30 align-top">
-                  <td className="py-3 px-4 text-muted-foreground whitespace-nowrap">{moment(entry.data_competenza).format("DD/MM/YYYY")}</td>
+                  <td className="py-3 px-4 text-muted-foreground whitespace-nowrap">{formatData(entry.data_competenza)}</td>
                   <td className="py-3 px-4">{entry.descrizione || entry.causale || "—"}</td>
                   <td className="py-3 px-4">
                     {entryLines.map(l => (
                       <div key={l.id} className="text-xs text-muted-foreground">{accountName(l.conto_id)}</div>
                     ))}
                   </td>
-                  <td className="py-3 px-4 text-right font-medium">€{totDare.toFixed(2)}</td>
-                  <td className="py-3 px-4 text-right font-medium">€{totAvere.toFixed(2)}</td>
+                  <td className="py-3 px-4 text-right font-medium">{formatEuro(totDare)}</td>
+                  <td className="py-3 px-4 text-right font-medium">{formatEuro(totAvere)}</td>
                   <td className="py-3 px-4 text-right">
                     <AllegatiScrittura entry={entry} caricatoDa={staffUser?.nome} />
                   </td>

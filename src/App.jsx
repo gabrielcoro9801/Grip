@@ -1,7 +1,7 @@
 import { Toaster } from "@/components/ui/toaster"
 import { QueryClientProvider } from '@tanstack/react-query'
 import { queryClientInstance } from '@/lib/query-client'
-import { BrowserRouter as Router, Route, Routes, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Route, Routes, Navigate, useParams } from 'react-router-dom';
 import PageNotFound from './lib/PageNotFound';
 import ScrollToTop from './components/ScrollToTop';
 import AppLayout from '@/components/layout/AppLayout';
@@ -54,6 +54,13 @@ import StaffLogin from '@/pages/StaffLogin';
 import { StaffAuthProvider } from '@/lib/StaffAuthContext';
 import PermissionGate from '@/components/PermissionGate';
 
+// Il vecchio /crm/members/:id porta alla stessa scheda del socio: il redirect
+// deve portarsi dietro l'id, altrimenti un link salvato finisce sull'elenco.
+const RedirectSocio = () => {
+  const { id } = useParams();
+  return <Navigate to={`/crm/soci/${id}`} replace />;
+};
+
 // Due aree con accessi indipendenti: il gestionale (AppLayout mostra StaffLogin
 // finché non c'è una sessione staff) e il portale soci (MemberLayout mostra
 // MemberLogin allo stesso modo).
@@ -73,20 +80,31 @@ const AppRoutes = () => {
 
       <Route element={<AppLayout />}>
           <Route path="/" element={<Dashboard />} />
+          {/* Gli slug del gestionale sono in italiano come le voci che li
+              nominano: prima "Ricevute" portava a /crm/receipts nello staff e
+              a /member-portal/ricevute nel portale soci. I vecchi percorsi
+              restano come redirect, perché possono essere nei preferiti. */}
           <Route path="/crm" element={<PermissionGate module="crm_members"><CrmLayout /></PermissionGate>}>
             <Route index element={<MembersList />} />
-            <Route path="members/:id" element={<MemberDetail />} />
-            <Route path="plans" element={<PlansCatalog />} />
-            <Route path="subscriptions" element={<SubscriptionsList />} />
-            <Route path="receipts" element={<ReceiptsList />} />
-            <Route path="exercise-plans" element={<ExercisePlans />} />
+            <Route path="soci/:id" element={<MemberDetail />} />
+            <Route path="abbonamenti" element={<PlansCatalog />} />
+            <Route path="iscrizioni" element={<SubscriptionsList />} />
+            <Route path="ricevute" element={<ReceiptsList />} />
+            <Route path="piani-allenamento" element={<ExercisePlans />} />
+            <Route path="members/:id" element={<RedirectSocio />} />
+            <Route path="plans" element={<Navigate to="/crm/abbonamenti" replace />} />
+            <Route path="subscriptions" element={<Navigate to="/crm/iscrizioni" replace />} />
+            <Route path="receipts" element={<Navigate to="/crm/ricevute" replace />} />
+            <Route path="exercise-plans" element={<Navigate to="/crm/piani-allenamento" replace />} />
           </Route>
           <Route path="/movimenti" element={<PermissionGate module="movimenti"><Movimenti /></PermissionGate>} />
           <Route path="/acquisti" element={<Navigate to="/movimenti" replace />} />
-          <Route path="/vendite" element={<PermissionGate module="vendite"><ClientsList /></PermissionGate>} />
+          <Route path="/clienti" element={<PermissionGate module="vendite"><ClientsList /></PermissionGate>} />
+          <Route path="/vendite" element={<Navigate to="/clienti" replace />} />
           <Route path="/crediti-debiti" element={<Navigate to="/movimenti" replace />} />
           <Route path="/finance" element={<Navigate to="/movimenti" replace />} />
-          <Route path="/calendar" element={<PermissionGate module="calendar"><CalendarPage /></PermissionGate>} />
+          <Route path="/calendario" element={<PermissionGate module="calendar"><CalendarPage /></PermissionGate>} />
+          <Route path="/calendar" element={<Navigate to="/calendario" replace />} />
           <Route path="/personale" element={<PermissionGate module="personale"><PersonaleLayout /></PermissionGate>}>
             <Route index element={<PersonalePortal />} />
             <Route path="timbratura" element={<TimbraturaPage />} />
@@ -118,8 +136,10 @@ const AppRoutes = () => {
             <Route path="fine-esercizio" element={<FineEsercizio />} />
           </Route>
           <Route path="/admin" element={<PermissionGate module="admin_users"><Admin /></PermissionGate>} />
-          <Route path="/receipt-template" element={<PermissionGate module="receipt_template"><ReceiptTemplatePage /></PermissionGate>} />
-          <Route path="/audit-log" element={<PermissionGate module="audit_log"><AuditLogPage /></PermissionGate>} />
+          <Route path="/template-ricevuta" element={<PermissionGate module="receipt_template"><ReceiptTemplatePage /></PermissionGate>} />
+          <Route path="/receipt-template" element={<Navigate to="/template-ricevuta" replace />} />
+          <Route path="/log-audit" element={<PermissionGate module="audit_log"><AuditLogPage /></PermissionGate>} />
+          <Route path="/audit-log" element={<Navigate to="/log-audit" replace />} />
           <Route path="/profilo-fiscale" element={<PermissionGate module="fiscal_profile"><ProfiloFiscale /></PermissionGate>} />
       </Route>
 

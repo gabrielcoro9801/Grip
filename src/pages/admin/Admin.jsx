@@ -15,6 +15,8 @@ import PageHeader from "@/components/shared/PageHeader";
 import { Plus, Pencil, KeyRound, UserPlus, Ban, CheckCircle2 } from "lucide-react";
 import moment from "moment";
 import { useToast } from "@/components/ui/use-toast";
+import { LoadingState } from "@/components/shared/Spinner";
+import { formatDataOra } from "@/lib/format";
 
 const TIPO_LABEL = { dipendente: "Dipendente", collaboratore_sportivo: "Coll. sportivo" };
 
@@ -127,7 +129,7 @@ export default function Admin() {
     loadData();
   };
 
-  if (loading) return <div className="flex items-center justify-center h-full"><div className="w-8 h-8 border-4 border-muted border-t-primary rounded-full animate-spin" /></div>;
+  if (loading) return <LoadingState minHeight="h-full" />;
 
   const collabAttivi = collaboratori.filter((c) => c.attivo !== false);
 
@@ -168,7 +170,7 @@ export default function Admin() {
                   )}
                 </td>
                 <td className="py-3 px-4 text-muted-foreground text-xs">
-                  {acc.last_activity_date ? moment(acc.last_activity_date).format("DD/MM/YYYY HH:mm") : "—"}
+                  {acc.last_activity_date ? formatDataOra(acc.last_activity_date) : "—"}
                 </td>
                 <td className="py-3 px-4">
                   <div className="flex items-center justify-end gap-1">

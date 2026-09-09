@@ -9,6 +9,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { ClipboardList, Check } from "lucide-react";
 import moment from "moment";
 import { useToast } from "@/components/ui/use-toast";
+import { LoadingState } from "@/components/shared/Spinner";
+import { formatData } from "@/lib/format";
 
 export default function MemberWorkoutPlans() {
   const { memberUser } = useMemberAuth();
@@ -83,9 +85,7 @@ export default function MemberWorkoutPlans() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="w-8 h-8 border-4 border-muted border-t-primary rounded-full animate-spin" />
-      </div>
+      <LoadingState minHeight="h-64" />
     );
   }
 
@@ -105,7 +105,7 @@ export default function MemberWorkoutPlans() {
               <div>
                 <h2 className="font-heading font-semibold">{plan.name}</h2>
                 <p className="text-xs text-muted-foreground">
-                  Assegnato il {moment(plan.assigned_date).format("D MMM YYYY")}
+                  Assegnato il {formatData(plan.assigned_date, "media")}
                 </p>
               </div>
 
@@ -189,7 +189,7 @@ export default function MemberWorkoutPlans() {
                           <p className="text-[10px] text-muted-foreground uppercase">Registrazioni</p>
                           {exLogs.slice(0, 5).map((log) => (
                             <div key={log.id} className="flex items-center justify-between text-xs p-1.5 rounded bg-background">
-                              <span className="text-muted-foreground">{moment(log.data).format("D MMM")}</span>
+                              <span className="text-muted-foreground">{formatData(log.data, "giornoBreve")}</span>
                               <span>
                                 {log.peso_usato ? `${log.peso_usato}kg · ` : ""}
                                 {log.reps_fatte ? `${log.reps_fatte} reps` : ""}

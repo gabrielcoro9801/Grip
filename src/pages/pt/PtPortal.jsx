@@ -8,6 +8,8 @@ import { Link } from "react-router-dom";
 import { Users, CalendarCheck, Wallet, AlertCircle, Clock } from "lucide-react";
 import moment from "moment";
 import { calcCompensoPT } from "@/lib/ptValidation";
+import { LoadingState } from "@/components/shared/Spinner";
+import { formatData, formatEuro, formatMeseAnno } from "@/lib/format";
 
 const STATO_LABEL = { prenotata: "Prenotata", confermata: "Confermata", svolta: "Svolta", annullata: "Annullata" };
 const STATO_VARIANT = { prenotata: "secondary", confermata: "default", svolta: "default", annullata: "destructive" };
@@ -35,7 +37,7 @@ export default function PtPortal() {
     }
   }, [collaboratoreId]);
 
-  if (loading) return <div className="flex items-center justify-center h-64"><div className="w-8 h-8 border-4 border-muted border-t-primary rounded-full animate-spin" /></div>;
+  if (loading) return <LoadingState minHeight="h-64" />;
 
   if (!isPT || !collaboratoreId) {
     return (
@@ -62,14 +64,14 @@ export default function PtPortal() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-heading font-bold">Ciao, {coll?.nome} {coll?.cognome}</h1>
-        <p className="text-sm text-muted-foreground capitalize">{now.format("MMMM YYYY")}</p>
+        <p className="text-sm text-muted-foreground capitalize">{formatMeseAnno(now)}</p>
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard icon={Users} label="Clienti" value={clienti.length} />
         <StatCard icon={CalendarCheck} label="Sedute prossime" value={prossime.length} />
         <StatCard icon={Clock} label="Da confermare" value={daConfermare.length} />
-        <StatCard icon={Wallet} label="Compenso mese" value={"€" + compenso.importo.toFixed(2)} />
+        <StatCard icon={Wallet} label="Compenso mese" value={formatEuro(compenso.importo)} />
       </div>
 
       <div className="flex flex-wrap gap-3">
@@ -88,7 +90,7 @@ export default function PtPortal() {
                 <div key={s.id} className="flex items-center justify-between text-sm border-b border-border/50 pb-2">
                   <div>
                     <p className="font-medium">{s.cliente_nome}</p>
-                    <p className="text-xs text-muted-foreground">{moment(s.data_ora_inizio).format("ddd DD MMM HH:mm")} · {s.sala_nome || "Nessuna sala"}</p>
+                    <p className="text-xs text-muted-foreground">{formatData(s.data_ora_inizio, "giorno", { ora: true })} · {s.sala_nome || "Nessuna sala"}</p>
                   </div>
                   <Badge variant={STATO_VARIANT[s.stato]}>{STATO_LABEL[s.stato]}</Badge>
                 </div>

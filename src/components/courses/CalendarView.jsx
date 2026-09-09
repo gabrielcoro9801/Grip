@@ -8,6 +8,7 @@ import { getSessionAvailability } from "@/lib/bookingUtils";
 import EventFormDialog from "@/components/courses/EventFormDialog";
 import ManageSessions from "@/components/courses/ManageSessions";
 import SessionAudit from "@/components/courses/SessionAudit";
+import { formatData } from "@/lib/format";
 
 const DAY_HEADERS = ["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"];
 const MONTH_NAMES = ["Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno", "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"];
@@ -174,7 +175,7 @@ export default function CalendarView({ data, reload }) {
               <>
                 <DialogHeader><DialogTitle>{meta?.course?.name || "Sessione"}</DialogTitle></DialogHeader>
                 <div className="space-y-2 text-sm">
-                  <div className="flex items-center gap-2 text-muted-foreground"><Calendar className="w-4 h-4" /> {moment(selectedSession.date).format("dddd D MMMM YYYY")}</div>
+                  <div className="flex items-center gap-2 text-muted-foreground"><Calendar className="w-4 h-4" /> {formatData(selectedSession.date, "estesa")}</div>
                   <div className="flex items-center gap-2 text-muted-foreground"><Clock className="w-4 h-4" /> {selectedSession.start_time}–{selectedSession.end_time}</div>
                   <div className="flex items-center gap-2 text-muted-foreground"><MapPin className="w-4 h-4" /> {roomName(selectedSession.room_id)}</div>
                   <div className="flex items-center gap-2 text-muted-foreground"><Users className="w-4 h-4" /> {info.confirmed}/{info.capacity} iscritti {info.waitlisted > 0 && <span className="text-amber-600">(+{info.waitlisted} attesa)</span>}</div>

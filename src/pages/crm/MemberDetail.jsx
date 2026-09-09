@@ -19,6 +19,8 @@ import { logAction } from "@/lib/auditLog";
 import moment from "moment";
 import { useToast } from "@/components/ui/use-toast";
 import { puo } from "@/lib/permissions";
+import { LoadingState } from "@/components/shared/Spinner";
+import { formatData, formatDataOra, formatEuro } from "@/lib/format";
 
 export default function MemberDetail() {
   const { id } = useParams();
@@ -348,7 +350,7 @@ export default function MemberDetail() {
   }
 
   if (loading) {
-    return <div className="flex items-center justify-center h-64"><div className="w-8 h-8 border-4 border-muted border-t-primary rounded-full animate-spin" /></div>;
+    return <LoadingState minHeight="h-64" />;
   }
 
   if (!member) return <div className="p-8 text-center text-muted-foreground">Socio non trovato</div>;
@@ -378,7 +380,7 @@ export default function MemberDetail() {
           <div className="flex items-center gap-2 mt-2">
             {member.gdpr_consent ? (
               <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 text-xs">
-                <Shield className="w-3 h-3 mr-1" /> Consenso GDPR {member.gdpr_consent_date && `(${moment(member.gdpr_consent_date).format("D MMM YYYY")})`}
+                <Shield className="w-3 h-3 mr-1" /> Consenso GDPR {member.gdpr_consent_date && `(${formatData(member.gdpr_consent_date, "media")})`}
               </Badge>
             ) : (
               <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200 text-xs">Nessun consenso GDPR</Badge>
@@ -403,12 +405,12 @@ export default function MemberDetail() {
                   <div key={sub.id} className="p-3 rounded-lg bg-muted/50 flex items-center justify-between">
                     <div>
                       <p className="text-sm font-medium">{sub.plan_name}</p>
-                      <p className="text-xs text-muted-foreground">{moment(sub.start_date).format("MMM D")} — {moment(sub.end_date).format("MMM D, YYYY")}</p>
+                      <p className="text-xs text-muted-foreground">{formatData(sub.start_date, "giornoBreve")} — {formatData(sub.end_date, "media")}</p>
                       {sub.sessions_remaining < 999 && <p className="text-xs text-muted-foreground">{sub.sessions_remaining} sessioni residue</p>}
                     </div>
                     <div className="text-right">
                       <StatusBadge status={sub.status} />
-                      <p className="text-xs text-muted-foreground mt-1">€{sub.price_paid}</p>
+                      <p className="text-xs text-muted-foreground mt-1">{formatEuro(sub.price_paid)}</p>
                       {pagamentoPerAbbonamento[sub.id] === "da_incassare" && (
                         <Badge variant="outline" className="text-xs bg-amber-50 text-amber-700 border-amber-200 mt-1">
                           <Clock className="w-3 h-3 mr-1" /> Da incassare
@@ -482,10 +484,10 @@ export default function MemberDetail() {
                     <div>
                       <span className="font-medium">N. {r.numero_progressivo || "—"}/{r.esercizio_fiscale || ""}</span>
                       {r.plan_name && <span className="text-xs text-muted-foreground ml-2">{r.plan_name}</span>}
-                      <div className="text-xs text-muted-foreground">{moment(r.date || r.data_emissione).format("DD/MM/YYYY")}</div>
+                      <div className="text-xs text-muted-foreground">{formatData(r.date || r.data_emissione)}</div>
                     </div>
                     <div className="flex items-center gap-1.5">
-                      <span className="font-medium">€{Number(r.amount || r.importo_lordo || 0).toFixed(2)}</span>
+                      <span className="font-medium">{formatEuro(Number(r.amount || r.importo_lordo || 0))}</span>
                       {r.payment_status === "pending" || r.stato === "bozza" ? (
                         <Badge variant="outline" className="text-xs bg-amber-50 text-amber-700 border-amber-200">
                           <Clock className="w-3 h-3 mr-1" /> Bozza
@@ -524,7 +526,7 @@ export default function MemberDetail() {
                 <img src={getQRImageUrl(qrAccess.codice, 120)} alt="QR" className="w-24 h-24 rounded-lg" />
                 <div className="flex-1">
                   <p className="font-mono text-sm font-medium">{qrAccess.codice}</p>
-                  <p className="text-xs text-muted-foreground">Generato il {moment(qrAccess.data_generazione).format("D MMM YYYY")}</p>
+                  <p className="text-xs text-muted-foreground">Generato il {formatData(qrAccess.data_generazione, "media")}</p>
                   <Badge variant="outline" className={`mt-1 text-xs ${qrAccess.stato === "attivo" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-red-50 text-red-700 border-red-200"}`}>
                     {qrAccess.stato === "attivo" ? "Attivo" : "Revocato"}
                   </Badge>
@@ -561,7 +563,7 @@ export default function MemberDetail() {
                   </Badge>
                 </div>
                 <p className="text-xs text-muted-foreground">Email: {portalAccount.email || "—"}</p>
-                <p className="text-xs text-muted-foreground">Ultimo accesso: {portalAccount.last_activity_date ? moment(portalAccount.last_activity_date).format("DD/MM/YYYY HH:mm") : "Mai"}</p>
+                <p className="text-xs text-muted-foreground">Ultimo accesso: {portalAccount.last_activity_date ? formatDataOra(portalAccount.last_activity_date) : "Mai"}</p>
               </div>
             ) : (
               <p className="text-sm text-muted-foreground py-2 text-center">Nessun account portale</p>
@@ -598,7 +600,7 @@ export default function MemberDetail() {
                 {exercisePlans.map(ep => (
                   <div key={ep.id} className="p-3 rounded-lg bg-muted/50">
                     <p className="text-sm font-medium">{ep.name}</p>
-                    <p className="text-xs text-muted-foreground">{ep.exercises?.length || 0} esercizi · Assegnato il {moment(ep.assigned_date).format("D MMM YYYY")}</p>
+                    <p className="text-xs text-muted-foreground">{ep.exercises?.length || 0} esercizi · Assegnato il {formatData(ep.assigned_date, "media")}</p>
                     {ep.notes && <p className="text-xs text-muted-foreground mt-1 italic">{ep.notes}</p>}
                   </div>
                 ))}
@@ -621,7 +623,7 @@ export default function MemberDetail() {
                   <div key={b.id} className="p-3 rounded-lg bg-muted/50 flex items-center justify-between">
                     <div>
                       <p className="text-sm font-medium">{b._course_name || "Corso"}</p>
-                      <p className="text-xs text-muted-foreground">{b._date ? moment(b._date).format("ddd, MMM D") : "—"}</p>
+                      <p className="text-xs text-muted-foreground">{b._date ? formatData(b._date, "giorno") : "—"}</p>
                     </div>
                     <StatusBadge status={b.status} />
                   </div>
@@ -643,7 +645,7 @@ export default function MemberDetail() {
                 <SelectTrigger><SelectValue placeholder="Seleziona un abbonamento" /></SelectTrigger>
                 <SelectContent>
                   {plans.map(p => (
-                    <SelectItem key={p.id} value={p.id}>{p.name} — €{p.price}</SelectItem>
+                    <SelectItem key={p.id} value={p.id}>{p.name} — {formatEuro(p.price)}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>

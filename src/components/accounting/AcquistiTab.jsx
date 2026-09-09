@@ -13,6 +13,8 @@ import { useToast } from "@/components/ui/use-toast";
 import { ritenutaDovuta, calcolaRitenuta } from "../../../shared/ritenuta.js";
 import moment from "moment";
 import { useParametriFiscali } from "@/hooks/useParametriFiscali";
+import { LoadingState } from "@/components/shared/Spinner";
+import { formatData, formatEuro, formatNumero } from "@/lib/format";
 
 const oggi = () => new Date().toISOString().split("T")[0];
 
@@ -38,7 +40,6 @@ const STATI = {
   annullato: { label: "Annullato", classe: "bg-muted text-muted-foreground" },
 };
 
-const fmt = (n) => Number(n || 0).toLocaleString("it-IT", { minimumFractionDigits: 2 });
 
 export default function AcquistiTab({ organization, accounts, reloadMovimenti }) {
   const { toast } = useToast();
@@ -144,7 +145,7 @@ export default function AcquistiTab({ organization, accounts, reloadMovimenti })
     }
   };
 
-  if (loading) return <div className="flex items-center justify-center py-12"><div className="w-8 h-8 border-4 border-muted border-t-primary rounded-full animate-spin" /></div>;
+  if (loading) return <LoadingState minHeight="py-12" />;
 
   return (
     <div className="space-y-4">
@@ -182,25 +183,25 @@ export default function AcquistiTab({ organization, accounts, reloadMovimenti })
                         <Badge variant="outline" className={`text-xs ${STATI[stato].classe}`}>{STATI[stato].label}</Badge>
                       </div>
                       <p className="text-sm text-muted-foreground mt-0.5">
-                        {fornitore?.ragione_sociale || "Fornitore rimosso"} · ordine del {moment(o.data_ordine).format("DD/MM/YYYY")}
-                        {o.data_consegna && ` · consegnato il ${moment(o.data_consegna).format("DD/MM/YYYY")}`}
+                        {fornitore?.ragione_sociale || "Fornitore rimosso"} · ordine del {formatData(o.data_ordine)}
+                        {o.data_consegna && ` · consegnato il ${formatData(o.data_consegna)}`}
                       </p>
                       {conto && <p className="text-xs text-muted-foreground">Conto: {conto.codice} — {conto.nome}</p>}
                       {o.numero_fattura && (
                         <p className="text-xs text-muted-foreground">
-                          Fattura {o.numero_fattura} del {moment(o.data_fattura).format("DD/MM/YYYY")}
-                          {o.importo_fatturato != null && ` · €${fmt(o.importo_fatturato)}`}
+                          Fattura {o.numero_fattura} del {formatData(o.data_fattura)}
+                          {o.importo_fatturato != null && ` · ${formatEuro(o.importo_fatturato)}`}
                         </p>
                       )}
                       {ritenuta && stato !== "annullato" && (
                         <p className="text-xs text-purple-700 mt-1 flex items-center gap-1">
                           <Receipt className="w-3 h-3" />
-                          Ritenuta {ritenuta.aliquota}%: al fornitore €{fmt(ritenuta.netto)}, all'erario €{fmt(ritenuta.ritenuta)}
+                          Ritenuta {ritenuta.aliquota}%: al fornitore {formatEuro(ritenuta.netto)}, all'erario {formatEuro(ritenuta.ritenuta)}
                         </p>
                       )}
                     </div>
                     <div className="flex flex-col items-end gap-2 shrink-0">
-                      <p className="text-lg font-bold">€{fmt(o.importo_previsto)}</p>
+                      <p className="text-lg font-bold">{formatEuro(o.importo_previsto)}</p>
                       <div className="flex gap-2">
                         {o.stato === "ordinato" && (
                           <>
@@ -294,7 +295,7 @@ export default function AcquistiTab({ organization, accounts, reloadMovimenti })
                 <Label>Importo effettivo (€) *</Label>
                 <Input type="number" step="0.01" value={consegnaData.importo} onChange={(e) => setConsegnaData({ ...consegnaData, importo: e.target.value })} />
                 <p className="text-xs text-muted-foreground mt-1">
-                  Previsto all'ordine: €{fmt(consegna.importo_previsto)}. Correggilo se la fornitura ricevuta vale diversamente.
+                  Previsto all'ordine: {formatEuro(consegna.importo_previsto)}. Correggilo se la fornitura ricevuta vale diversamente.
                 </p>
               </div>
               <Button className="w-full" onClick={confermaConsegna}>Conferma consegna</Button>
@@ -322,7 +323,7 @@ export default function AcquistiTab({ organization, accounts, reloadMovimenti })
                 <Input type="number" step="0.01" value={fatturaData.importo_fatturato} onChange={(e) => setFatturaData({ ...fatturaData, importo_fatturato: e.target.value })} />
                 {Number(fatturaData.importo_fatturato) !== Number(fattura.importo_previsto) && fatturaData.importo_fatturato !== "" && (
                   <p className="text-xs text-amber-700 mt-1">
-                    Diverso da quanto registrato alla consegna (€{fmt(fattura.importo_previsto)}): la differenza va sistemata
+                    Diverso da quanto registrato alla consegna ({formatEuro(fattura.importo_previsto)}): la differenza va sistemata
                     con una registrazione di rettifica, questa schermata non la corregge da sola.
                   </p>
                 )}

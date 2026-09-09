@@ -25,6 +25,7 @@ import CassaBancaReport from "@/components/accounting/CassaBancaReport";
 import FattureTab from "@/components/accounting/FattureTab";
 import CespitiTab from "@/components/accounting/CespitiTab";
 import PageHeader from "@/components/shared/PageHeader";
+import { LoadingState } from "@/components/shared/Spinner";
 import {
   Ticket, Users, Dumbbell, Package, Building, PlusCircle, Home, Zap,
   Truck, Landmark, Briefcase, MinusCircle, TrendingUp, TrendingDown,
@@ -35,6 +36,7 @@ import { trovaContoPerRuolo, ContoDiSistemaMancante } from "../../../shared/cont
 import { useParametriFiscali } from "@/hooks/useParametriFiscali";
 import moment from "moment";
 import { useToast } from "@/components/ui/use-toast";
+import { formatData, formatEuro, toCsvNumber } from "@/lib/format";
 
 const ICON_MAP = {
   ticket: Ticket, users: Users, dumbbell: Dumbbell, package: Package,
@@ -234,7 +236,7 @@ export default function Movimenti() {
       }
       await logAction(staffUser, "create", selectedCausale.tipo === "entrata" ? "finance_revenue" : "finance_expense",
         selectedCausale.nome_visibile, null,
-        `${selectedCausale.tipo === "entrata" ? "Entrata" : "Uscita"}: €${Number(wData.importo).toFixed(2)}${aCredito ? " a credito" : ""}`);
+        `${selectedCausale.tipo === "entrata" ? "Entrata" : "Uscita"}: ${formatEuro(Number(wData.importo))}${aCredito ? " a credito" : ""}`);
       toast({ title: "Movimento registrato", description: selectedCausale.nome_visibile });
       setWizardOpen(false);
       loadData();
@@ -247,9 +249,9 @@ export default function Movimenti() {
   const exportCSV = () => {
     let csv = "Data,Descrizione,Tipo,Importo,Stato pagamento\n";
     movimenti.forEach(m => {
-      csv += `${m.data_competenza},"${m.descrizione}",${m.isEntrata ? "Entrata" : "Uscita"},${m.isEntrata ? "+" : "-"}${m.importo.toFixed(2)},${m.stato_pagamento}\n`;
+      csv += `${m.data_competenza},"${m.descrizione}",${m.isEntrata ? "Entrata" : "Uscita"},${m.isEntrata ? "+" : "-"}${toCsvNumber(m.importo)},${m.stato_pagamento}\n`;
     });
-    csv += `\nRiepilogo,,,,\nTotale entrate,,${totals.entrate.toFixed(2)},,\nTotale uscite,,${totals.uscite.toFixed(2)},,\nSaldo netto,,${totals.saldo.toFixed(2)},,\n`;
+    csv += `\nRiepilogo,,,,\nTotale entrate,,${toCsvNumber(totals.entrate)},,\nTotale uscite,,${toCsvNumber(totals.uscite)},,\nSaldo netto,,${toCsvNumber(totals.saldo)},,\n`;
     const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -259,7 +261,7 @@ export default function Movimenti() {
     URL.revokeObjectURL(url);
   };
 
-  if (orgLoading || loading) return <div className="flex items-center justify-center h-full"><div className="w-8 h-8 border-4 border-muted border-t-primary rounded-full animate-spin" /></div>;
+  if (orgLoading || loading) return <LoadingState minHeight="h-full" />;
 
   const canEdit = ["admin", "reception"].includes(staffUser?.ruolo);
 
@@ -291,7 +293,7 @@ export default function Movimenti() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Totale entrate</p>
-                <p className="text-2xl font-bold text-emerald-600">€{totals.entrate.toLocaleString("it-IT", { minimumFractionDigits: 2 })}</p>
+                <p className="text-2xl font-bold text-emerald-600">{formatEuro(totals.entrate)}</p>
               </div>
               <div className="bg-emerald-50 p-2 rounded-lg"><TrendingUp className="w-5 h-5 text-emerald-600" /></div>
             </div>
@@ -302,7 +304,7 @@ export default function Movimenti() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Totale uscite</p>
-                <p className="text-2xl font-bold text-red-500">€{totals.uscite.toLocaleString("it-IT", { minimumFractionDigits: 2 })}</p>
+                <p className="text-2xl font-bold text-red-500">{formatEuro(totals.uscite)}</p>
               </div>
               <div className="bg-red-50 p-2 rounded-lg"><TrendingDown className="w-5 h-5 text-red-500" /></div>
             </div>
@@ -313,7 +315,7 @@ export default function Movimenti() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Saldo netto</p>
-                <p className={`text-2xl font-bold ${totals.saldo >= 0 ? "text-emerald-600" : "text-red-500"}`}>€{totals.saldo.toLocaleString("it-IT", { minimumFractionDigits: 2 })}</p>
+                <p className={`text-2xl font-bold ${totals.saldo >= 0 ? "text-emerald-600" : "text-red-500"}`}>{formatEuro(totals.saldo)}</p>
               </div>
               <div className="bg-blue-50 p-2 rounded-lg"><Wallet className="w-5 h-5 text-blue-600" /></div>
             </div>
@@ -352,7 +354,7 @@ export default function Movimenti() {
               <tr><td colSpan={4} className="text-center py-8 text-muted-foreground">Nessun movimento</td></tr>
             ) : movimenti.map(m => (
               <tr key={m.id} className="border-b border-border/50 hover:bg-muted/30">
-                <td className="py-3 px-4 text-muted-foreground whitespace-nowrap">{moment(m.data_competenza).format("DD/MM/YYYY")}</td>
+                <td className="py-3 px-4 text-muted-foreground whitespace-nowrap">{formatData(m.data_competenza)}</td>
                 <td className="py-3 px-4">
                   <div className="flex items-center gap-2 flex-wrap">
                     {m.causaleObj && <CausaleIcon name={m.causaleObj.icona} className="w-4 h-4 text-muted-foreground" />}
@@ -379,7 +381,7 @@ export default function Movimenti() {
                   {m.stato_pagamento === "da_pagare" && <Badge className="bg-amber-100 text-amber-700 border-amber-200 text-xs"><Clock className="w-3 h-3 mr-1" />Da pagare</Badge>}
                 </td>
                 <td className={`py-3 px-4 text-right font-medium ${m.senzaSegno ? "text-muted-foreground" : m.isEntrata ? "text-emerald-600" : "text-red-500"}`}>
-                  {m.senzaSegno ? "" : m.isEntrata ? "+" : "−"}€{m.importo.toLocaleString("it-IT", { minimumFractionDigits: 2 })}
+                  {m.senzaSegno ? "" : m.isEntrata ? "+" : "−"}{formatEuro(m.importo)}
                 </td>
               </tr>
             ))}
@@ -574,8 +576,8 @@ export default function Movimenti() {
                     <div>
                       <p className="font-medium">Pagamento soggetto a ritenuta d'acconto ({aliquota}%)</p>
                       <p className="text-xs mt-0.5">
-                        Al fornitore vanno €{netto.toLocaleString("it-IT", { minimumFractionDigits: 2 })};
-                        €{ritenuta.toLocaleString("it-IT", { minimumFractionDigits: 2 })} restano da versare all'erario.
+                        Al fornitore vanno {formatEuro(netto)};
+                        {formatEuro(ritenuta)} restano da versare all'erario.
                         La registrazione tiene il costo per intero e separa la ritenuta come debito
                         verso l'erario, da versare con l'F24.
                       </p>
@@ -614,10 +616,10 @@ export default function Movimenti() {
             <div className="space-y-4">
               <div className="space-y-2 p-4 rounded-lg bg-muted/40 text-sm">
                 <div className="flex justify-between"><span className="text-muted-foreground">Causale</span><span className="font-medium">{selectedCausale.nome_visibile}</span></div>
-                <div className="flex justify-between"><span className="text-muted-foreground">Importo</span><span className="font-medium">€{Number(wData.importo || 0).toLocaleString("it-IT", { minimumFractionDigits: 2 })}</span></div>
-                <div className="flex justify-between"><span className="text-muted-foreground">Data</span><span className="font-medium">{moment(wData.data).format("DD/MM/YYYY")}</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">Importo</span><span className="font-medium">{formatEuro(Number(wData.importo || 0))}</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">Data</span><span className="font-medium">{formatData(wData.data)}</span></div>
                 {selectedCausale.permette_a_credito && (
-                  <div className="flex justify-between"><span className="text-muted-foreground">Pagamento</span><span className="font-medium">{aCredito ? `A credito${dataScadenza ? " (scad. " + moment(dataScadenza).format("DD/MM/YYYY") + ")" : ""}` : "Subito"}</span></div>
+                  <div className="flex justify-between"><span className="text-muted-foreground">Pagamento</span><span className="font-medium">{aCredito ? `A credito${dataScadenza ? " (scad. " + formatData(dataScadenza) + ")" : ""}` : "Subito"}</span></div>
                 )}
                 {!aCredito && <div className="flex justify-between"><span className="text-muted-foreground">Metodo</span><span className="font-medium">{wData.metodo_liquidita === "banca" ? "Banca" : "Contanti"}</span></div>}
                 {selectedCausale.puo_essere_istituzionale && controparteId && (

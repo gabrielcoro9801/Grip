@@ -8,6 +8,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Label } from "@/components/ui/label";
 import { Download, FileSpreadsheet } from "lucide-react";
 import moment from "moment";
+import { LoadingState } from "@/components/shared/Spinner";
+import { formatMeseAnno } from "@/lib/format";
 import {
   calcOreMese, calcStraordinari, countFerieGiorni, countPermessoOre,
   generaCSVPresenze, downloadCSV,
@@ -37,14 +39,14 @@ export default function PresenzeExportPage() {
     });
   }, [organization]);
 
-  if (loading) return <div className="flex items-center justify-center h-64"><div className="w-8 h-8 border-4 border-muted border-t-primary rounded-full animate-spin" /></div>;
+  if (loading) return <LoadingState minHeight="h-64" />;
 
   const generaRiga = (emp) => {
     const empTims = timbrature.filter((t) => t.dipendente_id === emp.id);
     const empRich = richieste.filter((r) => r.dipendente_id === emp.id);
     return {
       dipendente: `${emp.nome} ${emp.cognome}`,
-      mese: moment().year(anno).month(mese).format("MMMM YYYY"),
+      mese: formatMeseAnno().year(anno).month(mese),
       oreLavorate: calcOreMese(empTims, anno, mese),
       straordinari: calcStraordinari(empTims, emp.soglia_settimanale_ore || 40, anno, mese),
       ferieGiorni: countFerieGiorni(empRich, anno, mese),

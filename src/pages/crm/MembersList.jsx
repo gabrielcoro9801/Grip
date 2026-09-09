@@ -11,6 +11,7 @@ import PageHeader from "@/components/shared/PageHeader";
 import StatusBadge from "@/components/shared/StatusBadge";
 import { useOrganization } from "@/hooks/useOrganization";
 import { Plus, Search, Mail, Phone, Eye } from "lucide-react";
+import { LoadingState } from "@/components/shared/Spinner";
 
 export default function MembersList() {
   const { organization } = useOrganization();
@@ -68,7 +69,7 @@ export default function MembersList() {
   );
 
   if (loading) {
-    return <div className="flex items-center justify-center h-64"><div className="w-8 h-8 border-4 border-muted border-t-primary rounded-full animate-spin" /></div>;
+    return <LoadingState minHeight="h-64" />;
   }
 
   return (

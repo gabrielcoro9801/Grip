@@ -6,6 +6,8 @@ import { Badge } from "@/components/ui/badge";
 import { Users, DollarSign, Calendar, AlertTriangle, Clock, FileWarning, TrendingUp } from "lucide-react";
 import StatusBadge from "@/components/shared/StatusBadge";
 import moment from "moment";
+import { LoadingState } from "@/components/shared/Spinner";
+import { formatData, formatEuro } from "@/lib/format";
 
 export default function Dashboard() {
   const [members, setMembers] = useState([]);
@@ -50,9 +52,7 @@ export default function Dashboard() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <div className="w-8 h-8 border-4 border-muted border-t-primary rounded-full animate-spin" />
-      </div>
+      <LoadingState minHeight="h-full" />
     );
   }
 
@@ -103,8 +103,8 @@ export default function Dashboard() {
 
   const kpis = [
     { label: "Soci attivi", value: activeMembers, icon: Users, color: "text-emerald-600", bg: "bg-emerald-50" },
-    { label: "Ricavi totali", value: `€${totalRevenue.toLocaleString()}`, icon: TrendingUp, color: "text-blue-600", bg: "bg-blue-50" },
-    { label: "Spese totali", value: `€${totalExpenses.toLocaleString()}`, icon: DollarSign, color: "text-amber-600", bg: "bg-amber-50" },
+    { label: "Ricavi totali", value: `${formatEuro(totalRevenue.toLocaleString())}`, icon: TrendingUp, color: "text-blue-600", bg: "bg-blue-50" },
+    { label: "Spese totali", value: `${formatEuro(totalExpenses.toLocaleString())}`, icon: DollarSign, color: "text-amber-600", bg: "bg-amber-50" },
     { label: "Prossime lezioni", value: upcomingBookings.length, icon: Calendar, color: "text-violet-600", bg: "bg-violet-50" },
   ];
 
@@ -220,7 +220,7 @@ export default function Dashboard() {
                   <div key={b.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
                     <div>
                       <p className="text-sm font-medium">{b._course_name || "Corso"}</p>
-                      <p className="text-xs text-muted-foreground">{b.member_name} · {b._date ? moment(b._date).format("ddd, MMM D") : "—"}</p>
+                      <p className="text-xs text-muted-foreground">{b.member_name} · {b._date ? formatData(b._date, "giorno") : "—"}</p>
                     </div>
                     <StatusBadge status={b.status} />
                   </div>

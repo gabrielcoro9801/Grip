@@ -10,6 +10,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Card, CardContent } from "@/components/ui/card";
 import PageHeader from "@/components/shared/PageHeader";
 import { Plus, Trash2, AlertTriangle } from "lucide-react";
+import { LoadingState } from "@/components/shared/Spinner";
+import { formatEuro } from "@/lib/format";
 
 const TIPO_ORIGINE = [
   "manuale", "incasso_cliente", "fattura_fornitore", "pagamento_fornitore",
@@ -74,7 +76,7 @@ export default function NewJournalEntry() {
     if (lineError) { setError(lineError); return; }
 
     if (stato === "confermata" && differenza !== 0) {
-      setError(`Le righe non quadrano: differenza di €${Math.abs(differenza).toFixed(2)} tra Dare e Avere.`);
+      setError(`Le righe non quadrano: differenza di ${formatEuro(Math.abs(differenza))} tra Dare e Avere.`);
       return;
     }
 
@@ -113,7 +115,7 @@ export default function NewJournalEntry() {
     setSaving(false);
   };
 
-  if (orgLoading) return <div className="flex items-center justify-center h-full"><div className="w-8 h-8 border-4 border-muted border-t-primary rounded-full animate-spin" /></div>;
+  if (orgLoading) return <LoadingState minHeight="h-full" />;
 
   // La registrazione manuale scavalca le causali e può movimentare qualsiasi conto:
   // è l'ultima risorsa quando nessun flusso ordinario copre il caso, non un modo
@@ -200,10 +202,10 @@ export default function NewJournalEntry() {
           </div>
 
           <div className="flex items-center justify-end gap-6 pt-3 border-t border-border text-sm">
-            <span>Totale Dare: <strong>€{totDare.toFixed(2)}</strong></span>
-            <span>Totale Avere: <strong>€{totAvere.toFixed(2)}</strong></span>
+            <span>Totale Dare: <strong>{formatEuro(totDare)}</strong></span>
+            <span>Totale Avere: <strong>{formatEuro(totAvere)}</strong></span>
             <span className={differenza === 0 ? "text-emerald-600 font-medium" : "text-red-500 font-medium"}>
-              {differenza === 0 ? "Quadrato" : `Differenza: €${Math.abs(differenza).toFixed(2)}`}
+              {differenza === 0 ? "Quadrato" : `Differenza: ${formatEuro(Math.abs(differenza))}`}
             </span>
           </div>
         </CardContent>

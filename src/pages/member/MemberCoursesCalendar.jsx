@@ -6,6 +6,7 @@ import CoursesByCategory from "@/components/member/CoursesByCategory";
 import CoursesByCalendar from "@/components/member/CoursesByCalendar";
 import { createBooking, cancelBooking, bookAllSessions, cancelAllBookings } from "@/lib/bookingUtils";
 import { useToast } from "@/components/ui/use-toast";
+import { LoadingState } from "@/components/shared/Spinner";
 
 export default function MemberCoursesCalendar() {
   const { memberUser } = useMemberAuth();
@@ -113,9 +114,7 @@ export default function MemberCoursesCalendar() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="w-8 h-8 border-4 border-muted border-t-primary rounded-full animate-spin" />
-      </div>
+      <LoadingState minHeight="h-64" />
     );
   }
 

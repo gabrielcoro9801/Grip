@@ -8,9 +8,9 @@ import { Input } from "@/components/ui/input";
 import PageHeader from "@/components/shared/PageHeader";
 import { AlertTriangle, Info, TrendingUp, Scale, Wallet, Users } from "lucide-react";
 import moment from "moment";
-
-const fmt = (n) => Number(n || 0).toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const euro = (n) => `${n < 0 ? "−" : ""}€${fmt(Math.abs(n))}`;
+import { LoadingState } from "@/components/shared/Spinner";
+import { formatData, formatEuro } from "@/lib/format";
+const euro = (n) => `${n < 0 ? "−" : ""}${formatEuro(Math.abs(n))}`;
 
 /**
  * Bilancio provvisorio: un'unica pagina che risponde a "come sta andando l'associazione".
@@ -164,7 +164,7 @@ export default function Bilancio() {
   }, [entries, lines, accounts, chiusure, dateFrom, dateTo]);
 
   if (orgLoading || loading) {
-    return <div className="flex items-center justify-center h-full"><div className="w-8 h-8 border-4 border-muted border-t-primary rounded-full animate-spin" /></div>;
+    return <LoadingState minHeight="h-full" />;
   }
 
   const Sezione = ({ icona: Icona, titolo, descrizione, children }) => (
@@ -231,7 +231,7 @@ export default function Bilancio() {
           </div>
         </Sezione>
 
-        <Sezione icona={Scale} titolo="Stato patrimoniale" descrizione={`Cosa si possiede e cosa si deve al ${moment(dateTo).format("DD/MM/YYYY")}`}>
+        <Sezione icona={Scale} titolo="Stato patrimoniale" descrizione={`Cosa si possiede e cosa si deve al ${formatData(dateTo)}`}>
           <div className="space-y-1.5 text-sm">
             <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Attivo</p>
             {dati.attivo.length === 0
@@ -255,10 +255,10 @@ export default function Bilancio() {
 
         <Sezione icona={Wallet} titolo="Flusso di cassa" descrizione="Liquidità realmente entrata e uscita nel periodo">
           <div className="space-y-1.5 text-sm">
-            <Riga etichetta={`Liquidità al ${moment(dateFrom).format("DD/MM/YYYY")}`} valore={dati.cassaIniziale} sfumato />
+            <Riga etichetta={`Liquidità al ${formatData(dateFrom)}`} valore={dati.cassaIniziale} sfumato />
             <Riga etichetta="Incassi" valore={dati.entrateCassa} sfumato />
             <Riga etichetta="Pagamenti" valore={-dati.usciteCassa} sfumato />
-            <Riga etichetta={`Liquidità al ${moment(dateTo).format("DD/MM/YYYY")}`} valore={dati.cassaFinale} forte />
+            <Riga etichetta={`Liquidità al ${formatData(dateTo)}`} valore={dati.cassaFinale} forte />
           </div>
           <p className="text-xs text-muted-foreground">
             Diverso dall'avanzo di gestione: un ricavo fatturato ma non ancora incassato migliora

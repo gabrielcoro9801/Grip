@@ -14,6 +14,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Plus, Check, X, Clock, MapPin, User } from "lucide-react";
 import moment from "moment";
 import { useToast } from "@/components/ui/use-toast";
+import { LoadingState } from "@/components/shared/Spinner";
+import { formatData, formatEuro } from "@/lib/format";
 
 const STATO_LABEL = { prenotata: "Prenotata", confermata: "Confermata", svolta: "Svolta", annullata: "Annullata" };
 const STATO_VARIANT = { prenotata: "secondary", confermata: "default", svolta: "default", annullata: "destructive" };
@@ -92,7 +94,7 @@ export default function PtSedutePage() {
     loadData();
   };
 
-  if (loading) return <div className="flex items-center justify-center h-64"><div className="w-8 h-8 border-4 border-muted border-t-primary rounded-full animate-spin" /></div>;
+  if (loading) return <LoadingState minHeight="h-64" />;
 
   if (isPT && !collaboratoreId) {
     return <p className="text-sm text-muted-foreground">Profilo non collegato a un collaboratore.</p>;
@@ -128,9 +130,9 @@ export default function PtSedutePage() {
                       <Badge variant={STATO_VARIANT[s.stato]}>{STATO_LABEL[s.stato]}</Badge>
                     </div>
                     <div className="space-y-1 text-xs text-muted-foreground">
-                      <div className="flex items-center gap-1"><Clock className="w-3 h-3" /> {moment(s.data_ora_inizio).format("ddd DD MMM HH:mm")}</div>
+                      <div className="flex items-center gap-1"><Clock className="w-3 h-3" /> {formatData(s.data_ora_inizio, "giorno", { ora: true })}</div>
                       {s.sala_nome && <div className="flex items-center gap-1"><MapPin className="w-3 h-3" /> {s.sala_nome}</div>}
-                      {s.importo > 0 && <div className="flex items-center gap-1"><User className="w-3 h-3" /> €{s.importo.toFixed(2)}</div>}
+                      {s.importo > 0 && <div className="flex items-center gap-1"><User className="w-3 h-3" /> {formatEuro(s.importo)}</div>}
                     </div>
                     <div className="flex gap-2 mt-3">
                       {canConfirm && (
@@ -168,7 +170,7 @@ export default function PtSedutePage() {
               <tbody>
                 {passate.map((s) => (
                   <tr key={s.id} className="border-b border-border/50">
-                    <td className="py-3 px-4">{moment(s.data_ora_inizio).format("DD/MM HH:mm")}</td>
+                    <td className="py-3 px-4">{formatData(s.data_ora_inizio, "giornoMese", { ora: true })}</td>
                     <td className="py-3 px-4 font-medium">{s.cliente_nome}</td>
                     {!isPT && <td className="py-3 px-4 text-muted-foreground">{s.collaboratore_nome}</td>}
                     <td className="py-3 px-4 text-muted-foreground">{s.sala_nome || "—"}</td>

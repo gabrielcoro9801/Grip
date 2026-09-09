@@ -9,6 +9,8 @@ import { Textarea } from "@/components/ui/textarea";
 import PageHeader from "@/components/shared/PageHeader";
 import { Plus, Edit2, Trash2, Clock, Hash } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { LoadingState } from "@/components/shared/Spinner";
+import { formatEuro } from "@/lib/format";
 
 export default function PlansCatalog() {
   const [plans, setPlans] = useState([]);
@@ -47,7 +49,7 @@ export default function PlansCatalog() {
     loadData();
   };
 
-  if (loading) return <div className="flex items-center justify-center h-64"><div className="w-8 h-8 border-4 border-muted border-t-primary rounded-full animate-spin" /></div>;
+  if (loading) return <LoadingState minHeight="h-64" />;
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
@@ -68,7 +70,7 @@ export default function PlansCatalog() {
                   <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => handleDelete(plan.id)}><Trash2 className="w-3.5 h-3.5" /></Button>
                 </div>
               </div>
-              <p className="text-2xl font-bold text-primary">€{plan.price}</p>
+              <p className="text-2xl font-bold text-primary">{formatEuro(plan.price)}</p>
               <div className="flex items-center gap-4 mt-3 text-xs text-muted-foreground">
                 <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {plan.duration_days} giorni</span>
                 <span className="flex items-center gap-1"><Hash className="w-3 h-3" /> {plan.sessions_included >= 999 ? "Illimitate" : `${plan.sessions_included} sessioni`}</span>

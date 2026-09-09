@@ -12,6 +12,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Upload, Save, Eye } from "lucide-react";
 import moment from "moment";
 import { useToast } from "@/components/ui/use-toast";
+import { LoadingState } from "@/components/shared/Spinner";
+import { formatData, formatEuro } from "@/lib/format";
 
 export default function ReceiptTemplatePage() {
   const { organization, loading: orgLoading } = useOrganization();
@@ -77,7 +79,7 @@ export default function ReceiptTemplatePage() {
     setSaving(false);
   };
 
-  if (orgLoading || !template) return <div className="flex items-center justify-center h-full"><div className="w-8 h-8 border-4 border-muted border-t-primary rounded-full animate-spin" /></div>;
+  if (orgLoading || !template) return <LoadingState minHeight="h-full" />;
 
   // Preview data
   const showIva = shouldShowIva({ ...organization, ...orgForm }, tplForm);
@@ -195,7 +197,7 @@ export default function ReceiptTemplatePage() {
                   <div className="text-base font-bold text-gray-800">{sampleReceipt.tipo_documento === "ricevuta_semplice" ? "RICEVUTA" : "RICEVUTA FISCALE"}</div>
                   <div className="flex justify-between mt-1 text-gray-600">
                     <span>N. {sampleReceipt.numero_progressivo}/{sampleReceipt.esercizio_fiscale}</span>
-                    <span>Data: {moment(sampleReceipt.data_emissione).format("DD/MM/YYYY")}</span>
+                    <span>Data: {formatData(sampleReceipt.data_emissione)}</span>
                   </div>
                 </div>
                 {/* Cliente */}
@@ -211,16 +213,16 @@ export default function ReceiptTemplatePage() {
                     <span>Descrizione</span><span>Importo</span>
                   </div>
                   <div className="flex justify-between py-1.5 px-2">
-                    <span>{sampleReceipt.plan_name}</span><span>€ {sampleReceipt.importo_lordo.toFixed(2)}</span>
+                    <span>{sampleReceipt.plan_name}</span><span>{formatEuro(sampleReceipt.importo_lordo)}</span>
                   </div>
                   {showIva && (
                     <>
-                      <div className="flex justify-between px-2 text-gray-600"><span>Imponibile</span><span>€ {sampleReceipt.imponibile.toFixed(2)}</span></div>
-                      <div className="flex justify-between px-2 text-gray-600"><span>IVA ({sampleReceipt.aliquota_iva}%)</span><span>€ {sampleReceipt.iva.toFixed(2)}</span></div>
+                      <div className="flex justify-between px-2 text-gray-600"><span>Imponibile</span><span>{formatEuro(sampleReceipt.imponibile)}</span></div>
+                      <div className="flex justify-between px-2 text-gray-600"><span>IVA ({sampleReceipt.aliquota_iva}%)</span><span>{formatEuro(sampleReceipt.iva)}</span></div>
                     </>
                   )}
                   <div className="border-t pt-1.5 mt-1 flex justify-between font-bold" style={{ borderColor: accent }}>
-                    <span>TOTALE</span><span>€ {sampleReceipt.importo_lordo.toFixed(2)}</span>
+                    <span>TOTALE</span><span>{formatEuro(sampleReceipt.importo_lordo)}</span>
                   </div>
                 </div>
                 {/* Footer */}

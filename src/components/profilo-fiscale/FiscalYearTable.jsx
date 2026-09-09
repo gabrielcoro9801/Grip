@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/use-toast";
 import { Plus, Pencil, Trash2 } from "lucide-react";
+import { formatEuro } from "@/lib/format";
 
 const emptyForm = { anno_esercizio: new Date().getFullYear(), data_inizio_esercizio: "", data_fine_esercizio: "", proventi_commerciali: "", proventi_complessivi: "", note: "" };
 
@@ -66,7 +67,7 @@ export default function FiscalYearTable({ organization, years, onRefresh }) {
   };
 
   const sorted = [...years].sort((a, b) => (b.anno_esercizio || 0) - (a.anno_esercizio || 0));
-  const fmtEur = (val) => val != null ? `€ ${Number(val).toLocaleString("it-IT", { minimumFractionDigits: 2 })}` : "—";
+  const fmtEur = (val) => val != null ? `${formatEuro(Number(val))}` : "—";
 
   return (
     <Card className="border-0 shadow-sm">

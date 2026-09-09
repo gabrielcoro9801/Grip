@@ -15,6 +15,8 @@ import moment from "moment";
 import { useToast } from "@/components/ui/use-toast";
 import { calcFerieResidue } from "@/lib/presenzeUtils";
 import { puo } from "@/lib/permissions";
+import { LoadingState } from "@/components/shared/Spinner";
+import { formatData } from "@/lib/format";
 
 const STATO_LABEL = { in_attesa: "In attesa", approvata: "Approvata", rifiutata: "Rifiutata" };
 const STATO_VARIANT = { in_attesa: "secondary", approvata: "default", rifiutata: "destructive" };
@@ -80,7 +82,7 @@ export default function FeriePermessiPage() {
     loadData();
   };
 
-  if (loading) return <div className="flex items-center justify-center h-64"><div className="w-8 h-8 border-4 border-muted border-t-primary rounded-full animate-spin" /></div>;
+  if (loading) return <LoadingState minHeight="h-64" />;
 
   if (!gestisceTutti && !empId) {
     return <p className="text-sm text-muted-foreground">Profilo non collegato a un dipendente.</p>;
@@ -122,8 +124,8 @@ export default function FeriePermessiPage() {
                       {r.ore > 0 && <span className="text-xs text-muted-foreground">{r.ore}h</span>}
                     </div>
                     <p className="text-sm font-medium">
-                      {moment(r.data_inizio).format("DD/MM/YYYY")}
-                      {r.data_fine && r.data_fine !== r.data_inizio && ` → ${moment(r.data_fine).format("DD/MM/YYYY")}`}
+                      {formatData(r.data_inizio)}
+                      {r.data_fine && r.data_fine !== r.data_inizio && ` → ${formatData(r.data_fine)}`}
                     </p>
                     {gestisceTutti && <p className="text-xs text-muted-foreground mt-0.5">{r.dipendente_nome}</p>}
                     {r.motivazione && <p className="text-xs text-muted-foreground mt-1 italic">"{r.motivazione}"</p>}

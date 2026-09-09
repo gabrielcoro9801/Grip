@@ -6,6 +6,8 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import PageHeader from "@/components/shared/PageHeader";
 import moment from "moment";
+import { LoadingState } from "@/components/shared/Spinner";
+import { formatDataOra } from "@/lib/format";
 
 const ACTION_LABELS = {
   create: "Creazione",
@@ -52,7 +54,7 @@ export default function AuditLogPage() {
       .filter(l => !dateTo || (l.timestamp && l.timestamp <= dateTo + "T23:59:59"));
   }, [logs, filterUser, filterAction, dateFrom, dateTo]);
 
-  if (loading) return <div className="flex items-center justify-center h-full"><div className="w-8 h-8 border-4 border-muted border-t-primary rounded-full animate-spin" /></div>;
+  if (loading) return <LoadingState minHeight="h-full" />;
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-6xl mx-auto space-y-6">
@@ -108,7 +110,7 @@ export default function AuditLogPage() {
             ) : filtered.map(log => (
               <tr key={log.id} className="border-b border-border/50 hover:bg-muted/30">
                 <td className="py-3 px-4 text-muted-foreground whitespace-nowrap">
-                  {moment(log.timestamp).format("DD/MM/YYYY HH:mm")}
+                  {formatDataOra(log.timestamp)}
                 </td>
                 <td className="py-3 px-4 font-medium">{log.attore_nome}</td>
                 <td className="py-3 px-4">

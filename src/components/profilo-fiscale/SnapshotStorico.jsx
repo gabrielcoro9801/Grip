@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import moment from "moment";
 import { Pencil, Trash2 } from "lucide-react";
+import { formatData } from "@/lib/format";
 
 export default function SnapshotStorico({ snapshots, currentId, onEdit, onDelete }) {
   if (snapshots.length === 0) {
@@ -17,7 +18,7 @@ export default function SnapshotStorico({ snapshots, currentId, onEdit, onDelete
           <div key={snap.id} className={`flex items-center justify-between p-3 rounded-lg border ${isCurrent ? "bg-emerald-50 border-emerald-200" : "bg-card"}`}>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-sm font-medium">Decorrenza: {snap.data_decorrenza ? moment(snap.data_decorrenza).format("D MMM YYYY") : "—"}</span>
+                <span className="text-sm font-medium">Decorrenza: {snap.data_decorrenza ? formatData(snap.data_decorrenza, "media") : "—"}</span>
                 {isCurrent && <Badge variant="outline" className="text-xs bg-emerald-100 text-emerald-700 border-emerald-200">In vigore</Badge>}
               </div>
               <p className="text-xs text-muted-foreground truncate">

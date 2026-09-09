@@ -1,4 +1,5 @@
 import moment from "moment";
+import { formatOra } from "@/lib/format";
 
 /** Verifica sovrapposizione tra due intervalli (stessa logica dei corsi) */
 function timeOverlap(s1, e1, s2, e2) {
@@ -22,10 +23,10 @@ export function validateSedutaForm(form, existingSedute, excludeId) {
     if (!timeOverlap(s.data_ora_inizio, s.data_ora_fine, form.data_ora_inizio, form.data_ora_fine)) continue;
 
     if (s.sala_id && form.sala_id && s.sala_id === form.sala_id) {
-      return `Sala già occupata da un'altra seduta (${s.cliente_nome} alle ${moment(s.data_ora_inizio).format("HH:mm")}).`;
+      return `Sala già occupata da un'altra seduta (${s.cliente_nome} alle ${formatOra(s.data_ora_inizio)}).`;
     }
     if (s.collaboratore_id === form.collaboratore_id) {
-      return `Il collaboratore è già impegnato in un'altra seduta (${s.cliente_nome} alle ${moment(s.data_ora_inizio).format("HH:mm")}).`;
+      return `Il collaboratore è già impegnato in un'altra seduta (${s.cliente_nome} alle ${formatOra(s.data_ora_inizio)}).`;
     }
   }
   return null;

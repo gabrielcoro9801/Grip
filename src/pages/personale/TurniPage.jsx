@@ -14,6 +14,8 @@ import { Plus, Trash2, Clock, MapPin } from "lucide-react";
 import moment from "moment";
 import { useToast } from "@/components/ui/use-toast";
 import { puo } from "@/lib/permissions";
+import { LoadingState } from "@/components/shared/Spinner";
+import { formatData } from "@/lib/format";
 
 export default function TurniPage() {
   const { staffUser } = useStaffAuth();
@@ -91,7 +93,7 @@ export default function TurniPage() {
     loadData();
   };
 
-  if (loading) return <div className="flex items-center justify-center h-64"><div className="w-8 h-8 border-4 border-muted border-t-primary rounded-full animate-spin" /></div>;
+  if (loading) return <LoadingState minHeight="h-64" />;
 
   if (!gestisceTutti && !empId) {
     return <p className="text-sm text-muted-foreground">Profilo non collegato a un dipendente.</p>;
@@ -120,7 +122,7 @@ export default function TurniPage() {
                 <CardContent className="p-4">
                   <div className="flex items-start justify-between">
                     <div>
-                      <p className="font-medium capitalize">{moment(t.data).format("ddd DD MMM")}</p>
+                      <p className="font-medium capitalize">{formatData(t.data, "giorno")}</p>
                       <div className="flex items-center gap-1 text-sm text-muted-foreground mt-1">
                         <Clock className="w-3.5 h-3.5" /> {t.ora_inizio}–{t.ora_fine}
                       </div>
@@ -161,7 +163,7 @@ export default function TurniPage() {
               <tbody>
                 {passati.map((t) => (
                   <tr key={t.id} className="border-b border-border/50">
-                    <td className="py-3 px-4 capitalize">{moment(t.data).format("ddd DD MMM")}</td>
+                    <td className="py-3 px-4 capitalize">{formatData(t.data, "giorno")}</td>
                     <td className="py-3 px-4 text-muted-foreground">{t.ora_inizio}–{t.ora_fine}</td>
                     {gestisceTutti && <td className="py-3 px-4">{t.dipendente_nome}</td>}
                     <td className="py-3 px-4 text-muted-foreground">{t.sala_nome || "—"}</td>

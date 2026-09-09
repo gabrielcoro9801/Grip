@@ -1,6 +1,7 @@
 import { api } from "@/api/client";
 import jsPDF from "jspdf";
 import moment from "moment";
+import { formatData } from "@/lib/format";
 
 function loadImageAsDataUrl(url) {
   return new Promise((resolve) => {
@@ -94,7 +95,7 @@ export async function buildReceiptPdfBlob(receipt, organization, template, membe
   doc.setFontSize(10);
   doc.setFont("helvetica", "normal");
   doc.text(`N. ${receipt.numero_progressivo}/${receipt.esercizio_fiscale}`, pageW - margin, 48, { align: "right" });
-  doc.text(`Data: ${moment(receipt.data_emissione).format("DD/MM/YYYY")}`, pageW - margin, 54, { align: "right" });
+  doc.text(`Data: ${formatData(receipt.data_emissione)}`, pageW - margin, 54, { align: "right" });
 
   // Cliente
   let y = 65;

@@ -17,6 +17,8 @@ import moment from "moment";
 import { useToast } from "@/components/ui/use-toast";
 import { posizioneSoglia } from "../../../shared/compensiSportivi.js";
 import { useParametriFiscali } from "@/hooks/useParametriFiscali";
+import { LoadingState } from "@/components/shared/Spinner";
+import { formatEuro } from "@/lib/format";
 
 const MESI = moment.months();
 
@@ -62,7 +64,7 @@ export default function PtCompensiPage() {
 
   useEffect(() => { loadData(); }, [organization, collaboratoreId]);
 
-  if (loading) return <div className="flex items-center justify-center h-64"><div className="w-8 h-8 border-4 border-muted border-t-primary rounded-full animate-spin" /></div>;
+  if (loading) return <LoadingState minHeight="h-64" />;
 
   // Cumulo annuo per collaboratore (liquidazioni liquidate nell'anno + autocertificazione altri enti)
   const cumuloAnnuo = (collId) => {
@@ -91,7 +93,7 @@ export default function PtCompensiPage() {
                     <p className="text-xs text-muted-foreground">{l.numero_sedute} sedute · {l.tipo_contratto}</p>
                   </div>
                   <div className="text-right">
-                    <p className="text-lg font-bold">€{l.importo_totale.toFixed(2)}</p>
+                    <p className="text-lg font-bold">{formatEuro(l.importo_totale)}</p>
                     <Badge variant={l.stato === "liquidata" ? "default" : "secondary"}>{l.stato === "liquidata" ? "Liquidata" : "Bozza"}</Badge>
                   </div>
                 </CardContent>
@@ -145,7 +147,7 @@ export default function PtCompensiPage() {
       tipo_contratto: riga.coll.tipo_contratto,
       stato: "bozza",
     });
-    await logAction(staffUser, "create", "pt_compenso", `${riga.coll.nome} ${riga.coll.cognome}`, liq.id, `Liquidazione ${MESI[mese]} ${anno}: €${riga.importo.toFixed(2)}`);
+    await logAction(staffUser, "create", "pt_compenso", `${riga.coll.nome} ${riga.coll.cognome}`, liq.id, `Liquidazione ${MESI[mese]} ${anno}: ${formatEuro(riga.importo)}`);
     toast({ title: "Liquidazione creata", description: "In stato bozza — da registrare in contabilità" });
     loadData();
   };
@@ -201,7 +203,7 @@ export default function PtCompensiPage() {
         data_liquidazione: moment().format("YYYY-MM-DD"),
       });
     }
-    await logAction(staffUser, "create", "pt_compenso", `${riga.coll.nome} ${riga.coll.cognome}`, je.id, `Movimento contabile creato per liquidazione €${riga.importo.toFixed(2)}`);
+    await logAction(staffUser, "create", "pt_compenso", `${riga.coll.nome} ${riga.coll.cognome}`, je.id, `Movimento contabile creato per liquidazione ${formatEuro(riga.importo)}`);
     toast({ title: "Movimento registrato", description: "Il compenso risulta ora fra i debiti da pagare." });
     loadData();
   };
@@ -274,7 +276,7 @@ export default function PtCompensiPage() {
                     <p className="text-sm text-muted-foreground">
                       {r.numeroSedute} sedute svolte · {r.periodo}
                     </p>
-                    <p className="text-lg font-bold mt-1">€{r.importo.toFixed(2)}</p>
+                    <p className="text-lg font-bold mt-1">{formatEuro(r.importo)}</p>
                     {/* Un compenso a zero con delle sedute svolte è quasi sempre una
                         configurazione incompleta, non un compenso davvero nullo: senza
                         dirlo, resta uno zero inspiegabile. */}
@@ -292,7 +294,7 @@ export default function PtCompensiPage() {
                       </p>
                     )}
                     <p className="text-xs text-muted-foreground mt-1">
-                      Cumulo anno {anno}: €{r.cumulo.toFixed(2)} {r.coll.importo_autocertificato_altri_enti ? `(incl. €${r.coll.importo_autocertificato_altri_enti.toFixed(2)} altri enti)` : ""}
+                      Cumulo anno {anno}: {formatEuro(r.cumulo)} {r.coll.importo_autocertificato_altri_enti ? `(incl. ${formatEuro(r.coll.importo_autocertificato_altri_enti)} altri enti)` : ""}
                     </p>
                     {/* Senza autocertificazione il cumulo vede solo i compensi di questo
                         ente: un "sotto soglia" calcolato così non è affidabile, e va detto
@@ -312,9 +314,9 @@ export default function PtCompensiPage() {
                       <div className="flex items-start gap-2 mt-2 p-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-xs">
                         <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
                         <span>
-                          <strong>Con questo compenso si supera la soglia</strong> di €{sogliaVisualizzata}:
-                          il cumulo passerebbe da €{r.soglia.cumuloPrima.toFixed(2)} a €{r.soglia.cumuloDopo.toFixed(2)},
-                          con €{r.soglia.eccedenzaDiQuestoCompenso.toFixed(2)} oltre soglia. Verificare con il
+                          <strong>Con questo compenso si supera la soglia</strong> di {formatEuro(sogliaVisualizzata)}:
+                          il cumulo passerebbe da {formatEuro(r.soglia.cumuloPrima)} a {formatEuro(r.soglia.cumuloDopo)},
+                          con {formatEuro(r.soglia.eccedenzaDiQuestoCompenso)} oltre soglia. Verificare con il
                           commercialista il trattamento dell'eccedenza prima di erogare. Stima indicativa.
                         </span>
                       </div>
@@ -323,7 +325,7 @@ export default function PtCompensiPage() {
                       <div className="flex items-start gap-2 mt-2 p-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-xs">
                         <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
                         <span>
-                          Soglia di €{sogliaVisualizzata} già superata: €{r.soglia.eccedenza.toFixed(2)} oltre
+                          Soglia di {formatEuro(sogliaVisualizzata)} già superata: {formatEuro(r.soglia.eccedenza)} oltre
                           soglia sul cumulo annuo. L'intero compenso in corso è oltre la soglia.
                           Verificare con il commercialista. Stima indicativa.
                         </span>
@@ -331,7 +333,7 @@ export default function PtCompensiPage() {
                     )}
                     {!r.soglia.giaOltreSoglia && !r.soglia.superaConQuestoCompenso && r.importo > 0 && (
                       <p className="text-xs text-muted-foreground mt-1">
-                        Residuo entro soglia dopo questo compenso: €{Math.max(0, r.soglia.residuoDisponibile - r.importo).toFixed(2)}
+                        Residuo entro soglia dopo questo compenso: {formatEuro(Math.max(0, r.soglia.residuoDisponibile - r.importo))}
                       </p>
                     )}
                   </div>
@@ -363,7 +365,7 @@ export default function PtCompensiPage() {
             <div className="space-y-3">
               <p className="text-sm">
                 Compenso a <strong>{confermaSoglia.coll.nome} {confermaSoglia.coll.cognome}</strong> di
-                €{confermaSoglia.importo.toFixed(2)} per {MESI[mese]} {anno}.
+                {formatEuro(confermaSoglia.importo)} per {MESI[mese]} {anno}.
               </p>
 
               {confermaSoglia.soglia.autocertificazioneMancante && (
@@ -379,11 +381,11 @@ export default function PtCompensiPage() {
 
               {(confermaSoglia.soglia.superaConQuestoCompenso || confermaSoglia.soglia.giaOltreSoglia) && (
                 <div className="p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 text-sm space-y-1">
-                  <div className="flex justify-between"><span>Cumulo prima</span><span>€{confermaSoglia.soglia.cumuloPrima.toFixed(2)}</span></div>
-                  <div className="flex justify-between"><span>Cumulo dopo</span><span className="font-medium">€{confermaSoglia.soglia.cumuloDopo.toFixed(2)}</span></div>
+                  <div className="flex justify-between"><span>Cumulo prima</span><span>{formatEuro(confermaSoglia.soglia.cumuloPrima)}</span></div>
+                  <div className="flex justify-between"><span>Cumulo dopo</span><span className="font-medium">{formatEuro(confermaSoglia.soglia.cumuloDopo)}</span></div>
                   <div className="flex justify-between pt-1 border-t border-amber-200">
-                    <span>Oltre la soglia di €{sogliaVisualizzata}</span>
-                    <span className="font-bold">€{confermaSoglia.soglia.eccedenza.toFixed(2)}</span>
+                    <span>Oltre la soglia di {formatEuro(sogliaVisualizzata)}</span>
+                    <span className="font-bold">{formatEuro(confermaSoglia.soglia.eccedenza)}</span>
                   </div>
                 </div>
               )}

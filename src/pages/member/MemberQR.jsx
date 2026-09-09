@@ -7,6 +7,8 @@ import { AlertCircle, CheckCircle } from "lucide-react";
 import { generateQRCode, getQRImageUrl } from "@/lib/qrUtils";
 import StatusBadge from "@/components/shared/StatusBadge";
 import moment from "moment";
+import { LoadingState } from "@/components/shared/Spinner";
+import { formatData } from "@/lib/format";
 
 export default function MemberQR() {
   const { memberUser } = useMemberAuth();
@@ -44,7 +46,7 @@ export default function MemberQR() {
   }, [memberUser?.member_id]);
 
   if (loading) {
-    return <div className="flex items-center justify-center p-8"><div className="w-8 h-8 border-4 border-muted border-t-primary rounded-full animate-spin" /></div>;
+    return <LoadingState minHeight="p-8" />;
   }
 
   const activeSub = subscriptions.find(s => s.status === "active");
@@ -102,7 +104,7 @@ export default function MemberQR() {
           </div>
           {activeSub && (
             <p className="text-xs text-muted-foreground mt-1">
-              {activeSub.plan_name} — scade il {moment(activeSub.end_date).format("D MMM YYYY")}
+              {activeSub.plan_name} — scade il {formatData(activeSub.end_date, "media")}
             </p>
           )}
           {canAccess ? (

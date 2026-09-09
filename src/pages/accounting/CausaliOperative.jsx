@@ -12,6 +12,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import PageHeader from "@/components/shared/PageHeader";
 import { Plus, Pencil, Lock } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
+import { LoadingState } from "@/components/shared/Spinner";
 
 const ICON_OPTIONS = [
   { value: "ticket", label: "Biglietto" }, { value: "users", label: "Persone" },
@@ -90,7 +91,7 @@ export default function CausaliOperative() {
     loadData();
   };
 
-  if (orgLoading || loading) return <div className="flex items-center justify-center h-full"><div className="w-8 h-8 border-4 border-muted border-t-primary rounded-full animate-spin" /></div>;
+  if (orgLoading || loading) return <LoadingState minHeight="h-full" />;
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-5xl mx-auto space-y-6">

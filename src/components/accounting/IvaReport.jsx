@@ -5,6 +5,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { AlertTriangle } from "lucide-react";
 import { trovaContoPerRuolo } from "../../../shared/contiSistema.js";
+import { formatEuro, formatNumero } from "@/lib/format";
 
 export default function IvaReport({ entries, lines, accounts }) {
   const [dateFrom, setDateFrom] = useState("");
@@ -32,7 +33,6 @@ export default function IvaReport({ entries, lines, accounts }) {
 
   const stimaDaVersare = totaleIVACommerciale * 0.5;
 
-  const fmt = (n) => n.toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   return (
     <div className="space-y-6">
@@ -62,14 +62,14 @@ export default function IvaReport({ entries, lines, accounts }) {
         <Card className="border-0 shadow-sm">
           <CardContent className="p-5">
             <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Totale IVA incassata (commerciale)</p>
-            <p className="text-2xl font-bold mt-1">€{fmt(totaleIVACommerciale)}</p>
+            <p className="text-2xl font-bold mt-1">{formatEuro(totaleIVACommerciale)}</p>
             <p className="text-xs text-muted-foreground mt-1">Somma dell'IVA a debito (conto 4.3) su movimenti commerciali nel periodo</p>
           </CardContent>
         </Card>
         <Card className="border-0 shadow-sm bg-primary/5">
           <CardContent className="p-5">
             <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Stima IVA da versare</p>
-            <p className="text-2xl font-bold text-primary mt-1">€{fmt(stimaDaVersare)}</p>
+            <p className="text-2xl font-bold text-primary mt-1">{formatEuro(stimaDaVersare)}</p>
             <p className="text-xs text-muted-foreground mt-1">50% del totale IVA incassata su proventi commerciali</p>
           </CardContent>
         </Card>

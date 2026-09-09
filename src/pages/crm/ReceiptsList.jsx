@@ -13,6 +13,8 @@ import moment from "moment";
 import { Link } from "react-router-dom";
 import { useToast } from "@/components/ui/use-toast";
 import { puo } from "@/lib/permissions";
+import { LoadingState } from "@/components/shared/Spinner";
+import { formatData, formatEuro } from "@/lib/format";
 
 export default function ReceiptsList() {
   const { organization } = useOrganization();
@@ -49,7 +51,7 @@ export default function ReceiptsList() {
     String(r.numero_progressivo || "").includes(search)
   );
 
-  if (loading) return <div className="flex items-center justify-center h-64"><div className="w-8 h-8 border-4 border-muted border-t-primary rounded-full animate-spin" /></div>;
+  if (loading) return <LoadingState minHeight="h-64" />;
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-4">
@@ -79,7 +81,7 @@ export default function ReceiptsList() {
             ) : filtered.map(r => (
               <tr key={r.id} className="border-b border-border/50 hover:bg-muted/30">
                 <td className="py-3 px-4 font-medium">{r.numero_progressivo || "—"}/{r.esercizio_fiscale || ""}</td>
-                <td className="py-3 px-4 text-muted-foreground">{moment(r.data_emissione || r.date).format("DD/MM/YYYY")}</td>
+                <td className="py-3 px-4 text-muted-foreground">{formatData(r.data_emissione || r.date)}</td>
                 <td className="py-3 px-4">
                   <Link to={`/crm/members/${r.cliente_id || r.member_id}`} className="font-medium text-primary hover:underline">
                     {r.cliente_name || r.member_name}
@@ -102,7 +104,7 @@ export default function ReceiptsList() {
                   )}
                   {r.versione > 1 && <span className="text-xs text-muted-foreground ml-1">v{r.versione}</span>}
                 </td>
-                <td className="py-3 px-4 text-right font-medium">€{Number(r.importo_lordo || r.amount || 0).toFixed(2)}</td>
+                <td className="py-3 px-4 text-right font-medium">{formatEuro(Number(r.importo_lordo || r.amount || 0))}</td>
                 <td className="py-3 px-4 text-right">
                   <div className="flex items-center justify-end gap-1">
                     {r.pdf_url ? (

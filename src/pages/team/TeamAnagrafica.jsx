@@ -13,6 +13,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Plus, Pencil, Ban, CheckCircle2, Mail, Phone, UserCog, Activity } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
+import { LoadingState } from "@/components/shared/Spinner";
+import { formatEuro } from "@/lib/format";
 
 const CONTRATTI = {
   fisso: { label: "Fisso (importo periodico)" },
@@ -104,7 +106,7 @@ export default function TeamAnagrafica() {
     loadData();
   };
 
-  if (loading) return <div className="flex items-center justify-center h-64"><div className="w-8 h-8 border-4 border-muted border-t-primary rounded-full animate-spin" /></div>;
+  if (loading) return <LoadingState minHeight="h-64" />;
 
   const filtered = filterTipo === "all" ? collaboratori : collaboratori.filter((c) => c.tipo_rapporto === filterTipo);
   const isSportivo = form.tipo_rapporto === "collaboratore_sportivo";
@@ -160,10 +162,10 @@ export default function TeamAnagrafica() {
               {c.tipo_rapporto === "collaboratore_sportivo" && (
                 <div className="mt-2 pt-2 border-t border-border/50">
                   <Badge variant="outline" className="text-xs">{CONTRATTI[c.tipo_contratto]?.label || c.tipo_contratto}</Badge>
-                  {c.tipo_contratto === "fisso" && c.importo_fisso != null && <p className="text-xs mt-1">€{Number(c.importo_fisso).toFixed(2)}/periodo</p>}
+                  {c.tipo_contratto === "fisso" && c.importo_fisso != null && <p className="text-xs mt-1">{formatEuro(Number(c.importo_fisso))}/periodo</p>}
                   {c.tipo_contratto === "percentuale" && c.percentuale != null && <p className="text-xs mt-1">{c.percentuale}% sull'incasso</p>}
-                  {c.tipo_contratto === "a_seduta" && c.importo_seduta != null && <p className="text-xs mt-1">€{Number(c.importo_seduta).toFixed(2)}/seduta</p>}
-                  {c.importo_autocertificato_altri_enti != null && <p className="text-xs mt-1 text-amber-600">Altri enti: €{Number(c.importo_autocertificato_altri_enti).toFixed(2)}</p>}
+                  {c.tipo_contratto === "a_seduta" && c.importo_seduta != null && <p className="text-xs mt-1">{formatEuro(Number(c.importo_seduta))}/seduta</p>}
+                  {c.importo_autocertificato_altri_enti != null && <p className="text-xs mt-1 text-amber-600">Altri enti: {formatEuro(Number(c.importo_autocertificato_altri_enti))}</p>}
                 </div>
               )}
               <div className="flex gap-1 mt-3">

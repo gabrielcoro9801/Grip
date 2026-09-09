@@ -14,6 +14,8 @@ import { Clock, LogIn, LogOut, Pencil } from "lucide-react";
 import moment from "moment";
 import { useToast } from "@/components/ui/use-toast";
 import { puo } from "@/lib/permissions";
+import { LoadingState } from "@/components/shared/Spinner";
+import { formatDataOra, formatOra } from "@/lib/format";
 
 export default function TimbraturaPage() {
   const { staffUser } = useStaffAuth();
@@ -59,7 +61,7 @@ export default function TimbraturaPage() {
       tipo: nextTipo,
       data_ora_server: new Date().toISOString(),
     });
-    toast({ title: nextTipo === "entrata" ? "Entrata registrata" : "Uscita registrata", description: moment().format("DD/MM/YYYY HH:mm") });
+    toast({ title: nextTipo === "entrata" ? "Entrata registrata" : "Uscita registrata", description: formatDataOra(moment()) });
     loadData();
   };
 
@@ -75,8 +77,8 @@ export default function TimbraturaPage() {
     await logAction(
       staffUser, "update", "timbratura", editTarget.dipendente_nome, editTarget.id,
       `Correzione timbratura ${editTarget.tipo}`,
-      moment(oldValue).format("DD/MM/YYYY HH:mm"),
-      moment(newValue).format("DD/MM/YYYY HH:mm")
+      formatDataOra(oldValue),
+      formatDataOra(newValue)
     );
     toast({ title: "Timbratura corretta" });
     setEditTarget(null);
@@ -85,7 +87,7 @@ export default function TimbraturaPage() {
 
   const filtered = gestisceTutti && filterEmp !== "all" ? timbrature.filter((t) => t.dipendente_id === filterEmp) : timbrature;
 
-  if (loading) return <div className="flex items-center justify-center h-64"><div className="w-8 h-8 border-4 border-muted border-t-primary rounded-full animate-spin" /></div>;
+  if (loading) return <LoadingState minHeight="h-64" />;
 
   if (!gestisceTutti && !empId) {
     return <p className="text-sm text-muted-foreground">Profilo non collegato a un dipendente.</p>;
@@ -103,7 +105,7 @@ export default function TimbraturaPage() {
             </div>
             <div className="text-center">
               <p className="text-sm text-muted-foreground">{isClockedIn ? "Sei in servizio dalle" : "Non hai timbrato l'entrata"}</p>
-              {isClockedIn && <p className="text-lg font-bold">{moment(lastTimbratura.data_ora_server).format("HH:mm")}</p>}
+              {isClockedIn && <p className="text-lg font-bold">{formatOra(lastTimbratura.data_ora_server)}</p>}
             </div>
             <Button size="lg" className="w-full max-w-xs" onClick={handleTimbra}>
               {nextTipo === "entrata" ? <><LogIn className="w-5 h-5 mr-2" /> Timbra Entrata</> : <><LogOut className="w-5 h-5 mr-2" /> Timbra Uscita</>}
@@ -144,7 +146,7 @@ export default function TimbraturaPage() {
                       <Badge variant={t.tipo === "entrata" ? "default" : "secondary"}>{t.tipo === "entrata" ? "Entrata" : "Uscita"}</Badge>
                     </td>
                     <td className="py-3 px-4 text-muted-foreground">
-                      {moment(t.data_ora_server).format("DD/MM/YYYY HH:mm:ss")}
+                      {formatDataOra(t.data_ora_server, { secondi: true })}
                       {t.corretta_da && <span className="block text-xs text-amber-600">Corretta da {t.corretta_da}</span>}
                     </td>
                     {gestisceTutti && (

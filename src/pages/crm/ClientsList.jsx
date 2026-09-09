@@ -9,6 +9,7 @@ import PageHeader from "@/components/shared/PageHeader";
 import ClientForm from "@/components/crm/ClientForm";
 import { datiMancantiCliente } from "../../../shared/fatturaElettronica.js";
 import { Plus, Search, Mail, Phone, Building, User, Link2, Pencil, FileWarning } from "lucide-react";
+import { LoadingState } from "@/components/shared/Spinner";
 
 export default function ClientsList() {
   const { organization } = useOrganization();
@@ -40,7 +41,7 @@ export default function ClientsList() {
     return name.includes(search.toLowerCase()) || (c.email && c.email.toLowerCase().includes(search.toLowerCase()));
   });
 
-  if (loading) return <div className="flex items-center justify-center h-64"><div className="w-8 h-8 border-4 border-muted border-t-primary rounded-full animate-spin" /></div>;
+  if (loading) return <LoadingState minHeight="h-64" />;
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">

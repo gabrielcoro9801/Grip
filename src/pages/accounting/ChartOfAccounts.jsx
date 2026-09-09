@@ -13,6 +13,7 @@ import { Plus, Cog, Pencil, Trash2, Eye, EyeOff, AlertCircle } from "lucide-reac
 import MappaRuoliConti from "@/components/accounting/MappaRuoliConti";
 import { RUOLI_SISTEMA, NOMI_RUOLI } from "../../../shared/contiSistema.js";
 import { TIPI_CONTO, naturaTipica, eRettificativo, effettoDelMovimento } from "../../../shared/tipiConto.js";
+import { LoadingState } from "@/components/shared/Spinner";
 
 const TIPO_LABELS = {
   attivo: "Attivo",
@@ -201,7 +202,7 @@ export default function ChartOfAccounts() {
     );
   };
 
-  if (orgLoading || loading) return <div className="flex items-center justify-center h-full"><div className="w-8 h-8 border-4 border-muted border-t-primary rounded-full animate-spin" /></div>;
+  if (orgLoading || loading) return <LoadingState minHeight="h-full" />;
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-5xl mx-auto space-y-6">

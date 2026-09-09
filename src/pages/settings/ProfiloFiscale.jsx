@@ -11,6 +11,7 @@ import SnapshotStorico from "@/components/profilo-fiscale/SnapshotStorico";
 import FiscalYearTable from "@/components/profilo-fiscale/FiscalYearTable";
 import DatiFatturazione from "@/components/profilo-fiscale/DatiFatturazione";
 import { useToast } from "@/components/ui/use-toast";
+import { LoadingState } from "@/components/shared/Spinner";
 
 export default function ProfiloFiscale() {
   const { organization } = useOrganization();
@@ -54,7 +55,7 @@ export default function ProfiloFiscale() {
   };
 
   if (loading) {
-    return <div className="flex items-center justify-center h-64"><div className="w-8 h-8 border-4 border-muted border-t-primary rounded-full animate-spin" /></div>;
+    return <LoadingState minHeight="h-64" />;
   }
 
   return (

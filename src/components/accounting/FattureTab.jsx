@@ -8,8 +8,9 @@ import { Input } from "@/components/ui/input";
 import { Download, FileText, AlertTriangle, FileCode2 } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import moment from "moment";
+import { LoadingState } from "@/components/shared/Spinner";
+import { formatData, formatEuro, formatNumero } from "@/lib/format";
 
-const fmt = (n) => Number(n || 0).toLocaleString("it-IT", { minimumFractionDigits: 2 });
 
 /**
  * Elenco delle fatture emesse verso clienti terzi.
@@ -70,7 +71,7 @@ export default function FattureTab({ organization }) {
     ? Array.from({ length: numeri[numeri.length - 1] }, (_, i) => i + 1).filter((n) => !numeri.includes(n))
     : [];
 
-  if (loading) return <div className="flex items-center justify-center py-12"><div className="w-8 h-8 border-4 border-muted border-t-primary rounded-full animate-spin" /></div>;
+  if (loading) return <LoadingState minHeight="py-12" />;
 
   return (
     <div className="space-y-4">
@@ -83,11 +84,11 @@ export default function FattureTab({ organization }) {
           <div className="flex gap-6 text-sm">
             <div>
               <p className="text-xs text-muted-foreground">Imponibile</p>
-              <p className="font-bold">€{fmt(totaleImponibile)}</p>
+              <p className="font-bold">{formatEuro(totaleImponibile)}</p>
             </div>
             <div>
               <p className="text-xs text-muted-foreground">IVA</p>
-              <p className="font-bold">€{fmt(totaleIva)}</p>
+              <p className="font-bold">{formatEuro(totaleIva)}</p>
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Fatture</p>
@@ -137,15 +138,15 @@ export default function FattureTab({ organization }) {
               {fatture.map((f) => (
                 <tr key={f.id} className="border-b border-border/50 hover:bg-muted/20">
                   <td className="py-2.5 px-4 font-medium whitespace-nowrap">{f.numero_progressivo}/{f.esercizio_fiscale}</td>
-                  <td className="py-2.5 px-4 text-muted-foreground whitespace-nowrap">{moment(f.data_emissione).format("DD/MM/YYYY")}</td>
+                  <td className="py-2.5 px-4 text-muted-foreground whitespace-nowrap">{formatData(f.data_emissione)}</td>
                   <td className="py-2.5 px-4">
                     {f.cliente_name}
                     {f.cliente_piva && <span className="block text-xs text-muted-foreground">{f.cliente_piva}</span>}
                   </td>
                   <td className="py-2.5 px-4 text-muted-foreground">{f.descrizione || "—"}</td>
-                  <td className="py-2.5 px-4 text-right">€{fmt(f.imponibile)}</td>
-                  <td className="py-2.5 px-4 text-right text-muted-foreground">€{fmt(f.iva)}</td>
-                  <td className="py-2.5 px-4 text-right font-medium">€{fmt(f.totale)}</td>
+                  <td className="py-2.5 px-4 text-right">{formatEuro(f.imponibile)}</td>
+                  <td className="py-2.5 px-4 text-right text-muted-foreground">{formatEuro(f.iva)}</td>
+                  <td className="py-2.5 px-4 text-right font-medium">{formatEuro(f.totale)}</td>
                   <td className="py-2.5 px-4">
                     <div className="flex items-center justify-end gap-1">
                       {f.pdf_url ? (
