@@ -1,7 +1,6 @@
 import React, { useMemo } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { AlertTriangle, CheckCircle2 } from "lucide-react";
-import moment from "moment";
 import { formatData } from "@/lib/format";
 
 const FIELDS = [

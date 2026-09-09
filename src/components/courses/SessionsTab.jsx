@@ -6,7 +6,6 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { UserPlus, Clock, MapPin, Calendar, Users } from "lucide-react";
-import moment from "moment";
 import { useToast } from "@/components/ui/use-toast";
 import { createBooking, getSessionAvailability } from "@/lib/bookingUtils";
 import { formatData } from "@/lib/format";

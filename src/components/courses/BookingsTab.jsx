@@ -4,7 +4,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import StatusBadge from "@/components/shared/StatusBadge";
 import { Trash2 } from "lucide-react";
-import moment from "moment";
 import { useToast } from "@/components/ui/use-toast";
 import { cancelBooking } from "@/lib/bookingUtils";
 import { formatData } from "@/lib/format";

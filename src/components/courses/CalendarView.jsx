@@ -3,7 +3,6 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Card, CardContent } from "@/components/ui/card";
 import { ChevronLeft, ChevronRight, Plus, Clock, MapPin, Users, Pencil, Calendar } from "lucide-react";
-import moment from "moment";
 import { getSessionAvailability } from "@/lib/bookingUtils";
 import EventFormDialog from "@/components/courses/EventFormDialog";
 import ManageSessions from "@/components/courses/ManageSessions";

@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import StatusBadge from "@/components/shared/StatusBadge";
-import { ArrowLeft, Plus, FileText, CreditCard, Dumbbell, Shield, Calendar, QrCode, KeyRound } from "lucide-react";
+import { ArrowLeft, Plus, FileText, CreditCard, Dumbbell, Shield, Calendar, QrCode, KeyRound, RefreshCw } from "lucide-react";
 import { generateQRCode, getQRImageUrl } from "@/lib/qrUtils";
 import { logAction } from "@/lib/auditLog";
 import moment from "moment";

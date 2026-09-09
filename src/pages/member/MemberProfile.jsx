@@ -7,7 +7,6 @@ import { User, Mail, Phone, MapPin, Calendar, Heart, Pencil, LogOut, Hash } from
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter
 } from "@/components/ui/dialog";
-import moment from "moment";
 import { LoadingState } from "@/components/shared/Spinner";
 import { formatData } from "@/lib/format";
 

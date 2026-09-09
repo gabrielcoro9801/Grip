@@ -1,6 +1,5 @@
 import React, { useState, useMemo } from "react";
 import { ChevronLeft } from "lucide-react";
-import moment from "moment";
 import CourseSessionsList from "@/components/member/CourseSessionsList";
 import { formatData } from "@/lib/format";
 

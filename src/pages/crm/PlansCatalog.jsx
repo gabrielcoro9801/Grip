@@ -8,7 +8,6 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import PageHeader from "@/components/shared/PageHeader";
 import { Plus, Edit2, Trash2, Clock, Hash } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { LoadingState } from "@/components/shared/Spinner";
 import { formatEuro } from "@/lib/format";
 

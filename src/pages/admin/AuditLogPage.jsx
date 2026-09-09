@@ -5,7 +5,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import PageHeader from "@/components/shared/PageHeader";
-import moment from "moment";
 import { LoadingState } from "@/components/shared/Spinner";
 import { formatDataOra } from "@/lib/format";
 

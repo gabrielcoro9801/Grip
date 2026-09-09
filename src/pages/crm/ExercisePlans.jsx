@@ -9,7 +9,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import PageHeader from "@/components/shared/PageHeader";
 import { Plus, Trash2, Dumbbell, Pencil, AlertCircle } from "lucide-react";
-import moment from "moment";
 import { LoadingState } from "@/components/shared/Spinner";
 import { formatData } from "@/lib/format";
 

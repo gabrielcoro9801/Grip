@@ -1,10 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { api } from "@/api/client";
-import { Card, CardContent } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import PageHeader from "@/components/shared/PageHeader";
 import StatusBadge from "@/components/shared/StatusBadge";
-import moment from "moment";
 import { Link } from "react-router-dom";
 import { LoadingState } from "@/components/shared/Spinner";
 import { formatData, formatEuro } from "@/lib/format";

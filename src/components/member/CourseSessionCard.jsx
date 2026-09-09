@@ -2,7 +2,6 @@ import React from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Clock, User, MapPin } from "lucide-react";
-import moment from "moment";
 import { formatData } from "@/lib/format";
 
 export default function CourseSessionCard({

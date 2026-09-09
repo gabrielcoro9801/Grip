@@ -7,7 +7,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { ClipboardList, Check } from "lucide-react";
-import moment from "moment";
 import { useToast } from "@/components/ui/use-toast";
 import { LoadingState } from "@/components/shared/Spinner";
 import { formatData } from "@/lib/format";

@@ -10,7 +10,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import PageHeader from "@/components/shared/PageHeader";
 import StatusBadge from "@/components/shared/StatusBadge";
 import { useOrganization } from "@/hooks/useOrganization";
-import { Plus, Search, Mail, Phone, Eye } from "lucide-react";
+import { Plus, Search, Mail } from "lucide-react";
 import { LoadingState } from "@/components/shared/Spinner";
 
 export default function MembersList() {
