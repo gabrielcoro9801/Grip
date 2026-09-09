@@ -2,8 +2,7 @@
 //
 // Il socio è un cliente, non un dipendente: entra con le proprie credenziali in un'area che
 // deve mostrargli i suoi dati e nient'altro. Senza questi limiti l'API gli restituisce
-// qualunque entità — anagrafiche degli altri soci, contabilità, account dello staff, e
-// perfino i cedolini, cioè gli stipendi di tutti.
+// qualunque entità — anagrafiche degli altri soci e account dello staff compresi.
 //
 // Il controllo sta qui e non nell'interfaccia perché l'interfaccia non protegge nulla:
 // basta la stessa richiesta fatta a mano.
@@ -11,11 +10,11 @@
 // Le uniche entità che il portale soci ha ragione di leggere.
 const LEGGIBILI = new Set([
 	// I propri dati
-	'Member', 'Subscription', 'Receipt', 'MemberDocument', 'QRAccesso',
+	'Member', 'Subscription', 'MemberDocument', 'QRAccesso',
 	'ExercisePlan', 'WorkoutLog', 'Booking',
 	// Il catalogo dei corsi, che serve a prenotare
 	'Course', 'Category', 'Instructor', 'Event', 'Session', 'Room',
-	// Intestazione dell'ente, per ricevute e schermate
+	// Intestazione dell'ente, per le schermate
 	'Organization',
 ]);
 
@@ -24,7 +23,6 @@ const LEGGIBILI = new Set([
 const COLONNA_PROPRIETARIO = {
 	Member: 'id',
 	Subscription: 'member_id',
-	Receipt: 'member_id',
 	MemberDocument: 'member_id',
 	ExercisePlan: 'member_id',
 	WorkoutLog: 'member_id',

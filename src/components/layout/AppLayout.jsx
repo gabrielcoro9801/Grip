@@ -4,32 +4,23 @@ import { useStaffAuth } from "@/lib/StaffAuthContext";
 import { canAccess, ROLES, SIDEBAR_PERMISSIONS } from "@/lib/permissions";
 import StaffLogin from "@/pages/StaffLogin";
 import {
-  LayoutDashboard, Users, ArrowLeftRight, Calendar,
-  ChevronLeft, ChevronRight, LogOut, Menu, Dumbbell, Calculator,
-  ShieldCheck, ScrollText, Receipt, Store, ClipboardList, Activity, Landmark, UsersRound
+  LayoutDashboard, Users, Calendar,
+  ChevronLeft, ChevronRight, LogOut, Menu, Dumbbell,
+  ShieldCheck, ScrollText
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { LoadingState } from "@/components/shared/Spinner";
 
 // Le etichette sono tutte in sentence case: nella stessa lista convivevano
-// "Gestione corsi" e "PT Esterni", "Log Audit", "Profilo Fiscale". E ogni voce
-// porta alla pagina che si chiama come lei: "Vendite" apriva una pagina
-// intitolata "Clienti".
+// "Gestione corsi" e "PT Esterni", "Log Audit". E ogni voce porta alla pagina
+// che si chiama come lei.
 const navItems = [
   { label: "Dashboard", path: "/", icon: LayoutDashboard },
   { label: "CRM", path: "/crm", icon: Users },
-  { label: "Movimenti", path: "/movimenti", icon: ArrowLeftRight },
-  { label: "Clienti", path: "/clienti", icon: Store },
   { label: "Gestione corsi", path: "/calendario", icon: Calendar },
-  { label: "Team", path: "/team", icon: UsersRound },
-  { label: "Personale", path: "/personale", icon: ClipboardList, roles: ["dipendente"] },
-  { label: "PT esterni", path: "/pt", icon: Activity, roles: ["pt"] },
-  { label: "Contabilità", path: "/contabilita", icon: Calculator },
   { label: "Admin e utenti", path: "/admin", icon: ShieldCheck },
-  { label: "Template ricevuta", path: "/template-ricevuta", icon: Receipt },
   { label: "Log audit", path: "/log-audit", icon: ScrollText },
-  { label: "Profilo fiscale", path: "/profilo-fiscale", icon: Landmark },
 ];
 
 export default function AppLayout() {

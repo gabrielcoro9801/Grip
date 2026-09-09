@@ -43,21 +43,9 @@ export default function MembersList() {
     e.preventDefault();
     const data = { ...form };
     if (data.gdpr_consent) data.gdpr_consent_date = new Date().toISOString().split("T")[0];
-    // Crea automaticamente il Client collegato in background
-    const [nome, ...cognomeParts] = (data.full_name || "").trim().split(" ");
-    const cognome = cognomeParts.join(" ");
-    const client = await api.entities.Client.create({
-      organization_id: organization?.id || undefined,
-      tipo: "privato",
-      nome: nome || data.full_name,
-      cognome,
-      email: data.email || "",
-      telefono: data.phone || "",
-      attivo: true,
-    });
     // Il codice socio lo assegna il server: calcolarlo qui sul massimo fra i soci caricati
     // in pagina assegnerebbe lo stesso codice a due iscrizioni contemporanee.
-    await api.entities.Member.create({ ...data, cliente_id: client.id });
+    await api.entities.Member.create({ ...data, organization_id: organization?.id || undefined });
     setShowForm(false);
     setForm({ full_name: "", email: "", phone: "", date_of_birth: "", address: "", emergency_contact_name: "", emergency_contact_phone: "", gdpr_consent: false });
     loadData();

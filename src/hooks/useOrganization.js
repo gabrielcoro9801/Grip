@@ -3,7 +3,7 @@ import { api } from "@/api/client";
 
 // Cache a livello modulo: l'organizzazione è globale per l'app.
 // Evita chiamate API ripetute quando più componenti usano useOrganization
-// contemporaneamente (es. Movimenti + CespitiTab).
+// contemporaneamente.
 let _cachedOrg = null;
 let _cachePromise = null;
 
@@ -22,14 +22,14 @@ function loadOrganization() {
       );
     }
 
-    // Piano dei conti e causali li crea il server. Questa chiamata serve solo alle
-    // installazioni fatte prima che il passaggio si spostasse lì: è idempotente, e se la
-    // contabilità c'è già non fa nulla. Un errore qui non deve impedire di usare l'app —
-    // se ne accorgerà chi apre il piano dei conti, dove il problema è visibile.
+    // I ruoli li crea il server. Questa chiamata serve solo alle installazioni fatte
+    // prima che il passaggio si spostasse lì: è idempotente, e se i ruoli ci sono già non
+    // fa nulla. Un errore qui non deve impedire di usare l'app — se ne accorgerà chi apre
+    // la schermata dei ruoli, dove il problema è visibile.
     try {
-      await api.accounting.bootstrapContabilita(org.id);
+      await api.organizzazione.bootstrapRuoli(org.id);
     } catch {
-      /* l'utente non è amministratore, oppure la contabilità è già a posto */
+      /* l'utente non è amministratore, oppure i ruoli sono già a posto */
     }
 
     _cachedOrg = org;

@@ -4,7 +4,7 @@ import { useMemberAuth } from "@/lib/MemberAuthContext";
 import { Link } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { CreditCard, QrCode, FileText, Receipt, User, ChevronRight, Calendar, AlertCircle } from "lucide-react";
+import { CreditCard, QrCode, FileText, User, ChevronRight, Calendar, AlertCircle } from "lucide-react";
 import StatusBadge from "@/components/shared/StatusBadge";
 import moment from "moment";
 import { LoadingState } from "@/components/shared/Spinner";
@@ -39,7 +39,6 @@ export default function MemberDashboard() {
 
   const quickLinks = [
     { label: "Documenti", path: "/member-portal/documenti", icon: FileText, desc: "I tuoi documenti" },
-    { label: "Ricevute", path: "/member-portal/ricevute", icon: Receipt, desc: "Storico pagamenti" },
     { label: "Abbonamento", path: "/member-portal/abbonamento", icon: CreditCard, desc: "Stato e dettagli" },
     { label: "Anagrafica", path: "/member-portal/anagrafica", icon: User, desc: "I tuoi dati" },
   ];

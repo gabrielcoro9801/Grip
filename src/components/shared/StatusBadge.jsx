@@ -34,41 +34,13 @@ const STATI = {
   waitlisted: { label: "In lista d'attesa", tono: "attesa" },
   cancelled: { label: "Cancellato", tono: "neutro" },
 
-  // Sedute dei PT
-  prenotata: { label: "Prenotata", tono: "info" },
-  confermata: { label: "Confermata", tono: "positivo" },
-  svolta: { label: "Svolta", tono: "positivo" },
+  // Sessioni dei corsi
   annullata: { label: "Annullata", tono: "negativo" },
 
-  // Ferie e permessi
-  in_attesa: { label: "In attesa", tono: "attesa" },
-  approvata: { label: "Approvata", tono: "positivo" },
-  rifiutata: { label: "Rifiutata", tono: "negativo" },
-
-  // Cespiti
-  in_uso: { label: "In uso", tono: "positivo" },
-  dismesso: { label: "Dismesso", tono: "neutro" },
-  venduto: { label: "Venduto", tono: "info" },
-
-  // Acquisti e fatture
-  ordinato: { label: "Ordinato", tono: "neutro" },
-  consegnato: { label: "Consegnato", tono: "info" },
-  fatturato: { label: "Fatturato", tono: "attesa" },
-  pagato: { label: "Pagato", tono: "positivo" },
-  da_pagare: { label: "Da pagare", tono: "attesa" },
-  parziale: { label: "Parziale", tono: "attesa" },
-  scaduto: { label: "Scaduto", tono: "negativo" },
-
-  // Registrazioni contabili
-  bozza: { label: "Bozza", tono: "neutro" },
-  confermato: { label: "Confermato", tono: "positivo" },
-  stornato: { label: "Stornato", tono: "negativo" },
+  // Codici di accesso
+  attivo: { label: "Attivo", tono: "positivo" },
+  revocato: { label: "Revocato", tono: "negativo" },
 };
-
-/** L'etichetta italiana di uno stato, per i punti che mostrano solo testo. */
-export function etichettaStato(status) {
-  return STATI[status]?.label ?? status ?? "—";
-}
 
 /**
  * @param status chiave dello stato (vedi STATI).

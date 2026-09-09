@@ -1,7 +1,8 @@
 // Entità trasversali: Organization (singleton applicativo, vedi src/hooks/useOrganization.js)
 // e AuditLog (log generico, vedi src/lib/auditLog.js).
-import { pgTable, uuid, varchar, text, boolean, timestamp, jsonb, uniqueIndex } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, text, boolean, integer, timestamp, jsonb, primaryKey, uniqueIndex } from 'drizzle-orm/pg-core';
 
+// L'intestazione dell'ente: serve a dare un nome e un logo alle schermate.
 export const organizations = pgTable('organizations', {
 	id: uuid('id').defaultRandom().primaryKey(),
 	nome: varchar('nome', { length: 255 }).notNull().default('La mia palestra'),
@@ -9,29 +10,22 @@ export const organizations = pgTable('organizations', {
 	pivaCf: varchar('piva_cf', { length: 32 }),
 	indirizzo: text('indirizzo'),
 	logoUrl: text('logo_url'),
-	// ⚠️ mai scritti nel codice esplorato, solo letti (receiptEngine.js) — probabilmente
-	// impostati a mano fuori dall'app. Da confermare sui dati reali.
-	regimeFiscale: varchar('regime_fiscale', { length: 64 }),
-
-	// --- Dati richiesti dalla fattura elettronica.
-	// Il tracciato dello SdI distingue quello che qui era accorpato: partita IVA e codice
-	// fiscale sono campi separati (un'ASD ha spesso entrambi e diversi fra loro), e la sede
-	// va scomposta perché CAP, comune e provincia sono elementi distinti dell'XML.
-	// `piva_cf` e `indirizzo` restano: li usano ricevute e PDF, dove il formato libero va bene.
-	partitaIva: varchar('partita_iva', { length: 16 }),
-	codiceFiscale: varchar('codice_fiscale', { length: 16 }),
-	// Codice del tracciato (RF01…RF19), diverso dalla descrizione libera di `regime_fiscale`.
-	regimeFiscaleCodice: varchar('regime_fiscale_codice', { length: 4 }),
-	indirizzoVia: varchar('indirizzo_via', { length: 60 }),
-	indirizzoCivico: varchar('indirizzo_civico', { length: 8 }),
-	indirizzoCap: varchar('indirizzo_cap', { length: 5 }),
-	indirizzoComune: varchar('indirizzo_comune', { length: 60 }),
-	indirizzoProvincia: varchar('indirizzo_provincia', { length: 2 }),
-	indirizzoNazione: varchar('indirizzo_nazione', { length: 2 }).default('IT'),
-	gestioneIva: boolean('gestione_iva'),
 	createdDate: timestamp('created_date', { withTimezone: true }).notNull().defaultNow(),
 	updatedDate: timestamp('updated_date', { withTimezone: true }).notNull().defaultNow(),
 });
+
+// Contatori dei numeri progressivi, uno per organizzazione e per tipo di documento.
+// Incrementarli con un UPDATE che blocca la riga è ciò che rende impossibile assegnare
+// due volte lo stesso numero: leggere il massimo esistente e sommare 1, come si faceva
+// prima, dà lo stesso numero a due operazioni simultanee.
+// `scope` tiene separate le numerazioni: oggi serve al codice socio.
+export const numberingCounters = pgTable('numbering_counters', {
+	organizationId: uuid('organization_id').notNull().references(() => organizations.id),
+	scope: varchar('scope', { length: 32 }).notNull(),
+	value: integer('value').notNull().default(0),
+}, (table) => ({
+	pk: primaryKey({ columns: [table.organizationId, table.scope] }),
+}));
 
 // Log azioni generico (src/lib/auditLog.js). entita_tipo/tipo_azione sono lasciati
 // come testo libero (non enum rigido): il codice li tratta come convenzione applicativa
@@ -54,9 +48,9 @@ export const auditLogs = pgTable('audit_logs', {
 /**
  * I ruoli dell'ente e cosa possono fare.
  *
- * La matrice viveva solo nel codice: sei ruoli fissi, uguali per ogni installazione. Vanno
- * bene per una palestra e stanno strette a un'ASD grande, che magari vuole un tesoriere in
- * sola lettura o un segretario che gestisce i soci ma non tocca la contabilità.
+ * La matrice viveva solo nel codice: ruoli fissi, uguali per ogni installazione. Vanno
+ * bene per una palestra e stanno strette a un'ASD grande, che magari vuole un segretario
+ * che gestisce i soci ma non tocca i corsi.
  *
  * Quello che resta nel codice — e che nessuna riga qui può scavalcare — è in
  * shared/permissions.js: il socio non riceve mai permessi da questa tabella, e
@@ -72,9 +66,9 @@ export const ruoli = pgTable('ruoli', {
 	descrizione: text('descrizione'),
 	// { modulo: ["view","edit"], … }
 	permessi: jsonb('permessi').notNull().default('{}'),
-	// ["gestire_personale", …]
+	// Azioni privilegiate, per nome. Il catalogo è oggi vuoto: vedi shared/permissions.js.
 	capacita: jsonb('capacita').notNull().default('[]'),
-	// I sei ruoli con cui l'applicazione nasce: modificabili, ma non eliminabili, perché
+	// I ruoli con cui l'applicazione nasce: modificabili, ma non eliminabili, perché
 	// gli account esistenti vi fanno riferimento.
 	sistema: boolean('sistema').notNull().default(false),
 }, (table) => ({

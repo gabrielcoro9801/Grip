@@ -2,29 +2,16 @@ export const ROLES = {
   admin: { label: "Admin generale", description: "Accesso completo a tutti i moduli" },
   reception: { label: "Reception / Staff", description: "Accesso operativo quotidiano" },
   istruttore: { label: "Istruttore", description: "Accesso limitato ai propri corsi" },
-  pt: { label: "PT esterno", description: "Portale PT: clienti, sedute, compensi" },
-  dipendente: { label: "Dipendente", description: "Portale dipendenti: timbratura, turni, ferie" },
-  member: { label: "Cliente", description: "Portale cliente: documenti, abbonamento, ricevute, QR" },
+  member: { label: "Cliente", description: "Portale cliente: documenti, abbonamento, QR" },
 };
 
 export const MODULES = {
   crm_members: { label: "CRM — Anagrafiche clienti" },
   crm_documents: { label: "CRM — Documenti/certificati" },
   crm_plans: { label: "CRM — Piani di allenamento" },
-  movimenti: { label: "Movimenti" },
-  finance: { label: "Contabilità avanzata" },
-  acquisti: { label: "Acquisti" },
-  vendite: { label: "Vendite" },
-  crediti_debiti: { label: "Crediti e Debiti" },
   calendar: { label: "Calendario & Prenotazioni" },
-  suppliers: { label: "Fornitori" },
-  personale: { label: "Personale (portale)" },
-  pt_esterni: { label: "PT Esterni" },
-  team: { label: "Team" },
   admin_users: { label: "Admin & Profili" },
   audit_log: { label: "Log accessi / azioni" },
-  receipt_template: { label: "Template ricevuta" },
-  fiscal_profile: { label: "Profilo fiscale ente" },
 };
 
 /**
@@ -40,75 +27,25 @@ export const PERMESSI_PREDEFINITI = {
     crm_members: ["view", "edit"],
     crm_documents: ["view", "edit"],
     crm_plans: ["view", "edit"],
-    movimenti: ["view", "edit"],
-    finance: ["view", "edit"],
-    acquisti: ["view", "edit"],
-    vendite: ["view", "edit"],
-    crediti_debiti: ["view", "edit"],
     calendar: ["view", "edit"],
-    suppliers: ["view", "edit"],
-    personale: ["view", "edit"],
-    pt_esterni: ["view", "edit"],
-    team: ["view", "edit"],
     admin_users: ["view", "edit"],
     audit_log: ["view"],
-    receipt_template: ["view", "edit"],
-    fiscal_profile: ["view", "edit"],
   },
   reception: {
     crm_members: ["view", "edit"],
     crm_documents: ["view", "edit"],
     crm_plans: ["view"],
-    movimenti: ["view", "edit"],
-    finance: [],
-    acquisti: ["view", "edit"],
-    vendite: ["view", "edit"],
-    crediti_debiti: ["view", "edit"],
     calendar: ["view", "edit"],
-    suppliers: ["view"],
-    personale: ["view"],
-    pt_esterni: ["view"],
     admin_users: [],
     audit_log: [],
-    receipt_template: [],
   },
   istruttore: {
     crm_members: ["view"],
     crm_documents: ["view"],
     crm_plans: ["view", "edit"],
-    movimenti: ["view", "edit"],
-    finance: [],
-    acquisti: ["view"],
-    vendite: ["view", "edit"],
-    crediti_debiti: ["view"],
     calendar: ["view", "edit"],
-    suppliers: [],
-    personale: [],
-    pt_esterni: [],
     admin_users: [],
     audit_log: [],
-    receipt_template: [],
-  },
-  pt: {
-    crm_members: ["view"],
-    crm_documents: ["view"],
-    crm_plans: ["view", "edit"],
-    movimenti: ["view", "edit"],
-    finance: [],
-    acquisti: ["view"],
-    crediti_debiti: ["view"],
-    calendar: ["view", "edit"],
-    suppliers: [],
-    admin_users: [],
-    audit_log: [],
-    receipt_template: [],
-    vendite: ["view", "edit"],
-    personale: [],
-    pt_esterni: ["view", "edit"],
-  },
-  dipendente: {
-    personale: ["view", "edit"],
-    pt_esterni: [],
   },
   member: {},
 };
@@ -127,28 +64,10 @@ export const PERMESSI_PREDEFINITI = {
  * significava mostrare a qualcuno un pulsante che non gli spetta. Qui hanno un nome e un
  * posto solo.
  */
-export const CAPACITA = {
-  gestire_personale: {
-    label: "Gestire il personale",
-    descrizione:
-      "Vedere timbrature, turni e ferie di tutti, approvare le richieste, inserire i cedolini. Senza questa capacità si vedono solo i propri dati.",
-  },
-  chiudere_esercizio: {
-    label: "Chiudere un esercizio",
-    descrizione:
-      "Operazione irreversibile: blocca le scritture dell'anno e gira il risultato a patrimonio netto.",
-  },
-  rigenerare_documento: {
-    label: "Rigenerare ricevute e fatture",
-    descrizione:
-      "Rifare il PDF di un documento già emesso. Il numero non cambia, ma il documento consegnato al socio sì.",
-  },
-  registrazione_manuale: {
-    label: "Inserire registrazioni manuali",
-    descrizione:
-      "Movimentare qualsiasi conto scavalcando le causali: è lo strumento con cui si può alterare la contabilità.",
-  },
-};
+// Il catalogo è vuoto da quando le aree che avevano azioni privilegiate — contabilità,
+// documenti fiscali, gestione del personale — non fanno più parte dell'applicazione. Il
+// meccanismo resta: serve al primo modulo che tornerà ad avere un'azione di questo tipo.
+export const CAPACITA = {};
 
 export const NOMI_CAPACITA = Object.keys(CAPACITA);
 
@@ -156,8 +75,6 @@ export const CAPACITA_PREDEFINITE = {
   admin: NOMI_CAPACITA,
   reception: [],
   istruttore: [],
-  pt: [],
-  dipendente: [],
   member: [],
 };
 
@@ -267,16 +184,7 @@ export function canEdit(role, module) {
 export const SIDEBAR_PERMISSIONS = {
   "/": null,
   "/crm": "crm_members",
-  "/movimenti": "movimenti",
-  "/clienti": "vendite",
-  "/finance": "finance",
   "/calendario": "calendar",
-  "/personale": "personale",
-  "/pt": "pt_esterni",
-  "/team": "team",
-  "/contabilita": "finance",
   "/admin": "admin_users",
   "/log-audit": "audit_log",
-  "/template-ricevuta": "receipt_template",
-  "/profilo-fiscale": "fiscal_profile",
 };

@@ -1,7 +1,7 @@
 // Assegnazione dei numeri progressivi.
 //
-// Ogni numerazione dell'applicazione — protocolli, fatture, ricevute, codici socio — deve
-// essere progressiva e senza duplicati. Calcolarla leggendo il massimo esistente e
+// Ogni numerazione dell'applicazione — oggi il codice socio — deve essere
+// progressiva e senza duplicati. Calcolarla leggendo il massimo esistente e
 // sommando uno sembra funzionare finché a usare il sistema è una persona sola: due
 // operazioni simultanee leggono lo stesso massimo e ottengono lo stesso numero.
 //
@@ -14,7 +14,7 @@ import { numberingCounters } from '../db/schema/index.js';
 /**
  * @param {Object} tx transazione Drizzle (o il db, se non serve atomicità con altro)
  * @param {string} organizationId
- * @param {string} scope ambito della numerazione: 'journal_entry', 'invoice_2026', …
+ * @param {string} scope ambito della numerazione: 'codice_socio', …
  * @param {import('drizzle-orm').SQL} valoreIniziale query che calcola il massimo esistente
  */
 export async function nextNumber(tx, organizationId, scope, valoreIniziale) {

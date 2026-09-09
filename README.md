@@ -1,7 +1,7 @@
 # Grip — Gestione Palestra
 
-Gestionale per palestre: CRM soci, corsi e prenotazioni, contabilità in partita doppia,
-ricevute, personale/PT, schede di allenamento e portale soci.
+Gestionale per palestre: CRM soci, corsi e prenotazioni, schede di allenamento e portale
+soci.
 
 - **Frontend**: React 18 + Vite 6, Tailwind CSS, Radix UI, React Router (cartella `src/`)
 - **Backend**: Fastify + PostgreSQL con Drizzle ORM (cartella `server/`)
@@ -74,11 +74,10 @@ dai diversi punti di vista.
 | Email | Password | Ruolo | A cosa serve |
 |---|---|---|---|
 | `admin@grip.local` | `admin1234` | Admin | Vede tutto |
-| `reception@grip.local` | `reception1234` | Reception | Soci e movimenti, non la contabilità avanzata né gli account |
-| `tesoriere@grip.local` | `tesoriere1234` | Tesoriere | Ruolo **creato dall'interfaccia**: contabilità e pagamenti, nessun accesso ai soci |
+| `reception@grip.local` | `reception1234` | Reception | Soci e corsi, non il log audit né gli account |
 | `giulia@grip.local` | `socio1234` | Socio | Portale soci, con abbonamento e scheda di allenamento |
 
-Il *Tesoriere* è utile per due prove: che il menu si riduca davvero secondo i permessi, e che
+La *Reception* è utile per due prove: che il menu si riduca davvero secondo i permessi, e che
 un ruolo senza gestione utenti non possa concedersi niente.
 
 ## Metterlo online
@@ -97,8 +96,8 @@ qualcosa non funziona.
 Tre punti che si sbagliano quasi sempre, spiegati lì per esteso:
 
 - **I file caricati vanno su un volume persistente** (`UPLOAD_DIR`). Su una piattaforma a
-  container il disco si azzera a ogni deploy: senza volume, le ricevute già emesse spariscono
-  e nessuno se ne accorge finché non prova ad aprirne una.
+  container il disco si azzera a ogni deploy: senza volume, i documenti già caricati
+  spariscono e nessuno se ne accorge finché non prova ad aprirne uno.
 - **Non impostare `PORT` fra le variabili di Railway.** La assegna la piattaforma; forzandola
   il dominio risponde *"application failed to respond"*.
 - **Cloudflare su SSL/TLS "Full (strict)".** Su *Flexible* si ottiene un ciclo infinito di
@@ -106,13 +105,37 @@ Tre punti che si sbagliano quasi sempre, spiegati lì per esteso:
 
 ## Stato del progetto
 
+### 9 settembre 2026 — l'applicazione torna a soci e corsi
+
+Sono stati rimossi **contabilità in partita doppia, ricevute e fatture elettroniche,
+template ricevuta, profilo fiscale, anagrafica clienti, area team, portale personale
+(timbrature, turni, ferie, cedolini) e portale PT (sedute, compensi)**. Restano la gestione
+soci — senza la parte di pagamento — la gestione corsi con prenotazioni e calendario, le
+schede di allenamento, il portale soci, gli account con i loro ruoli e il log audit.
+
+Il codice rimosso non è perduto. Sta nel tag **`archivio/moduli-gestionali-2026-09`** e nel
+branch omonimo, entrambi sul commit precedente alla rimozione. Il tag è la copia da
+considerare buona: è immutabile e non va mai mergiato. Per riprendere un file:
+
+```
+git checkout archivio/moduli-gestionali-2026-09 -- <percorso>
+```
+
+**Le tabelle del database non sono state toccate.** Le migrazioni restano tutte, e le tabelle
+dei moduli rimossi (`journal_entries`, `receipts`, `invoices`, `payslips`, `clients`…)
+esistono ancora, inerti: nessuno schema Drizzle le dichiara più e nessuna rotta le legge.
+Sono lasciate lì di proposito — riscrivere la storia delle migrazioni su un database già
+popolato è il modo più rapido per rompere un deploy, e finché ci sono i dati di un eventuale
+ripristino sono ancora al loro posto. **Attenzione**: un `npm run db:generate` genererebbe
+ora una migrazione che le elimina. Va scritta a mano, quando e se si deciderà di farlo.
+
+Le note qui sotto sono un diario datato e descrivono il codice com'era al momento in cui
+sono state scritte: molte riguardano moduli che oggi non ci sono più.
+
+---
+
 **L'uscita da base44 è completa.** Nessuna sua libreria, nessun riferimento nel codice,
 nessun pacchetto: dati, autenticazione e upload passano tutti dal backend in `server/`.
-
-**La roadmap Contabilità & Finance è chiusa**, fasi 0–6, entrambi i traguardi (cliente beta
-e vendita ad altre ASD). Il registro dettagliato — cosa è stato fatto, come è stato
-verificato e cosa è rimasto fuori — è in [docs/roadmap-contabilita.md](docs/roadmap-contabilita.md).
-È il documento da leggere per riprendere il filo: questo elenco ne è solo il riassunto.
 
 ### 20 agosto 2026
 
@@ -294,7 +317,7 @@ I punti seguenti invece non bloccano nulla: sono scelte rimaste aperte, non lavo
 ```
 src/            frontend React
   api/client.js client verso il backend (entities, auth, upload)
-  lib/          logica di dominio: contabilità, ricevute, prenotazioni, permessi
+  lib/          logica di dominio: prenotazioni, corsi, permessi
   pages/        pagine per modulo
   components/   componenti condivisi e UI
 server/         backend Fastify + PostgreSQL (vedi server/README.md)

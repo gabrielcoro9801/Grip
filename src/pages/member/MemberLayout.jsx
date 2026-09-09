@@ -3,7 +3,7 @@ import { Outlet, Link, useLocation } from "react-router-dom";
 import { useMemberAuth } from "@/lib/MemberAuthContext";
 import MemberLogin from "./MemberLogin";
 import { LoadingState } from "@/components/shared/Spinner";
-import { Dumbbell, Home, FileText, CreditCard, Receipt, User, QrCode, LogOut, LayoutGrid, ClipboardList } from "lucide-react";
+import { Dumbbell, Home, FileText, CreditCard, User, QrCode, LogOut, LayoutGrid, ClipboardList } from "lucide-react";
 
 // Una sola lista di destinazioni. Le barre erano due, con nomi diversi per lo
 // stesso posto ("QR Accesso" nella sidebar, "QR" in fondo allo schermo):
@@ -14,7 +14,6 @@ const navItems = [
   { label: "Allenamento", path: "/member-portal/allenamento", icon: ClipboardList, inBasso: true },
   { label: "Documenti", path: "/member-portal/documenti", icon: FileText },
   { label: "Abbonamento", path: "/member-portal/abbonamento", icon: CreditCard },
-  { label: "Ricevute", path: "/member-portal/ricevute", icon: Receipt },
   { label: "QR accesso", path: "/member-portal/qr", icon: QrCode, inBasso: true },
   { label: "Anagrafica", path: "/member-portal/anagrafica", icon: User, inBasso: true },
 ];

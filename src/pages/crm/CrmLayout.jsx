@@ -1,6 +1,6 @@
 import React from "react";
 import { Outlet } from "react-router-dom";
-import { Users, BookOpen, CreditCard, ClipboardList, Dumbbell } from "lucide-react";
+import { Users, BookOpen, CreditCard, Dumbbell } from "lucide-react";
 import SectionTabs from "@/components/shared/SectionTabs";
 import PageContainer from "@/components/shared/PageContainer";
 
@@ -15,7 +15,6 @@ const tabs = [
   },
   { label: "Abbonamenti", path: "/crm/abbonamenti", icon: BookOpen },
   { label: "Iscrizioni", path: "/crm/iscrizioni", icon: CreditCard },
-  { label: "Ricevute", path: "/crm/ricevute", icon: ClipboardList },
   { label: "Piani di allenamento", path: "/crm/piani-allenamento", icon: Dumbbell },
 ];
 
