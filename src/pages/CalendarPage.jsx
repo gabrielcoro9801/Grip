@@ -9,15 +9,13 @@ import { LoadingState } from "@/components/shared/Spinner";
 
 export default function CalendarPage() {
   const [data, setData] = useState({
-    courses: [], categories: [], instructors: [], events: [], sessions: [], collaboratori: [], fornitori: [],
+    courses: [], categories: [], instructors: [], events: [], sessions: [],
     rooms: [], members: [], bookings: [],
   });
   const [loading, setLoading] = useState(true);
 
   const loadData = useCallback(async () => {
-    // Collaboratori e fornitori servono per dire a che titolo un istruttore tiene i corsi:
-    // come persona del team o come professionista esterno.
-    const [courses, categories, instructors, events, sessions, rooms, members, bookings, collaboratori, fornitori] = await Promise.all([
+    const [courses, categories, instructors, events, sessions, rooms, members, bookings] = await Promise.all([
       api.entities.Course.list(),
       api.entities.Category.list(),
       api.entities.Instructor.list(),
@@ -26,10 +24,8 @@ export default function CalendarPage() {
       api.entities.Room.list(),
       api.entities.Member.list(),
       api.entities.Booking.list("-created_date", 500),
-      api.entities.Collaboratore.list(),
-      api.entities.AccountingSupplier.list(),
     ]);
-    setData({ courses, categories, instructors, events, sessions, rooms, members, bookings, collaboratori, fornitori });
+    setData({ courses, categories, instructors, events, sessions, rooms, members, bookings });
     setLoading(false);
   }, []);
 
