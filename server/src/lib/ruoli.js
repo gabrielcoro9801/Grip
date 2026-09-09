@@ -17,7 +17,7 @@ import {
 	ripristinaMatricePredefinita,
 } from '../../../shared/permissions.js';
 
-/** Crea i sei ruoli predefiniti per un ente che non ne ha ancora. Idempotente. */
+/** Crea i ruoli predefiniti per un ente che non ne ha ancora. Idempotente. */
 export async function bootstrapRuoli(organizationId) {
 	const esistenti = await db.select().from(ruoli).where(eq(ruoli.organizationId, organizationId));
 	const presenti = new Set(esistenti.map((r) => r.nome));

@@ -6,6 +6,8 @@ import PageHeader from "@/components/shared/PageHeader";
 import StatusBadge from "@/components/shared/StatusBadge";
 import moment from "moment";
 import { Link } from "react-router-dom";
+import { LoadingState } from "@/components/shared/Spinner";
+import { formatData, formatEuro } from "@/lib/format";
 
 export default function SubscriptionsList() {
   const [subscriptions, setSubscriptions] = useState([]);
@@ -28,7 +30,7 @@ export default function SubscriptionsList() {
 
   const filtered = filter === "all" ? subscriptions : subscriptions.filter(s => s.status === filter);
 
-  if (loading) return <div className="flex items-center justify-center h-64"><div className="w-8 h-8 border-4 border-muted border-t-primary rounded-full animate-spin" /></div>;
+  if (loading) return <LoadingState minHeight="h-64" />;
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
@@ -63,10 +65,10 @@ export default function SubscriptionsList() {
                   <Link to={`/crm/members/${sub.member_id}`} className="font-medium text-primary hover:underline">{getMemberName(sub.member_id)}</Link>
                 </td>
                 <td className="py-3 px-4">{sub.plan_name}</td>
-                <td className="py-3 px-4 text-muted-foreground">{moment(sub.start_date).format("MMM D")} — {moment(sub.end_date).format("MMM D, YYYY")}</td>
+                <td className="py-3 px-4 text-muted-foreground">{formatData(sub.start_date, "giornoBreve")} — {formatData(sub.end_date, "media")}</td>
                 <td className="py-3 px-4 text-muted-foreground">{sub.sessions_remaining >= 999 ? "∞" : sub.sessions_remaining}</td>
                 <td className="py-3 px-4"><StatusBadge status={sub.status} /></td>
-                <td className="py-3 px-4 text-right font-medium">€{sub.price_paid}</td>
+                <td className="py-3 px-4 text-right font-medium">{formatEuro(sub.price_paid)}</td>
               </tr>
             ))}
           </tbody>

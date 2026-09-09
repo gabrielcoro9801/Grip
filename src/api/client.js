@@ -91,12 +91,9 @@ function buildEntityClient(name) {
 }
 
 const ENTITY_NAMES = [
-	'Member', 'Client', 'Subscription', 'Plan', 'MemberDocument', 'QRAccesso',
+	'Member', 'Subscription', 'Plan', 'MemberDocument', 'QRAccesso',
 	'Course', 'Category', 'Instructor', 'Event', 'Session', 'Room', 'Booking',
-	'ChartOfAccount', 'CausaleOperativa', 'JournalEntry', 'JournalLine', 'Loan', 'LoanInstallment',
-	'AccountingSupplier', 'FixedAsset', 'PurchaseOrder', 'Bank', 'ExerciseClosure', 'JournalAttachment',
-	'FiscalProfileSnapshot', 'FiscalYearData', 'ParametroFiscale', 'ReceiptTemplate', 'Receipt', 'Invoice',
-	'Collaboratore', 'StaffAccount', 'Timbratura', 'Turno', 'RichiestaFeriePermesso', 'SedutaPT', 'LiquidazionePT', 'Payslip', 'PayrollRun',
+	'Collaboratore', 'StaffAccount',
 	'Exercise', 'ExercisePlan', 'WorkoutLog',
 	'Organization', 'AuditLog',
 ];
@@ -104,80 +101,10 @@ const ENTITY_NAMES = [
 export const api = {
 	entities: Object.fromEntries(ENTITY_NAMES.map((name) => [name, buildEntityClient(name)])),
 
-	// Le registrazioni contabili non passano da `entities`: testata e righe devono essere
-	// scritte insieme, in transazione, e il numero di protocollo lo assegna il server.
-	accounting: {
-		createJournalEntry(entry, lines) {
-			return request('/api/journal-entries', { method: 'POST', body: { entry, lines } });
-		},
-
-		markSettled(entryId, journalEntrySaldoId) {
-			return request(`/api/journal-entries/${entryId}/settle`, {
-				method: 'PUT',
-				body: { journal_entry_saldo_id: journalEntrySaldoId },
-			});
-		},
-
-		// Registra la consegna di un ordine: è il momento in cui nasce il costo, quindi il
-		// server crea la scrittura contabile insieme al cambio di stato, in transazione.
-		deliverPurchaseOrder(orderId, { data_consegna, importo, conto_costo_id }) {
-			return request(`/api/purchase-orders/${orderId}/deliver`, {
-				method: 'POST',
-				body: { data_consegna, importo, conto_costo_id },
-			});
-		},
-
-		// Il numero di fattura lo assegna il server in transazione: dev'essere progressivo
-		// per esercizio, senza salti né duplicati.
-		createInvoice(dati) {
-			return request('/api/invoices', { method: 'POST', body: dati });
-		},
-
-		// Scarica il file XML della fattura elettronica.
-		// Non passa da `request()` perché la risposta è un file, non JSON: l'errore però
-		// sì, e porta con sé l'elenco dei dati mancanti, che va riportato al chiamante
-		// invece di ridursi a un generico "errore".
-		async downloadInvoiceXml(id) {
-			const res = await fetch(`${API_BASE}/api/invoices/${id}/xml`, { headers: authHeaders() });
-			if (!res.ok) {
-				const payload = await res.json().catch(() => ({}));
-				const error = new Error(payload.error || `Errore HTTP ${res.status}`);
-				error.mancanti = payload.mancanti;
-				throw error;
-			}
-			const nome = /filename="([^"]+)"/.exec(res.headers.get('content-disposition') || '')?.[1] || 'fattura.xml';
-			return { xml: await res.text(), nome };
-		},
-
-		// Ricevute: stesso motivo delle fatture. Due momenti in cui il numero viene
-		// assegnato — alla creazione se l'incasso è già saldato, all'emissione se era
-		// una bozza in attesa del pagamento.
-		createReceipt(dati) {
-			return request('/api/receipts', { method: 'POST', body: dati });
-		},
-
-		issueReceipt(receiptId, dati) {
-			return request(`/api/receipts/${receiptId}/issue`, { method: 'PUT', body: dati });
-		},
-
-		// Registra gli stipendi del mese: una sola scrittura aggregata, generata dal server
-		// che verifica la coerenza dei cedolini prima di scrivere.
-		createPayrollRun({ organization_id, periodo_anno, periodo_mese, data_registrazione }) {
-			return request('/api/payroll-runs', {
-				method: 'POST',
-				body: { organization_id, periodo_anno, periodo_mese, data_registrazione },
-			});
-		},
-
-		// Crea piano dei conti e causali per un ente che non li ha ancora. Idempotente.
-		bootstrapContabilita(organizationId) {
-			return request(`/api/organizations/${organizationId}/bootstrap-contabilita`, { method: 'POST' });
-		},
-
-		// Chiude un esercizio: gira il risultato a patrimonio netto e blocca le scritture
-		// su quell'anno. Operazione irreversibile dall'interfaccia.
-		closeExercise({ organization_id, anno, note }) {
-			return request('/api/exercise-closures', { method: 'POST', body: { organization_id, anno, note } });
+	organizzazione: {
+		// Crea i ruoli predefiniti per un ente che non li ha ancora. Idempotente.
+		bootstrapRuoli(organizationId) {
+			return request(`/api/organizations/${organizationId}/bootstrap-ruoli`, { method: 'POST' });
 		},
 	},
 
@@ -231,7 +158,7 @@ export const api = {
 	integrations: {
 		Core: {
 			// Stessa firma e stessa forma di risposta ({ file_url }) dei punti che la
-			// usano già per ricevute PDF e logo organizzazione.
+			// usano già per i documenti dei soci e il logo dell'organizzazione.
 			async UploadFile({ file }) {
 				const form = new FormData();
 				form.append('file', file);

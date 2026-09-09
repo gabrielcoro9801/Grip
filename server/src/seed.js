@@ -2,8 +2,7 @@
 //
 // Serve a risolvere il problema dell'uovo e la gallina introdotto dalla protezione
 // degli endpoint: per creare un account bisogna essere autenticati, quindi il primo
-// account deve nascere fuori dall'API. Il resto dei dati di base (piano dei conti,
-// causali operative) viene già creato dall'app stessa al primo accesso.
+// account deve nascere fuori dall'API.
 //
 // Uso:  npm run db:seed
 import 'dotenv/config';
@@ -11,7 +10,7 @@ import bcrypt from 'bcryptjs';
 import { eq } from 'drizzle-orm';
 import { db } from './db/client.js';
 import { staffAccounts, organizations } from './db/schema/index.js';
-import { bootstrapContabilita } from './lib/bootstrapContabilita.js';
+import { bootstrapRuoli } from './lib/ruoli.js';
 import { annunciaDatabase } from './lib/descriviDatabase.js';
 
 const NOME_ORGANIZZAZIONE = process.env.SEED_ORGANIZZAZIONE || 'La mia associazione';
@@ -39,10 +38,10 @@ async function seed() {
 	const org = existingOrg ?? (await db.insert(organizations).values({ nome: NOME_ORGANIZZAZIONE }).returning())[0];
 	console.log(existingOrg ? `Organizzazione già presente: ${org.nome}` : `Creata organizzazione: ${org.nome}`);
 
-	// Piano dei conti e causali: prima li creava il browser al primo accesso, il che
-	// significava che lo scheletro contabile lo costruiva chi apriva l'app per primo.
-	const { contiCreati, causaliCreate, aliquotaIva } = await bootstrapContabilita(org.id);
-	console.log(contiCreati ? `Creati ${contiCreati} conti e ${causaliCreate} causali (IVA ordinaria ${aliquotaIva ?? '?'}%)` : 'Piano dei conti già presente');
+	// I ruoli: prima li creava il browser al primo accesso, il che significava che lo
+	// scheletro dei permessi lo costruiva chi apriva l'app per primo.
+	const ruoliCreati = await bootstrapRuoli(org.id);
+	console.log(ruoliCreati ? `Creati ${ruoliCreati} ruoli` : 'Ruoli già presenti');
 
 	const [existingAdmin] = await db
 		.select()

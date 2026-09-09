@@ -2,6 +2,7 @@ import React, { useMemo } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { AlertTriangle, CheckCircle2 } from "lucide-react";
 import moment from "moment";
+import { formatData } from "@/lib/format";
 
 const FIELDS = [
   { key: "start_time", label: "Inizio" },
@@ -54,7 +55,7 @@ export default function SessionAudit({ data }) {
         return {
           sessionId: s.id,
           courseName: course?.name || "—",
-          date: moment(s.date).format("DD/MM/YYYY"),
+          date: formatData(s.date),
           divergences,
           bookingCount,
         };

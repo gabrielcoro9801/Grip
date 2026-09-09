@@ -12,6 +12,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { DAYS, DAYS_IT } from "@/lib/courseValidation";
 import { generateSessionDates, checkEventConflicts } from "@/lib/eventUtils";
 import { validateSessionsBulk } from "@/lib/sessionValidation";
+import { formatData } from "@/lib/format";
 
 const MAX_SESSIONS = 104;
 
@@ -209,10 +210,10 @@ export default function EventsTab({ data, reload }) {
   const sessionCount = (eventId) => sessions.filter(s => s.event_id === eventId && s.status === "active").length;
 
   const recurrenceLabel = (ev) => {
-    if (ev.recurrence_type === "single") return `Data singola: ${moment(ev.start_date).format("DD/MM/YYYY")}`;
+    if (ev.recurrence_type === "single") return `Data singola: ${formatData(ev.start_date)}`;
     if (ev.recurrence_type === "custom") return `Date personalizzate: ${ev.custom_dates?.length || 0} date`;
     const days = (ev.days_of_week || []).map(d => (DAYS_IT[d] || d).slice(0, 3)).join(", ");
-    return `Settimanale: ${days} dal ${moment(ev.start_date).format("DD/MM/YYYY")}${ev.end_condition === "by_date" ? ` al ${moment(ev.end_date).format("DD/MM/YYYY")}` : ` (${ev.occurrence_count} occ.)`}`;
+    return `Settimanale: ${days} dal ${formatData(ev.start_date)}${ev.end_condition === "by_date" ? ` al ${formatData(ev.end_date)}` : ` (${ev.occurrence_count} occ.)`}`;
   };
 
   return (
@@ -335,7 +336,7 @@ export default function EventsTab({ data, reload }) {
                   <div className="flex flex-wrap gap-2 mt-2">
                     {form.custom_dates.map(d => (
                       <span key={d} className="flex items-center gap-1 px-2 py-1 rounded-lg bg-muted text-sm">
-                        {moment(d).format("DD/MM/YYYY")}
+                        {formatData(d)}
                         <button type="button" onClick={() => removeCustomDate(d)} className="text-muted-foreground hover:text-destructive">
                           <X className="w-3 h-3" />
                         </button>

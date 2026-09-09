@@ -134,6 +134,13 @@
       "when": 1787239289749,
       "tag": "0018_nosy_miss_america",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1788376332425,
+      "tag": "0019_natura_fiscale_vincolata",
+      "breakpoints": true
     }
   ]
 }

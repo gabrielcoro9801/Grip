@@ -5,6 +5,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { FileText, Download, AlertCircle, CheckCircle, Clock } from "lucide-react";
 import moment from "moment";
+import { LoadingState } from "@/components/shared/Spinner";
+import { formatData } from "@/lib/format";
 
 export default function MemberDocuments() {
   const { memberUser } = useMemberAuth();
@@ -28,7 +30,7 @@ export default function MemberDocuments() {
   };
 
   if (loading) {
-    return <div className="flex items-center justify-center p-8"><div className="w-8 h-8 border-4 border-muted border-t-primary rounded-full animate-spin" /></div>;
+    return <LoadingState minHeight="p-8" />;
   }
 
   return (
@@ -59,7 +61,7 @@ export default function MemberDocuments() {
                     <div className="flex-1 min-w-0">
                       <h3 className="font-medium text-sm">{doc.document_type}</h3>
                       <p className="text-xs text-muted-foreground">
-                        Caricato il {moment(doc.created_date).format("D MMM YYYY")}
+                        Caricato il {formatData(doc.created_date, "media")}
                         {doc.caricato_da && ` da ${doc.caricato_da}`}
                       </p>
                       {doc.notes && <p className="text-xs text-muted-foreground mt-1">{doc.notes}</p>}

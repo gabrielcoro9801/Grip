@@ -4,6 +4,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import moment from "moment";
 import CourseSessionCard from "@/components/member/CourseSessionCard";
 import { getSessionAvailability, getMemberBooking } from "@/lib/bookingUtils";
+import { formatData } from "@/lib/format";
 
 export default function CoursesByCalendar({ enrichedSessions, bookings, memberUser, onBook, onCancel, actionLoading }) {
   const [weekStart, setWeekStart] = useState(() => {
@@ -85,7 +86,7 @@ export default function CoursesByCalendar({ enrichedSessions, bookings, memberUs
       </div>
 
       <div className="space-y-3">
-        <h2 className="font-heading font-semibold capitalize">{moment(selectedDate).format("dddd D MMMM")}</h2>
+        <h2 className="font-heading font-semibold capitalize">{formatData(selectedDate, "estesaBreve")}</h2>
         {daySessions.length === 0 ? (
           <p className="text-sm text-muted-foreground text-center py-8">Nessun corso programmato per questa data</p>
         ) : (

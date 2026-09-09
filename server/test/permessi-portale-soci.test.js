@@ -1,10 +1,9 @@
 // Il confine fra il portale soci e il resto dell'applicazione.
 //
 // È il punto in cui l'applicazione ha già sbagliato una volta: un socio autenticato
-// riceveva 200 sui cedolini — quindi gli stipendi di tutti — sugli account dello staff,
-// sull'intera contabilità e sull'anagrafica degli altri soci, perché la separazione
-// esisteva solo nell'interfaccia. Nascondere una voce di menu non impedisce la stessa
-// richiesta fatta a mano, quindi questi controlli girano contro le rotte vere.
+// riceveva 200 sugli account dello staff e sull'anagrafica degli altri soci, perché la
+// separazione esisteva solo nell'interfaccia. Nascondere una voce di menu non impedisce
+// la stessa richiesta fatta a mano, quindi questi controlli girano contro le rotte vere.
 //
 // Il test si costruisce i propri soci e i propri account e li cancella alla fine: non
 // dipende da com'è popolato il database in cui gira.
@@ -100,15 +99,9 @@ after(async () => {
 describe('cosa un socio non deve poter leggere', () => {
 	// Ciascuna di queste risposte è stata davvero 200 prima della correzione.
 	for (const entita of [
-		'Payslip',
-		'PayrollRun',
 		'StaffAccount',
-		'JournalEntry',
-		'JournalLine',
-		'Invoice',
-		'AccountingSupplier',
 		'Collaboratore',
-		'ChartOfAccount',
+		'AuditLog',
 	]) {
 		test(`${entita} è vietata`, async () => {
 			const res = await come(tokenSocio, { method: 'GET', url: `/api/entities/${entita}` });
@@ -182,7 +175,7 @@ describe('cosa un socio può scrivere', () => {
 	});
 
 	test('non crea né modifica nulla che riguardi la gestione', async () => {
-		for (const entita of ['Member', 'Subscription', 'Receipt', 'Payslip', 'StaffAccount', 'Course']) {
+		for (const entita of ['Member', 'Subscription', 'StaffAccount', 'Course']) {
 			const res = await come(tokenSocio, { method: 'POST', url: `/api/entities/${entita}`, payload: { nome: 'x' } });
 			assert.equal(res.statusCode, 403, `creare ${entita} dovrebbe essere vietato`);
 		}
@@ -195,19 +188,9 @@ describe('cosa un socio può scrivere', () => {
 });
 
 describe('le rotte fuori da /api/entities', () => {
-	// Hanno un controllo proprio, e due di loro non ce l'avevano: le registrazioni
-	// contabili verificavano il ruolo solo per quelle manuali, e l'upload non chiedeva
-	// nemmeno l'autenticazione.
+	// Hanno un controllo proprio, e l'upload non chiedeva nemmeno l'autenticazione.
 	for (const [metodo, url] of [
-		['POST', '/api/journal-entries'],
-		['PUT', '/api/journal-entries/00000000-0000-0000-0000-000000000000/settle'],
-		['POST', '/api/purchase-orders/00000000-0000-0000-0000-000000000000/deliver'],
-		['POST', '/api/invoices'],
-		['GET', '/api/invoices/00000000-0000-0000-0000-000000000000/xml'],
-		['POST', '/api/receipts'],
-		['PUT', '/api/receipts/00000000-0000-0000-0000-000000000000/issue'],
-		['POST', '/api/payroll-runs'],
-		['POST', '/api/exercise-closures'],
+		['POST', '/api/organizations/00000000-0000-0000-0000-000000000000/bootstrap-ruoli'],
 		['POST', '/api/uploads'],
 	]) {
 		test(`${metodo} ${url} è chiusa al socio`, async () => {
@@ -224,7 +207,7 @@ describe('le rotte fuori da /api/entities', () => {
 
 describe('lo staff continua a vedere tutto', () => {
 	test('un amministratore legge le aree vietate al socio', async () => {
-		for (const entita of ['Payslip', 'StaffAccount', 'JournalEntry', 'Invoice', 'PurchaseOrder']) {
+		for (const entita of ['StaffAccount', 'Collaboratore', 'AuditLog']) {
 			const res = await come(tokenAdmin, { method: 'GET', url: `/api/entities/${entita}` });
 			assert.equal(res.statusCode, 200, `${entita} dovrebbe essere leggibile da un admin`);
 		}

@@ -5,6 +5,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Calendar, AlertCircle, CheckCircle, Clock, CreditCard } from "lucide-react";
 import StatusBadge from "@/components/shared/StatusBadge";
 import moment from "moment";
+import { LoadingState } from "@/components/shared/Spinner";
+import { formatData, formatEuro } from "@/lib/format";
 
 export default function MemberSubscription() {
   const { memberUser } = useMemberAuth();
@@ -20,7 +22,7 @@ export default function MemberSubscription() {
   }, [memberUser?.member_id]);
 
   if (loading) {
-    return <div className="flex items-center justify-center p-8"><div className="w-8 h-8 border-4 border-muted border-t-primary rounded-full animate-spin" /></div>;
+    return <LoadingState minHeight="p-8" />;
   }
 
   return (
@@ -53,11 +55,11 @@ export default function MemberSubscription() {
                   <div className="grid grid-cols-2 gap-2 text-sm">
                     <div className="flex items-center gap-1.5 text-muted-foreground">
                       <Calendar className="w-4 h-4" /> Inizio
-                      <span className="font-medium text-foreground ml-1">{moment(sub.start_date).format("D MMM YYYY")}</span>
+                      <span className="font-medium text-foreground ml-1">{formatData(sub.start_date, "media")}</span>
                     </div>
                     <div className="flex items-center gap-1.5 text-muted-foreground">
                       <Calendar className="w-4 h-4" /> Scadenza
-                      <span className="font-medium text-foreground ml-1">{moment(sub.end_date).format("D MMM YYYY")}</span>
+                      <span className="font-medium text-foreground ml-1">{formatData(sub.end_date, "media")}</span>
                     </div>
                   </div>
                   {sub.sessions_remaining != null && (
@@ -79,7 +81,7 @@ export default function MemberSubscription() {
                     </div>
                   )}
                   {sub.price_paid != null && (
-                    <p className="text-xs text-muted-foreground">Importo pagato: € {sub.price_paid.toFixed(2)}</p>
+                    <p className="text-xs text-muted-foreground">Importo pagato: {formatEuro(sub.price_paid)}</p>
                   )}
                 </CardContent>
               </Card>

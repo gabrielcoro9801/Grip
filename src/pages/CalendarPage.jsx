@@ -5,6 +5,7 @@ import PageHeader from "@/components/shared/PageHeader";
 import CalendarView from "@/components/courses/CalendarView";
 import BookingsTab from "@/components/courses/BookingsTab";
 import AnagraficheTab from "@/components/courses/AnagraficheTab";
+import { LoadingState } from "@/components/shared/Spinner";
 
 export default function CalendarPage() {
   const [data, setData] = useState({
@@ -34,7 +35,7 @@ export default function CalendarPage() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  if (loading) return <div className="flex items-center justify-center h-full"><div className="w-8 h-8 border-4 border-muted border-t-primary rounded-full animate-spin" /></div>;
+  if (loading) return <LoadingState minHeight="h-full" />;
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6">

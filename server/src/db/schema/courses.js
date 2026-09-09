@@ -13,14 +13,7 @@ export const categories = pgTable('categories', {
 	color: varchar('color', { length: 16 }).notNull().default('#3b82f6'),
 });
 
-// Anagrafica di chi tiene i corsi. Chi insegna può esserlo a due titoli diversi, e da
-// questo dipende come viene pagato: come persona del team (dipendente o collaboratore
-// sportivo, retribuito con il compenso periodico) oppure come professionista esterno
-// (retribuito contro fattura, come qualunque altro fornitore di servizi).
-// I due collegamenti sono entrambi facoltativi e possono coesistere: la stessa persona
-// può tenere un corso come collaboratore e un altro con partita IVA. Quale dei due valga
-// per un certo corso è indicato sul corso stesso (`courses.tipo_incarico`), perché la
-// risposta non sta nella persona ma nell'incarico.
+// Anagrafica di chi tiene i corsi.
 export const instructors = pgTable('instructors', {
 	id: uuid('id').defaultRandom().primaryKey(),
 	fullName: varchar('full_name', { length: 255 }).notNull(),
@@ -28,8 +21,6 @@ export const instructors = pgTable('instructors', {
 	contactEmail: varchar('contact_email', { length: 255 }),
 	contactPhone: varchar('contact_phone', { length: 64 }),
 	notes: text('notes'),
-	collaboratoreId: uuid('collaboratore_id'), // FK -> collaboratori.id (dichiarata sotto per non ciclare con hr.js)
-	fornitoreId: uuid('fornitore_id'), // FK -> accounting_suppliers.id
 });
 
 export const rooms = pgTable('rooms', {
@@ -44,11 +35,6 @@ export const courses = pgTable('courses', {
 	name: varchar('name', { length: 255 }).notNull(),
 	categoryId: uuid('category_id').references(() => categories.id),
 	instructorId: uuid('instructor_id').references(() => instructors.id),
-	// A che titolo l'istruttore tiene questo corso: 'interno' (ore del team, retribuite
-	// con il compenso periodico) oppure 'esterno' (prestazione di un fornitore, pagata
-	// contro fattura). Si valorizza solo quando l'istruttore ha entrambi i collegamenti:
-	// se ne ha uno solo, il titolo è già determinato dall'anagrafica.
-	tipoIncarico: varchar('tipo_incarico', { length: 16 }),
 	description: text('description'),
 	createdDate: timestamp('created_date', { withTimezone: true }).notNull().defaultNow(),
 });

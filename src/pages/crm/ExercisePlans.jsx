@@ -10,6 +10,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import PageHeader from "@/components/shared/PageHeader";
 import { Plus, Trash2, Dumbbell, Pencil, AlertCircle } from "lucide-react";
 import moment from "moment";
+import { LoadingState } from "@/components/shared/Spinner";
+import { formatData } from "@/lib/format";
 
 export default function ExercisePlans() {
   const [plans, setPlans] = useState([]);
@@ -147,7 +149,7 @@ export default function ExercisePlans() {
     loadData();
   };
 
-  if (loading) return <div className="flex items-center justify-center h-64"><div className="w-8 h-8 border-4 border-muted border-t-primary rounded-full animate-spin" /></div>;
+  if (loading) return <LoadingState minHeight="h-64" />;
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
@@ -197,8 +199,8 @@ export default function ExercisePlans() {
                   </Button>
                 </div>
               </div>
-              <p className="text-xs text-muted-foreground">{plan.member_name} · {moment(plan.assigned_date).format("D MMM YYYY")}</p>
-              <p className="text-xs text-muted-foreground mb-3">Sessioni registrate: {stats.count}{stats.lastDate ? ` · Ultima: ${moment(stats.lastDate).format("D MMM YYYY")}` : ""}</p>
+              <p className="text-xs text-muted-foreground">{plan.member_name} · {formatData(plan.assigned_date, "media")}</p>
+              <p className="text-xs text-muted-foreground mb-3">Sessioni registrate: {stats.count}{stats.lastDate ? ` · Ultima: ${formatData(stats.lastDate, "media")}` : ""}</p>
               <div className="space-y-1.5">
                 {plan.exercises?.map((ex, i) => (
                   <div key={i} className="flex items-center justify-between text-xs p-2 rounded bg-muted/50">

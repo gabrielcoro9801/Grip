@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Clock, User, MapPin } from "lucide-react";
 import moment from "moment";
+import { formatData } from "@/lib/format";
 
 export default function CourseSessionCard({
   session,
@@ -24,7 +25,7 @@ export default function CourseSessionCard({
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="text-sm font-medium truncate">{course?.name}</p>
-          <p className="text-xs text-muted-foreground">{moment(session.date).format("ddd D MMM")}</p>
+          <p className="text-xs text-muted-foreground">{formatData(session.date, "giorno")}</p>
         </div>
         {memberBooking ? (
           <Badge variant="outline" className={`text-xs flex-shrink-0 ${memberBooking.status === "confirmed" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-amber-50 text-amber-700 border-amber-200"}`}>

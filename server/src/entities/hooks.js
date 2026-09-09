@@ -11,14 +11,16 @@ const HIDDEN_FIELDS = {
 	StaffAccount: ['password_hash'],
 };
 
-// Entità che non possono essere create dall'endpoint generico, con il motivo mostrato
-// a chi ci prova. Una registrazione contabile deve nascere con le sue righe e con un
-// numero di protocollo assegnato in transazione: creandola qui si otterrebbe una
-// testata sola, cioè una registrazione che non quadra.
-export const CREATE_FORBIDDEN = {
-	JournalEntry: 'Le registrazioni contabili si creano con POST /api/journal-entries, che scrive testata e righe insieme.',
-	JournalLine: 'Le righe contabili si creano insieme alla loro registrazione, con POST /api/journal-entries.',
-};
+// Entità che non possono essere create, modificate o cancellate dall'endpoint generico,
+// con il motivo mostrato a chi ci prova.
+export const CREATE_FORBIDDEN = {};
+export const UPDATE_FORBIDDEN = {};
+export const DELETE_FORBIDDEN = {};
+
+/** Motivo per cui una singola riga non è modificabile, se ce n'è uno. */
+export async function mutationBlockedReason() {
+	return null;
+}
 
 // Trasformazioni in scrittura: il frontend continua a inviare `password` in chiaro
 // per compatibilità con i form esistenti, ma qui viene hashata in password_hash —

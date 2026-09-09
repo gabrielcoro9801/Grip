@@ -21,14 +21,15 @@ import {
 	puo,
 	capacitaDi,
 	PERMESSI_PREDEFINITI,
+	NOMI_CAPACITA,
 } from '../../shared/permissions.js';
 import { caricaMatrice } from '../src/lib/ruoli.js';
 
 describe('il limite invalicabile', () => {
 	test('al socio non si concede niente, per quanto lo si configuri', () => {
 		const { permessi, capacita } = applicaLimiti({
-			permessi: { member: { finance: ['view', 'edit'], admin_users: ['edit'], personale: ['view'] } },
-			capacita: { member: ['registrazione_manuale', 'chiudere_esercizio'] },
+			permessi: { member: { audit_log: ['view', 'edit'], admin_users: ['edit'], crm_members: ['view'] } },
+			capacita: { member: ['una_capacita', 'un_altra'] },
 		});
 		assert.deepEqual(permessi.member, {});
 		assert.deepEqual(capacita.member, []);
@@ -48,16 +49,16 @@ describe('il limite invalicabile', () => {
 
 	test('il limite non tocca gli altri ruoli', () => {
 		const { permessi } = applicaLimiti({
-			permessi: { reception: { finance: ['view', 'edit'] } },
+			permessi: { reception: { audit_log: ['view', 'edit'] } },
 		});
-		assert.deepEqual(permessi.reception.finance, ['view', 'edit']);
+		assert.deepEqual(permessi.reception.audit_log, ['view', 'edit']);
 	});
 
 	test('il limite si applica anche in lettura, non solo in scrittura', () => {
 		// Una riga scritta a mano nel database non deve poter scavalcare il controllo.
-		impostaMatrice({ permessi: { member: { finance: ['view', 'edit'] } }, capacita: { member: ['chiudere_esercizio'] } });
-		assert.equal(canAccess('member', 'finance', 'view'), false);
-		assert.equal(puo('member', 'chiudere_esercizio'), false);
+		impostaMatrice({ permessi: { member: { audit_log: ['view', 'edit'] } }, capacita: { member: ['una_capacita'] } });
+		assert.equal(canAccess('member', 'audit_log', 'view'), false);
+		assert.equal(puo('member', 'una_capacita'), false);
 		ripristinaMatricePredefinita();
 	});
 });
@@ -66,13 +67,13 @@ describe('la matrice caricata sostituisce quella predefinita', () => {
 	after(() => ripristinaMatricePredefinita());
 
 	test('un ruolo può ricevere permessi che il codice non gli dava', () => {
-		assert.equal(canAccess('reception', 'finance', 'edit'), false, 'di partenza non ce l’ha');
+		assert.equal(canAccess('reception', 'audit_log', 'view'), false, 'di partenza non ce l’ha');
 		impostaMatrice({
-			permessi: { ...PERMESSI_PREDEFINITI, reception: { finance: ['view', 'edit'] } },
-			capacita: { reception: ['chiudere_esercizio'] },
+			permessi: { ...PERMESSI_PREDEFINITI, reception: { audit_log: ['view', 'edit'] } },
+			capacita: { reception: ['una_capacita'] },
 		});
-		assert.equal(canAccess('reception', 'finance', 'edit'), true);
-		assert.equal(puo('reception', 'chiudere_esercizio'), true);
+		assert.equal(canAccess('reception', 'audit_log', 'edit'), true);
+		assert.equal(puo('reception', 'una_capacita'), true);
 	});
 
 	test('e può perderne', () => {
@@ -84,8 +85,9 @@ describe('la matrice caricata sostituisce quella predefinita', () => {
 	test('il ripristino riporta i valori del codice', () => {
 		ripristinaMatricePredefinita();
 		assert.equal(canAccess('reception', 'crm_members', 'view'), true);
-		assert.equal(canAccess('reception', 'finance', 'edit'), false);
-		assert.ok(capacitaDi('admin').includes('chiudere_esercizio'));
+		assert.equal(canAccess('reception', 'audit_log', 'view'), false);
+		// L'amministratore ha sempre tutto il catalogo delle capacità, qualunque esso sia.
+		assert.deepEqual(capacitaDi('admin'), NOMI_CAPACITA);
 	});
 });
 
@@ -112,9 +114,9 @@ describe("nessuno concede ciò che non ha", () => {
 		const suffisso = Date.now();
 		const passwordHash = await bcrypt.hash(PASSWORD, 4);
 
-		// Un ruolo che amministra gli utenti ma non tocca la contabilità: è il caso da
-		// difendere — se potesse concedersi la contabilità, delegare gli utenti
-		// equivarrebbe a delegare tutto.
+		// Un ruolo che amministra gli utenti ma non vede il log audit: è il caso da
+		// difendere — se potesse concedersi il log, delegare gli utenti equivarrebbe
+		// a delegare tutto.
 		const nomeDelegato = `deleg${suffisso % 100000}`;
 		nomiRuoliCreati.push(nomeDelegato);
 		await db.insert(ruoli).values({
@@ -173,18 +175,17 @@ describe("nessuno concede ciò che non ha", () => {
 		assert.equal(res.statusCode, 401);
 	});
 
-	test('la segreteria non può concedere la contabilità, che non ha', async () => {
-		const res = await salva(tokenDelegato, { permessi: { finance: ['view', 'edit'] }, capacita: [] });
+	test('la segreteria non può concedere il log audit, che non ha', async () => {
+		const res = await salva(tokenDelegato, { permessi: { audit_log: ['view'] }, capacita: [] });
 		assert.equal(res.statusCode, 403);
 		assert.match(res.json().error, /che tu stesso non hai/);
-		assert.match(res.json().error, /Contabilità avanzata/);
+		assert.match(res.json().error, /Log accessi/);
 	});
 
-	test('né una capacità che non possiede', async () => {
-		const res = await salva(tokenDelegato, { permessi: {}, capacita: ['chiudere_esercizio'] });
-		assert.equal(res.statusCode, 403);
-		assert.match(res.json().error, /Chiudere un esercizio/);
-	});
+	// Il gemello di questo caso sulle capacità — "né una capacità che non possiede" — non è
+	// scrivibile finché CAPACITA è vuoto: qualunque nome verrebbe respinto prima, come
+	// capacità inesistente (400), invece che come concessione indebita (403). Il controllo
+	// nel codice c'è comunque, in routes/ruoli.js.
 
 	test('può però concedere quello che ha', async () => {
 		const res = await salva(tokenDelegato, { permessi: { crm_members: ['view'] }, capacita: [] });
@@ -194,19 +195,18 @@ describe("nessuno concede ciò che non ha", () => {
 
 	test("l'amministratore può concedere tutto, perché tutto ha", async () => {
 		const res = await salva(tokenAdmin, {
-			permessi: { finance: ['view', 'edit'], crm_members: ['view', 'edit'] },
-			capacita: ['chiudere_esercizio'],
+			permessi: { audit_log: ['view'], crm_members: ['view', 'edit'] },
+			capacita: NOMI_CAPACITA,
 		});
 		assert.equal(res.statusCode, 200, res.body);
 		// E il cambiamento vale subito, senza riavviare.
-		assert.equal(canAccess('reception', 'finance', 'edit'), true);
-		assert.equal(puo('reception', 'chiudere_esercizio'), true);
+		assert.equal(canAccess('reception', 'audit_log', 'view'), true);
 	});
 
 	test('moduli e capacità inventati vengono rifiutati', async () => {
 		assert.equal((await salva(tokenAdmin, { permessi: { inventato: ['view'] } })).statusCode, 400);
 		assert.equal((await salva(tokenAdmin, { permessi: {}, capacita: ['inventata'] })).statusCode, 400);
-		assert.equal((await salva(tokenAdmin, { permessi: { finance: ['cancella'] } })).statusCode, 400);
+		assert.equal((await salva(tokenAdmin, { permessi: { audit_log: ['cancella'] } })).statusCode, 400);
 	});
 
 	// --- Creazione di ruoli nuovi
@@ -220,11 +220,11 @@ describe("nessuno concede ciò che non ha", () => {
 
 	test('un ruolo nuovo nasce con un nome tecnico ricavato dall’etichetta', async () => {
 		nomiRuoliCreati.push('tesoriere');
-		const res = await crea(tokenAdmin, { label: 'Tesoriere', permessi: { finance: ['view'] } });
+		const res = await crea(tokenAdmin, { label: 'Tesoriere', permessi: { audit_log: ['view'] } });
 		assert.equal(res.statusCode, 201, res.body);
 		assert.equal(res.json().ruolo.nome, 'tesoriere');
 		assert.equal(res.json().ruolo.sistema, false);
-		assert.equal(canAccess('tesoriere', 'finance', 'view'), true, 'vale subito, senza riavviare');
+		assert.equal(canAccess('tesoriere', 'audit_log', 'view'), true, 'vale subito, senza riavviare');
 	});
 
 	test('gli accenti e gli spazi non finiscono nel nome tecnico', async () => {
@@ -248,7 +248,7 @@ describe("nessuno concede ciò che non ha", () => {
 	test('anche in creazione non si concede ciò che non si ha', async () => {
 		// Senza questo controllo sul POST, chi amministra gli utenti creerebbe un ruolo con
 		// quello che vuole e poi se lo assegnerebbe: stesso buco, altra porta.
-		const res = await crea(tokenDelegato, { label: 'Scorciatoia', permessi: { finance: ['view', 'edit'] } });
+		const res = await crea(tokenDelegato, { label: 'Scorciatoia', permessi: { audit_log: ['view'] } });
 		assert.equal(res.statusCode, 403);
 		assert.match(res.json().error, /che tu stesso non hai/);
 	});

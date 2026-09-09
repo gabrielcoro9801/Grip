@@ -23,7 +23,7 @@ import bcrypt from 'bcryptjs';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { staffAccounts, organizations } from '../db/schema/index.js';
-import { bootstrapContabilita } from './bootstrapContabilita.js';
+import { bootstrapRuoli } from './ruoli.js';
 
 export async function creaAmministratoreIniziale(log) {
 	const [{ quanti }] = await db
@@ -47,15 +47,15 @@ export async function creaAmministratoreIniziale(log) {
 		return { creato: false, motivo: 'email non impostata' };
 	}
 
-	// L'ente e la sua contabilità servono comunque: senza organizzazione l'applicazione non
-	// sa a chi appartengono i dati, e senza piano dei conti non si registra nulla.
+	// L'ente e i suoi ruoli servono comunque: senza organizzazione l'applicazione non sa a
+	// chi appartengono i dati, e senza ruoli non si decide chi può fare cosa.
 	const [enteEsistente] = await db.select().from(organizations).limit(1);
 	const ente = enteEsistente ?? (await db
 		.insert(organizations)
 		.values({ nome: process.env.SEED_ORGANIZZAZIONE || 'La mia associazione' })
 		.returning())[0];
 
-	const contabilita = await bootstrapContabilita(ente.id);
+	const ruoliCreati = await bootstrapRuoli(ente.id);
 
 	await db.insert(staffAccounts).values({
 		nome: 'Amministratore',
@@ -66,8 +66,7 @@ export async function creaAmministratoreIniziale(log) {
 	});
 
 	log?.info(
-		`Primo avvio: creato l'amministratore ${email} per "${ente.nome}" ` +
-		`(${contabilita.contiCreati} conti, ${contabilita.causaliCreate} causali, ${contabilita.ruoliCreati} ruoli). ` +
+		`Primo avvio: creato l'amministratore ${email} per "${ente.nome}" (${ruoliCreati} ruoli). ` +
 		'Cambia la password dopo il primo accesso.',
 	);
 

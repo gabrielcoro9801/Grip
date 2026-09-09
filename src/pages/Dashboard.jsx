@@ -1,21 +1,18 @@
 import React, { useState, useEffect } from "react";
 import { api } from "@/api/client";
-import { Link } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Users, DollarSign, Calendar, AlertTriangle, Clock, FileWarning, TrendingUp } from "lucide-react";
+import { Users, UserCheck, Calendar, AlertTriangle, Clock, FileWarning } from "lucide-react";
 import StatusBadge from "@/components/shared/StatusBadge";
 import moment from "moment";
+import { LoadingState } from "@/components/shared/Spinner";
+import { formatData } from "@/lib/format";
 
 export default function Dashboard() {
   const [members, setMembers] = useState([]);
   const [subscriptions, setSubscriptions] = useState([]);
   const [documents, setDocuments] = useState([]);
   const [bookings, setBookings] = useState([]);
-  // Ricavi e costi si leggono dalla contabilità in partita doppia, unica fonte di verità.
-  const [entries, setEntries] = useState([]);
-  const [lines, setLines] = useState([]);
-  const [accounts, setAccounts] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -24,13 +21,10 @@ export default function Dashboard() {
       api.entities.Subscription.list(),
       api.entities.MemberDocument.list(),
       api.entities.Booking.list(),
-      api.entities.JournalEntry.list(),
-      api.entities.JournalLine.list(),
-      api.entities.ChartOfAccount.list(),
       api.entities.Session.list(),
       api.entities.Event.list(),
       api.entities.Course.list(),
-    ]).then(([m, s, d, b, je, jl, acc, sess, evts, crs]) => {
+    ]).then(([m, s, d, b, sess, evts, crs]) => {
       const resolvedBookings = b.map(bk => {
         const session = sess.find(s => s.id === bk.session_id);
         const event = evts.find(e => e.id === session?.event_id);
@@ -41,23 +35,17 @@ export default function Dashboard() {
       setSubscriptions(s);
       setDocuments(d);
       setBookings(resolvedBookings);
-      setEntries(je);
-      setLines(jl);
-      setAccounts(acc);
       setLoading(false);
     });
   }, []);
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <div className="w-8 h-8 border-4 border-muted border-t-primary rounded-full animate-spin" />
-      </div>
+      <LoadingState minHeight="h-full" />
     );
   }
 
   const today = moment();
-  const thirtyDaysOut = moment().add(30, "days");
 
   // Certificate alerts
   const certAlerts = documents
@@ -89,22 +77,10 @@ export default function Dashboard() {
   // KPIs
   const activeMembers = subscriptions.filter(s => s.status === "active").length;
 
-  // Ricavi e costi si ricavano dalle righe di partita doppia: i conti di ricavo hanno
-  // saldo in avere, quelli di costo in dare. Si contano solo le scritture confermate,
-  // per non gonfiare i totali con le bozze.
-  const confirmedEntryIds = new Set(entries.filter(e => e.stato === "confermata").map(e => e.id));
-  const accountsByType = (tipo) => new Set(accounts.filter(a => a.tipo_conto === tipo).map(a => a.id));
-  const sumLines = (contoIds, colonna) => lines
-    .filter(l => confirmedEntryIds.has(l.journal_entry_id) && contoIds.has(l.conto_id))
-    .reduce((sum, l) => sum + (l[colonna] || 0), 0);
-
-  const totalRevenue = sumLines(accountsByType("ricavo"), "avere");
-  const totalExpenses = sumLines(accountsByType("costo"), "dare");
-
   const kpis = [
-    { label: "Soci attivi", value: activeMembers, icon: Users, color: "text-emerald-600", bg: "bg-emerald-50" },
-    { label: "Ricavi totali", value: `€${totalRevenue.toLocaleString()}`, icon: TrendingUp, color: "text-blue-600", bg: "bg-blue-50" },
-    { label: "Spese totali", value: `€${totalExpenses.toLocaleString()}`, icon: DollarSign, color: "text-amber-600", bg: "bg-amber-50" },
+    { label: "Soci attivi", value: activeMembers, icon: UserCheck, color: "text-emerald-600", bg: "bg-emerald-50" },
+    { label: "Soci iscritti", value: members.length, icon: Users, color: "text-blue-600", bg: "bg-blue-50" },
+    { label: "Certificati in scadenza", value: certAlerts.length, icon: FileWarning, color: "text-amber-600", bg: "bg-amber-50" },
     { label: "Prossime lezioni", value: upcomingBookings.length, icon: Calendar, color: "text-violet-600", bg: "bg-violet-50" },
   ];
 
@@ -220,7 +196,7 @@ export default function Dashboard() {
                   <div key={b.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
                     <div>
                       <p className="text-sm font-medium">{b._course_name || "Corso"}</p>
-                      <p className="text-xs text-muted-foreground">{b.member_name} · {b._date ? moment(b._date).format("ddd, MMM D") : "—"}</p>
+                      <p className="text-xs text-muted-foreground">{b.member_name} · {b._date ? formatData(b._date, "giorno") : "—"}</p>
                     </div>
                     <StatusBadge status={b.status} />
                   </div>

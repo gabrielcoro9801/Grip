@@ -9,6 +9,7 @@ import { UserPlus, Clock, MapPin, Calendar, Users } from "lucide-react";
 import moment from "moment";
 import { useToast } from "@/components/ui/use-toast";
 import { createBooking, getSessionAvailability } from "@/lib/bookingUtils";
+import { formatData } from "@/lib/format";
 
 export default function SessionsTab({ data, reload }) {
   const { courses, events, sessions, rooms, members, bookings } = data;
@@ -78,7 +79,7 @@ export default function SessionsTab({ data, reload }) {
                 <CardContent className="p-4">
                   <h4 className="font-medium text-sm mb-2">{course?.name || "Corso"}</h4>
                   <div className="space-y-1 text-xs text-muted-foreground">
-                    <div className="flex items-center gap-1"><Calendar className="w-3 h-3" /> {moment(session.date).format("ddd D MMM")}</div>
+                    <div className="flex items-center gap-1"><Calendar className="w-3 h-3" /> {formatData(session.date, "giorno")}</div>
                     <div className="flex items-center gap-1"><Clock className="w-3 h-3" /> {session.start_time}–{session.end_time}</div>
                     <div className="flex items-center gap-1"><MapPin className="w-3 h-3" /> {roomName(session.room_id)}</div>
                     <div className="flex items-center gap-1">
@@ -108,7 +109,7 @@ export default function SessionsTab({ data, reload }) {
               return (
                 <div className="p-3 rounded-lg bg-muted/40 text-sm space-y-1">
                   <div className="font-medium">{course?.name}</div>
-                  <div className="text-xs text-muted-foreground">{moment(bookSession.date).format("dddd D MMMM")} — {bookSession.start_time}–{bookSession.end_time}</div>
+                  <div className="text-xs text-muted-foreground">{formatData(bookSession.date, "estesaBreve")} — {bookSession.start_time}–{bookSession.end_time}</div>
                   {info.isFull ? (
                     <p className="text-sm text-amber-600 mt-1">Completo ({info.confirmed}/{info.capacity}). La prenotazione andrà in lista d'attesa (posizione #{info.waitlisted + 1}).</p>
                   ) : (

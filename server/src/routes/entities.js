@@ -5,7 +5,10 @@ import { eq, and, asc, desc } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { entityRegistry } from '../entities/registry.js';
 import { getColumnMaps, translateToJs, translateToSnakeCase, translateManyToSnakeCase } from '../entities/columnMaps.js';
-import { applyWriteTransform, stripHiddenFields, stripHiddenFieldsMany, CREATE_FORBIDDEN } from '../entities/hooks.js';
+import {
+	applyWriteTransform, stripHiddenFields, stripHiddenFieldsMany,
+	CREATE_FORBIDDEN, UPDATE_FORBIDDEN, DELETE_FORBIDDEN, mutationBlockedReason,
+} from '../entities/hooks.js';
 import { getUserFromRequest } from '../auth/tokens.js';
 import { canWriteEntity } from '../auth/authorize.js';
 import { memberPuoLeggere, memberPuoScrivere, colonnaProprietario, nascondiCampiPerSocio, forzaProprietario } from '../auth/memberScope.js';
@@ -161,7 +164,12 @@ export default async function entityRoutes(fastify) {
 	// PUT /api/entities/:name/:id
 	fastify.put('/api/entities/:name/:id', async (request, reply) => {
 		const entityName = request.params.name;
+		if (UPDATE_FORBIDDEN[entityName]) {
+			return reply.code(400).send({ error: UPDATE_FORBIDDEN[entityName] });
+		}
 		const table = entityRegistry[entityName];
+		const bloccato = await mutationBlockedReason(entityName, table, request.params.id, 'update');
+		if (bloccato) return reply.code(400).send({ error: bloccato });
 		const { dbNameToColumn } = getColumnMaps(table);
 		const body = await applyWriteTransform(entityName, request.body);
 		const data = translateToJs(table, body);
@@ -172,7 +180,13 @@ export default async function entityRoutes(fastify) {
 
 	// DELETE /api/entities/:name/:id
 	fastify.delete('/api/entities/:name/:id', async (request, reply) => {
-		const table = entityRegistry[request.params.name];
+		const entityName = request.params.name;
+		if (DELETE_FORBIDDEN[entityName]) {
+			return reply.code(400).send({ error: DELETE_FORBIDDEN[entityName] });
+		}
+		const table = entityRegistry[entityName];
+		const bloccato = await mutationBlockedReason(entityName, table, request.params.id, 'delete');
+		if (bloccato) return reply.code(400).send({ error: bloccato });
 		const { dbNameToColumn } = getColumnMaps(table);
 		const [row] = await db.delete(table).where(eq(dbNameToColumn.id, request.params.id)).returning();
 		if (!row) return reply.code(404).send({ error: 'Non trovato' });
