@@ -74,7 +74,7 @@ export default function MemberLayout() {
             className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm w-full text-sidebar-foreground hover:bg-sidebar-accent hover:text-white transition-colors"
           >
             <LogOut className="w-5 h-5" aria-hidden="true" />
-            <span>Esci</span>
+            <span>Logout</span>
           </button>
         </div>
       </aside>
@@ -92,7 +92,7 @@ export default function MemberLayout() {
             onClick={logout}
             className="text-sm text-muted-foreground hover:text-destructive flex items-center gap-1"
           >
-            <LogOut className="w-4 h-4" aria-hidden="true" /> Esci
+            <LogOut className="w-4 h-4" aria-hidden="true" /> Logout
           </button>
         </header>
 

@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import StatusBadge from "@/components/shared/StatusBadge";
 import { ArrowLeft, Plus, FileText, CreditCard, Dumbbell, Shield, Calendar, QrCode, KeyRound, RefreshCw } from "lucide-react";
 import { generateQRCode, getQRImageUrl } from "@/lib/qrUtils";
+import { useQrDinamico } from "@/hooks/useQrDinamico";
 import { logAction } from "@/lib/auditLog";
 import moment from "moment";
 import { useToast } from "@/components/ui/use-toast";
@@ -89,6 +90,12 @@ export default function MemberDetail() {
 
   useEffect(() => { loadData(); }, [id]);
 
+  // Lo stesso codice che il socio vede sul telefono, negli stessi secondi: entrambi i lati
+  // lo derivano dal seme e dal minuto corrente, quindi alla reception basta confrontarli.
+  const { codice: codiceDinamico, secondiResidui } = useQrDinamico(
+    qrAccess?.stato === "attivo" ? qrAccess.codice : null,
+  );
+
   const handleNewSubscription = async (e) => {
     e.preventDefault();
     const plan = plans.find(p => p.id === subForm.plan_id);
@@ -165,19 +172,19 @@ export default function MemberDetail() {
     try {
       if (portalAccount) {
         await api.entities.StaffAccount.update(portalAccount.id, { password: passwordForm.password });
-        await logAction(staffUser, "password_reset", "staff_account", `Portale cliente — ${member?.full_name}`, portalAccount.id, "Password impostata dal CRM");
+        await logAction(staffUser, "password_reset", "staff_account", `Portale socio — ${member?.full_name}`, portalAccount.id, "Password impostata dal CRM");
       } else {
         const created = await api.entities.StaffAccount.create({
-          nome: member?.full_name || "Cliente",
+          nome: member?.full_name || "Socio",
           email: member?.email || "",
           ruolo: "member",
           password: passwordForm.password,
           attivo: true,
           linked_member_id: id,
         });
-        await logAction(staffUser, "create", "staff_account", `Portale cliente — ${member?.full_name}`, created.id, "Account portale cliente creato dal CRM");
+        await logAction(staffUser, "create", "staff_account", `Portale socio — ${member?.full_name}`, created.id, "Account portale socio creato dal CRM");
       }
-      toast({ title: "Password impostata", description: "Il cliente può accedere al portale" });
+      toast({ title: "Password impostata", description: "Il socio può accedere al portale" });
       setShowPasswordDialog(false);
       setPasswordForm({ password: "", confirm: "" });
       loadData();
@@ -195,17 +202,17 @@ export default function MemberDetail() {
       for (let i = 0; i < 10; i++) pwd += chars[Math.floor(Math.random() * chars.length)];
       if (portalAccount) {
         await api.entities.StaffAccount.update(portalAccount.id, { password: pwd });
-        await logAction(staffUser, "password_reset", "staff_account", `Portale cliente — ${member?.full_name}`, portalAccount.id, "Password generata dal CRM");
+        await logAction(staffUser, "password_reset", "staff_account", `Portale socio — ${member?.full_name}`, portalAccount.id, "Password generata dal CRM");
       } else {
         const created = await api.entities.StaffAccount.create({
-          nome: member?.full_name || "Cliente",
+          nome: member?.full_name || "Socio",
           email: member?.email || "",
           ruolo: "member",
           password: pwd,
           attivo: true,
           linked_member_id: id,
         });
-        await logAction(staffUser, "create", "staff_account", `Portale cliente — ${member?.full_name}`, created.id, "Account portale cliente creato dal CRM");
+        await logAction(staffUser, "create", "staff_account", `Portale socio — ${member?.full_name}`, created.id, "Account portale socio creato dal CRM");
       }
       setGeneratedPassword(pwd);
       toast({ title: "Password generata" });
@@ -330,15 +337,27 @@ export default function MemberDetail() {
         {/* QR Accesso */}
         <Card className="border-0 shadow-sm">
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-heading flex items-center gap-2"><QrCode className="w-4 h-4" /> QR Accesso</CardTitle>
+            <CardTitle className="text-sm font-heading flex items-center gap-2"><QrCode className="w-4 h-4" /> QR accesso</CardTitle>
           </CardHeader>
           <CardContent>
             {qrAccess ? (
               <div className="flex items-center gap-4">
-                <img src={getQRImageUrl(qrAccess.codice, 120)} alt="QR" className="w-24 h-24 rounded-lg" />
-                <div className="flex-1">
-                  <p className="font-mono text-sm font-medium">{qrAccess.codice}</p>
-                  <p className="text-xs text-muted-foreground">Generato il {formatData(qrAccess.data_generazione, "media")}</p>
+                {codiceDinamico ? (
+                  <img src={getQRImageUrl(codiceDinamico, 120)} alt="QR accesso" className="w-24 h-24 rounded-lg" />
+                ) : (
+                  <div className="w-24 h-24 rounded-lg bg-muted/40" />
+                )}
+                <div className="flex-1 min-w-0">
+                  {/* Il codice del minuto è quello da confrontare con il telefono del socio;
+                      la credenziale sotto è ciò che si revoca, e non cambia mai da sé. */}
+                  <p className="font-mono text-sm font-medium break-all">{codiceDinamico || "—"}</p>
+                  {qrAccess.stato === "attivo" && (
+                    <p className="text-xs text-muted-foreground">Cambia tra {secondiResidui}s</p>
+                  )}
+                  <p className="text-[11px] text-muted-foreground font-mono break-all mt-1">
+                    Credenziale: {qrAccess.codice}
+                  </p>
+                  <p className="text-xs text-muted-foreground">Generata il {formatData(qrAccess.data_generazione, "media")}</p>
                   <Badge variant="outline" className={`mt-1 text-xs ${qrAccess.stato === "attivo" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-red-50 text-red-700 border-red-200"}`}>
                     {qrAccess.stato === "attivo" ? "Attivo" : "Revocato"}
                   </Badge>
@@ -360,10 +379,10 @@ export default function MemberDetail() {
           </CardContent>
         </Card>
 
-        {/* Portale Cliente */}
+        {/* Portale socio */}
         <Card className="border-0 shadow-sm">
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-heading flex items-center gap-2"><KeyRound className="w-4 h-4" /> Portale Cliente</CardTitle>
+            <CardTitle className="text-sm font-heading flex items-center gap-2"><KeyRound className="w-4 h-4" /> Portale socio</CardTitle>
           </CardHeader>
           <CardContent>
             {portalAccount ? (
@@ -388,12 +407,12 @@ export default function MemberDetail() {
                 Genera password
               </Button>
             </div>
-            {!member?.email && <p className="text-xs text-amber-600 mt-2">Il cliente non ha un'email: impossibile creare l'account portale</p>}
+            {!member?.email && <p className="text-xs text-amber-600 mt-2">Il socio non ha un'email: impossibile creare l'account portale</p>}
             {generatedPassword && (
               <div className="mt-3 p-3 rounded-lg bg-muted">
                 <p className="text-xs text-muted-foreground mb-1">Password generata:</p>
                 <p className="font-mono text-sm font-medium break-all">{generatedPassword}</p>
-                <p className="text-xs text-amber-600 mt-1">Comunica questa password al cliente</p>
+                <p className="text-xs text-amber-600 mt-1">Comunica questa password al socio</p>
               </div>
             )}
           </CardContent>

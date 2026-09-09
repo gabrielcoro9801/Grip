@@ -30,6 +30,10 @@ export default function GestioneRuoli() {
   const { organization } = useOrganization();
   const { staffUser } = useStaffAuth();
   const { toast } = useToast();
+  // Chi amministra gli utenti vede la matrice — deve sapere cosa comporta un ruolo prima
+  // di assegnarlo — ma solo l'amministratore la riscrive. Il server applica lo stesso
+  // limite: qui si nascondono i comandi, là si rifiutano le richieste.
+  const puoModificare = staffUser?.ruolo === PRESIDIO_AMMINISTRATORE.ruolo;
   const [dati, setDati] = useState(null);
   const [inModifica, setInModifica] = useState(null);
   const [bozza, setBozza] = useState({ permessi: {}, capacita: [] });
@@ -62,9 +66,9 @@ export default function GestioneRuoli() {
     if (!nuovo.label.trim()) return;
     setSaving(true);
     try {
-      // Si parte da una copia, non dal vuoto: il caso reale è "come Reception ma senza
-      // contabilità". Costruire da zero su diciassette moduli è un invito a dimenticarne
-      // uno — e dimenticare in eccesso non dà errore, si nota solo quando qualcuno vede
+      // Si parte da una copia, non dal vuoto: il caso reale è "come la reception, ma senza
+      // il log audit". Spuntare le aree una per una da zero è un invito a dimenticarne una
+      // — e dimenticare in eccesso non dà errore, si nota solo quando qualcuno vede
       // qualcosa che non doveva.
       const modello = ruoli.find((r) => r.id === nuovo.copiaDa);
       const esito = await api.ruoli.crea({
@@ -144,18 +148,26 @@ export default function GestioneRuoli() {
           <h3 className="font-heading font-semibold text-sm flex items-center gap-2">
             <Shield className="w-4 h-4" /> Permessi per ruolo
           </h3>
-          <Button size="sm" variant="outline" onClick={() => setMostraNuovo(true)}>
-            <Plus className="w-4 h-4 mr-1" /> Nuovo ruolo
-          </Button>
+          {puoModificare && (
+            <Button size="sm" variant="outline" onClick={() => setMostraNuovo(true)}>
+              <Plus className="w-4 h-4 mr-1" /> Nuovo ruolo
+            </Button>
+          )}
         </div>
 
-        <p className="text-xs text-muted-foreground">
-          Puoi adattare i ruoli all'organizzazione. Due cose restano fuori portata: al{" "}
-          <strong>cliente</strong> non si assegnano permessi da qui — quello che vede nel portale
-          è deciso altrove — e l'<strong>amministratore</strong> non può perdere la gestione utenti,
-          o nessuno potrebbe più aprire questa schermata. Inoltre non puoi concedere a un ruolo
-          un permesso che tu stesso non hai.
-        </p>
+        {puoModificare ? (
+          <p className="text-xs text-muted-foreground">
+            Puoi adattare i ruoli all'organizzazione. Due cose restano fuori portata: al{" "}
+            <strong>socio</strong> non si assegnano permessi da qui — quello che vede nel portale
+            è deciso altrove — e l'<strong>amministratore</strong> non può perdere la gestione utenti,
+            o nessuno potrebbe più aprire questa schermata.
+          </p>
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            Questa tabella è in sola lettura: i ruoli li disegna l'<strong>amministratore</strong>.
+            Qui vedi cosa comporta ciascuno, così sai cosa stai assegnando quando crei un account.
+          </p>
+        )}
 
         <div className="overflow-x-auto border border-border rounded-lg">
           <table className="w-full text-xs">
@@ -197,16 +209,18 @@ export default function GestioneRuoli() {
                   </td>
                 ))}
               </tr>
-              <tr>
-                <td className="py-2 px-3" />
-                {configurabili.map((r) => (
-                  <td key={r.nome} className="py-2 px-3 text-center">
-                    <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => apri(r)}>
-                      <Pencil className="w-3 h-3 mr-1" /> Modifica
-                    </Button>
-                  </td>
-                ))}
-              </tr>
+              {puoModificare && (
+                <tr>
+                  <td className="py-2 px-3" />
+                  {configurabili.map((r) => (
+                    <td key={r.nome} className="py-2 px-3 text-center">
+                      <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => apri(r)}>
+                        <Pencil className="w-3 h-3 mr-1" /> Modifica
+                      </Button>
+                    </td>
+                  ))}
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -242,7 +256,7 @@ export default function GestioneRuoli() {
                 </Select>
                 <p className="text-xs text-muted-foreground mt-1">
                   Partire da un ruolo simile e togliere quello che non serve è più sicuro che
-                  spuntare diciassette aree da zero: un permesso dimenticato <em>in eccesso</em> non
+                  spuntare le aree una per una: un permesso dimenticato <em>in eccesso</em> non
                   dà errore, si nota solo quando qualcuno vede ciò che non doveva.
                 </p>
               </div>

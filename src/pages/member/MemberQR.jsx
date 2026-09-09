@@ -3,12 +3,16 @@ import { api } from "@/api/client";
 import { useMemberAuth } from "@/lib/MemberAuthContext";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { AlertCircle, CheckCircle } from "lucide-react";
+import { AlertCircle, CheckCircle, Timer } from "lucide-react";
 import { generateQRCode, getQRImageUrl } from "@/lib/qrUtils";
+import { useQrDinamico } from "@/hooks/useQrDinamico";
+import { DURATA_FINESTRA_MS } from "../../../shared/qrDinamico.js";
 import StatusBadge from "@/components/shared/StatusBadge";
 import moment from "moment";
 import { LoadingState } from "@/components/shared/Spinner";
 import { formatData } from "@/lib/format";
+
+const SECONDI_FINESTRA = DURATA_FINESTRA_MS / 1000;
 
 export default function MemberQR() {
   const { memberUser } = useMemberAuth();
@@ -28,7 +32,8 @@ export default function MemberQR() {
       setMember(m);
       setSubscriptions(subs);
 
-      // Auto-generate QR if none exists (static, generated once)
+      // Il seme permanente nasce una volta sola: è la credenziale, non il codice che si
+      // mostra. Quello cambia ogni minuto e non tocca mai la banca dati.
       if (qrs.length === 0) {
         const newQr = await api.entities.QRAccesso.create({
           cliente_id: memberUser.member_id,
@@ -45,19 +50,22 @@ export default function MemberQR() {
     })();
   }, [memberUser?.member_id]);
 
+  const isRevoked = qr?.stato === "revocato";
+  // Un QR revocato non deve nemmeno essere derivato: passando null l'hook resta a vuoto.
+  const { codice, secondiResidui, errore } = useQrDinamico(isRevoked ? null : qr?.codice);
+
   if (loading) {
     return <LoadingState minHeight="p-8" />;
   }
 
   const activeSub = subscriptions.find(s => s.status === "active");
   const daysToExpiry = activeSub ? moment(activeSub.end_date).diff(moment(), "days") : null;
-  const isRevoked = qr?.stato === "revocato";
   const canAccess = activeSub && daysToExpiry >= 0 && !isRevoked;
 
   return (
     <div className="min-h-[calc(100vh-3.5rem)] lg:min-h-screen flex flex-col items-center justify-center p-4 sm:p-6 space-y-6">
       <div className="text-center">
-        <h1 className="text-xl font-heading font-bold">QR Accesso</h1>
+        <h1 className="text-xl font-heading font-bold">QR accesso</h1>
         <p className="text-sm text-muted-foreground">{member?.full_name || memberUser.nome}</p>
       </div>
 
@@ -71,11 +79,20 @@ export default function MemberQR() {
                 QR revocato. Rivolgiti alla reception.
               </p>
             </div>
+          ) : errore ? (
+            <div className="w-56 h-56 rounded-xl bg-muted/30 flex flex-col items-center justify-center gap-3">
+              <AlertCircle className="w-12 h-12 text-destructive" />
+              <p className="text-sm text-destructive font-medium text-center px-4">
+                Impossibile generare il codice su questa connessione. Rivolgiti alla reception.
+              </p>
+            </div>
+          ) : !codice ? (
+            <div className="w-56 h-56 rounded-xl bg-muted/30 animate-pulse" />
           ) : (
             <div className="relative">
               <img
-                src={getQRImageUrl(qr?.codice || "", 300)}
-                alt="QR Accesso"
+                src={getQRImageUrl(codice, 300)}
+                alt="QR accesso"
                 className="w-56 h-56 rounded-xl"
               />
               {!canAccess && (
@@ -88,10 +105,34 @@ export default function MemberQR() {
               )}
             </div>
           )}
-          <div className="text-center">
-            <p className="text-xs text-muted-foreground">Codice</p>
-            <p className="font-mono text-sm font-medium">{qr?.codice}</p>
-          </div>
+
+          {!isRevoked && !errore && (
+            <div className="w-full space-y-2">
+              {/* Il conto alla rovescia non è un vezzo: dice a chi lo mostra che il codice
+                  sta per cambiare, invece di farglielo scoprire alla porta. */}
+              <div className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
+                <Timer className="w-3.5 h-3.5" aria-hidden="true" />
+                <span>Cambia tra {secondiResidui}s</span>
+              </div>
+              <div
+                className="h-1 w-full rounded-full bg-muted overflow-hidden"
+                role="progressbar"
+                aria-label="Tempo residuo del codice"
+                aria-valuemin={0}
+                aria-valuemax={SECONDI_FINESTRA}
+                aria-valuenow={secondiResidui}
+              >
+                <div
+                  className="h-full bg-primary transition-[width] duration-1000 ease-linear"
+                  style={{ width: `${(secondiResidui / SECONDI_FINESTRA) * 100}%` }}
+                />
+              </div>
+              <div className="text-center pt-1">
+                <p className="text-xs text-muted-foreground">Codice</p>
+                <p className="font-mono text-sm font-medium break-all">{codice || "—"}</p>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -120,7 +161,8 @@ export default function MemberQR() {
       </Card>
 
       <p className="text-xs text-muted-foreground text-center max-w-xs">
-        Il QR è personale e non cambia nel tempo. La validità viene verificata alla scansione in base allo stato del tuo abbonamento.
+        Il codice cambia ogni minuto: uno screenshot inviato a qualcun altro scade prima di
+        poter essere usato. Mostralo dal telefono al momento dell'ingresso.
       </p>
     </div>
   );

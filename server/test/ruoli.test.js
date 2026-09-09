@@ -175,23 +175,28 @@ describe("nessuno concede ciò che non ha", () => {
 		assert.equal(res.statusCode, 401);
 	});
 
-	test('la segreteria non può concedere il log audit, che non ha', async () => {
-		const res = await salva(tokenDelegato, { permessi: { audit_log: ['view'] }, capacita: [] });
+	test('la segreteria legge la matrice: deve sapere cosa assegna', async () => {
+		const res = await app.inject({
+			method: 'GET',
+			url: `/api/ruoli?organization_id=${idOrg}`,
+			headers: { authorization: `Bearer ${tokenDelegato}` },
+		});
+		assert.equal(res.statusCode, 200, res.body);
+		assert.ok(res.json().ruoli.length > 0);
+	});
+
+	test('ma non la riscrive: i ruoli sono dell’amministratore', async () => {
+		// Amministrare gli utenti significa assegnare i ruoli che esistono. Ridisegnarli è
+		// un'altra cosa: chi può farlo decide i permessi di tutti, compresi i propri.
+		const res = await salva(tokenDelegato, { permessi: { crm_members: ['view'] }, capacita: [] });
 		assert.equal(res.statusCode, 403);
-		assert.match(res.json().error, /che tu stesso non hai/);
-		assert.match(res.json().error, /Log accessi/);
+		assert.match(res.json().error, /Solo l'amministratore/);
 	});
 
 	// Il gemello di questo caso sulle capacità — "né una capacità che non possiede" — non è
 	// scrivibile finché CAPACITA è vuoto: qualunque nome verrebbe respinto prima, come
 	// capacità inesistente (400), invece che come concessione indebita (403). Il controllo
 	// nel codice c'è comunque, in routes/ruoli.js.
-
-	test('può però concedere quello che ha', async () => {
-		const res = await salva(tokenDelegato, { permessi: { crm_members: ['view'] }, capacita: [] });
-		assert.equal(res.statusCode, 200, res.body);
-		assert.deepEqual(res.json().ruolo.permessi, { crm_members: ['view'] });
-	});
 
 	test("l'amministratore può concedere tutto, perché tutto ha", async () => {
 		const res = await salva(tokenAdmin, {
@@ -245,12 +250,22 @@ describe("nessuno concede ciò che non ha", () => {
 		assert.equal((await crea(tokenAdmin, { label: '   ' })).statusCode, 400);
 	});
 
-	test('anche in creazione non si concede ciò che non si ha', async () => {
-		// Senza questo controllo sul POST, chi amministra gli utenti creerebbe un ruolo con
-		// quello che vuole e poi se lo assegnerebbe: stesso buco, altra porta.
-		const res = await crea(tokenDelegato, { label: 'Scorciatoia', permessi: { audit_log: ['view'] } });
+	test('la segreteria non crea ruoli nuovi', async () => {
+		// Senza il divieto sul POST, il limite sul PUT si aggirerebbe da un'altra porta:
+		// si crea un ruolo con quello che si vuole e poi ci si sposta sopra.
+		const res = await crea(tokenDelegato, { label: 'Scorciatoia', permessi: { crm_members: ['view'] } });
 		assert.equal(res.statusCode, 403);
-		assert.match(res.json().error, /che tu stesso non hai/);
+		assert.match(res.json().error, /Solo l'amministratore/);
+	});
+
+	test('né ne elimina', async () => {
+		const res = await app.inject({
+			method: 'DELETE',
+			url: `/api/ruoli/${idRuoloReception}`,
+			headers: { authorization: `Bearer ${tokenDelegato}` },
+		});
+		assert.equal(res.statusCode, 403);
+		assert.match(res.json().error, /Solo l'amministratore/);
 	});
 
 	test('un ruolo senza account collegati si elimina', async () => {

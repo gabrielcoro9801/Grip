@@ -1,19 +1,22 @@
 // Configurazione dei ruoli dell'ente.
 //
 // Chi ha in mano questa schermata decide chi può fare cosa: è la superficie più delicata
-// dell'applicazione dopo l'autenticazione stessa. Da qui i tre controlli:
+// dell'applicazione dopo l'autenticazione stessa. Da qui i quattro controlli:
 //
 //  1. serve il permesso di gestione utenti — non basta essere autenticati;
-//  2. non si può concedere a un ruolo un permesso che non si possiede (altrimenti chiunque
-//     amministri gli utenti potrebbe promuoversi a qualsiasi cosa, e la delega di questa
-//     schermata diventerebbe una delega di tutto);
-//  3. il limite invalicabile viene comunque riapplicato al salvataggio.
+//  2. **cambiare i ruoli è riservato all'amministratore**: chi amministra gli utenti può
+//     leggere la matrice e assegnare i ruoli esistenti, ma non ridisegnarli. Delegare la
+//     segreteria è una cosa; delegare *chi decide i permessi* è un'altra, e finiva per
+//     essere la stessa;
+//  3. non si può comunque concedere a un ruolo un permesso che non si possiede — resta
+//     come rete se un domani il punto 2 venisse allentato;
+//  4. il limite invalicabile viene riapplicato al salvataggio.
 import { and, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { ruoli, staffAccounts } from '../db/schema/index.js';
 import { getUserFromRequest } from '../auth/tokens.js';
 import {
-	MODULES, CAPACITA, NOMI_CAPACITA,
+	MODULES, CAPACITA, NOMI_CAPACITA, PRESIDIO_AMMINISTRATORE,
 	canAccess, puo, applicaLimiti, matriceCorrente,
 } from '../../../shared/permissions.js';
 import { caricaMatrice } from '../lib/ruoli.js';
@@ -72,6 +75,13 @@ export default async function ruoliRoutes(fastify) {
 		if (!user) return reply.code(401).send({ error: 'Non autenticato.' });
 		if (!canAccess(user.ruolo, 'admin_users', 'edit')) {
 			return reply.code(403).send({ error: 'Il tuo ruolo non consente di configurare i permessi.' });
+		}
+		// La lettura resta a chi amministra gli utenti: deve poter vedere cosa comporta un
+		// ruolo prima di assegnarlo. Ridisegnarlo no — quello è dell'amministratore.
+		if (request.method !== 'GET' && user.ruolo !== PRESIDIO_AMMINISTRATORE.ruolo) {
+			return reply.code(403).send({
+				error: "Solo l'amministratore può creare, modificare o eliminare i ruoli.",
+			});
 		}
 		request.currentUser = user;
 	});

@@ -12,14 +12,15 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { LoadingState } from "@/components/shared/Spinner";
 
-// Le etichette sono tutte in sentence case: nella stessa lista convivevano
-// "Gestione corsi" e "PT Esterni", "Log Audit". E ogni voce porta alla pagina
-// che si chiama come lei.
+// Le etichette sono tutte in sentence case e ognuna nomina il dominio, non lo
+// strumento: "CRM" era l'unico acronimo in mezzo a nomi italiani, e chi cercava
+// i soci non aveva motivo di aprirlo. Ogni voce porta alla pagina che si intitola
+// come lei — l'intestazione della pagina non deve mai smentire il menu.
 const navItems = [
   { label: "Dashboard", path: "/", icon: LayoutDashboard },
-  { label: "CRM", path: "/crm", icon: Users },
+  { label: "Soci", path: "/crm", icon: Users },
   { label: "Gestione corsi", path: "/calendario", icon: Calendar },
-  { label: "Admin e utenti", path: "/admin", icon: ShieldCheck },
+  { label: "Utenti e ruoli", path: "/admin", icon: ShieldCheck },
   { label: "Log audit", path: "/log-audit", icon: ScrollText },
 ];
 
@@ -121,7 +122,7 @@ export default function AppLayout() {
             className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm w-full text-sidebar-foreground hover:bg-sidebar-accent hover:text-white transition-colors"
           >
             <LogOut className="w-5 h-5 flex-shrink-0" aria-hidden="true" />
-            <span className={collapsed ? "sr-only" : undefined}>Cambia profilo</span>
+            <span className={collapsed ? "sr-only" : undefined}>Logout</span>
           </button>
           <button
             type="button"

@@ -1,27 +1,30 @@
 import React from "react";
-import { Outlet } from "react-router-dom";
+import { Outlet, useLocation } from "react-router-dom";
 import { Users, BookOpen, CreditCard, Dumbbell } from "lucide-react";
 import SectionTabs from "@/components/shared/SectionTabs";
 import PageContainer from "@/components/shared/PageContainer";
 
+// "Elenco soci" e non "Soci": la sezione si chiama già Soci nel menu laterale, e
+// una voce che ripete il nome della sezione non dice dove porta.
 const tabs = [
-  {
-    label: "Soci",
-    path: "/crm",
-    icon: Users,
-    // La scheda del singolo socio sta sotto /crm/soci ma appartiene a "Soci":
-    // senza questo la barra non evidenzierebbe nulla mentre la si guarda.
-    match: (pathname) => pathname === "/crm" || pathname.startsWith("/crm/soci"),
-  },
+  { label: "Elenco soci", path: "/crm", icon: Users, end: true },
   { label: "Abbonamenti", path: "/crm/abbonamenti", icon: BookOpen },
   { label: "Iscrizioni", path: "/crm/iscrizioni", icon: CreditCard },
   { label: "Piani di allenamento", path: "/crm/piani-allenamento", icon: Dumbbell },
 ];
 
 export default function CrmLayout() {
+  const { pathname } = useLocation();
+
+  // La scheda di un socio è una pagina a sé, non una quinta sezione: ci si arriva da un
+  // elenco e si torna indietro col suo pulsante. Lasciare la barra delle sezioni sopra
+  // suggeriva di essere ancora dentro l'elenco, e nessuna voce risultava attiva — la
+  // barra restava lì a non indicare niente.
+  const schedaSocio = pathname.startsWith("/crm/soci/");
+
   return (
     <div className="flex flex-col h-full">
-      <SectionTabs tabs={tabs} label="Sezioni del CRM" />
+      {!schedaSocio && <SectionTabs tabs={tabs} label="Sezioni dei soci" />}
       <div className="flex-1 overflow-y-auto">
         <PageContainer>
           <Outlet />

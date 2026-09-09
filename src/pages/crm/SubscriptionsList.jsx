@@ -32,7 +32,7 @@ export default function SubscriptionsList() {
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
-      <PageHeader title="Abbonamenti" description={`${subscriptions.length} abbonamenti totali`}>
+      <PageHeader title="Iscrizioni" description={`${subscriptions.length} iscrizioni totali`}>
         <Select value={filter} onValueChange={setFilter}>
           <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
           <SelectContent>

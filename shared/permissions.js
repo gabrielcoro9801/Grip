@@ -2,7 +2,7 @@ export const ROLES = {
   admin: { label: "Admin generale", description: "Accesso completo a tutti i moduli" },
   reception: { label: "Reception / Staff", description: "Accesso operativo quotidiano" },
   istruttore: { label: "Istruttore", description: "Accesso limitato ai propri corsi" },
-  member: { label: "Cliente", description: "Portale cliente: documenti, abbonamento, QR" },
+  member: { label: "Socio", description: "Portale soci: documenti, abbonamento, QR" },
 };
 
 export const MODULES = {
