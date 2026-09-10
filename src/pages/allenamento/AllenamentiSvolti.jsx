@@ -17,12 +17,14 @@ import { formatDurata, statisticheAllenamento, durataSessione } from "@/lib/sche
 // più una dimenticanza.
 const GIORNI_DI_SILENZIO = 7;
 
-const PERIODI = {
-  7: "Ultimi 7 giorni",
-  30: "Ultimi 30 giorni",
-  90: "Ultimi 3 mesi",
-  0: "Sempre",
-};
+// Un array e non un oggetto: le chiavi numeriche di un oggetto vengono elencate in ordine
+// crescente, quindi "0 — Sempre" finirebbe in cima al menu invece che in fondo.
+const PERIODI = [
+  { giorni: "7", etichetta: "Ultimi 7 giorni" },
+  { giorni: "30", etichetta: "Ultimi 30 giorni" },
+  { giorni: "90", etichetta: "Ultimi 3 mesi" },
+  { giorni: "0", etichetta: "Sempre" },
+];
 
 export default function AllenamentiSvolti() {
   const [sessioni, setSessioni] = useState([]);
@@ -162,7 +164,7 @@ export default function AllenamentiSvolti() {
         <Select value={periodo} onValueChange={setPeriodo}>
           <SelectTrigger className="sm:w-48" aria-label="Filtra per periodo"><SelectValue /></SelectTrigger>
           <SelectContent>
-            {Object.entries(PERIODI).map(([giorni, etichetta]) => (
+            {PERIODI.map(({ giorni, etichetta }) => (
               <SelectItem key={giorni} value={giorni}>{etichetta}</SelectItem>
             ))}
           </SelectContent>

@@ -14,7 +14,10 @@
 // La routine è il livello che il socio avvia: una scheda è il programma di una settimana,
 // e non si esegue tutta in una volta.
 
-import { etichettaGruppo } from "@/lib/gruppiMuscolari";
+// Import relativo e non con l'alias "@", come già fa lib/permissions.js: così questo
+// modulo si carica anche fuori da Vite, ed è quello che permette di provarne le funzioni
+// con `node --test` senza tirarsi dietro un intero framework di test.
+import { etichettaGruppo } from "./gruppiMuscolari.js";
 
 /**
  * I tipi di serie.
