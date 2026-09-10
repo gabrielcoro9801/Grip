@@ -105,6 +105,65 @@ Tre punti che si sbagliano quasi sempre, spiegati lì per esteso:
 
 ## Stato del progetto
 
+### 10 settembre 2026 — l'allenamento diventa una sezione sua
+
+Le schede di allenamento erano una scheda dentro **Soci**, e consistevano in un elenco di
+esercizi con "serie × ripetizioni". Ora sono la sezione **Allenamento**, con tre livelli
+che prima non c'erano.
+
+**Il catalogo degli esercizi** (`/allenamento`) — nome, gruppo muscolare, descrizione di
+come si esegue, e nient'altro: serie e ripetizioni sono una proprietà della scheda, non
+dell'esercizio, perché lo stesso stacco è 5×5 per uno e 3×12 per un altro. I gruppi
+muscolari sono i venti di `shared/gruppiMuscolari.js`, divisi per zona.
+
+**Le schede**, in due vesti che condividono la stessa forma:
+
+- **modelli** (`/allenamento/modelli`) — non sono di nessuno, si riusano, si assegnano
+  facendone una copia;
+- **assegnate** (`/allenamento/assegnate`) — sono di un socio, e da lì in poi indipendenti
+  dal modello: adattarne una non tocca quella di nessun altro.
+
+Una tabella sola con `is_template`, non due: il contenuto è identico e cambia solo a chi
+appartiene. Con due tabelle ogni riga che legge o disegna una scheda andrebbe scritta due
+volte.
+
+**Dentro una scheda ci sono le routine**, cioè le giornate ("Giorno 1 — Spinta"). È la
+routine che il socio avvia, non la scheda intera. Ogni routine ha i suoi esercizi, ogni
+esercizio il suo recupero e le sue note, e **ogni riga è una serie** con ripetizioni e RPE
+propri — le piramidali non si comprimono in un "4×8" che nella scheda non è scritto da
+nessuna parte.
+
+**Il socio avvia la routine e la esegue col telefono in mano** (`/member-portal/allenamento`):
+durata, volume e serie in cima, una spunta per serie, il carico che si scrive mentre lo si
+fa, e il recupero che parte da solo quando spunti. Accanto a ogni serie c'è quella della
+volta prima, che è il riferimento su cui si decide il carico di oggi.
+
+Due scelte che sembrano dettagli e non lo sono:
+
+- **Ogni serie spuntata viene scritta subito**, non al "Termina". In palestra il telefono si
+  blocca e la pagina viene scaricata dalla memoria: un allenamento tenuto in memoria fino
+  alla fine è un allenamento che prima o poi si perde per intero. Una sessione lasciata
+  aperta si riprende esattamente dov'era.
+- **Modifica e cancellazione via API ora controllano l'intestatario.** La lettura era già
+  filtrata per socio e la creazione già intestata d'ufficio, ma `PUT` e `DELETE` no:
+  bastava l'identificativo di una riga altrui per riscrivere l'allenamento di un altro. Il
+  buco c'era da prima; si è visto ora perché il portale ha cominciato a usare `PUT`.
+
+Le migrazioni **0021** e **0022** sono scritte a mano — `drizzle-kit generate` chiede in
+interattivo se una colonna aggiunta sia un rinomino, e soprattutto non sa scrivere la
+conversione dei dati. Convertono i gruppi muscolari inglesi in quelli nuovi, espandono
+`sets: 3` in tre righe di serie, e chiudono ogni scheda esistente dentro una routine sola.
+**Una cosa non è conservata**: il `peso` per esercizio delle vecchie schede. Nel modello
+nuovo la serie porta ripetizioni e RPE, e il carico lo registra il socio allenandosi.
+
+La migrazione **0023** porta un **catalogo iniziale di 79 esercizi**, uno o due per
+attrezzo su tutti e venti i gruppi muscolari, così che la prima scheda si possa comporre
+subito invece di dover digitare settanta nomi prima di cominciare. Sta in una migrazione e
+non in `db:seed` perché il seed si lancia a mano e su Railway non gira mai: le migrazioni
+sì, a ogni deploy. L'inserimento salta i nomi già presenti, quindi una palestra che ha già
+catalogato la sua «Panca piana» non se ne ritrova due. Il resto si aggiunge da
+**Allenamento → Esercizi**, con le parole della propria sala.
+
 ### 9 settembre 2026 — l'applicazione torna a soci e corsi
 
 Sono stati rimossi **contabilità in partita doppia, ricevute e fatture elettroniche,

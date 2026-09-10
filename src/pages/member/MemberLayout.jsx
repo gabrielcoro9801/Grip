@@ -37,6 +37,15 @@ export default function MemberLayout() {
     return location.pathname.startsWith(path);
   };
 
+  // L'allenamento in corso prende tutto lo schermo: ha una sua intestazione con durata,
+  // volume e "Termina", e il timer del recupero sta ancorato in fondo — proprio dove
+  // starebbe la barra di navigazione. Sono due cose che si contendono lo stesso posto, e
+  // fra un menu e il cronometro di chi ha il bilanciere in mano vince il cronometro.
+  const allenamentoInCorso = location.pathname.startsWith("/member-portal/allenamento/sessione/");
+  if (allenamentoInCorso) {
+    return <Outlet />;
+  }
+
   return (
     <div className="min-h-screen bg-background flex">
       {/* Desktop sidebar */}

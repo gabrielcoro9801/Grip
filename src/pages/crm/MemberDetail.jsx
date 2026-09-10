@@ -18,6 +18,7 @@ import moment from "moment";
 import { useToast } from "@/components/ui/use-toast";
 import { LoadingState } from "@/components/shared/Spinner";
 import { formatData, formatDataOra, formatEuro } from "@/lib/format";
+import { totaleSerieScheda, totaleEsercizi } from "@/lib/scheda";
 
 export default function MemberDetail() {
   const { id } = useParams();
@@ -418,23 +419,40 @@ export default function MemberDetail() {
           </CardContent>
         </Card>
 
-        {/* Exercise Plans */}
+        {/* Schede di allenamento */}
         <Card className="border-0 shadow-sm">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-heading flex items-center gap-2"><Dumbbell className="w-4 h-4" /> Piani di allenamento</CardTitle>
+          <CardHeader className="pb-3 flex-row items-center justify-between space-y-0">
+            <CardTitle className="text-sm font-heading flex items-center gap-2"><Dumbbell className="w-4 h-4" /> Schede di allenamento</CardTitle>
+            {/* Si compone nell'editor, non qui: una scheda è righe di serie, e questa è
+                la vista d'insieme di un socio. Il socio arriva già scelto. */}
+            <Button variant="ghost" size="sm" className="text-xs" asChild>
+              <Link to={`/allenamento/schede/nuova?tipo=assegnata&member_id=${id}`}>
+                <Plus className="w-3.5 h-3.5 mr-1" aria-hidden="true" /> Nuova
+              </Link>
+            </Button>
           </CardHeader>
           <CardContent>
             {exercisePlans.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-4 text-center">Nessun piano assegnato</p>
+              <p className="text-sm text-muted-foreground py-4 text-center">Nessuna scheda assegnata</p>
             ) : (
               <div className="space-y-3">
-                {exercisePlans.map(ep => (
-                  <div key={ep.id} className="p-3 rounded-lg bg-muted/50">
-                    <p className="text-sm font-medium">{ep.name}</p>
-                    <p className="text-xs text-muted-foreground">{ep.exercises?.length || 0} esercizi · Assegnato il {formatData(ep.assigned_date, "media")}</p>
-                    {ep.notes && <p className="text-xs text-muted-foreground mt-1 italic">{ep.notes}</p>}
-                  </div>
-                ))}
+                {exercisePlans.map(ep => {
+                  const serie = totaleSerieScheda(ep.routines);
+                  return (
+                    <Link
+                      key={ep.id}
+                      to={`/allenamento/schede/${ep.id}`}
+                      className="block p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors"
+                    >
+                      <p className="text-sm font-medium">{ep.name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {ep.routines?.length || 0} routine · {totaleEsercizi(ep.routines)} esercizi · {serie} serie ·
+                        {" "}Assegnata il {formatData(ep.assigned_date, "media")}
+                      </p>
+                      {ep.notes && <p className="text-xs text-muted-foreground mt-1 italic">{ep.notes}</p>}
+                    </Link>
+                  );
+                })}
               </div>
             )}
           </CardContent>

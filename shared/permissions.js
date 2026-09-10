@@ -8,7 +8,7 @@ export const ROLES = {
 export const MODULES = {
   crm_members: { label: "CRM — Anagrafiche clienti" },
   crm_documents: { label: "CRM — Documenti/certificati" },
-  crm_plans: { label: "CRM — Piani di allenamento" },
+  crm_plans: { label: "Allenamento — Esercizi e schede" },
   calendar: { label: "Calendario & Prenotazioni" },
   admin_users: { label: "Admin & Profili" },
   audit_log: { label: "Log accessi / azioni" },
@@ -184,6 +184,7 @@ export function canEdit(role, module) {
 export const SIDEBAR_PERMISSIONS = {
   "/": null,
   "/crm": "crm_members",
+  "/allenamento": "crm_plans",
   "/calendario": "calendar",
   "/admin": "admin_users",
   "/log-audit": "audit_log",

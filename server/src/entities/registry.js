@@ -20,6 +20,7 @@ export const entityRegistry = {
 	StaffAccount: schema.staffAccounts,
 	Exercise: schema.exercises,
 	ExercisePlan: schema.exercisePlans,
+	WorkoutSession: schema.workoutSessions,
 	WorkoutLog: schema.workoutLogs,
 	Organization: schema.organizations,
 	AuditLog: schema.auditLogs,

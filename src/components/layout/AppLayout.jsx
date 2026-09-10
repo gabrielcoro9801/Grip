@@ -19,6 +19,10 @@ import { LoadingState } from "@/components/shared/Spinner";
 const navItems = [
   { label: "Dashboard", path: "/", icon: LayoutDashboard },
   { label: "Soci", path: "/crm", icon: Users },
+  // L'allenamento era una scheda dentro i Soci, ma non parla di un socio: il catalogo
+  // degli esercizi e le schede modello non appartengono a nessuno, e ci si lavora per
+  // conto proprio. Da qui in poi è una sezione sua.
+  { label: "Allenamento", path: "/allenamento", icon: Dumbbell },
   { label: "Gestione corsi", path: "/calendario", icon: Calendar },
   { label: "Utenti e ruoli", path: "/admin", icon: ShieldCheck },
   { label: "Log audit", path: "/log-audit", icon: ScrollText },

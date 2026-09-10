@@ -148,6 +148,27 @@
       "when": 1788975994867,
       "tag": "0020_new_doctor_strange",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1789026993272,
+      "tag": "0021_schede_allenamento",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1789027871845,
+      "tag": "0022_routine_e_sessioni",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1789029256328,
+      "tag": "0023_catalogo_esercizi_iniziale",
+      "breakpoints": true
     }
   ]
 }

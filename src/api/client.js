@@ -94,7 +94,7 @@ const ENTITY_NAMES = [
 	'Member', 'Subscription', 'Plan', 'MemberDocument', 'QRAccesso',
 	'Course', 'Category', 'Instructor', 'Event', 'Session', 'Room', 'Booking',
 	'Collaboratore', 'StaffAccount',
-	'Exercise', 'ExercisePlan', 'WorkoutLog',
+	'Exercise', 'ExercisePlan', 'WorkoutSession', 'WorkoutLog',
 	'Organization', 'AuditLog',
 ];
 

@@ -31,6 +31,11 @@ const ENTITY_MODULES = {
 	// perché mancavano da questa mappa — non perché fosse una scelta.
 	JournalEntry: 'finance',
 	JournalLine: 'finance',
+	// Catalogo esercizi e schede di allenamento. La matrice dice già che la reception le
+	// vede e non le tocca ("crm_plans": ["view"]): finché mancavano da qui, quel limite
+	// valeva solo per i pulsanti nascosti, e la stessa richiesta fatta a mano passava.
+	Exercise: 'crm_plans',
+	ExercisePlan: 'crm_plans',
 };
 
 // Entità che solo un amministratore può modificare, a prescindere dalla matrice:

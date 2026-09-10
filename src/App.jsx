@@ -11,7 +11,11 @@ import MembersList from '@/pages/crm/MembersList';
 import MemberDetail from '@/pages/crm/MemberDetail';
 import PlansCatalog from '@/pages/crm/PlansCatalog';
 import SubscriptionsList from '@/pages/crm/SubscriptionsList';
-import ExercisePlans from '@/pages/crm/ExercisePlans';
+import AllenamentoLayout from '@/pages/allenamento/AllenamentoLayout';
+import LibreriaEsercizi from '@/pages/allenamento/LibreriaEsercizi';
+import SchedeModello from '@/pages/allenamento/SchedeModello';
+import SchedeAssegnate from '@/pages/allenamento/SchedeAssegnate';
+import EditorScheda from '@/pages/allenamento/EditorScheda';
 import CalendarPage from '@/pages/CalendarPage';
 import { MemberAuthProvider } from '@/lib/MemberAuthContext';
 import MemberLayout from '@/pages/member/MemberLayout';
@@ -22,6 +26,7 @@ import MemberProfile from '@/pages/member/MemberProfile';
 import MemberQR from '@/pages/member/MemberQR';
 import MemberCoursesCalendar from '@/pages/member/MemberCoursesCalendar';
 import MemberWorkoutPlans from '@/pages/member/MemberWorkoutPlans';
+import SessioneAllenamento from '@/pages/member/SessioneAllenamento';
 import Admin from '@/pages/admin/Admin';
 import AuditLogPage from '@/pages/admin/AuditLogPage';
 import StaffLogin from '@/pages/StaffLogin';
@@ -49,6 +54,9 @@ const AppRoutes = () => {
         <Route path="qr" element={<MemberQR />} />
         <Route path="corsi" element={<MemberCoursesCalendar />} />
         <Route path="allenamento" element={<MemberWorkoutPlans />} />
+        {/* L'allenamento mentre lo si fa: a schermo intero, senza le barre del
+            portale — MemberLayout le toglie su questo percorso. */}
+        <Route path="allenamento/sessione/:id" element={<SessioneAllenamento />} />
       </Route>
 
       <Route element={<AppLayout />}>
@@ -61,11 +69,22 @@ const AppRoutes = () => {
             <Route path="soci/:id" element={<MemberDetail />} />
             <Route path="abbonamenti" element={<PlansCatalog />} />
             <Route path="iscrizioni" element={<SubscriptionsList />} />
-            <Route path="piani-allenamento" element={<ExercisePlans />} />
             <Route path="members/:id" element={<RedirectSocio />} />
             <Route path="plans" element={<Navigate to="/crm/abbonamenti" replace />} />
             <Route path="subscriptions" element={<Navigate to="/crm/iscrizioni" replace />} />
-            <Route path="exercise-plans" element={<Navigate to="/crm/piani-allenamento" replace />} />
+            {/* L'allenamento è uscito dai Soci ed è una sezione sua. I due vecchi
+                percorsi restano come redirect: possono essere nei preferiti. */}
+            <Route path="piani-allenamento" element={<Navigate to="/allenamento/assegnate" replace />} />
+            <Route path="exercise-plans" element={<Navigate to="/allenamento/assegnate" replace />} />
+          </Route>
+          <Route path="/allenamento" element={<PermissionGate module="crm_plans"><AllenamentoLayout /></PermissionGate>}>
+            <Route index element={<LibreriaEsercizi />} />
+            <Route path="modelli" element={<SchedeModello />} />
+            <Route path="assegnate" element={<SchedeAssegnate />} />
+            {/* L'editor di una scheda: comporre righe di serie non sta in una finestra
+                di dialogo, e un percorso proprio rende la scheda un indirizzo che si
+                può mandare a un collega. */}
+            <Route path="schede/:id" element={<EditorScheda />} />
           </Route>
           <Route path="/calendario" element={<PermissionGate module="calendar"><CalendarPage /></PermissionGate>} />
           <Route path="/calendar" element={<Navigate to="/calendario" replace />} />

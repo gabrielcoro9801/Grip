@@ -11,9 +11,13 @@
 const LEGGIBILI = new Set([
 	// I propri dati
 	'Member', 'Subscription', 'MemberDocument', 'QRAccesso',
-	'ExercisePlan', 'WorkoutLog', 'Booking',
+	'ExercisePlan', 'WorkoutSession', 'WorkoutLog', 'Booking',
 	// Il catalogo dei corsi, che serve a prenotare
 	'Course', 'Category', 'Instructor', 'Event', 'Session', 'Room',
+	// Il catalogo degli esercizi: la scheda si porta dietro il nome di ogni esercizio, ma
+	// la spiegazione di come si esegue sta qui, ed è la parte che serve a chi si allena.
+	// Non contiene dati di nessuno — è l'equivalente del catalogo dei corsi.
+	'Exercise',
 	// Intestazione dell'ente, per le schermate
 	'Organization',
 ]);
@@ -25,6 +29,7 @@ const COLONNA_PROPRIETARIO = {
 	Subscription: 'member_id',
 	MemberDocument: 'member_id',
 	ExercisePlan: 'member_id',
+	WorkoutSession: 'member_id',
 	WorkoutLog: 'member_id',
 	// Nonostante il nome storico, punta al socio.
 	QRAccesso: 'cliente_id',
@@ -49,8 +54,9 @@ const CAMPI_NASCOSTI = {
 };
 
 // Le uniche cose che un socio crea da sé: il proprio codice di accesso e i propri
-// allenamenti. Tutto il resto lo registra la palestra.
-const SCRIVIBILI = new Set(['QRAccesso', 'WorkoutLog']);
+// allenamenti — la sessione che avvia e le serie che spunta mentre si allena. Tutto il
+// resto lo registra la palestra.
+const SCRIVIBILI = new Set(['QRAccesso', 'WorkoutSession', 'WorkoutLog']);
 
 export function memberPuoLeggere(entityName) {
 	return LEGGIBILI.has(entityName);

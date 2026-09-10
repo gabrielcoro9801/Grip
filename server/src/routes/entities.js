@@ -161,6 +161,28 @@ export default async function entityRoutes(fastify) {
 		return stripHiddenFieldsMany(entityName, translateManyToSnakeCase(table, rows));
 	});
 
+	/**
+	 * Se la riga che un socio sta per modificare o cancellare è davvero sua.
+	 *
+	 * La lettura era già filtrata, la creazione già intestata d'ufficio, ma modifica e
+	 * cancellazione no: bastava l'identificativo di una riga altrui — e per un socio che
+	 * legge i propri allenamenti gli identificativi altrui non sono nemmeno difficili da
+	 * indovinare — per riscrivere l'allenamento di un altro. Serve da quando il portale
+	 * chiude una sessione aggiornandola, ma il buco c'era già.
+	 *
+	 * Risponde "non trovato" e non "vietato": a chi non deve vedere una riga non si
+	 * conferma nemmeno che esista.
+	 */
+	async function rigaNonSua(request, entityName, table) {
+		if (!request.memberId) return false;
+		const colonna = colonnaProprietario(entityName);
+		if (!colonna) return false;
+		const { dbNameToColumn, dbNameToJsKey } = getColumnMaps(table);
+		const [row] = await db.select().from(table).where(eq(dbNameToColumn.id, request.params.id)).limit(1);
+		if (!row) return true;
+		return String(row[dbNameToJsKey[colonna]]) !== String(request.memberId);
+	}
+
 	// PUT /api/entities/:name/:id
 	fastify.put('/api/entities/:name/:id', async (request, reply) => {
 		const entityName = request.params.name;
@@ -168,10 +190,16 @@ export default async function entityRoutes(fastify) {
 			return reply.code(400).send({ error: UPDATE_FORBIDDEN[entityName] });
 		}
 		const table = entityRegistry[entityName];
+		if (await rigaNonSua(request, entityName, table)) {
+			return reply.code(404).send({ error: 'Non trovato' });
+		}
 		const bloccato = await mutationBlockedReason(entityName, table, request.params.id, 'update');
 		if (bloccato) return reply.code(400).send({ error: bloccato });
 		const { dbNameToColumn } = getColumnMaps(table);
-		const body = await applyWriteTransform(entityName, request.body);
+		let body = await applyWriteTransform(entityName, request.body);
+		// Nemmeno con una modifica si cambia intestatario: senza, un socio potrebbe
+		// spostare a un altro una riga sua, o prendersi la riga di qualcun altro in due passi.
+		if (request.memberId) body = forzaProprietario(entityName, body, request.memberId);
 		const data = translateToJs(table, body);
 		const [row] = await db.update(table).set(data).where(eq(dbNameToColumn.id, request.params.id)).returning();
 		if (!row) return reply.code(404).send({ error: 'Non trovato' });
@@ -185,6 +213,9 @@ export default async function entityRoutes(fastify) {
 			return reply.code(400).send({ error: DELETE_FORBIDDEN[entityName] });
 		}
 		const table = entityRegistry[entityName];
+		if (await rigaNonSua(request, entityName, table)) {
+			return reply.code(404).send({ error: 'Non trovato' });
+		}
 		const bloccato = await mutationBlockedReason(entityName, table, request.params.id, 'delete');
 		if (bloccato) return reply.code(400).send({ error: bloccato });
 		const { dbNameToColumn } = getColumnMaps(table);

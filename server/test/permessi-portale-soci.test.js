@@ -13,7 +13,7 @@ import bcrypt from 'bcryptjs';
 import { inArray } from 'drizzle-orm';
 import { buildApp } from '../src/app.js';
 import { db, pool } from '../src/db/client.js';
-import { members, staffAccounts, subscriptions, qrAccessi } from '../src/db/schema/index.js';
+import { members, staffAccounts, subscriptions, qrAccessi, exercisePlans, workoutLogs } from '../src/db/schema/index.js';
 
 const PASSWORD = 'prova-permessi-1234';
 
@@ -22,8 +22,11 @@ let tokenSocio;
 let tokenAdmin;
 let idSocio;
 let idEstraneo;
+let idModello;
 const idAccount = [];
 const idAbbonamenti = [];
+const idSchede = [];
+const idAllenamenti = [];
 
 async function login(email) {
 	const res = await app.inject({
@@ -81,6 +84,20 @@ before(async () => {
 		.returning();
 	idAbbonamenti.push(...abbonamenti.map((s) => s.id));
 
+	// Tre schede: un modello di catalogo, la scheda del socio, quella di un altro. Il
+	// modello serve perché non appartiene a nessuno — è il caso che il filtro per socio
+	// potrebbe lasciar passare senza che nessuno se ne accorga.
+	const schede = await db
+		.insert(exercisePlans)
+		.values([
+			{ isTemplate: true, name: 'Modello di catalogo', routines: [] },
+			{ isTemplate: false, memberId: socio.id, name: 'La scheda del socio', routines: [] },
+			{ isTemplate: false, memberId: estraneo.id, name: "La scheda dell'estraneo", routines: [] },
+		])
+		.returning();
+	idModello = schede[0].id;
+	idSchede.push(...schede.map((s) => s.id));
+
 	tokenSocio = await login(account[0].email);
 	tokenAdmin = await login(account[1].email);
 });
@@ -89,6 +106,8 @@ after(async () => {
 	// I codici di accesso li generano i test stessi e puntano al socio: vanno via per
 	// primi, o l'anagrafica resta agganciata da una chiave esterna.
 	if (idSocio) await db.delete(qrAccessi).where(inArray(qrAccessi.clienteId, [idSocio, idEstraneo]));
+	if (idAllenamenti.length) await db.delete(workoutLogs).where(inArray(workoutLogs.id, idAllenamenti));
+	if (idSchede.length) await db.delete(exercisePlans).where(inArray(exercisePlans.id, idSchede));
 	if (idAbbonamenti.length) await db.delete(subscriptions).where(inArray(subscriptions.id, idAbbonamenti));
 	if (idAccount.length) await db.delete(staffAccounts).where(inArray(staffAccounts.id, idAccount));
 	if (idSocio) await db.delete(members).where(inArray(members.id, [idSocio, idEstraneo]));
@@ -144,6 +163,47 @@ describe('cosa un socio legge di sé', () => {
 		}
 	});
 
+	test('vede la propria scheda e non quella di un altro', async () => {
+		const res = await come(tokenSocio, { method: 'GET', url: '/api/entities/ExercisePlan' });
+		assert.equal(res.statusCode, 200);
+		const nomi = res.json().map((s) => s.name);
+		assert.deepEqual(nomi, ['La scheda del socio']);
+	});
+
+	test('i modelli di catalogo restano fuori dal portale', async () => {
+		// Un modello non ha member_id: il filtro del portale è un'uguaglianza, e
+		// l'uguaglianza con NULL non è mai vera — è così che il catalogo resta dello staff.
+		// Se un domani quel filtro imparasse a "lasciar passare i nulli", ogni socio si
+		// troverebbe in mano l'intero catalogo della palestra: questo test lo impedisce.
+		const elenco = await come(tokenSocio, { method: 'GET', url: '/api/entities/ExercisePlan' });
+		assert.deepEqual(elenco.json().filter((s) => s.is_template), []);
+
+		const perId = await come(tokenSocio, { method: 'GET', url: `/api/entities/ExercisePlan/${idModello}` });
+		assert.equal(perId.statusCode, 404, 'nemmeno chiedendolo per id');
+	});
+
+	test('un socio non scrive le schede: le assegna il personal trainer', async () => {
+		const res = await come(tokenSocio, {
+			method: 'POST',
+			url: '/api/entities/ExercisePlan',
+			payload: { name: 'Scheda che si è fatto da sé', routines: [] },
+		});
+		assert.equal(res.statusCode, 403);
+	});
+
+	test('il catalogo esercizi si legge ma non si tocca', async () => {
+		// Serve a mostrare nome e descrizione degli esercizi della propria scheda.
+		const lettura = await come(tokenSocio, { method: 'GET', url: '/api/entities/Exercise' });
+		assert.equal(lettura.statusCode, 200);
+
+		const scrittura = await come(tokenSocio, {
+			method: 'POST',
+			url: '/api/entities/Exercise',
+			payload: { name: 'Esercizio inventato', muscle_group: 'petto' },
+		});
+		assert.equal(scrittura.statusCode, 403);
+	});
+
 	test('le prenotazioni si leggono senza il nome di chi ha prenotato', async () => {
 		// Servono tutte, perché è da quelle che si contano i posti liberi: quello che non
 		// deve trapelare è l'identità.
@@ -179,6 +239,52 @@ describe('cosa un socio può scrivere', () => {
 			const res = await come(tokenSocio, { method: 'POST', url: `/api/entities/${entita}`, payload: { nome: 'x' } });
 			assert.equal(res.statusCode, 403, `creare ${entita} dovrebbe essere vietato`);
 		}
+	});
+
+	test("non modifica né cancella l'allenamento di un altro socio", async () => {
+		// Il socio deve poter aggiornare i propri allenamenti — è così che il portale
+		// chiude una sessione — ma solo i propri. Finché modifica e cancellazione non
+		// controllavano l'intestatario, bastava l'identificativo di una riga altrui.
+		const [altrui] = await db
+			.insert(workoutLogs)
+			.values({ memberId: idEstraneo, exerciseName: 'Panca', data: '2026-01-01', repsFatte: 8 })
+			.returning();
+		idAllenamenti.push(altrui.id);
+
+		const modifica = await come(tokenSocio, {
+			method: 'PUT',
+			url: `/api/entities/WorkoutLog/${altrui.id}`,
+			payload: { reps_fatte: 999 },
+		});
+		assert.equal(modifica.statusCode, 404);
+
+		const cancellazione = await come(tokenSocio, {
+			method: 'DELETE',
+			url: `/api/entities/WorkoutLog/${altrui.id}`,
+		});
+		assert.equal(cancellazione.statusCode, 404);
+
+		const [dopo] = await db.select().from(workoutLogs).where(inArray(workoutLogs.id, [altrui.id]));
+		assert.ok(dopo, 'la riga altrui deve esistere ancora');
+		assert.equal(dopo.repsFatte, 8, 'e non deve essere stata riscritta');
+	});
+
+	test('il proprio allenamento invece si aggiorna', async () => {
+		const creato = await come(tokenSocio, {
+			method: 'POST',
+			url: '/api/entities/WorkoutLog',
+			payload: { exercise_name: 'Squat', data: '2026-01-02', reps_fatte: 5 },
+		});
+		assert.equal(creato.statusCode, 201);
+		idAllenamenti.push(creato.json().id);
+
+		const modifica = await come(tokenSocio, {
+			method: 'PUT',
+			url: `/api/entities/WorkoutLog/${creato.json().id}`,
+			payload: { reps_fatte: 6 },
+		});
+		assert.equal(modifica.statusCode, 200);
+		assert.equal(modifica.json().reps_fatte, 6);
 	});
 
 	test('non cancella nemmeno la propria anagrafica', async () => {

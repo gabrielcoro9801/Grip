@@ -1,202 +1,202 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import { api } from "@/api/client";
 import { useMemberAuth } from "@/lib/MemberAuthContext";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { ClipboardList, Check } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { ClipboardList, Play, Timer, ChevronDown, History, CalendarDays } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { LoadingState } from "@/components/shared/Spinner";
-import { formatData } from "@/lib/format";
+import { EmptyState, ErrorState } from "@/components/shared/StateViews";
+import { formatData, formatDataOra } from "@/lib/format";
+import { etichettaGruppo } from "@/lib/gruppiMuscolari";
+import { formatRecupero, formatDurata, totaleSerie, riepilogoSerie, riepilogoRpe } from "@/lib/scheda";
 
 export default function MemberWorkoutPlans() {
   const { memberUser } = useMemberAuth();
   const { toast } = useToast();
-  const [plans, setPlans] = useState([]);
-  const [logs, setLogs] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [activeForm, setActiveForm] = useState(null);
-  const [logForm, setLogForm] = useState({
-    peso_usato: "", reps_fatte: "", rpe_percepito: "",
-    data: new Date().toISOString().split("T")[0], note: "",
-  });
-  const [saving, setSaving] = useState(false);
+  const navigate = useNavigate();
 
-  const loadData = useCallback(async () => {
+  const [schede, setSchede] = useState([]);
+  const [sessioni, setSessioni] = useState([]);
+  const [caricamento, setCaricamento] = useState(true);
+  const [errore, setErrore] = useState(null);
+  const [avvioInCorso, setAvvioInCorso] = useState(null);
+
+  const carica = useCallback(async () => {
+    setErrore(null);
     try {
-      const [p, l] = await Promise.all([
+      const [s, ses] = await Promise.all([
         api.entities.ExercisePlan.filter({ member_id: memberUser.member_id }),
-        api.entities.WorkoutLog.filter({ member_id: memberUser.member_id }, "-data", 200),
+        api.entities.WorkoutSession.filter({ member_id: memberUser.member_id }, "-iniziata_alle", 50),
       ]);
-      setPlans(p);
-      setLogs(l);
+      setSchede(s);
+      setSessioni(ses);
     } catch (err) {
-      // ignore
+      setErrore(err);
     }
-    setLoading(false);
+    setCaricamento(false);
   }, [memberUser]);
 
-  useEffect(() => { loadData(); }, [loadData]);
+  useEffect(() => { carica(); }, [carica]);
 
-  const openForm = (plan, ex) => {
-    setActiveForm(`${plan.id}__${ex.exercise_name}`);
-    setLogForm({
-      peso_usato: ex.peso ?? "",
-      reps_fatte: "",
-      rpe_percepito: ex.rpe ?? "",
-      data: new Date().toISOString().split("T")[0],
-      note: "",
-    });
-  };
+  // Un allenamento lasciato aperto: il telefono si è bloccato, si è usciti per rispondere
+  // a un messaggio. Va ritrovato in cima, o si finisce per avviarne un secondo e
+  // spezzare in due lo stesso allenamento.
+  const inCorso = useMemo(() => sessioni.find((s) => !s.terminata_alle), [sessioni]);
+  const concluse = useMemo(() => sessioni.filter((s) => s.terminata_alle), [sessioni]);
 
-  const handleSave = async (plan, ex) => {
-    if (!logForm.data) {
-      toast({ title: "Data obbligatoria", variant: "destructive" });
+  const avvia = async (scheda, routine, indiceRoutine) => {
+    if (inCorso) {
+      toast({
+        title: "Hai già un allenamento in corso",
+        description: "Riprendilo o terminalo prima di avviarne un altro.",
+        variant: "destructive",
+      });
       return;
     }
-    setSaving(true);
+    setAvvioInCorso(`${scheda.id}__${indiceRoutine}`);
     try {
-      await api.entities.WorkoutLog.create({
+      const sessione = await api.entities.WorkoutSession.create({
         member_id: memberUser.member_id,
-        plan_id: plan.id,
-        plan_name: plan.name,
-        exercise_name: ex.exercise_name,
-        muscle_group: ex.muscle_group || "",
-        peso_usato: logForm.peso_usato === "" ? null : Number(logForm.peso_usato),
-        reps_fatte: logForm.reps_fatte === "" ? null : Number(logForm.reps_fatte),
-        rpe_percepito: logForm.rpe_percepito === "" ? null : Number(logForm.rpe_percepito),
-        data: logForm.data,
-        note: logForm.note,
+        plan_id: scheda.id,
+        plan_name: scheda.name,
+        routine_index: indiceRoutine,
+        routine_name: routine.nome,
+        iniziata_alle: new Date().toISOString(),
       });
-      toast({ title: "Esecuzione registrata" });
-      setActiveForm(null);
-      loadData();
+      navigate(`/member-portal/allenamento/sessione/${sessione.id}`);
     } catch (err) {
-      toast({ title: "Errore", description: err.message, variant: "destructive" });
+      toast({ title: "Non è stato possibile avviare", description: err.message, variant: "destructive" });
+      setAvvioInCorso(null);
     }
-    setSaving(false);
   };
 
-  const getExerciseLogs = (planId, exerciseName) =>
-    logs.filter((l) => l.plan_id === planId && l.exercise_name === exerciseName);
-
-  if (loading) {
-    return (
-      <LoadingState minHeight="h-64" />
-    );
-  }
+  if (caricamento) return <LoadingState minHeight="h-64" />;
+  if (errore) return <div className="p-4"><ErrorState error={errore} onRetry={carica} /></div>;
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-3xl mx-auto space-y-4">
       <div>
         <h1 className="text-xl font-heading font-bold">Allenamento</h1>
-        <p className="text-sm text-muted-foreground">I tuoi piani e registrazioni</p>
+        <p className="text-sm text-muted-foreground">Scegli la giornata da fare e avviala</p>
       </div>
 
-      {plans.length === 0 ? (
-        <p className="text-sm text-muted-foreground text-center py-8">Nessun piano assegnato</p>
+      {inCorso && (
+        <Card className="border-0 shadow-sm bg-primary/5 ring-1 ring-primary/20">
+          <CardContent className="p-4 flex items-center gap-3">
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold">Allenamento in corso</p>
+              <p className="text-xs text-muted-foreground truncate">
+                {inCorso.routine_name} · {inCorso.plan_name} · iniziato {formatDataOra(inCorso.iniziata_alle)}
+              </p>
+            </div>
+            <Button size="sm" onClick={() => navigate(`/member-portal/allenamento/sessione/${inCorso.id}`)}>
+              Riprendi
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {schede.length === 0 ? (
+        <EmptyState
+          icon={ClipboardList}
+          title="Nessuna scheda assegnata"
+          description="Quando il tuo istruttore te ne assegna una, la trovi qui."
+        />
       ) : (
-        plans.map((plan) => (
-          <Card key={plan.id} className="border-0 shadow-sm">
+        schede.map((scheda) => (
+          <Card key={scheda.id} className="border-0 shadow-sm">
             <CardContent className="p-4 space-y-3">
               <div>
-                <h2 className="font-heading font-semibold">{plan.name}</h2>
+                <h2 className="font-heading font-semibold">{scheda.name}</h2>
                 <p className="text-xs text-muted-foreground">
-                  Assegnato il {formatData(plan.assigned_date, "media")}
+                  Assegnata il {formatData(scheda.assigned_date, "media")} ·{" "}
+                  {(scheda.routines ?? []).length}{" "}
+                  {(scheda.routines ?? []).length === 1 ? "routine" : "routine"}
                 </p>
               </div>
 
-              {plan.notes && (
-                <p className="text-xs text-muted-foreground italic">{plan.notes}</p>
+              {scheda.notes && (
+                <p className="text-xs text-muted-foreground italic border-l-2 border-border pl-3">
+                  {scheda.notes}
+                </p>
               )}
 
               <div className="space-y-2">
-                {plan.exercises?.map((ex, i) => {
-                  const formKey = `${plan.id}__${ex.exercise_name}`;
-                  const exLogs = getExerciseLogs(plan.id, ex.exercise_name);
+                {(scheda.routines ?? []).map((routine, indice) => {
+                  const esercizi = routine.esercizi ?? [];
+                  const serie = totaleSerie(esercizi);
+                  const chiave = `${scheda.id}__${indice}`;
                   return (
-                    <div key={i} className="p-3 rounded-lg bg-muted/50 space-y-2">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium">{ex.exercise_name}</p>
+                    <div key={indice} className="rounded-lg border border-border overflow-hidden">
+                      <div className="p-3 flex items-center gap-3">
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium inline-flex items-center gap-1.5">
+                            <CalendarDays className="w-3.5 h-3.5 text-muted-foreground shrink-0" aria-hidden="true" />
+                            {routine.nome || `Giorno ${indice + 1}`}
+                          </p>
                           <p className="text-xs text-muted-foreground">
-                            Programma: {ex.sets}×{ex.reps}
-                            {ex.peso ? ` · ${ex.peso}kg` : ""}
-                            {ex.rpe ? ` · RPE ${ex.rpe}` : ""}
+                            {esercizi.length} {esercizi.length === 1 ? "esercizio" : "esercizi"} · {serie} serie
                           </p>
                         </div>
-                        {activeForm !== formKey && (
-                          <Button size="sm" variant="outline" onClick={() => openForm(plan, ex)}>
-                            <ClipboardList className="w-3.5 h-3.5" /> Registra
-                          </Button>
-                        )}
+                        <Button
+                          size="sm"
+                          className="shrink-0"
+                          disabled={esercizi.length === 0 || avvioInCorso === chiave || Boolean(inCorso)}
+                          onClick={() => avvia(scheda, routine, indice)}
+                        >
+                          <Play className="w-3.5 h-3.5 mr-1" aria-hidden="true" /> Avvia
+                        </Button>
                       </div>
 
-                      {activeForm === formKey && (
-                        <div className="space-y-2 p-2 rounded bg-background border border-border">
-                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                            <div>
-                              <Label className="text-[10px]">Peso (kg)</Label>
-                              <Input type="number" step="0.5" className="h-8 text-sm"
-                                value={logForm.peso_usato}
-                                onChange={(e) => setLogForm({ ...logForm, peso_usato: e.target.value })}
-                                placeholder="—" />
-                            </div>
-                            <div>
-                              <Label className="text-[10px]">Reps fatte</Label>
-                              <Input type="number" className="h-8 text-sm"
-                                value={logForm.reps_fatte}
-                                onChange={(e) => setLogForm({ ...logForm, reps_fatte: e.target.value })}
-                                placeholder="—" />
-                            </div>
-                            <div>
-                              <Label className="text-[10px]">RPE</Label>
-                              <Input type="number" min="1" max="10" className="h-8 text-sm"
-                                value={logForm.rpe_percepito}
-                                onChange={(e) => setLogForm({ ...logForm, rpe_percepito: e.target.value })}
-                                placeholder="1-10" />
-                            </div>
-                            <div>
-                              <Label className="text-[10px]">Data</Label>
-                              <Input type="date" className="h-8 text-sm"
-                                value={logForm.data}
-                                onChange={(e) => setLogForm({ ...logForm, data: e.target.value })} />
-                            </div>
-                          </div>
-                          <div>
-                            <Label className="text-[10px]">Note</Label>
-                            <Textarea className="text-sm" rows={2}
-                              value={logForm.note}
-                              onChange={(e) => setLogForm({ ...logForm, note: e.target.value })}
-                              placeholder="Note opzionali" />
-                          </div>
-                          <div className="flex gap-2">
-                            <Button size="sm" onClick={() => handleSave(plan, ex)} disabled={saving}>
-                              <Check className="w-3.5 h-3.5" /> Salva
-                            </Button>
-                            <Button size="sm" variant="ghost" onClick={() => setActiveForm(null)}>
-                              Annulla
-                            </Button>
-                          </div>
-                        </div>
-                      )}
-
-                      {exLogs.length > 0 && (
-                        <div className="space-y-1">
-                          <p className="text-[10px] text-muted-foreground uppercase">Registrazioni</p>
-                          {exLogs.slice(0, 5).map((log) => (
-                            <div key={log.id} className="flex items-center justify-between text-xs p-1.5 rounded bg-background">
-                              <span className="text-muted-foreground">{formatData(log.data, "giornoBreve")}</span>
-                              <span>
-                                {log.peso_usato ? `${log.peso_usato}kg · ` : ""}
-                                {log.reps_fatte ? `${log.reps_fatte} reps` : ""}
-                                {log.rpe_percepito ? ` · RPE ${log.rpe_percepito}` : ""}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
+                      {/* Cosa c'è dentro, prima di avviarla: si controlla al volo se è la
+                          giornata giusta, senza doverla far partire per scoprirlo. */}
+                      {esercizi.length > 0 && (
+                        <Collapsible>
+                          <CollapsibleTrigger className="w-full px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground border-t border-border inline-flex items-center justify-center gap-1 transition-colors">
+                            Vedi gli esercizi
+                            <ChevronDown className="w-3 h-3" aria-hidden="true" />
+                          </CollapsibleTrigger>
+                          <CollapsibleContent className="border-t border-border divide-y divide-border">
+                            {routine.note && (
+                              <p className="px-3 py-2 text-xs text-muted-foreground italic">{routine.note}</p>
+                            )}
+                            {esercizi.map((esercizio, i) => {
+                              const rpe = riepilogoRpe(esercizio);
+                              const recupero = formatRecupero(esercizio.recupero_secondi);
+                              return (
+                                <div key={i} className="px-3 py-2">
+                                  <div className="flex items-start justify-between gap-2">
+                                    <p className="text-xs font-medium min-w-0">
+                                      <span className="text-muted-foreground tabular-nums mr-1">{i + 1}.</span>
+                                      {esercizio.exercise_name}
+                                    </p>
+                                    <span className="text-xs text-muted-foreground whitespace-nowrap">
+                                      {riepilogoSerie(esercizio)}
+                                      {rpe && ` · ${rpe}`}
+                                    </span>
+                                  </div>
+                                  <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                                    <Badge variant="outline" className="text-[10px] font-normal">
+                                      {etichettaGruppo(esercizio.muscle_group)}
+                                    </Badge>
+                                    {recupero && (
+                                      <span className="text-[10px] text-muted-foreground inline-flex items-center gap-0.5">
+                                        <Timer className="w-3 h-3" aria-hidden="true" /> {recupero}
+                                      </span>
+                                    )}
+                                  </div>
+                                  {esercizio.note && (
+                                    <p className="text-[10px] text-muted-foreground italic mt-1">{esercizio.note}</p>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </CollapsibleContent>
+                        </Collapsible>
                       )}
                     </div>
                   );
@@ -205,6 +205,39 @@ export default function MemberWorkoutPlans() {
             </CardContent>
           </Card>
         ))
+      )}
+
+      {concluse.length > 0 && (
+        <Card className="border-0 shadow-sm">
+          <CardContent className="p-4">
+            <h2 className="text-sm font-heading font-semibold mb-3 inline-flex items-center gap-1.5">
+              <History className="w-4 h-4 text-muted-foreground" aria-hidden="true" /> Allenamenti fatti
+            </h2>
+            <ul className="divide-y divide-border">
+              {concluse.slice(0, 15).map((sessione) => (
+                <li key={sessione.id}>
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/member-portal/allenamento/sessione/${sessione.id}`)}
+                    className="w-full text-left py-2 flex items-center justify-between gap-2 hover:text-primary transition-colors"
+                  >
+                    <span className="min-w-0">
+                      <span className="block text-sm font-medium truncate">{sessione.routine_name}</span>
+                      <span className="block text-xs text-muted-foreground truncate">
+                        {sessione.plan_name} · {formatDataOra(sessione.iniziata_alle)}
+                      </span>
+                    </span>
+                    <span className="text-xs text-muted-foreground whitespace-nowrap tabular-nums">
+                      {formatDurata(
+                        (new Date(sessione.terminata_alle) - new Date(sessione.iniziata_alle)) / 1000
+                      )}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
       )}
     </div>
   );
