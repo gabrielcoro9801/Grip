@@ -1,16 +1,18 @@
 import React from "react";
 import { Outlet, useLocation } from "react-router-dom";
-import { Dumbbell, LayoutTemplate, ClipboardList } from "lucide-react";
+import { Dumbbell, LayoutTemplate, ClipboardList, History } from "lucide-react";
 import SectionTabs from "@/components/shared/SectionTabs";
 import PageContainer from "@/components/shared/PageContainer";
 
-// Le tre cose che l'allenamento contiene, nell'ordine in cui si usano: prima si cataloga
-// un esercizio, poi lo si mette in un modello, poi il modello diventa la scheda di
-// qualcuno. Chi apre la sezione per la prima volta legge il procedimento nella barra.
+// Le quattro cose che l'allenamento contiene, nell'ordine in cui si usano: prima si
+// cataloga un esercizio, poi lo si mette in un modello, poi il modello diventa la scheda di
+// qualcuno, e infine si guarda cosa quel qualcuno ne ha fatto. Chi apre la sezione per la
+// prima volta legge il procedimento nella barra.
 const tabs = [
   { label: "Esercizi", path: "/allenamento", icon: Dumbbell, end: true },
   { label: "Schede modello", path: "/allenamento/modelli", icon: LayoutTemplate },
   { label: "Schede assegnate", path: "/allenamento/assegnate", icon: ClipboardList },
+  { label: "Allenamenti svolti", path: "/allenamento/svolti", icon: History },
 ];
 
 export default function AllenamentoLayout() {

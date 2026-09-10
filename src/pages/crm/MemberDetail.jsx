@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import StatusBadge from "@/components/shared/StatusBadge";
-import { ArrowLeft, Plus, FileText, CreditCard, Dumbbell, Shield, Calendar, QrCode, KeyRound, RefreshCw } from "lucide-react";
+import { ArrowLeft, Plus, FileText, CreditCard, Dumbbell, Shield, Calendar, QrCode, KeyRound, RefreshCw, History } from "lucide-react";
 import { generateQRCode, getQRImageUrl } from "@/lib/qrUtils";
 import { useQrDinamico } from "@/hooks/useQrDinamico";
 import { logAction } from "@/lib/auditLog";
@@ -18,7 +18,7 @@ import moment from "moment";
 import { useToast } from "@/components/ui/use-toast";
 import { LoadingState } from "@/components/shared/Spinner";
 import { formatData, formatDataOra, formatEuro } from "@/lib/format";
-import { totaleSerieScheda, totaleEsercizi } from "@/lib/scheda";
+import { totaleSerieScheda, totaleEsercizi, formatDurata, durataSessione } from "@/lib/scheda";
 
 export default function MemberDetail() {
   const { id } = useParams();
@@ -29,6 +29,7 @@ export default function MemberDetail() {
   const [documents, setDocuments] = useState([]);
   const [plans, setPlans] = useState([]);
   const [exercisePlans, setExercisePlans] = useState([]);
+  const [allenamenti, setAllenamenti] = useState([]);
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showSubForm, setShowSubForm] = useState(false);
@@ -58,7 +59,7 @@ export default function MemberDetail() {
         api.entities.Subscription.filter({ member_id: id }),
         api.entities.MemberDocument.filter({ member_id: id }),
       ]);
-      const [ep, b, qr, sa, sess, evts, crs] = await Promise.all([
+      const [ep, b, qr, sa, sess, evts, crs, allen] = await Promise.all([
         api.entities.ExercisePlan.filter({ member_id: id }),
         api.entities.Booking.filter({ member_id: id }),
         api.entities.QRAccesso.filter({ cliente_id: id }),
@@ -66,6 +67,7 @@ export default function MemberDetail() {
         api.entities.Session.list(),
         api.entities.Event.list(),
         api.entities.Course.list(),
+        api.entities.WorkoutSession.filter({ member_id: id }, "-iniziata_alle", 10),
       ]);
       const resolvedBookings = b.map(bk => {
         const session = sess.find(s => s.id === bk.session_id);
@@ -79,6 +81,7 @@ export default function MemberDetail() {
       setDocuments(d);
       setPlans(p.filter(pl => pl.is_active));
       setExercisePlans(ep);
+      setAllenamenti(allen);
       setBookings(resolvedBookings);
       setQrAccess(qr[0] || null);
       setPortalAccount(sa[0] || null);
@@ -454,6 +457,44 @@ export default function MemberDetail() {
                   );
                 })}
               </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Ultimi allenamenti: la scheda dice cosa è stato prescritto, questa dice se
+            viene seguita. Senza, l'unico modo di saperlo era chiederlo al socio. */}
+        <Card className="border-0 shadow-sm">
+          <CardHeader className="pb-3 flex-row items-center justify-between space-y-0">
+            <CardTitle className="text-sm font-heading flex items-center gap-2">
+              <History className="w-4 h-4" aria-hidden="true" /> Ultimi allenamenti
+            </CardTitle>
+            {allenamenti.length > 0 && (
+              <Button variant="ghost" size="sm" className="text-xs" asChild>
+                <Link to="/allenamento/svolti">Vedi tutti</Link>
+              </Button>
+            )}
+          </CardHeader>
+          <CardContent>
+            {allenamenti.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-4 text-center">
+                Non ha ancora registrato nessun allenamento
+              </p>
+            ) : (
+              <ul className="divide-y divide-border">
+                {allenamenti.slice(0, 5).map(sessione => (
+                  <li key={sessione.id} className="py-2 flex items-center justify-between gap-2">
+                    <span className="min-w-0">
+                      <span className="block text-sm font-medium truncate">{sessione.routine_name}</span>
+                      <span className="block text-xs text-muted-foreground truncate">
+                        {sessione.plan_name} · {formatDataOra(sessione.iniziata_alle)}
+                      </span>
+                    </span>
+                    <span className="text-xs text-muted-foreground whitespace-nowrap tabular-nums">
+                      {sessione.terminata_alle ? formatDurata(durataSessione(sessione)) : "in corso"}
+                    </span>
+                  </li>
+                ))}
+              </ul>
             )}
           </CardContent>
         </Card>

@@ -17,12 +17,13 @@ import { useToast } from "@/components/ui/use-toast";
 import SelettoreEsercizi from "@/components/allenamento/SelettoreEsercizi";
 import {
   ArrowLeft, Plus, Trash2, ChevronUp, ChevronDown, ChevronLeft, ChevronRight,
-  Dumbbell, Timer, Save, Copy, CalendarDays,
+  Dumbbell, Timer, Save, Copy, CalendarDays, Link2, Unlink,
 } from "lucide-react";
 import { etichettaGruppo } from "@/lib/gruppiMuscolari";
 import {
   nuovaSerie, nuovoEsercizio, nuovaRoutine, clonaRoutines, clonaEsercizi, sposta,
   formatRecupero, totaleSerie, totaleSerieScheda, motivoNonSalvabile,
+  TIPI_SERIE, tipoSerie, prossimaLetteraGruppo,
 } from "@/lib/scheda";
 import { cn } from "@/lib/utils";
 
@@ -197,6 +198,38 @@ export default function EditorScheda() {
 
   const rimuoviEsercizio = (indice) => {
     cambiaEserciziRoutineAperta((precedenti) => precedenti.filter((_, i) => i !== indice));
+  };
+
+  /**
+   * Aggancia o stacca un esercizio dal superset di quello sopra.
+   *
+   * Agganciando si eredita la lettera del precedente, o gliene si dà una nuova se non ne
+   * ha: un superset nasce sempre da due esercizi, e marcare solo il secondo lascerebbe un
+   * gruppo di uno che non significa niente.
+   */
+  const commutaSuperset = (indice) => {
+    cambiaEserciziRoutineAperta((precedenti) => {
+      const sopra = precedenti[indice - 1];
+      const corrente = precedenti[indice];
+      const giaUniti = corrente.gruppo && sopra.gruppo === corrente.gruppo;
+
+      if (giaUniti) {
+        // Staccando resta solo l'esercizio sopra col gruppo: se rimane da solo, la lettera
+        // non serve più a niente e va tolta anche a lui.
+        const restanti = precedenti.map((es, i) => (i === indice ? { ...es, gruppo: null } : es));
+        const ancoraInGruppo = restanti.filter((es) => es.gruppo === sopra.gruppo).length;
+        return ancoraInGruppo > 1
+          ? restanti
+          : restanti.map((es) => (es.gruppo === sopra.gruppo ? { ...es, gruppo: null } : es));
+      }
+
+      const lettera = sopra.gruppo ?? prossimaLetteraGruppo(precedenti);
+      return precedenti.map((es, i) => {
+        if (i === indice - 1) return { ...es, gruppo: lettera };
+        if (i === indice) return { ...es, gruppo: lettera };
+        return es;
+      });
+    });
   };
 
   const spostaEsercizio = (indice, direzione) => {
@@ -522,13 +555,44 @@ export default function EditorScheda() {
                         </span>
                         <div className="min-w-0">
                           <p className="font-medium text-sm">{esercizio.exercise_name}</p>
-                          <Badge variant="outline" className="text-[10px] font-normal mt-1">
-                            {etichettaGruppo(esercizio.muscle_group)}
-                          </Badge>
+                          <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                            <Badge variant="outline" className="text-[10px] font-normal">
+                              {etichettaGruppo(esercizio.muscle_group)}
+                            </Badge>
+                            {esercizio.gruppo && (
+                              <Badge className="text-[10px] font-normal">
+                                <Link2 className="w-2.5 h-2.5 mr-1" aria-hidden="true" />
+                                Superset {esercizio.gruppo}
+                              </Badge>
+                            )}
+                          </div>
                         </div>
                       </div>
                       {!soloLettura && (
                         <div className="flex items-center gap-0.5 shrink-0 -mt-1 -mr-2">
+                          {/* Il superset si costruisce agganciando un esercizio a quello
+                              sopra: è così che si legge su un foglio (A1, A2), e non
+                              serve nessuna finestra per dirlo. */}
+                          {indice > 0 && (
+                            <Button
+                              variant="ghost" size="icon" className="h-7 w-7"
+                              aria-label={
+                                esercizio.gruppo && esercizi[indice - 1].gruppo === esercizio.gruppo
+                                  ? `Stacca ${esercizio.exercise_name} dal superset`
+                                  : `Unisci ${esercizio.exercise_name} all'esercizio sopra, in superset`
+                              }
+                              title={
+                                esercizio.gruppo && esercizi[indice - 1].gruppo === esercizio.gruppo
+                                  ? "Stacca dal superset"
+                                  : "Unisci in superset"
+                              }
+                              onClick={() => commutaSuperset(indice)}
+                            >
+                              {esercizio.gruppo && esercizi[indice - 1].gruppo === esercizio.gruppo
+                                ? <Unlink className="w-3.5 h-3.5" aria-hidden="true" />
+                                : <Link2 className="w-3.5 h-3.5" aria-hidden="true" />}
+                            </Button>
+                          )}
                           <Button
                             variant="ghost" size="icon" className="h-7 w-7"
                             aria-label={`Sposta ${esercizio.exercise_name} più in alto`}
@@ -562,7 +626,7 @@ export default function EditorScheda() {
                         <caption className="sr-only">Serie di {esercizio.exercise_name}</caption>
                         <thead>
                           <tr className="bg-muted/50 text-xs text-muted-foreground">
-                            <th scope="col" className="text-left font-medium py-1.5 px-3 w-12">Serie</th>
+                            <th scope="col" className="text-left font-medium py-1.5 px-2 w-16">Serie</th>
                             <th scope="col" className="text-left font-medium py-1.5 px-2">Ripetizioni</th>
                             <th scope="col" className="text-left font-medium py-1.5 px-2 w-28">RPE</th>
                             {!soloLettura && <th scope="col" className="w-10"><span className="sr-only">Azioni</span></th>}
@@ -571,8 +635,31 @@ export default function EditorScheda() {
                         <tbody>
                           {esercizio.serie.map((serie, indiceSerie) => (
                             <tr key={indiceSerie} className="border-t border-border">
-                              <td className="py-1.5 px-3 text-xs text-muted-foreground tabular-nums">
-                                {indiceSerie + 1}
+                              <td className="py-1.5 px-2">
+                                {/* Il numero della serie è anche il selettore del tipo:
+                                    è il posto dove si guarda già, e non ruba una colonna
+                                    a ripetizioni e RPE, che sono quelle che si scrivono. */}
+                                <Select
+                                  value={serie.tipo ?? "normale"}
+                                  onValueChange={(v) => modificaSerie(indice, indiceSerie, "tipo", v)}
+                                  disabled={soloLettura}
+                                >
+                                  <SelectTrigger
+                                    className="h-8 w-14 text-xs px-2"
+                                    aria-label={`Tipo della serie ${indiceSerie + 1} di ${esercizio.exercise_name}`}
+                                  >
+                                    <span className="tabular-nums">
+                                      {tipoSerie(serie.tipo).sigla || indiceSerie + 1}
+                                    </span>
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {Object.entries(TIPI_SERIE).map(([codice, t]) => (
+                                      <SelectItem key={codice} value={codice}>
+                                        {t.sigla ? `${t.sigla} — ` : ""}{t.etichetta}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
                               </td>
                               <td className="py-1.5 px-2">
                                 <Input

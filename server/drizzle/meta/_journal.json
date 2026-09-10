@@ -169,6 +169,13 @@
       "when": 1789029256328,
       "tag": "0023_catalogo_esercizi_iniziale",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1789036017143,
+      "tag": "0024_tipi_serie_e_immagini",
+      "breakpoints": true
     }
   ]
 }

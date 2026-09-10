@@ -15,6 +15,7 @@ import AllenamentoLayout from '@/pages/allenamento/AllenamentoLayout';
 import LibreriaEsercizi from '@/pages/allenamento/LibreriaEsercizi';
 import SchedeModello from '@/pages/allenamento/SchedeModello';
 import SchedeAssegnate from '@/pages/allenamento/SchedeAssegnate';
+import AllenamentiSvolti from '@/pages/allenamento/AllenamentiSvolti';
 import EditorScheda from '@/pages/allenamento/EditorScheda';
 import CalendarPage from '@/pages/CalendarPage';
 import { MemberAuthProvider } from '@/lib/MemberAuthContext';
@@ -81,6 +82,7 @@ const AppRoutes = () => {
             <Route index element={<LibreriaEsercizi />} />
             <Route path="modelli" element={<SchedeModello />} />
             <Route path="assegnate" element={<SchedeAssegnate />} />
+            <Route path="svolti" element={<AllenamentiSvolti />} />
             {/* L'editor di una scheda: comporre righe di serie non sta in una finestra
                 di dialogo, e un percorso proprio rende la scheda un indirizzo che si
                 può mandare a un collega. */}
