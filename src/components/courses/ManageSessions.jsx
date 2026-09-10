@@ -236,7 +236,7 @@ export default function ManageSessions({ data, reload, initialSessionId }) {
 
   return (
     <div className="space-y-4">
-      <div className="rounded-lg bg-blue-50 border border-blue-200 p-3 text-sm text-blue-700">
+      <div className="rounded-lg bg-info/10 border border-info/30 p-3 text-sm text-info">
         <ShieldAlert className="w-4 h-4 inline mr-1" />
         Gestione sessioni esistenti: seleziona un filtro, verifica l'impatto, poi scegli l'azione.
       </div>
@@ -376,7 +376,7 @@ export default function ManageSessions({ data, reload, initialSessionId }) {
             </div>
 
             {impact.modifiedManuallyCount > 0 && (
-              <div className="p-3 rounded-lg bg-amber-50 border border-amber-200">
+              <div className="p-3 rounded-lg bg-warning/10 border border-warning/30">
                 <div className="flex items-start gap-2">
                   <input
                     type="checkbox"
@@ -416,7 +416,7 @@ export default function ManageSessions({ data, reload, initialSessionId }) {
         <DialogContent className="max-w-md">
           <DialogHeader><DialogTitle>Conferma cancellazione</DialogTitle></DialogHeader>
           <div className="space-y-3">
-            <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-sm text-red-700">
+            <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/30 text-sm text-destructive">
               <AlertTriangle className="w-4 h-4 inline mr-1" />
               Verranno cancellate <strong>{targetSessions.length}</strong> sessioni.
               Tutte le prenotazioni (confirmed + waitlisted) su queste sessioni verranno cancellate.
@@ -480,9 +480,9 @@ export default function ManageSessions({ data, reload, initialSessionId }) {
           {result && (
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
-                <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200">
-                  <p className="text-2xl font-bold text-emerald-700">{result.updated}</p>
-                  <p className="text-xs text-emerald-600">Sessioni aggiornate</p>
+                <div className="p-3 rounded-lg bg-success/10 border border-success/30">
+                  <p className="text-2xl font-bold text-success">{result.updated}</p>
+                  <p className="text-xs text-success">Sessioni aggiornate</p>
                 </div>
                 {result.excluded > 0 && (
                   <div className="p-3 rounded-lg bg-muted/40 border">
@@ -491,15 +491,15 @@ export default function ManageSessions({ data, reload, initialSessionId }) {
                   </div>
                 )}
                 {result.skippedConflict > 0 && (
-                  <div className="p-3 rounded-lg bg-amber-50 border border-amber-200">
-                    <p className="text-2xl font-bold text-amber-700">{result.skippedConflict}</p>
-                    <p className="text-xs text-amber-600">Saltate (conflitto)</p>
+                  <div className="p-3 rounded-lg bg-warning/10 border border-warning/30">
+                    <p className="text-2xl font-bold text-warning">{result.skippedConflict}</p>
+                    <p className="text-xs text-warning">Saltate (conflitto)</p>
                   </div>
                 )}
                 {result.skippedCapacity > 0 && (
-                  <div className="p-3 rounded-lg bg-red-50 border border-red-200">
-                    <p className="text-2xl font-bold text-red-700">{result.skippedCapacity}</p>
-                    <p className="text-xs text-red-600">Saltate (capienza)</p>
+                  <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/30">
+                    <p className="text-2xl font-bold text-destructive">{result.skippedCapacity}</p>
+                    <p className="text-xs text-destructive">Saltate (capienza)</p>
                   </div>
                 )}
               </div>
@@ -511,7 +511,7 @@ export default function ManageSessions({ data, reload, initialSessionId }) {
               )}
               {result.skippedConflictReasons.length > 0 && (
                 <div className="space-y-1">
-                  <p className="text-xs font-medium text-amber-700">Saltate per conflitto:</p>
+                  <p className="text-xs font-medium text-warning">Saltate per conflitto:</p>
                   {result.skippedConflictReasons.map((r, i) => (
                     <p key={i} className="text-sm text-muted-foreground p-2 rounded bg-muted/40">{r}</p>
                   ))}
@@ -519,7 +519,7 @@ export default function ManageSessions({ data, reload, initialSessionId }) {
               )}
               {result.skippedCapacityReasons.length > 0 && (
                 <div className="space-y-1">
-                  <p className="text-xs font-medium text-red-700">Saltate per capienza insufficiente:</p>
+                  <p className="text-xs font-medium text-destructive">Saltate per capienza insufficiente:</p>
                   {result.skippedCapacityReasons.map((r, i) => (
                     <p key={i} className="text-sm text-muted-foreground p-2 rounded bg-muted/40">{r}</p>
                   ))}

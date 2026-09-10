@@ -10,8 +10,9 @@ import { Checkbox } from "@/components/ui/checkbox";
 import PageHeader from "@/components/shared/PageHeader";
 import StatusBadge from "@/components/shared/StatusBadge";
 import { useOrganization } from "@/hooks/useOrganization";
-import { Plus, Search, Mail } from "lucide-react";
+import { Plus, Search, Mail, Users } from "lucide-react";
 import { LoadingState } from "@/components/shared/Spinner";
+import { EmptyState } from "@/components/shared/StateViews";
 
 export default function MembersList() {
   const { organization } = useOrganization();
@@ -73,6 +74,19 @@ export default function MembersList() {
         <Input placeholder="Cerca soci..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
       </div>
 
+      {filtered.length === 0 ? (
+        // Senza, restava un'area bianca sotto la ricerca: indistinguibile da un
+        // caricamento che non finisce, e senza dire che fare.
+        <EmptyState
+          icon={Users}
+          title={members.length === 0 ? "Nessun socio registrato" : "Nessun socio corrisponde"}
+          description={
+            members.length === 0
+              ? "Da qui si tesserano le persone che frequentano la palestra."
+              : `Nessun risultato per «${search}». Prova con un altro nome o una parte di email.`
+          }
+        />
+      ) : (
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {filtered.map(member => {
           const sub = getMemberSub(member.id);
@@ -98,6 +112,7 @@ export default function MembersList() {
           );
         })}
       </div>
+      )}
 
       <Dialog open={showForm} onOpenChange={setShowForm}>
         <DialogContent className="max-w-md">

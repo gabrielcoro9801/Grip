@@ -282,7 +282,7 @@ export default function SchedeAssegnate() {
                       azioni={puoModificare && (
                         <>
                           <Button
-                            variant="ghost" size="icon" className="h-7 w-7"
+                            variant="ghost" size="icon" className="h-9 w-9"
                             aria-label={`Rendi «${scheda.name}» un modello riutilizzabile`}
                             title="Rendi modello"
                             onClick={() => {
@@ -293,14 +293,14 @@ export default function SchedeAssegnate() {
                             <LayoutTemplate className="w-3.5 h-3.5" aria-hidden="true" />
                           </Button>
                           <Button
-                            variant="ghost" size="icon" className="h-7 w-7"
+                            variant="ghost" size="icon" className="h-9 w-9"
                             aria-label={`Modifica ${scheda.name}`} title="Modifica"
                             onClick={() => navigate(`/allenamento/schede/${scheda.id}`)}
                           >
                             <Pencil className="w-3.5 h-3.5" aria-hidden="true" />
                           </Button>
                           <Button
-                            variant="ghost" size="icon" className="h-7 w-7 text-destructive"
+                            variant="ghost" size="icon" className="h-9 w-9 text-destructive"
                             aria-label={`Elimina ${scheda.name}`} title="Elimina"
                             onClick={() => elimina(scheda)}
                           >

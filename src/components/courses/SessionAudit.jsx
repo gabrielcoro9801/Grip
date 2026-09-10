@@ -64,7 +64,7 @@ export default function SessionAudit({ data }) {
 
   if (suspicious.length === 0) {
     return (
-      <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-sm text-emerald-700 flex items-center gap-2">
+      <div className="p-3 rounded-lg bg-success/10 border border-success/30 text-sm text-success flex items-center gap-2">
         <CheckCircle2 className="w-4 h-4 shrink-0" />
         <span><strong>Audit sessioni:</strong> nessuna sessione sospetta. Tutte le sessioni non modificate manualmente corrispondono al proprio Event.</span>
       </div>
@@ -72,9 +72,9 @@ export default function SessionAudit({ data }) {
   }
 
   return (
-    <Card className="border-amber-300 shadow-sm">
+    <Card className="border-warning/30 shadow-sm">
       <CardContent className="p-4 space-y-3">
-        <div className="flex items-center gap-2 text-amber-700">
+        <div className="flex items-center gap-2 text-warning">
           <AlertTriangle className="w-4 h-4" />
           <span className="font-medium">Audit sessioni: {suspicious.length} sessioni sospette</span>
         </div>
@@ -84,7 +84,7 @@ export default function SessionAudit({ data }) {
         </p>
         <div className="space-y-2 max-h-96 overflow-y-auto">
           {suspicious.map(s => (
-            <div key={s.sessionId} className="p-3 rounded-lg bg-amber-50 border border-amber-200">
+            <div key={s.sessionId} className="p-3 rounded-lg bg-warning/10 border border-warning/30">
               <div className="flex items-center justify-between mb-2">
                 <span className="font-medium text-sm">{s.courseName} — {s.date}</span>
                 <span className="text-xs text-muted-foreground">
@@ -95,9 +95,9 @@ export default function SessionAudit({ data }) {
                 {s.divergences.map((d, i) => (
                   <div key={i} className="text-xs flex flex-wrap gap-2">
                     <span className="font-medium text-muted-foreground">{d.field}:</span>
-                    <span className="text-red-600">attuale: {d.actual}</span>
+                    <span className="text-destructive">attuale: {d.actual}</span>
                     <span className="text-muted-foreground">→</span>
-                    <span className="text-emerald-600">atteso: {d.expected}</span>
+                    <span className="text-success">atteso: {d.expected}</span>
                   </div>
                 ))}
               </div>

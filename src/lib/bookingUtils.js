@@ -1,94 +1,43 @@
 import { api } from "@/api/client";
 
 /**
- * Crea una prenotazione su una Sessione.
- * - Blocca doppie prenotazioni dello stesso membro (stato diverso da cancelled)
- * - Se c'è posto → confirmed
- * - Se piena → waitlisted con posizione = lunghezza attuale waitlist + 1
+ * Prenota una lezione.
+ *
+ * Le regole — c'è posto? è già prenotato? che posizione in lista? — **non stanno più qui**.
+ * Stavano solo qui, ed era il problema: il browser contava i posti e mandava al server una
+ * riga con lo stato già deciso, che veniva scritta senza controlli. Bastava una richiesta
+ * fatta a mano per confermarsi su una lezione piena, e due soci che prenotavano l'ultimo
+ * posto nello stesso istante si confermavano entrambi in buona fede.
+ *
+ * Ora decide il server, dentro una transazione. Questa funzione resta come punto unico da
+ * cui passano tutte le schermate, e traduce la risposta nella forma che già si aspettano.
  */
-export async function createBooking(session, memberId, memberName, allBookings) {
-  const existing = allBookings.find(
-    b => b.session_id === session.id && b.member_id === memberId && b.status !== "cancelled"
-  );
-  if (existing) {
-    return { ok: false, error: "Hai già una prenotazione per questa sessione." };
+export async function createBooking(session, memberId) {
+  try {
+    const { booking } = await api.prenotazioni.crea({ sessionId: session.id, memberId });
+    return {
+      ok: true,
+      booking,
+      status: booking.status,
+      waitlist_position: booking.waitlist_position,
+    };
+  } catch (errore) {
+    // 409 è "hai già prenotato": è una risposta prevista, non un guasto, e il testo che
+    // arriva dal server è già quello da mostrare.
+    return { ok: false, error: errore.message };
   }
-
-  const confirmed = allBookings.filter(b => b.session_id === session.id && b.status === "confirmed");
-  const capacity = session.capacity || 0;
-  const isFull = confirmed.length >= capacity;
-
-  if (isFull) {
-    const waitlisted = allBookings.filter(b => b.session_id === session.id && b.status === "waitlisted");
-    const position = waitlisted.length + 1;
-    const booking = await api.entities.Booking.create({
-      session_id: session.id,
-      member_id: memberId,
-      member_name: memberName,
-      status: "waitlisted",
-      waitlist_position: position,
-    });
-    return { ok: true, booking, status: "waitlisted", waitlist_position: position };
-  }
-
-  const booking = await api.entities.Booking.create({
-    session_id: session.id,
-    member_id: memberId,
-    member_name: memberName,
-    status: "confirmed",
-  });
-  return { ok: true, booking, status: "confirmed" };
 }
 
 /**
- * Cancella una prenotazione.
- * - Recupera lo stato ORIGINALE prima di cancellare
- * - Se era confirmed: promuove il primo in lista d'attesa, poi rinumera
- * - Se era waitlisted: NON promuove (non si libera posto), solo rinumera
+ * Disdice una prenotazione, promuove chi è in lista d'attesa e rinumera la coda.
+ *
+ * Erano quattro chiamate separate dal browser, e la seconda ne chiamava una che non esiste
+ * (`Booking.bulkUpdate`): il primo in lista risultava già promosso, poi partiva un errore,
+ * e la coda restava sfalsata per sempre senza che nessuno potesse rimetterla a posto. Ora
+ * è una transazione sola sul server: o succede tutto, o non succede niente.
  */
 export async function cancelBooking(bookingId) {
-  const booking = await api.entities.Booking.get(bookingId);
-  const originalStatus = booking.status;
-  let promoted = false;
-
-  await api.entities.Booking.update(bookingId, { status: "cancelled" });
-
-  if (originalStatus === "confirmed") {
-    const waitlist = await api.entities.Booking.filter({
-      session_id: booking.session_id,
-      status: "waitlisted",
-    });
-    if (waitlist.length > 0) {
-      waitlist.sort((a, b) => (a.waitlist_position || 999) - (b.waitlist_position || 999));
-      const promotedBooking = waitlist[0];
-      await api.entities.Booking.update(promotedBooking.id, {
-        status: "confirmed",
-        waitlist_position: null,
-      });
-      promoted = true;
-      const remaining = waitlist.slice(1);
-      if (remaining.length > 0) {
-        // Una chiamata per riga: `bulkUpdate` non esiste — non sul client (che espone solo
-        // bulkCreate) e non sul server, dove non c'è nessuna rotta PUT /bulk. Chiamarlo
-        // sollevava un TypeError proprio dopo aver già promosso il primo in lista, quindi
-        // la disdetta risultava fatta a metà e le posizioni restavano sfalsate per sempre.
-        await Promise.all(
-          remaining.map((b, i) => api.entities.Booking.update(b.id, { waitlist_position: i + 1 }))
-        );
-      }
-    }
-  } else if (originalStatus === "waitlisted") {
-    const waitlist = await api.entities.Booking.filter({
-      session_id: booking.session_id,
-      status: "waitlisted",
-    });
-    waitlist.sort((a, b) => (a.waitlist_position || 999) - (b.waitlist_position || 999));
-    if (waitlist.length > 0) {
-      await Promise.all(
-        waitlist.map((b, i) => api.entities.Booking.update(b.id, { waitlist_position: i + 1 }))
-      );
-    }
-  }
+  const { promoted } = await api.prenotazioni.disdici(bookingId);
   return { promoted };
 }
 
@@ -99,7 +48,7 @@ export async function cancelBooking(bookingId) {
  * - Per le altre: crea confirmed o waitlisted secondo la logica standard
  * - Ritorna riepilogo { confirmed, waitlisted }
  */
-export async function bookAllSessions(sessions, memberId, memberName, allBookings) {
+export async function bookAllSessions(sessions, memberId, allBookings) {
   const today = new Date().toISOString().split("T")[0];
   const eligible = sessions
     .filter(s => s.status === "active" && s.date >= today)
@@ -114,7 +63,7 @@ export async function bookAllSessions(sessions, memberId, memberName, allBooking
     );
     if (existing) continue;
 
-    const result = await createBooking(session, memberId, memberName, allBookings);
+    const result = await createBooking(session, memberId);
     if (result.ok) {
       if (result.status === "confirmed") confirmed++;
       else waitlisted++;

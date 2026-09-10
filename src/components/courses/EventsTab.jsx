@@ -348,7 +348,7 @@ export default function EventsTab({ data, reload }) {
 
             {/* Anteprima conteggio */}
             {previewCount > 0 && (
-              <div className={`p-3 rounded-lg text-sm ${overLimit ? "bg-red-50 border border-red-200 text-red-700" : "bg-blue-50 border border-blue-200 text-blue-700"}`}>
+              <div className={`p-3 rounded-lg text-sm ${overLimit ? "bg-destructive/10 border border-destructive/30 text-destructive" : "bg-info/10 border border-info/30 text-info"}`}>
                 {overLimit ? (
                   <span className="flex items-center gap-2"><AlertTriangle className="w-4 h-4 shrink-0" /> Questo pattern genera {previewCount} sessioni. Il massimo consentito è {MAX_SESSIONS}.</span>
                 ) : (
@@ -358,7 +358,7 @@ export default function EventsTab({ data, reload }) {
             )}
 
             {error && (
-              <div className="flex items-start gap-2 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm whitespace-pre-line">
+              <div className="flex items-start gap-2 p-3 rounded-lg bg-destructive/10 border border-destructive/30 text-destructive text-sm whitespace-pre-line">
                 <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
                 <span>{error}</span>
               </div>
@@ -378,13 +378,13 @@ export default function EventsTab({ data, reload }) {
           {generationResult && (
             <div className="space-y-3">
               <div className="flex gap-3">
-                <div className="flex-1 p-3 rounded-lg bg-emerald-50 border border-emerald-200">
-                  <p className="text-2xl font-bold text-emerald-700">{generationResult.created}</p>
-                  <p className="text-xs text-emerald-600">Sessioni create</p>
+                <div className="flex-1 p-3 rounded-lg bg-success/10 border border-success/30">
+                  <p className="text-2xl font-bold text-success">{generationResult.created}</p>
+                  <p className="text-xs text-success">Sessioni create</p>
                 </div>
-                <div className="flex-1 p-3 rounded-lg bg-amber-50 border border-amber-200">
-                  <p className="text-2xl font-bold text-amber-700">{generationResult.skipped}</p>
-                  <p className="text-xs text-amber-600">Saltate per conflitto</p>
+                <div className="flex-1 p-3 rounded-lg bg-warning/10 border border-warning/30">
+                  <p className="text-2xl font-bold text-warning">{generationResult.skipped}</p>
+                  <p className="text-xs text-warning">Saltate per conflitto</p>
                 </div>
               </div>
               {generationResult.skippedReasons.length > 0 && (

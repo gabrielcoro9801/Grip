@@ -68,6 +68,11 @@ export default function DataTable({
 
   return (
     <div className={cn("w-full", className)}>
+      {/* La tabella scorre dentro il proprio riquadro invece di allargare la pagina.
+          Senza, su un telefono le colonne uscivano dallo schermo e trascinavano con sé
+          tutto il resto: la barra di navigazione finiva fuori posto e la pagina scorreva
+          in orizzontale ovunque, non solo qui. */}
+      <div className="w-full overflow-x-auto">
       <Table>
         {caption && <caption className="sr-only">{caption}</caption>}
         <TableHeader>
@@ -111,6 +116,7 @@ export default function DataTable({
         </TableBody>
         {footer}
       </Table>
+      </div>
 
       {pagine > 1 && (
         <nav

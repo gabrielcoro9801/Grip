@@ -11,6 +11,7 @@ import uploadRoutes from './routes/uploads.js';
 import organizationRoutes from './routes/organizations.js';
 import ruoliRoutes from './routes/ruoli.js';
 import qrRoutes from './routes/qr.js';
+import prenotazioniRoutes from './routes/prenotazioni.js';
 import { ENTITY_NAMES } from './entities/registry.js';
 import { config } from './config.js';
 
@@ -45,6 +46,7 @@ export function buildApp({ publicBaseUrl = 'http://localhost:3001', logger = tru
 	app.register(organizationRoutes);
 	app.register(ruoliRoutes);
 	app.register(qrRoutes);
+	app.register(prenotazioniRoutes);
 	app.register(entityRoutes);
 	app.register(uploadRoutes, { uploadDir: UPLOAD_DIR, publicBaseUrl });
 

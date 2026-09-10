@@ -93,7 +93,7 @@ export default function CoursesTab({ data, reload }) {
               <CardContent className="p-4">
                 <div className="flex items-start justify-between mb-2">
                   <h4 className="font-medium">{course.name}</h4>
-                  <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => openEdit(course)}>
+                  <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => openEdit(course)}>
                     <Pencil className="w-3 h-3" />
                   </Button>
                 </div>

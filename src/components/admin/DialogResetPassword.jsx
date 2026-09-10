@@ -49,7 +49,7 @@ export default function DialogResetPassword({ account, etichetta = "Account", on
 					<div className="space-y-3">
 						<p className="text-sm text-muted-foreground">Nuova password temporanea:</p>
 						<div className="p-3 rounded-lg bg-muted font-mono text-lg text-center break-all">{generata}</div>
-						<p className="text-xs text-amber-600">
+						<p className="text-xs text-warning">
 							Comunicala alla persona: non sarà più visibile dopo aver chiuso questa finestra.
 						</p>
 						<Button className="w-full" onClick={() => { setGenerata(""); onClose(); }}>Chiudi</Button>

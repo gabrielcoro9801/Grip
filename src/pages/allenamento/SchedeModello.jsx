@@ -193,28 +193,28 @@ export default function SchedeModello() {
               azioni={puoModificare && (
                 <>
                   <Button
-                    variant="ghost" size="icon" className="h-7 w-7"
+                    variant="ghost" size="icon" className="h-9 w-9"
                     aria-label={`Assegna ${modello.name} a un socio`} title="Assegna a un socio"
                     onClick={() => apriAssegnazione(modello)}
                   >
                     <UserPlus className="w-3.5 h-3.5" aria-hidden="true" />
                   </Button>
                   <Button
-                    variant="ghost" size="icon" className="h-7 w-7"
+                    variant="ghost" size="icon" className="h-9 w-9"
                     aria-label={`Duplica ${modello.name}`} title="Duplica"
                     onClick={() => duplica(modello)}
                   >
                     <Copy className="w-3.5 h-3.5" aria-hidden="true" />
                   </Button>
                   <Button
-                    variant="ghost" size="icon" className="h-7 w-7"
+                    variant="ghost" size="icon" className="h-9 w-9"
                     aria-label={`Modifica ${modello.name}`} title="Modifica"
                     onClick={() => navigate(`/allenamento/schede/${modello.id}`)}
                   >
                     <Pencil className="w-3.5 h-3.5" aria-hidden="true" />
                   </Button>
                   <Button
-                    variant="ghost" size="icon" className="h-7 w-7 text-destructive"
+                    variant="ghost" size="icon" className="h-9 w-9 text-destructive"
                     aria-label={`Elimina ${modello.name}`} title="Elimina"
                     onClick={() => elimina(modello)}
                   >

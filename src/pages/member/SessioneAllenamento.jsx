@@ -790,7 +790,7 @@ export default function SessioneAllenamento() {
                 {!bloccato && (
                   <div className="flex items-center gap-0.5 shrink-0 -mr-2">
                     <Button
-                      variant="ghost" size="icon" className="h-8 w-8"
+                      variant="ghost" size="icon" className="h-9 w-9"
                       aria-label={`Sostituisci ${esercizio.exercise_name} con un altro esercizio`}
                       title="Sostituisci"
                       onClick={() => setSelettore({ modo: "sostituisci", indice: indiceEsercizio })}
@@ -798,7 +798,7 @@ export default function SessioneAllenamento() {
                       <Repeat className="w-4 h-4" aria-hidden="true" />
                     </Button>
                     <Button
-                      variant="ghost" size="icon" className="h-8 w-8 text-destructive"
+                      variant="ghost" size="icon" className="h-9 w-9 text-destructive"
                       aria-label={`Togli ${esercizio.exercise_name} da questo allenamento`}
                       title="Togli"
                       onClick={() => togliEsercizio(indiceEsercizio)}

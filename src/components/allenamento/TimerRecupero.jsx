@@ -61,7 +61,7 @@ export default function TimerRecupero({ scadenza, durataSecondi, adesso, onAggiu
             <Plus className="w-3.5 h-3.5 mr-0.5" aria-hidden="true" />15s
           </Button>
         )}
-        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onChiudi}
+        <Button variant="ghost" size="icon" className="h-9 w-9" onClick={onChiudi}
           aria-label={finito ? "Chiudi il timer" : "Salta il recupero"}>
           <X className="w-4 h-4" aria-hidden="true" />
         </Button>

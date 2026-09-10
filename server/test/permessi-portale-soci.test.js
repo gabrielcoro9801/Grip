@@ -350,35 +350,29 @@ describe('cosa un socio può scrivere', () => {
 	});
 
 	test('prenota un corso, e la prenotazione è sua', async () => {
-		// Prenotare era semplicemente impossibile: Booking non era fra le entità scrivibili
-		// dal socio, quindi il portale mostrava il pulsante e il server rispondeva 403.
-		// L'intera funzione di autoprenotazione era morta.
+		// Prenotare era semplicemente impossibile: il portale mostrava il pulsante e il
+		// server rispondeva 403. Ora si passa da /api/prenotazioni, che è anche il posto
+		// dove si contano i posti — vedi prenotazioni.test.js per quelle regole.
+		const res = await come(tokenSocio, {
+			method: 'POST',
+			url: '/api/prenotazioni',
+			// L'intestatario lo impone il server: qui si chiede di prenotare per un altro.
+			payload: { session_id: idSessioneCorso, member_id: idEstraneo },
+		});
+		assert.equal(res.statusCode, 201);
+		assert.equal(res.json().booking.member_id, idSocio, 'non si prenota a nome di un altro');
+		idPrenotazioni.push(res.json().booking.id);
+	});
+
+	test("l'endpoint generico non è più una scorciatoia per prenotare", async () => {
+		// Da lì la riga arrivava con lo stato già deciso dal browser, e veniva scritta
+		// senza contare i posti: bastava chiedere 'confirmed' su una lezione piena.
 		const res = await come(tokenSocio, {
 			method: 'POST',
 			url: '/api/entities/Booking',
-			// L'intestatario lo impone il server: qui si chiede di prenotare per un altro.
-			payload: { session_id: idSessioneCorso, member_id: idEstraneo, status: 'confirmed' },
+			payload: { session_id: idSessioneCorso, member_id: idSocio, status: 'confirmed' },
 		});
-		assert.equal(res.statusCode, 201);
-		assert.equal(res.json().member_id, idSocio, 'non si prenota a nome di un altro');
-		idPrenotazioni.push(res.json().id);
-	});
-
-	test('disdice la propria, non quella di un altro', async () => {
-		const [altrui] = await db
-			.insert(bookings)
-			.values({ sessionId: idSessioneCorso, memberId: idEstraneo, status: 'confirmed' })
-			.returning();
-		idPrenotazioni.push(altrui.id);
-
-		// Le prenotazioni si leggono tutte — servono a contare i posti liberi — ma questo
-		// non deve diventare il permesso di disdire quelle degli altri.
-		const res = await come(tokenSocio, { method: 'DELETE', url: `/api/entities/Booking/${altrui.id}` });
-		assert.equal(res.statusCode, 404);
-
-		const mia = idPrenotazioni[0];
-		const sua = await come(tokenSocio, { method: 'DELETE', url: `/api/entities/Booking/${mia}` });
-		assert.equal(sua.statusCode, 200);
+		assert.equal(res.statusCode, 403);
 	});
 
 	test('non cancella nemmeno la propria anagrafica', async () => {

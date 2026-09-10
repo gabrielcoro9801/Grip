@@ -80,7 +80,7 @@ export default function InstructorsTab({ data, reload }) {
             <CardContent className="p-4">
               <div className="flex items-start justify-between gap-2">
                 <h4 className="font-medium">{i.full_name}</h4>
-                <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" title="Modifica" onClick={() => startEdit(i)}>
+                <Button variant="ghost" size="icon" className="h-9 w-9 shrink-0" title="Modifica" onClick={() => startEdit(i)}>
                   <Pencil className="w-3.5 h-3.5" />
                 </Button>
               </div>

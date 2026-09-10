@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, Suspense } from "react";
 import { Outlet, Link, useLocation } from "react-router-dom";
 import { useStaffAuth } from "@/lib/StaffAuthContext";
 import { canAccess, ROLES, SIDEBAR_PERMISSIONS } from "@/lib/permissions";
@@ -11,6 +11,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { LoadingState } from "@/components/shared/Spinner";
+import SelettoreTema from "@/components/shared/SelettoreTema";
 
 // Le etichette sono tutte in sentence case e ognuna nomina il dominio, non lo
 // strumento: "CRM" era l'unico acronimo in mezzo a nomi italiani, e chi cercava
@@ -112,6 +113,7 @@ export default function AppLayout() {
 
         {/* Staff user info + logout */}
         <div className="p-2 border-t border-sidebar-border space-y-2">
+          <SelettoreTema compatto={collapsed} />
           {!collapsed && (
             <div className="px-3 py-2 rounded-lg bg-sidebar-accent/50">
               <p className="text-sm font-medium text-white truncate">{staffUser.nome}</p>
@@ -159,7 +161,12 @@ export default function AppLayout() {
         </header>
 
         <main className="flex-1 overflow-y-auto">
-          <Outlet />
+          {/* Un'attesa che riguarda solo il contenuto: le pagine arrivano una per volta,
+              e senza questo il riquadro di caricamento più esterno farebbe sparire anche
+              il menu laterale a ogni cambio di sezione. */}
+          <Suspense fallback={<LoadingState minHeight="min-h-[60vh]" label="Caricamento della pagina" />}>
+            <Outlet />
+          </Suspense>
         </main>
       </div>
     </div>

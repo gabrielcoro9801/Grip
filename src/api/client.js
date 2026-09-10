@@ -109,6 +109,25 @@ export const api = {
 	},
 
 	/**
+	 * Prenotare e disdire.
+	 *
+	 * Non passano da `entities.Booking` perché prenotare non è scrivere una riga: è
+	 * decidere se c'è posto, e quel conto va fatto dove nessuno può saltarlo — dentro una
+	 * transazione, con la lezione bloccata.
+	 */
+	prenotazioni: {
+		crea({ sessionId, memberId }) {
+			return request('/api/prenotazioni', {
+				method: 'POST',
+				body: { session_id: sessionId, member_id: memberId },
+			});
+		},
+		disdici(bookingId) {
+			return request(`/api/prenotazioni/${bookingId}/disdici`, { method: 'POST' });
+		},
+	},
+
+	/**
 	 * Il codice d'accesso che cambia ogni minuto.
 	 *
 	 * Passa dal server perché è lì che vive la chiave con cui viene firmato: derivarlo nel

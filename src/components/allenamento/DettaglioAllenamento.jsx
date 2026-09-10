@@ -131,7 +131,7 @@ export default function DettaglioAllenamento({ sessione, righe, routine, onChiud
                     <p className="text-xs text-muted-foreground italic mb-1.5">{esercizio.previsto.note}</p>
                   )}
 
-                  <div className="rounded-lg border border-border overflow-hidden">
+                  <div className="rounded-lg border border-border overflow-x-auto">
                     <table className="w-full text-sm">
                       <caption className="sr-only">Serie previste ed eseguite di {esercizio.nome}</caption>
                       <thead>

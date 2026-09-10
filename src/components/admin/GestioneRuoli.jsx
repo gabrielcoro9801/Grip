@@ -190,7 +190,7 @@ export default function GestioneRuoli() {
                     return (
                       <td key={r.nome} className="py-2 px-3 text-center">
                         {perms.includes("edit") ? (
-                          <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 text-[10px]">V + M</Badge>
+                          <Badge className="bg-success/10 text-success border-success/30 text-[10px]">V + M</Badge>
                         ) : perms.includes("view") ? (
                           <Badge variant="outline" className="text-[10px]">V</Badge>
                         ) : (
@@ -284,7 +284,7 @@ export default function GestioneRuoli() {
             {inModifica && (
               <div className="space-y-4">
                 {inModifica.nome === staffUser?.ruolo && (
-                  <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 text-xs">
+                  <div className="flex items-start gap-2 p-3 rounded-lg bg-warning/10 border border-warning/30 text-warning text-xs">
                     <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
                     <span>
                       Stai modificando il <strong>tuo</strong> ruolo: quello che togli lo perdi tu per primo,

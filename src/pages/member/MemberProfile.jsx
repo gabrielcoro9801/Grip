@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { api } from "@/api/client";
 import { useMemberAuth } from "@/lib/MemberAuthContext";
 import { Card, CardContent } from "@/components/ui/card";
+import SelettoreTema from "@/components/shared/SelettoreTema";
 import { Button } from "@/components/ui/button";
 import { User, Mail, Phone, MapPin, Calendar, Heart, Pencil, LogOut, Hash } from "lucide-react";
 import {
@@ -64,6 +65,15 @@ export default function MemberProfile() {
               <p className="text-sm">{member.notes}</p>
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      {/* Sul telefono la barra laterale non c'è, quindi la scelta del tema va qui: è la
+          pagina dove un socio cerca le proprie impostazioni. */}
+      <Card className="border-0 shadow-sm lg:hidden">
+        <CardContent className="p-4 space-y-2">
+          <p className="text-sm font-medium">Aspetto</p>
+          <SelettoreTema />
         </CardContent>
       </Card>
 

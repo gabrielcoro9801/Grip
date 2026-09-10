@@ -7,8 +7,9 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import PageHeader from "@/components/shared/PageHeader";
-import { Plus, Edit2, Trash2, Clock, Hash } from "lucide-react";
+import { Plus, Edit2, Trash2, Clock, Hash, BookOpen } from "lucide-react";
 import { LoadingState } from "@/components/shared/Spinner";
+import { EmptyState } from "@/components/shared/StateViews";
 import { formatEuro } from "@/lib/format";
 
 export default function PlansCatalog() {
@@ -58,6 +59,13 @@ export default function PlansCatalog() {
         </Button>
       </PageHeader>
 
+      {plans.length === 0 ? (
+        <EmptyState
+          icon={BookOpen}
+          title="Nessun abbonamento in catalogo"
+          description="Qui si definiscono i tipi di abbonamento — durata, prezzo, sessioni incluse — da assegnare poi ai soci."
+        />
+      ) : (
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {plans.map(plan => (
           <Card key={plan.id} className="border-0 shadow-sm">
@@ -65,8 +73,8 @@ export default function PlansCatalog() {
               <div className="flex items-start justify-between mb-3">
                 <h3 className="font-heading font-semibold">{plan.name}</h3>
                 <div className="flex gap-1">
-                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(plan)}><Edit2 className="w-3.5 h-3.5" /></Button>
-                  <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => handleDelete(plan.id)}><Trash2 className="w-3.5 h-3.5" /></Button>
+                  <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => openEdit(plan)}><Edit2 className="w-3.5 h-3.5" /></Button>
+                  <Button variant="ghost" size="icon" className="h-9 w-9 text-destructive" onClick={() => handleDelete(plan.id)}><Trash2 className="w-3.5 h-3.5" /></Button>
                 </div>
               </div>
               <p className="text-2xl font-bold text-primary">{formatEuro(plan.price)}</p>
@@ -79,6 +87,7 @@ export default function PlansCatalog() {
           </Card>
         ))}
       </div>
+      )}
 
       <Dialog open={showForm} onOpenChange={v => { setShowForm(v); if (!v) setEditing(null); }}>
         <DialogContent className="max-w-sm">
