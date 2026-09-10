@@ -3,6 +3,7 @@ import { Outlet, Link, useLocation } from "react-router-dom";
 import { useMemberAuth } from "@/lib/MemberAuthContext";
 import MemberLogin from "./MemberLogin";
 import { LoadingState } from "@/components/shared/Spinner";
+import SelettoreTema from "@/components/shared/SelettoreTema";
 import { Dumbbell, Home, FileText, CreditCard, User, QrCode, LogOut, LayoutGrid, ClipboardList } from "lucide-react";
 
 // Una sola lista di destinazioni. Le barre erano due, con nomi diversi per lo

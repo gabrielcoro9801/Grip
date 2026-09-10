@@ -36,6 +36,16 @@ export default [
     },
     rules: {
       "no-unused-vars": "off",
+      // Un nome usato e mai importato. Non è un caso di scuola: <SelettoreTema /> nel portale
+      // soci era rimasto senza il suo import, e nessuno se n'era accorto perché il build non
+      // se ne lamenta — il componente diventa una variabile libera e l'errore arriva solo
+      // quando quel pezzo di pagina viene disegnato, cioè dopo il login, in produzione.
+      //
+      // Queste regole vivevano già in `recommended`, ma gli spread qui sopra portano le loro
+      // regole in un oggetto che questa chiave `rules` sostituisce per intero: quindi erano
+      // spente. Riaccenderle non ha prodotto nessun'altra segnalazione in tutto il progetto.
+      "no-undef": "error",
+      "react/jsx-no-undef": "error",
       "react/jsx-uses-vars": "error",
       "react/jsx-uses-react": "error",
       "unused-imports/no-unused-imports": "error",
