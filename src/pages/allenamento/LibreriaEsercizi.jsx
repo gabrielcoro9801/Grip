@@ -15,10 +15,10 @@ import { LoadingState } from "@/components/shared/Spinner";
 import { EmptyState, ErrorState } from "@/components/shared/StateViews";
 import { useConfirm } from "@/components/shared/ConfirmDialog";
 import { useToast } from "@/components/ui/use-toast";
-import { Plus, Pencil, Trash2, Dumbbell, Search } from "lucide-react";
+import { Plus, Pencil, Trash2, Dumbbell, Search, Image as ImageIcon } from "lucide-react";
 import { gruppiPerZona } from "@/lib/gruppiMuscolari";
 
-const FORM_VUOTO = { name: "", muscle_group: "petto", description: "" };
+const FORM_VUOTO = { name: "", muscle_group: "petto", description: "", image_url: "" };
 
 export default function LibreriaEsercizi() {
   const { staffUser } = useStaffAuth();
@@ -37,6 +37,7 @@ export default function LibreriaEsercizi() {
   const [form, setForm] = useState(FORM_VUOTO);
   const [formAperto, setFormAperto] = useState(false);
   const [salvataggio, setSalvataggio] = useState(false);
+  const [caricamentoImmagine, setCaricamentoImmagine] = useState(false);
 
   const puoModificare = canEdit(staffUser.ruolo, "crm_plans");
 
@@ -64,8 +65,14 @@ export default function LibreriaEsercizi() {
   const usoPerEsercizio = useMemo(() => {
     const conteggio = new Map();
     for (const scheda of schede) {
-      // Uno stesso esercizio può comparire due volte nella stessa scheda: conta come una.
-      const idVisti = new Set((scheda.exercises ?? []).map((es) => es.exercise_id).filter(Boolean));
+      // Uno stesso esercizio può comparire due volte nella stessa scheda — in due routine
+      // diverse, o due volte nella stessa: conta come una.
+      const idVisti = new Set(
+        (scheda.routines ?? [])
+          .flatMap((r) => r.esercizi ?? [])
+          .map((es) => es.exercise_id)
+          .filter(Boolean)
+      );
       for (const id of idVisti) conteggio.set(id, (conteggio.get(id) ?? 0) + 1);
     }
     return conteggio;
@@ -106,8 +113,23 @@ export default function LibreriaEsercizi() {
       name: esercizio.name,
       muscle_group: esercizio.muscle_group ?? "altro",
       description: esercizio.description ?? "",
+      image_url: esercizio.image_url ?? "",
     });
     setFormAperto(true);
+  };
+
+  const caricaImmagine = async (file) => {
+    if (!file) return;
+    setCaricamentoImmagine(true);
+    try {
+      // La stessa rotta dei documenti e del logo: in produzione scrive sul volume
+      // persistente, e /uploads/* è servito anche al portale soci, che deve poterla vedere.
+      const { file_url } = await api.integrations.Core.UploadFile({ file });
+      setForm((precedente) => ({ ...precedente, image_url: file_url }));
+    } catch (err) {
+      toast({ title: "Immagine non caricata", description: err.message, variant: "destructive" });
+    }
+    setCaricamentoImmagine(false);
   };
 
   const salva = async (evento) => {
@@ -236,7 +258,17 @@ export default function LibreriaEsercizi() {
                           <Card key={esercizio.id} className="border-0 shadow-sm">
                             <CardContent className="p-4">
                               <div className="flex items-start justify-between gap-2">
-                                <h4 className="font-medium text-sm min-w-0">{esercizio.name}</h4>
+                                <div className="flex items-start gap-2.5 min-w-0">
+                                  {esercizio.image_url && (
+                                    <img
+                                      src={esercizio.image_url}
+                                      alt=""
+                                      loading="lazy"
+                                      className="w-10 h-10 rounded-lg object-cover bg-muted shrink-0"
+                                    />
+                                  )}
+                                  <h4 className="font-medium text-sm min-w-0">{esercizio.name}</h4>
+                                </div>
                                 {puoModificare && (
                                   <div className="flex items-center gap-0.5 shrink-0 -mt-1 -mr-2">
                                     <Button
@@ -313,6 +345,39 @@ export default function LibreriaEsercizi() {
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+            <div>
+              <Label htmlFor="esercizio-immagine">Immagine</Label>
+              <div className="flex items-center gap-3">
+                {form.image_url ? (
+                  <img
+                    src={form.image_url}
+                    alt=""
+                    className="w-16 h-16 rounded-lg object-cover bg-muted shrink-0"
+                  />
+                ) : (
+                  <div className="w-16 h-16 rounded-lg bg-muted flex items-center justify-center shrink-0">
+                    <ImageIcon className="w-5 h-5 text-muted-foreground" aria-hidden="true" />
+                  </div>
+                )}
+                <div className="min-w-0 flex-1">
+                  <Input
+                    id="esercizio-immagine" type="file" accept="image/*"
+                    className="text-xs"
+                    disabled={caricamentoImmagine}
+                    onChange={(e) => caricaImmagine(e.target.files?.[0])}
+                  />
+                  {form.image_url && (
+                    <Button
+                      type="button" variant="ghost" size="sm"
+                      className="text-xs text-muted-foreground mt-1 h-7"
+                      onClick={() => setForm({ ...form, image_url: "" })}
+                    >
+                      Togli l'immagine
+                    </Button>
+                  )}
+                </div>
+              </div>
             </div>
             <div>
               <Label htmlFor="esercizio-descrizione">Descrizione</Label>

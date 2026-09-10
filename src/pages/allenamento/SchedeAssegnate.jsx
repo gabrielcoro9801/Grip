@@ -6,6 +6,8 @@ import { canEdit } from "@/lib/permissions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import PageHeader from "@/components/shared/PageHeader";
 import { LoadingState } from "@/components/shared/Spinner";
 import { EmptyState, ErrorState } from "@/components/shared/StateViews";
@@ -31,6 +33,10 @@ export default function SchedeAssegnate() {
   const [ricerca, setRicerca] = useState("");
   const [filtroSocio, setFiltroSocio] = useState("tutti");
 
+  const [daPromuovere, setDaPromuovere] = useState(null);
+  const [nomeModello, setNomeModello] = useState("");
+  const [promozioneInCorso, setPromozioneInCorso] = useState(false);
+
   const puoModificare = canEdit(staffUser.ruolo, "crm_plans");
 
   const carica = useCallback(async () => {
@@ -40,7 +46,10 @@ export default function SchedeAssegnate() {
       const [s, m, w] = await Promise.all([
         api.entities.ExercisePlan.filter({ is_template: false }),
         api.entities.Member.list("full_name"),
-        api.entities.WorkoutLog.list("-data", 500),
+        // Le **sessioni**, non le serie: dalla migrazione 0022 ogni riga di WorkoutLog è
+        // una serie sola, e contarle come allenamenti faceva leggere tre sedute da sedici
+        // serie come «48 allenamenti».
+        api.entities.WorkoutSession.list("-iniziata_alle", 500),
       ]);
       setSchede(s);
       setSoci(m);
@@ -57,13 +66,13 @@ export default function SchedeAssegnate() {
   // l'ha ricevuta e mai aperta — e senza, l'elenco dice solo cosa è stato consegnato.
   const usoPerScheda = useMemo(() => {
     const per = new Map();
-    for (const log of allenamenti) {
-      if (!log.plan_id) continue;
-      const corrente = per.get(log.plan_id);
-      // Gli allenamenti arrivano già in ordine di data decrescente: il primo che si
-      // incontra per una scheda è il più recente.
+    for (const sessione of allenamenti) {
+      if (!sessione.plan_id) continue;
+      const corrente = per.get(sessione.plan_id);
+      // Le sessioni arrivano già dalla più recente: la prima che si incontra per una
+      // scheda è l'ultima volta che il socio l'ha usata.
       if (corrente) corrente.quante += 1;
-      else per.set(log.plan_id, { quante: 1, ultima: log.data });
+      else per.set(sessione.plan_id, { quante: 1, ultima: sessione.iniziata_alle });
     }
     return per;
   }, [allenamenti]);
@@ -110,6 +119,42 @@ export default function SchedeAssegnate() {
       navigate(`/allenamento/schede/${copia.id}`);
     } catch (err) {
       toast({ title: "Non è stato possibile duplicare", description: err.message, variant: "destructive" });
+    }
+  };
+
+  /**
+   * Da scheda di una persona a modello del catalogo.
+   *
+   * È l'inverso dell'assegnazione: una scheda scritta per un socio, e che ha funzionato,
+   * diventa il punto di partenza per gli altri. Il nome si chiede perché quello buono per
+   * una persona quasi mai lo è per un modello — «Forza — Giulia» non dice niente a chi
+   * cercherà nel catalogo fra sei mesi.
+   *
+   * Il modello è una copia, non un collegamento: da qui in poi le due vite sono separate,
+   * come per l'assegnazione.
+   */
+  const rendiModello = async (evento) => {
+    evento.preventDefault();
+    setPromozioneInCorso(true);
+    try {
+      const modello = await api.entities.ExercisePlan.create({
+        is_template: true,
+        name: nomeModello.trim() || daPromuovere.name,
+        notes: daPromuovere.notes ?? "",
+        routines: clonaRoutines(daPromuovere.routines),
+        // Un modello non è di nessuno, e non "viene da" la scheda di un socio: il legame di
+        // provenienza serve nell'altro verso, per sapere da quale modello nasce una scheda.
+        template_origin_id: null,
+      });
+      setDaPromuovere(null);
+      toast({
+        title: `«${modello.name}» è ora un modello`,
+        description: "Lo trovi fra le Schede modello, pronto da assegnare a chiunque.",
+      });
+      navigate(`/allenamento/schede/${modello.id}`);
+    } catch (err) {
+      toast({ title: "Non è stato possibile creare il modello", description: err.message, variant: "destructive" });
+      setPromozioneInCorso(false);
     }
   };
 
@@ -238,6 +283,17 @@ export default function SchedeAssegnate() {
                         <>
                           <Button
                             variant="ghost" size="icon" className="h-7 w-7"
+                            aria-label={`Rendi «${scheda.name}» un modello riutilizzabile`}
+                            title="Rendi modello"
+                            onClick={() => {
+                              setDaPromuovere(scheda);
+                              setNomeModello(scheda.name);
+                            }}
+                          >
+                            <LayoutTemplate className="w-3.5 h-3.5" aria-hidden="true" />
+                          </Button>
+                          <Button
+                            variant="ghost" size="icon" className="h-7 w-7"
                             aria-label={`Modifica ${scheda.name}`} title="Modifica"
                             onClick={() => navigate(`/allenamento/schede/${scheda.id}`)}
                           >
@@ -269,6 +325,39 @@ export default function SchedeAssegnate() {
           ))}
         </div>
       )}
+
+      <Dialog open={Boolean(daPromuovere)} onOpenChange={(v) => !v && setDaPromuovere(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Rendi «{daPromuovere?.name}» un modello</DialogTitle>
+            <DialogDescription>
+              Ne viene fatta una copia nel catalogo, senza il socio. La scheda di
+              {" "}{daPromuovere?.member_name} resta dov'è e non cambia.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={rendiModello} className="space-y-4">
+            <div>
+              <Label htmlFor="modello-nome">Nome del modello *</Label>
+              <Input
+                id="modello-nome" required autoFocus
+                value={nomeModello}
+                onChange={(e) => setNomeModello(e.target.value)}
+                placeholder="Full body principianti"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Chiamalo per quello che è, non per chi lo faceva: nel catalogo lo cercherai
+                fra sei mesi.
+              </p>
+            </div>
+            <div className="flex gap-2 justify-end">
+              <Button type="button" variant="ghost" onClick={() => setDaPromuovere(null)}>Annulla</Button>
+              <Button type="submit" disabled={!nomeModello.trim() || promozioneInCorso}>
+                Crea il modello
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       {dialogoConferma}
     </>

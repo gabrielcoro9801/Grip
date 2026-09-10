@@ -36,6 +36,11 @@ const ENTITY_MODULES = {
 	// valeva solo per i pulsanti nascosti, e la stessa richiesta fatta a mano passava.
 	Exercise: 'crm_plans',
 	ExercisePlan: 'crm_plans',
+	// Gli allenamenti svolti: lo staff li legge per seguire i soci, e li corregge solo se
+	// ha la modifica sulle schede. Il socio non passa di qui — le proprie sessioni e le
+	// proprie serie le scrive comunque, da memberPuoScrivere.
+	WorkoutSession: 'crm_plans',
+	WorkoutLog: 'crm_plans',
 };
 
 // Entità che solo un amministratore può modificare, a prescindere dalla matrice:

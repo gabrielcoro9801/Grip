@@ -14,11 +14,40 @@
 // La routine è il livello che il socio avvia: una scheda è il programma di una settimana,
 // e non si esegue tutta in una volta.
 
-import { etichettaGruppo } from "@/lib/gruppiMuscolari";
+// Import relativo e non con l'alias "@", come già fa lib/permissions.js: così questo
+// modulo si carica anche fuori da Vite, ed è quello che permette di provarne le funzioni
+// con `node --test` senza tirarsi dietro un intero framework di test.
+import { etichettaGruppo } from "./gruppiMuscolari.js";
+
+/**
+ * I tipi di serie.
+ *
+ * `normale` è il valore assunto quando manca, così le schede scritte prima che i tipi
+ * esistessero restano valide senza doverle riscrivere.
+ *
+ * `volume: false` dice che la serie non entra nel conteggio del carico sollevato: il
+ * riscaldamento si fa per scaldarsi, e sommarlo al lavoro vero gonfia il numero con cui si
+ * confronta questa settimana con la scorsa.
+ */
+export const TIPI_SERIE = {
+  normale: { etichetta: "Serie di lavoro", sigla: "", volume: true },
+  riscaldamento: { etichetta: "Riscaldamento", sigla: "R", volume: false },
+  dropset: { etichetta: "Drop set", sigla: "D", volume: true },
+  cedimento: { etichetta: "A cedimento", sigla: "C", volume: true },
+};
+
+export function tipoSerie(codice) {
+  return TIPI_SERIE[codice] ?? TIPI_SERIE.normale;
+}
 
 /** Una serie nuova, opzionalmente ricalcata su quella che la precede. */
 export function nuovaSerie(precedente) {
-  return { reps: precedente?.reps ?? "", rpe: precedente?.rpe ?? null };
+  return {
+    reps: precedente?.reps ?? "",
+    rpe: precedente?.rpe ?? null,
+    // Il tipo si eredita: dopo una serie di riscaldamento se ne fa quasi sempre un'altra.
+    tipo: precedente?.tipo ?? "normale",
+  };
 }
 
 /** Un esercizio nuovo, preso dal catalogo, con una prima serie già pronta. */
@@ -123,6 +152,43 @@ export function formatRecupero(secondi) {
   return resto ? `${minuti}' ${resto}"` : `${minuti}'`;
 }
 
+// ---------------------------------------------------------------------------------------
+// Gli allenamenti svolti
+// ---------------------------------------------------------------------------------------
+
+/**
+ * Serie e volume di un allenamento, dalle righe registrate.
+ *
+ * Sta qui e non nella schermata della sessione perché gli stessi due numeri servono anche
+ * al personal trainer che rilegge l'allenamento: se li calcolassero in due punti diversi,
+ * prima o poi il socio e il suo istruttore vedrebbero due volumi diversi per la stessa
+ * seduta, ed è esattamente il tipo di discrepanza che nessuno riesce a spiegare.
+ *
+ * Accetta sia le righe che arrivano dall'API (`peso_usato`, `reps_fatte`) sia quelle in
+ * lavorazione nella sessione (`kg`, `reps`), perché sono la stessa cosa in due momenti.
+ */
+export function statisticheAllenamento(righe) {
+  let serie = 0;
+  let volume = 0;
+  for (const riga of righe ?? []) {
+    // Il riscaldamento non è volume di allenamento: contarlo gonfia il numero con cui si
+    // confronta questa settimana con la scorsa, ed è il motivo per cui lo si distingue.
+    if (!tipoSerie(riga.tipo_serie ?? riga.tipo).volume) continue;
+    serie += 1;
+    const peso = Number(riga.peso_usato ?? riga.kg ?? 0);
+    const reps = Number(riga.reps_fatte ?? riga.reps ?? 0);
+    if (Number.isFinite(peso) && Number.isFinite(reps)) volume += peso * reps;
+  }
+  return { serie, volume };
+}
+
+/** Quanto è durata una sessione, in secondi. Se è ancora aperta, quanto sta durando. */
+export function durataSessione(sessione, adesso = Date.now()) {
+  if (!sessione?.iniziata_alle) return 0;
+  const fine = sessione.terminata_alle ? new Date(sessione.terminata_alle).getTime() : adesso;
+  return Math.max(0, (fine - new Date(sessione.iniziata_alle).getTime()) / 1000);
+}
+
 /** Quante serie ha in tutto un elenco di esercizi: è la misura del suo volume. */
 export function totaleSerie(esercizi) {
   return (esercizi ?? []).reduce((somma, es) => somma + (es.serie?.length ?? 0), 0);
@@ -150,6 +216,100 @@ export function gruppiDellaScheda(esercizi) {
 /** Gli stessi gruppi, su tutte le routine di una scheda. */
 export function gruppiDelleRoutine(routines) {
   return gruppiDellaScheda((routines ?? []).flatMap((r) => r.esercizi ?? []));
+}
+
+// ---------------------------------------------------------------------------------------
+// Superset e circuiti
+// ---------------------------------------------------------------------------------------
+//
+// Due o più esercizi che si fanno di fila senza recupero in mezzo. Si esprimono con un
+// campo `gruppo` sull'esercizio: chi ha la stessa lettera sta nello stesso giro. Una
+// lettera e non un identificativo perché è così che un PT le scrive sul foglio — A1, A2 —
+// e perché rende leggibile il jsonb quando si va a guardarlo.
+
+const LETTERE = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
+/**
+ * Gli esercizi di una routine divisi nei giri in cui vanno eseguiti.
+ *
+ * Restituisce sempre la stessa forma — un elenco di gruppi — anche quando nessuno è in
+ * superset: così chi disegna non deve tenere due strade, una per gli esercizi soli e una
+ * per quelli raggruppati.
+ *
+ * Solo esercizi **adiacenti** con la stessa lettera fanno gruppo: la posizione nella
+ * routine è l'ordine di esecuzione, e due esercizi marcati "A" ma separati da altri non
+ * sono un superset, sono un errore di compilazione che non va nascosto.
+ */
+export function raggruppaPerSuperset(esercizi) {
+  const gruppi = [];
+  (esercizi ?? []).forEach((esercizio, indice) => {
+    const ultimo = gruppi[gruppi.length - 1];
+    if (esercizio.gruppo && ultimo?.gruppo === esercizio.gruppo) {
+      ultimo.esercizi.push({ esercizio, indice });
+    } else {
+      gruppi.push({ gruppo: esercizio.gruppo ?? null, esercizi: [{ esercizio, indice }] });
+    }
+  });
+  return gruppi;
+}
+
+/** La prima lettera libera, per creare un gruppo nuovo. */
+export function prossimaLetteraGruppo(esercizi) {
+  const usate = new Set((esercizi ?? []).map((e) => e.gruppo).filter(Boolean));
+  return [...LETTERE].find((l) => !usate.has(l)) ?? "A";
+}
+
+/** Se un esercizio è l'ultimo del suo giro: è lì che parte il recupero, non prima. */
+export function ultimoDelGiro(esercizi, indice) {
+  const corrente = esercizi?.[indice];
+  if (!corrente?.gruppo) return true;
+  const successivo = esercizi[indice + 1];
+  return successivo?.gruppo !== corrente.gruppo;
+}
+
+// ---------------------------------------------------------------------------------------
+// Record e progressi
+// ---------------------------------------------------------------------------------------
+
+/**
+ * Il massimale stimato da una serie, con la formula di Epley.
+ *
+ * `kg × (1 + reps/30)` è la stima più diffusa e resta ragionevole entro le dieci
+ * ripetizioni; oltre, sovrastima — ed è il motivo per cui sopra le dodici non la si mostra
+ * invece di dare un numero in cui nessuno crederebbe.
+ */
+export function massimaleStimato(peso, reps) {
+  const kg = Number(peso);
+  const ripetizioni = Number(reps);
+  if (!Number.isFinite(kg) || !Number.isFinite(ripetizioni)) return null;
+  if (kg <= 0 || ripetizioni <= 0 || ripetizioni > 12) return null;
+  return Math.round(kg * (1 + ripetizioni / 30) * 10) / 10;
+}
+
+/**
+ * Il record per ogni esercizio, dalle serie registrate.
+ *
+ * Il record è la serie col massimale stimato più alto, non il peso più alto: 100kg×1 e
+ * 80kg×8 sono due prestazioni diverse, e la seconda è la migliore delle due. Confrontare
+ * i soli chili premierebbe una singola tirata a caso sopra un lavoro serio.
+ */
+export function recordPerEsercizio(righe) {
+  const per = new Map();
+  for (const riga of righe ?? []) {
+    if (!tipoSerie(riga.tipo_serie ?? riga.tipo).volume) continue;
+    const stimato = massimaleStimato(riga.peso_usato ?? riga.kg, riga.reps_fatte ?? riga.reps);
+    if (stimato === null) continue;
+    const corrente = per.get(riga.exercise_name);
+    if (!corrente || stimato > corrente.massimale) {
+      per.set(riga.exercise_name, {
+        massimale: stimato,
+        peso: Number(riga.peso_usato ?? riga.kg),
+        reps: Number(riga.reps_fatte ?? riga.reps),
+        data: riga.data,
+      });
+    }
+  }
+  return per;
 }
 
 // ---------------------------------------------------------------------------------------

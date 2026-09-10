@@ -6,34 +6,42 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { ClipboardList, Play, Timer, ChevronDown, History, CalendarDays } from "lucide-react";
+import { ClipboardList, Play, Timer, ChevronDown, History, CalendarDays, Trophy } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { LoadingState } from "@/components/shared/Spinner";
 import { EmptyState, ErrorState } from "@/components/shared/StateViews";
+import { useConfirm } from "@/components/shared/ConfirmDialog";
 import { formatData, formatDataOra } from "@/lib/format";
 import { etichettaGruppo } from "@/lib/gruppiMuscolari";
-import { formatRecupero, formatDurata, totaleSerie, riepilogoSerie, riepilogoRpe } from "@/lib/scheda";
+import { formatRecupero, formatDurata, totaleSerie, riepilogoSerie, riepilogoRpe, recordPerEsercizio } from "@/lib/scheda";
+import ProgressiEsercizio from "@/components/allenamento/ProgressiEsercizio";
 
 export default function MemberWorkoutPlans() {
   const { memberUser } = useMemberAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
+  const [conferma, dialogoConferma] = useConfirm();
 
   const [schede, setSchede] = useState([]);
   const [sessioni, setSessioni] = useState([]);
   const [caricamento, setCaricamento] = useState(true);
   const [errore, setErrore] = useState(null);
   const [avvioInCorso, setAvvioInCorso] = useState(null);
+  const [annullamentoInCorso, setAnnullamentoInCorso] = useState(false);
+  const [righe, setRighe] = useState([]);
+  const [esercizioAperto, setEsercizioAperto] = useState(null);
 
   const carica = useCallback(async () => {
     setErrore(null);
     try {
-      const [s, ses] = await Promise.all([
+      const [s, ses, log] = await Promise.all([
         api.entities.ExercisePlan.filter({ member_id: memberUser.member_id }),
         api.entities.WorkoutSession.filter({ member_id: memberUser.member_id }, "-iniziata_alle", 50),
+        api.entities.WorkoutLog.filter({ member_id: memberUser.member_id }, "-data", 1000),
       ]);
       setSchede(s);
       setSessioni(ses);
+      setRighe(log);
     } catch (err) {
       setErrore(err);
     }
@@ -47,6 +55,42 @@ export default function MemberWorkoutPlans() {
   // spezzare in due lo stesso allenamento.
   const inCorso = useMemo(() => sessioni.find((s) => !s.terminata_alle), [sessioni]);
   const concluse = useMemo(() => sessioni.filter((s) => s.terminata_alle), [sessioni]);
+
+  // I record, dal migliore al peggiore: in cima quello di cui si va piu fieri.
+  const record = useMemo(
+    () => [...recordPerEsercizio(righe).entries()]
+      .map(([nome, migliore]) => ({ nome, migliore }))
+      .sort((a, b) => b.migliore.massimale - a.migliore.massimale),
+    [righe],
+  );
+
+  const annullaInCorso = async () => {
+    const ok = await conferma({
+      title: "Annullare l'allenamento in corso?",
+      description: `«${inCorso.routine_name}» e tutto quello che ci hai registrato vengono cancellati.`,
+      confirmLabel: "Annulla l'allenamento",
+      destructive: true,
+    });
+    if (!ok) return;
+    setAnnullamentoInCorso(true);
+    try {
+      // Prima le serie e poi la sessione: la chiave esterna punta da quelle a questa.
+      const daCancellare = await api.entities.WorkoutLog.filter(
+        { member_id: memberUser.member_id },
+        "-data",
+        1000
+      );
+      for (const riga of daCancellare.filter((r) => r.session_id === inCorso.id)) {
+        await api.entities.WorkoutLog.delete(riga.id);
+      }
+      await api.entities.WorkoutSession.delete(inCorso.id);
+      toast({ title: "Allenamento annullato" });
+      await carica();
+    } catch (err) {
+      toast({ title: "Non è stato possibile annullare", description: err.message, variant: "destructive" });
+    }
+    setAnnullamentoInCorso(false);
+  };
 
   const avvia = async (scheda, routine, indiceRoutine) => {
     if (inCorso) {
@@ -95,6 +139,14 @@ export default function MemberWorkoutPlans() {
             </div>
             <Button size="sm" onClick={() => navigate(`/member-portal/allenamento/sessione/${inCorso.id}`)}>
               Riprendi
+            </Button>
+            {/* La via d'uscita: finché una sessione resta aperta non se ne può avviare
+                un'altra, e un allenamento iniziato per sbaglio bloccherebbe tutto. */}
+            <Button
+              variant="ghost" size="sm" className="text-muted-foreground"
+              onClick={annullaInCorso} disabled={annullamentoInCorso}
+            >
+              Annulla
             </Button>
           </CardContent>
         </Card>
@@ -207,6 +259,40 @@ export default function MemberWorkoutPlans() {
         ))
       )}
 
+      {record.length > 0 && (
+        <Card className="border-0 shadow-sm">
+          <CardContent className="p-4">
+            <h2 className="text-sm font-heading font-semibold mb-1 inline-flex items-center gap-1.5">
+              <Trophy className="w-4 h-4 text-muted-foreground" aria-hidden="true" /> I tuoi record
+            </h2>
+            <p className="text-xs text-muted-foreground mb-3">
+              La serie migliore per ogni esercizio. Toccane uno per vedere come sta andando.
+            </p>
+            <ul className="divide-y divide-border">
+              {record.map(({ nome, migliore }) => (
+                <li key={nome}>
+                  <button
+                    type="button"
+                    onClick={() => setEsercizioAperto(nome)}
+                    className="w-full text-left py-2 flex items-center justify-between gap-2 hover:text-primary transition-colors"
+                  >
+                    <span className="min-w-0">
+                      <span className="block text-sm font-medium truncate">{nome}</span>
+                      <span className="block text-xs text-muted-foreground">
+                        {migliore.peso}kg × {migliore.reps} · {formatData(migliore.data, "media")}
+                      </span>
+                    </span>
+                    <span className="text-xs text-muted-foreground whitespace-nowrap tabular-nums">
+                      {migliore.massimale} kg stimati
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+      )}
+
       {concluse.length > 0 && (
         <Card className="border-0 shadow-sm">
           <CardContent className="p-4">
@@ -239,6 +325,16 @@ export default function MemberWorkoutPlans() {
           </CardContent>
         </Card>
       )}
+
+      {esercizioAperto && (
+        <ProgressiEsercizio
+          nomeEsercizio={esercizioAperto}
+          righe={righe}
+          onChiudi={() => setEsercizioAperto(null)}
+        />
+      )}
+
+      {dialogoConferma}
     </div>
   );
 }

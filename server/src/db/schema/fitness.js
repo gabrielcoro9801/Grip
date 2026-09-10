@@ -12,6 +12,9 @@ export const exercises = pgTable('exercises', {
 	// Codice da shared/gruppiMuscolari.js (es. 'petto', 'dorsali').
 	muscleGroup: varchar('muscle_group', { length: 32 }),
 	description: text('description'),
+	// Foto o disegno dell'esercizio, caricato da /api/uploads. Si riconosce l'attrezzo a
+	// colpo d'occhio, che sotto il bilanciere vale più di tre righe di descrizione.
+	imageUrl: varchar('image_url', { length: 512 }),
 });
 
 // Una scheda di allenamento, in due vesti che condividono la stessa forma:
@@ -95,6 +98,10 @@ export const workoutLogs = pgTable('workout_logs', {
 	setIndex: integer('set_index'),
 	exerciseName: varchar('exercise_name', { length: 255 }),
 	muscleGroup: varchar('muscle_group', { length: 32 }),
+	// normale | riscaldamento | dropset | cedimento. Copiato dalla scheda al momento
+	// dell'esecuzione: serve a rileggere l'allenamento sapendo cosa contava davvero —
+	// il riscaldamento non è volume, e sommarlo gonfia il confronto con la settimana prima.
+	tipoSerie: varchar('tipo_serie', { length: 16 }).default('normale'),
 	pesoUsato: numeric('peso_usato', { precision: 8, scale: 2 }),
 	repsFatte: integer('reps_fatte'),
 	rpePercepito: numeric('rpe_percepito', { precision: 3, scale: 1 }),

@@ -105,6 +105,60 @@ Tre punti che si sbagliano quasi sempre, spiegati lì per esteso:
 
 ## Stato del progetto
 
+### 10 settembre 2026 (pomeriggio) — il personal trainer vede, e la scheda si arricchisce
+
+Controllo di qualità sulla sezione appena scritta, più le funzioni che mancavano rispetto
+alle app che i soci hanno già sul telefono.
+
+**Il buco più grosso era che chi prescrive non vedeva niente.** Il socio registrava
+diligentemente ogni serie e il suo istruttore non aveva modo di saperlo. Ora c'è
+**Allenamenti svolti** (`/allenamento/svolti`): l'elenco delle sedute con durata, volume e
+serie, il confronto **prescritto accanto a eseguito** aprendone una, e la riga che risponde
+alla domanda che un istruttore si fa davvero — *chi ha una scheda e non si allena da una
+settimana*. Le ultime sedute compaiono anche nella scheda del socio.
+
+**Quattro difetti trovati rileggendo il codice**, tutti corretti:
+
+- «Allenamenti registrati» contava le **serie**: dopo la 0022 ogni riga di `workout_logs` è
+  una serie, quindi tre sedute da sedici serie si leggevano come «48 allenamenti».
+- Il **doppio tocco** sulla spunta lasciava una serie registrata sul server che a schermo
+  risultava non fatta — il secondo tocco entrava nel ramo «togli la spunta» prima che
+  l'identificativo del primo fosse tornato. Ora un `ref` fa da guardiano.
+- Una sessione **abbandonata bloccava il socio per sempre**: non se ne può avviare una
+  seconda, e se nel frattempo l'istruttore toglieva quella routine dalla scheda la pagina
+  andava in errore prima di disegnare il pulsante per chiuderla. Ora c'è «Annulla
+  allenamento», e una routine sparita degrada a sola lettura invece di rompersi.
+- La colonna **«Precedente»** ordinava per `data`, che è una DATE senza ora: due sedute
+  nello stesso giorno si ordinavano a caso. Ora l'ordine viene da `iniziata_alle` della
+  sessione, e il confronto guarda solo la stessa routine.
+
+Corretto anche un residuo del passaggio alle routine: il conteggio «in N schede» del
+catalogo esercizi leggeva ancora `scheda.exercises`, che non esiste più, e mostrava sempre
+zero.
+
+**Il pulsante «Rendi modello»**: una scheda scritta per una persona, e che ha funzionato,
+diventa un modello del catalogo con un clic. È l'inverso dell'assegnazione, e come quella è
+una copia — le due vite restano separate.
+
+**Dalle app concorrenti**, quattro aggiunte:
+
+- **Tipi di serie** (riscaldamento, drop set, a cedimento): nel portale si tocca il numero
+  della serie per cambiarlo. Il riscaldamento **non entra nel volume**, che è il motivo per
+  cui lo si distingue. Il tipo viene *congelato* sulla riga registrata: se domani quel
+  riscaldamento diventa una serie di lavoro, gli allenamenti già fatti non si ricalcolano.
+- **Superset e circuiti**: esercizi adiacenti con la stessa lettera si fanno di fila, e il
+  timer del recupero parte solo dopo l'ultimo del giro.
+- **Immagini degli esercizi**, dalla stessa rotta di upload dei documenti.
+- **Record e progressi**: massimale stimato con Epley, l'avviso «record» nel momento in cui
+  lo si fa, e il grafico dell'andamento per esercizio.
+
+**Chiusa una falla che c'era da prima**: `PUT` e `DELETE` su `/api/entities` non
+controllavano l'intestatario della riga. La lettura era già filtrata per socio e la
+creazione già intestata d'ufficio, ma bastava l'identificativo di una riga altrui per
+riscrivere l'allenamento di un altro. Si è vista ora perché il portale ha cominciato a
+usare `PUT` per chiudere una sessione. C'è un test che la riapre se qualcuno toglie il
+controllo.
+
 ### 10 settembre 2026 — l'allenamento diventa una sezione sua
 
 Le schede di allenamento erano una scheda dentro **Soci**, e consistevano in un elenco di

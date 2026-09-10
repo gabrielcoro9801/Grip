@@ -19,6 +19,7 @@ const PASSWORD = 'prova-allenamento-1234';
 let app;
 let tokenPt;
 let tokenSocio;
+let tokenReception;
 let idSocio;
 let idEsercizio;
 let idModello;
@@ -51,6 +52,7 @@ before(async () => {
 		.insert(staffAccounts)
 		.values([
 			{ nome: 'PT Di Prova', email: `pt.all.${suffisso}@test.local`, passwordHash, ruolo: 'admin' },
+			{ nome: 'Reception Di Prova', email: `rec.all.${suffisso}@test.local`, passwordHash, ruolo: 'reception' },
 			{
 				nome: 'Socio Allenamento',
 				email: `socio.all.${suffisso}@test.local`,
@@ -62,7 +64,8 @@ before(async () => {
 		.returning();
 
 	tokenPt = await login(account[0].email);
-	tokenSocio = await login(account[1].email);
+	tokenReception = await login(account[1].email);
+	tokenSocio = await login(account[2].email);
 });
 
 after(async () => {
@@ -76,7 +79,7 @@ after(async () => {
 		await db.delete(staffAccounts).where(inArray(staffAccounts.email, [`pt.all.${idSocio}@test.local`]));
 	}
 	// L'account del PT non è collegato a un socio: si riconosce solo dal nome di prova.
-	await db.delete(staffAccounts).where(inArray(staffAccounts.nome, ['PT Di Prova']));
+	await db.delete(staffAccounts).where(inArray(staffAccounts.nome, ['PT Di Prova', 'Reception Di Prova']));
 	if (idSocio) await db.delete(members).where(inArray(members.id, [idSocio]));
 	await app.close();
 	await pool.end();
@@ -289,5 +292,196 @@ describe('il socio si allena', () => {
 			payload: { name: 'Me la riscrivo io' },
 		});
 		assert.equal(res.statusCode, 403);
+	});
+});
+
+describe('tipi di serie e superset', () => {
+	test('una routine con un superset e serie di riscaldamento si salva e si rilegge', async () => {
+		const res = await come(tokenPt, {
+			method: 'PUT',
+			url: `/api/entities/ExercisePlan/${idScheda}`,
+			payload: {
+				routines: [
+					{
+						nome: 'Giorno 1 — Spinta',
+						note: '',
+						esercizi: [
+							{
+								exercise_id: idEsercizio,
+								exercise_name: 'Panca piana di prova',
+								muscle_group: 'petto',
+								// Stessa lettera su due esercizi adiacenti: si fanno di fila.
+								gruppo: 'A',
+								recupero_secondi: 90,
+								note: '',
+								serie: [
+									{ reps: '12', rpe: null, tipo: 'riscaldamento' },
+									{ reps: '8', rpe: 8, tipo: 'normale' },
+									{ reps: '6', rpe: 9, tipo: 'cedimento' },
+								],
+							},
+							{
+								exercise_id: null,
+								exercise_name: 'Croci ai cavi',
+								muscle_group: 'petto',
+								gruppo: 'A',
+								recupero_secondi: 60,
+								note: '',
+								serie: [{ reps: '15', rpe: 8, tipo: 'normale' }],
+							},
+						],
+					},
+				],
+			},
+		});
+		assert.equal(res.statusCode, 200);
+
+		const riletta = res.json().routines[0].esercizi;
+		assert.equal(riletta[0].gruppo, 'A');
+		assert.equal(riletta[1].gruppo, 'A', 'i due esercizi restano nello stesso giro');
+		assert.deepEqual(
+			riletta[0].serie.map((s) => s.tipo),
+			['riscaldamento', 'normale', 'cedimento'],
+		);
+	});
+
+	test('il tipo di una serie eseguita viene congelato sulla riga registrata', async () => {
+		// Congelato e non ricavato dalla scheda: se domani quel riscaldamento diventa una
+		// serie di lavoro, gli allenamenti già fatti non devono ricalcolarsi da soli.
+		const res = await come(tokenSocio, {
+			method: 'POST',
+			url: '/api/entities/WorkoutLog',
+			payload: {
+				member_id: idSocio,
+				plan_id: idScheda,
+				session_id: idSessione,
+				exercise_index: 0,
+				set_index: 5,
+				exercise_name: 'Panca piana di prova',
+				tipo_serie: 'riscaldamento',
+				peso_usato: 20,
+				reps_fatte: 12,
+				data: '2026-09-10',
+			},
+		});
+		assert.equal(res.statusCode, 201);
+		assert.equal(res.json().tipo_serie, 'riscaldamento');
+	});
+
+	test('senza indicazione una serie vale come serie di lavoro', async () => {
+		const res = await come(tokenSocio, {
+			method: 'POST',
+			url: '/api/entities/WorkoutLog',
+			payload: {
+				member_id: idSocio,
+				plan_id: idScheda,
+				session_id: idSessione,
+				exercise_index: 0,
+				set_index: 6,
+				exercise_name: 'Panca piana di prova',
+				peso_usato: 60,
+				reps_fatte: 8,
+				data: '2026-09-10',
+			},
+		});
+		assert.equal(res.statusCode, 201);
+		assert.equal(res.json().tipo_serie, 'normale', 'è il valore predefinito della colonna');
+	});
+});
+
+describe("annullare un allenamento", () => {
+	// Serve una via d'uscita: una sessione aperta impedisce di avviarne un'altra, quindi un
+	// allenamento iniziato per sbaglio bloccherebbe il socio per sempre.
+	let idDaButtare;
+	let idRigaDaButtare;
+
+	test('si avvia e ci si registra una serie', async () => {
+		const sessione = await come(tokenSocio, {
+			method: 'POST',
+			url: '/api/entities/WorkoutSession',
+			payload: {
+				member_id: idSocio,
+				plan_id: idScheda,
+				plan_name: 'Forza — prova',
+				routine_index: 0,
+				routine_name: 'Giorno 1 — Spinta',
+				iniziata_alle: new Date().toISOString(),
+			},
+		});
+		assert.equal(sessione.statusCode, 201);
+		idDaButtare = sessione.json().id;
+
+		const riga = await come(tokenSocio, {
+			method: 'POST',
+			url: '/api/entities/WorkoutLog',
+			payload: {
+				member_id: idSocio,
+				plan_id: idScheda,
+				session_id: idDaButtare,
+				exercise_index: 0,
+				set_index: 0,
+				exercise_name: 'Panca piana di prova',
+				peso_usato: 50,
+				reps_fatte: 10,
+				data: '2026-09-10',
+			},
+		});
+		assert.equal(riga.statusCode, 201);
+		idRigaDaButtare = riga.json().id;
+	});
+
+	test('la sessione non si cancella finché le sue serie sono lì', async () => {
+		// È il motivo per cui il portale cancella prima le righe: la chiave esterna punta
+		// da quelle alla sessione, e invertire l'ordine fa fallire l'annullamento a metà.
+		const res = await come(tokenSocio, { method: 'DELETE', url: `/api/entities/WorkoutSession/${idDaButtare}` });
+		assert.notEqual(res.statusCode, 200, 'il vincolo deve impedirlo');
+	});
+
+	test("nell'ordine giusto invece sparisce tutto", async () => {
+		const riga = await come(tokenSocio, { method: 'DELETE', url: `/api/entities/WorkoutLog/${idRigaDaButtare}` });
+		assert.equal(riga.statusCode, 200);
+
+		const sessione = await come(tokenSocio, { method: 'DELETE', url: `/api/entities/WorkoutSession/${idDaButtare}` });
+		assert.equal(sessione.statusCode, 200);
+
+		const rimaste = (await come(tokenSocio, { method: 'GET', url: '/api/entities/WorkoutSession' })).json();
+		assert.deepEqual(rimaste.filter((s) => s.id === idDaButtare), [], 'la sessione non deve esserci più');
+	});
+});
+
+describe('cosa vede il personal trainer', () => {
+	test("legge gli allenamenti dei soci: è il motivo per cui il socio li registra", async () => {
+		const sessioni = await come(tokenPt, { method: 'GET', url: '/api/entities/WorkoutSession' });
+		assert.equal(sessioni.statusCode, 200);
+		assert.ok(
+			sessioni.json().some((s) => s.id === idSessione),
+			"l'allenamento del socio deve comparire allo staff",
+		);
+
+		const righe = await come(tokenPt, { method: 'GET', url: '/api/entities/WorkoutLog' });
+		assert.equal(righe.statusCode, 200);
+		const sue = righe.json().filter((r) => r.session_id === idSessione);
+		// Le prime due serie spuntate dal socio, con i carichi che ha usato: è quello che
+		// il personal trainer deve poter rileggere. Il conteggio non è fissato perché
+		// altri test aggiungono righe alla stessa sessione.
+		assert.ok(sue.length >= 2, 'le serie spuntate devono essere visibili allo staff');
+		assert.ok(
+			sue.some((r) => r.set_index === 0 && Number(r.peso_usato) === 60 && r.reps_fatte === 8),
+			'con peso e ripetizioni di ogni serie',
+		);
+	});
+
+	test('la reception li legge ma non li riscrive', async () => {
+		// La matrice le dà "crm_plans": ["view"]. Finché WorkoutSession e WorkoutLog non
+		// erano mappate sul modulo, quel limite valeva solo per i pulsanti nascosti.
+		const lettura = await come(tokenReception, { method: 'GET', url: '/api/entities/WorkoutSession' });
+		assert.equal(lettura.statusCode, 200);
+
+		const scrittura = await come(tokenReception, {
+			method: 'PUT',
+			url: `/api/entities/WorkoutSession/${idSessione}`,
+			payload: { note: 'ci metto mano io' },
+		});
+		assert.equal(scrittura.statusCode, 403);
 	});
 });
