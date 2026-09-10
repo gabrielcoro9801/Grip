@@ -36,7 +36,13 @@ const SchedeModello = lazy(() => import('@/pages/allenamento/SchedeModello'));
 const SchedeAssegnate = lazy(() => import('@/pages/allenamento/SchedeAssegnate'));
 const AllenamentiSvolti = lazy(() => import('@/pages/allenamento/AllenamentiSvolti'));
 const EditorScheda = lazy(() => import('@/pages/allenamento/EditorScheda'));
-const CalendarPage = lazy(() => import('@/pages/CalendarPage'));
+const CorsiLayout = lazy(() => import('@/pages/corsi/CorsiLayout'));
+const Calendario = lazy(() => import('@/pages/corsi/Calendario'));
+const Prenotazioni = lazy(() => import('@/pages/corsi/Prenotazioni'));
+const CatalogoCorsi = lazy(() => import('@/pages/corsi/CatalogoCorsi'));
+const Sale = lazy(() => import('@/pages/corsi/Sale'));
+const Istruttori = lazy(() => import('@/pages/corsi/Istruttori'));
+const Categorie = lazy(() => import('@/pages/corsi/Categorie'));
 const MemberLayout = lazy(() => import('@/pages/member/MemberLayout'));
 const MemberDashboard = lazy(() => import('@/pages/member/MemberDashboard'));
 const MemberDocuments = lazy(() => import('@/pages/member/MemberDocuments'));
@@ -107,7 +113,17 @@ const AppRoutes = () => {
                 può mandare a un collega. */}
             <Route path="schede/:id" element={<EditorScheda />} />
           </Route>
-          <Route path="/calendario" element={<PermissionGate module="calendar"><CalendarPage /></PermissionGate>} />
+          {/* I corsi erano una pagina sola con due piani di schede interne. Ora le sei viste
+              sono rotte come nelle altre sezioni: la barra in alto è la stessa di Soci e
+              Allenamento, e ogni voce ha un indirizzo che si può mandare a un collega. */}
+          <Route path="/calendario" element={<PermissionGate module="calendar"><CorsiLayout /></PermissionGate>}>
+            <Route index element={<Calendario />} />
+            <Route path="prenotazioni" element={<Prenotazioni />} />
+            <Route path="corsi" element={<CatalogoCorsi />} />
+            <Route path="sale" element={<Sale />} />
+            <Route path="istruttori" element={<Istruttori />} />
+            <Route path="categorie" element={<Categorie />} />
+          </Route>
           <Route path="/calendar" element={<Navigate to="/calendario" replace />} />
           <Route path="/admin" element={<PermissionGate module="admin_users"><Admin /></PermissionGate>} />
           <Route path="/log-audit" element={<PermissionGate module="audit_log"><AuditLogPage /></PermissionGate>} />
