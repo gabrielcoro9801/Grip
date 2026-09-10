@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import StatusBadge from "@/components/shared/StatusBadge";
 import { ArrowLeft, Plus, FileText, CreditCard, Dumbbell, Shield, Calendar, QrCode, KeyRound, RefreshCw, History } from "lucide-react";
-import { generateQRCode, getQRImageUrl } from "@/lib/qrUtils";
+import { generateQRCode, qrDataUrl, generaPasswordTemporanea } from "@/lib/qrUtils";
 import { useQrDinamico } from "@/hooks/useQrDinamico";
 import { logAction } from "@/lib/auditLog";
 import moment from "moment";
@@ -94,11 +94,17 @@ export default function MemberDetail() {
 
   useEffect(() => { loadData(); }, [id]);
 
-  // Lo stesso codice che il socio vede sul telefono, negli stessi secondi: entrambi i lati
-  // lo derivano dal seme e dal minuto corrente, quindi alla reception basta confrontarli.
-  const { codice: codiceDinamico, secondiResidui } = useQrDinamico(
-    qrAccess?.stato === "attivo" ? qrAccess.codice : null,
-  );
+  // Lo stesso codice che il socio vede sul telefono, negli stessi secondi: lo firma il
+  // server e lo consegna a entrambi, quindi alla reception basta confrontarli a vista.
+  const { codice: codiceDinamico, secondiResidui } = useQrDinamico(id, qrAccess?.stato === "attivo");
+  const [immagineQr, setImmagineQr] = useState(null);
+
+  useEffect(() => {
+    let vivo = true;
+    if (!codiceDinamico) { setImmagineQr(null); return undefined; }
+    qrDataUrl(codiceDinamico, 120).then((url) => { if (vivo) setImmagineQr(url); }).catch(() => {});
+    return () => { vivo = false; };
+  }, [codiceDinamico]);
 
   const handleNewSubscription = async (e) => {
     e.preventDefault();
@@ -201,9 +207,7 @@ export default function MemberDetail() {
   const handleGeneratePassword = async () => {
     setSaving(true);
     try {
-      const chars = "abcdefghjkmnpqrstuvwxyz23456789";
-      let pwd = "";
-      for (let i = 0; i < 10; i++) pwd += chars[Math.floor(Math.random() * chars.length)];
+      const pwd = generaPasswordTemporanea();
       if (portalAccount) {
         await api.entities.StaffAccount.update(portalAccount.id, { password: pwd });
         await logAction(staffUser, "password_reset", "staff_account", `Portale socio — ${member?.full_name}`, portalAccount.id, "Password generata dal CRM");
@@ -346,8 +350,8 @@ export default function MemberDetail() {
           <CardContent>
             {qrAccess ? (
               <div className="flex items-center gap-4">
-                {codiceDinamico ? (
-                  <img src={getQRImageUrl(codiceDinamico, 120)} alt="QR accesso" className="w-24 h-24 rounded-lg" />
+                {immagineQr ? (
+                  <img src={immagineQr} alt="QR accesso" className="w-24 h-24 rounded-lg" />
                 ) : (
                   <div className="w-24 h-24 rounded-lg bg-muted/40" />
                 )}

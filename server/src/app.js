@@ -10,6 +10,7 @@ import authRoutes from './routes/auth.js';
 import uploadRoutes from './routes/uploads.js';
 import organizationRoutes from './routes/organizations.js';
 import ruoliRoutes from './routes/ruoli.js';
+import qrRoutes from './routes/qr.js';
 import { ENTITY_NAMES } from './entities/registry.js';
 import { config } from './config.js';
 
@@ -25,11 +26,25 @@ export function buildApp({ publicBaseUrl = 'http://localhost:3001', logger = tru
 	// aperto è accettabile solo in locale, da restringere prima di qualunque deploy.
 	app.register(cors, { origin: config.origineConsentita });
 	app.register(multipart, { limits: { fileSize: 10 * 1024 * 1024 } });
-	app.register(fastifyStatic, { root: UPLOAD_DIR, prefix: '/uploads/' });
+	// I file caricati sono serviti dallo stesso indirizzo dell'applicazione, quindi qualsiasi
+	// cosa il browser accetti di eseguire da lì gira sul nostro dominio. L'estensione la
+	// decide già il server (routes/uploads.js), ma queste due intestazioni sono la rete
+	// sotto: `nosniff` impedisce al browser di indovinare un tipo diverso da quello
+	// dichiarato, e una CSP che non concede nulla toglie a un documento servito da qui la
+	// possibilità di eseguire script o chiamare altri indirizzi.
+	app.register(fastifyStatic, {
+		root: UPLOAD_DIR,
+		prefix: '/uploads/',
+		setHeaders(res) {
+			res.setHeader('X-Content-Type-Options', 'nosniff');
+			res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
+		},
+	});
 
 	app.register(authRoutes);
 	app.register(organizationRoutes);
 	app.register(ruoliRoutes);
+	app.register(qrRoutes);
 	app.register(entityRoutes);
 	app.register(uploadRoutes, { uploadDir: UPLOAD_DIR, publicBaseUrl });
 

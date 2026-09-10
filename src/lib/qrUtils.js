@@ -1,22 +1,79 @@
 /**
- * Utilities per la generazione e visualizzazione dei QR di accesso.
+ * Il seme del codice d'accesso, e il disegno del QR.
+ *
+ * Il codice che il socio mostra non si costruisce più qui: lo firma il server, che è
+ * l'unico ad avere la chiave (vedi shared/qrDinamico.js). Qui resta la generazione del
+ * seme permanente e il disegno dell'immagine.
  */
+import QRCode from "qrcode";
 
-/** Genera un codice univoco non indovinabile (es. GRIP-A8X2-K9F3-M2Q7) */
+// Niente I, O, 0, 1: a chi legge il codice a voce alla reception si confondono.
+const ALFABETO = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+
+/**
+ * Un seme che non si indovina.
+ *
+ * Con `Math.random()` non lo era: il generatore di V8 è uno xorshift128+ il cui stato
+ * interno si ricostruisce da una manciata di valori consecutivi, quindi chi riusciva a
+ * osservarne qualcuno nello stesso contesto poteva prevedere quelli dopo — e questa
+ * funzione genera credenziali d'ingresso e password temporanee. `crypto.getRandomValues`
+ * è disponibile ovunque giri questo codice e non ha quel problema.
+ *
+ * L'alfabeto ha 32 lettere e i byte 256 valori: il resto della divisione è distribuito
+ * esattamente, senza sbilanciare nessun carattere.
+ */
 export function generateQRCode() {
-  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-  const segments = [];
+  const byte = new Uint8Array(16);
+  globalThis.crypto.getRandomValues(byte);
+  const segmenti = [];
   for (let s = 0; s < 4; s++) {
     let seg = "";
-    for (let i = 0; i < 4; i++) {
-      seg += chars[Math.floor(Math.random() * chars.length)];
-    }
-    segments.push(seg);
+    for (let i = 0; i < 4; i++) seg += ALFABETO[byte[s * 4 + i] % ALFABETO.length];
+    segmenti.push(seg);
   }
-  return `GRIP-${segments.join("-")}`;
+  return `GRIP-${segmenti.join("-")}`;
 }
 
-/** Restituisce l'URL dell'immagine QR da api.qrserver.com */
-export function getQRImageUrl(code, size = 300) {
-  return `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&data=${encodeURIComponent(code)}&bgcolor=ffffff&color=000000&margin=10`;
+// Niente l/1/I/O/0: la password temporanea si detta a voce allo sportello, e quelle coppie
+// di caratteri si sbagliano sistematicamente.
+const ALFABETO_PASSWORD = "abcdefghjkmnpqrstuvwxyz23456789";
+
+/**
+ * Una password temporanea, dallo stesso generatore e per lo stesso motivo del seme.
+ *
+ * L'alfabeto ha 31 caratteri, che non divide 256: prendere il resto favorirebbe i primi
+ * caratteri dell'alfabeto. La distorsione sarebbe minima, ma su una password si scarta il
+ * byte fuori intervallo e si estrae di nuovo, che costa niente e non lascia margini.
+ */
+export function generaPasswordTemporanea(lunghezza = 10) {
+  const massimoUtile = 256 - (256 % ALFABETO_PASSWORD.length);
+  let pwd = "";
+  while (pwd.length < lunghezza) {
+    const byte = new Uint8Array(lunghezza);
+    globalThis.crypto.getRandomValues(byte);
+    for (const b of byte) {
+      if (b >= massimoUtile) continue;
+      pwd += ALFABETO_PASSWORD[b % ALFABETO_PASSWORD.length];
+      if (pwd.length === lunghezza) break;
+    }
+  }
+  return pwd;
+}
+
+/**
+ * Il QR come immagine, disegnata nel browser.
+ *
+ * Prima l'immagine arrivava da `api.qrserver.com`, con il codice nella query string: ogni
+ * volta che un socio apriva la schermata, la sua credenziale d'ingresso finiva nei log di
+ * un servizio esterno e di qualunque intermediario vedesse l'indirizzo. Ora non esce dal
+ * dispositivo.
+ */
+export async function qrDataUrl(codice, dimensione = 300) {
+  if (!codice) return null;
+  return QRCode.toDataURL(codice, {
+    width: dimensione,
+    margin: 2,
+    color: { dark: "#000000", light: "#ffffff" },
+    errorCorrectionLevel: "M",
+  });
 }

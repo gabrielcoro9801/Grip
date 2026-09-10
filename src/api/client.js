@@ -108,6 +108,23 @@ export const api = {
 		},
 	},
 
+	/**
+	 * Il codice d'accesso che cambia ogni minuto.
+	 *
+	 * Passa dal server perché è lì che vive la chiave con cui viene firmato: derivarlo nel
+	 * browser vorrebbe dire spedire quella chiave a ogni visitatore.
+	 */
+	qr: {
+		codice(clienteId) {
+			const qs = clienteId ? `?cliente_id=${encodeURIComponent(clienteId)}` : '';
+			return request(`/api/qr/codice${qs}`);
+		},
+		/** Se il codice che si ha davanti vale adesso, e di chi è. Solo per lo staff. */
+		verifica(codice) {
+			return request('/api/qr/verifica', { method: 'POST', body: { codice } });
+		},
+	},
+
 	// Configurazione dei ruoli: la matrice dei permessi non è più una costante del codice.
 	ruoli: {
 		lista(organizationId) {

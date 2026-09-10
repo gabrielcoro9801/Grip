@@ -23,7 +23,7 @@ import { etichettaGruppo } from "@/lib/gruppiMuscolari";
 import {
   nuovaSerie, nuovoEsercizio, nuovaRoutine, clonaRoutines, clonaEsercizi, sposta,
   formatRecupero, totaleSerie, totaleSerieScheda, motivoNonSalvabile,
-  TIPI_SERIE, tipoSerie, prossimaLetteraGruppo,
+  TIPI_SERIE, tipoSerie, prossimaLetteraGruppo, togliGruppiOrfani,
 } from "@/lib/scheda";
 import { cn } from "@/lib/utils";
 
@@ -233,7 +233,13 @@ export default function EditorScheda() {
   };
 
   const spostaEsercizio = (indice, direzione) => {
-    cambiaEserciziRoutineAperta((precedenti) => sposta(precedenti, indice, indice + direzione));
+    // Spostando si può spezzare un superset senza dirlo: la lettera resterebbe addosso a
+    // due esercizi che non sono più vicini, e ognuno mostrerebbe un «Superset A» da solo —
+    // il gruppo di uno che commutaSuperset lavora apposta per non lasciare. Dopo ogni
+    // spostamento si ripulisce quello che è rimasto orfano.
+    cambiaEserciziRoutineAperta((precedenti) =>
+      togliGruppiOrfani(sposta(precedenti, indice, indice + direzione))
+    );
   };
 
   const aggiungiSerie = (indice) => {

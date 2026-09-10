@@ -27,6 +27,7 @@ import {
 	durataSessione,
 	tipoSerie,
 	statisticheSettimanali,
+	togliGruppiOrfani,
 } from './scheda.js';
 
 describe('volume e serie di un allenamento', () => {
@@ -145,6 +146,21 @@ describe('superset', () => {
 			{ exercise_name: 'Rematore', gruppo: 'A' },
 		];
 		assert.equal(raggruppaPerSuperset(sparsi).length, 3);
+	});
+
+	test('chi resta solo nel giro perde la lettera', () => {
+		// Spostando un esercizio fuori dal superset la lettera restava addosso a entrambi,
+		// e ognuno mostrava un «Superset A» per un gruppo di uno.
+		const spezzato = [
+			{ exercise_name: 'Panca', gruppo: 'A' },
+			{ exercise_name: 'Squat', gruppo: null },
+			{ exercise_name: 'Rematore', gruppo: 'A' },
+		];
+		assert.deepEqual(togliGruppiOrfani(spezzato).map((e) => e.gruppo), [null, null, null]);
+	});
+
+	test('un superset ancora intero non viene toccato', () => {
+		assert.deepEqual(togliGruppiOrfani(esercizi).map((e) => e.gruppo), ['A', 'A', null]);
 	});
 
 	test('la lettera nuova è la prima libera', () => {
@@ -306,6 +322,27 @@ describe('quante volte ci si allena', () => {
 			mercoledi,
 		);
 		assert.equal(s.settimaneDiFila, 2);
+	});
+
+	test("l'ora legale non spezza la fila", () => {
+		// L'ultima domenica di marzo 2026 (29 marzo) l'Italia passa all'ora legale: la
+		// settimana che la contiene dura 167 ore, non 168. Tornando indietro di sette per
+		// 86.400.000 millisecondi il cursore cadeva alle 23 della domenica invece che a
+		// mezzanotte del lunedì, il confronto falliva e una fila di mesi si azzerava.
+		const dopoIlCambio = new Date(2026, 3, 1, 12, 0, 0).getTime(); // mercoledì 1 aprile
+		const seduta = (quando) => ({
+			iniziata_alle: new Date(quando).toISOString(),
+			terminata_alle: new Date(quando + 3600000).toISOString(),
+		});
+		const s = statisticheSettimanali(
+			[
+				seduta(new Date(2026, 2, 31, 10).getTime()), // settimana del 30 marzo
+				seduta(new Date(2026, 2, 25, 10).getTime()), // settimana del 23 marzo, a cavallo
+				seduta(new Date(2026, 2, 18, 10).getTime()), // settimana del 16 marzo
+			],
+			dopoIlCambio,
+		);
+		assert.equal(s.settimaneDiFila, 3);
 	});
 
 	test('senza allenamenti la fila è zero', () => {

@@ -4,7 +4,7 @@ import { useMemberAuth } from "@/lib/MemberAuthContext";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { AlertCircle, CheckCircle, Timer } from "lucide-react";
-import { generateQRCode, getQRImageUrl } from "@/lib/qrUtils";
+import { qrDataUrl } from "@/lib/qrUtils";
 import { useQrDinamico } from "@/hooks/useQrDinamico";
 import { DURATA_FINESTRA_MS } from "../../../shared/qrDinamico.js";
 import StatusBadge from "@/components/shared/StatusBadge";
@@ -31,28 +31,32 @@ export default function MemberQR() {
       ]);
       setMember(m);
       setSubscriptions(subs);
-
-      // Il seme permanente nasce una volta sola: è la credenziale, non il codice che si
-      // mostra. Quello cambia ogni minuto e non tocca mai la banca dati.
-      if (qrs.length === 0) {
-        const newQr = await api.entities.QRAccesso.create({
-          cliente_id: memberUser.member_id,
-          cliente_name: m?.full_name || memberUser.nome,
-          codice: generateQRCode(),
-          data_generazione: new Date().toISOString(),
-          stato: "attivo",
-        });
-        setQr(newQr);
-      } else {
-        setQr(qrs[0]);
-      }
+      // La credenziale la emette la palestra, non il socio.
+      //
+      // Prima questa schermata se la creava da sola quando non la trovava, e siccome
+      // nessuno controllava lo `stato` dichiarato, bastava aprirla dopo essere stati
+      // revocati per rifarsene una attiva: la revoca durava fino alla successiva visita
+      // del socio. Ora se non c'è, non c'è, e lo si dice.
+      setQr(qrs[0] ?? null);
       setLoading(false);
     })();
   }, [memberUser?.member_id]);
 
   const isRevoked = qr?.stato === "revocato";
-  // Un QR revocato non deve nemmeno essere derivato: passando null l'hook resta a vuoto.
-  const { codice, secondiResidui, errore } = useQrDinamico(isRevoked ? null : qr?.codice);
+  // Il codice lo firma il server: qui si dice solo per chi (sé stessi) e se ha senso
+  // chiederlo. Un QR revocato non si chiede nemmeno.
+  const { codice, secondiResidui, stato, errore } = useQrDinamico(null, !isRevoked);
+  const [immagine, setImmagine] = useState(null);
+
+  // Il disegno del QR si rifà a ogni codice nuovo, cioè una volta al minuto, e resta sul
+  // dispositivo: prima l'immagine la produceva un servizio esterno, e la credenziale
+  // finiva nei suoi log a ogni apertura della schermata.
+  useEffect(() => {
+    let vivo = true;
+    if (!codice) { setImmagine(null); return undefined; }
+    qrDataUrl(codice, 300).then((url) => { if (vivo) setImmagine(url); }).catch(() => {});
+    return () => { vivo = false; };
+  }, [codice]);
 
   if (loading) {
     return <LoadingState minHeight="p-8" />;
@@ -86,12 +90,19 @@ export default function MemberQR() {
                 Impossibile generare il codice su questa connessione. Rivolgiti alla reception.
               </p>
             </div>
-          ) : !codice ? (
+          ) : stato === "assente" ? (
+            <div className="w-56 h-56 rounded-xl bg-muted/30 flex flex-col items-center justify-center gap-3">
+              <AlertCircle className="w-12 h-12 text-muted-foreground" />
+              <p className="text-sm text-muted-foreground font-medium text-center px-4">
+                Non hai ancora un codice d'accesso. Chiedilo alla reception.
+              </p>
+            </div>
+          ) : !immagine ? (
             <div className="w-56 h-56 rounded-xl bg-muted/30 animate-pulse" />
           ) : (
             <div className="relative">
               <img
-                src={getQRImageUrl(codice, 300)}
+                src={immagine}
                 alt="QR accesso"
                 className="w-56 h-56 rounded-xl"
               />

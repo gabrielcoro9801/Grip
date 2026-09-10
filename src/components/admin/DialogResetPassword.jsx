@@ -6,15 +6,9 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/use-toast";
 
-// Niente l/1/I/O/0: la password temporanea si detta a voce allo sportello, e quelle
-// coppie di caratteri si sbagliano sistematicamente.
-const ALFABETO = "abcdefghjkmnpqrstuvwxyz23456789";
-
-function passwordTemporanea(lunghezza = 10) {
-	let pwd = "";
-	for (let i = 0; i < lunghezza; i++) pwd += ALFABETO[Math.floor(Math.random() * ALFABETO.length)];
-	return pwd;
-}
+// La password temporanea la genera qrUtils, con lo stesso generatore crittografico del
+// seme d'accesso: Math.random() e prevedibile, e questa e una credenziale.
+import { generaPasswordTemporanea as passwordTemporanea } from "@/lib/qrUtils";
 
 /**
  * Reimposta la password di un account, staff o socio che sia.

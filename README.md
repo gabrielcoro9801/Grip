@@ -105,6 +105,58 @@ Tre punti che si sbagliano quasi sempre, spiegati lì per esteso:
 
 ## Stato del progetto
 
+### 10 settembre 2026 (notte) — quindici difetti da una revisione del codice
+
+Una revisione completa del codice in `main`, con un occhio alla sicurezza, ha trovato
+quindici cose. Le più gravi non erano nel modulo appena scritto.
+
+**Il QR a scadenza non scadeva.** Il token si derivava nel browser con un SHA-256 non
+chiavato di `seme:finestra`, e il seme viaggiava in chiaro dentro al codice mostrato: chi
+riceveva uno screenshot leggeva il seme dall'immagine e calcolava il codice di qualunque
+minuto, per sempre — mentre la schermata prometteva testualmente il contrario. Ora il token
+è un **HMAC firmato dal server** (`QR_SECRET`, con ricaduta su `JWT_SECRET`): il socio
+chiede il proprio codice a `/api/qr/codice`, la reception verifica a `/api/qr/verifica`, e
+la chiave dal server non esce. Il confronto è a tempo costante.
+
+**Il caricamento file permetteva di ospitare codice sul nostro dominio.** Il tipo si
+controllava sull'intestazione dichiarata, ma l'estensione salvata veniva dal nome mandato
+dal client: bastava dichiarare `image/png` e chiamare il file `x.html` per farsi servire una
+pagina HTML da `/uploads/*`, cioè dallo stesso indirizzo dell'applicazione, con accesso al
+token di sessione nel `localStorage`. Ora l'estensione la decide il tipo, l'SVG non è più
+ammesso (è XML che esegue script), e i file escono con `nosniff` e una CSP che non concede
+nulla.
+
+**La revoca del QR si annullava da sola.** Il portale, non trovando un codice, se ne creava
+uno «attivo» a piacere: revocare un socio durava fino alla sua visita successiva. Ora il
+codice lo emette la palestra.
+
+**`/bulk` non imponeva l'intestatario.** La creazione singola sì, quella in blocco no: si
+aggirava il controllo cambiando indirizzo, non permessi.
+
+**La matrice dei permessi non era applicata a quasi niente.** Le entità non elencate erano
+scrivibili da chiunque fosse autenticato: un istruttore in sola lettura poteva modificare le
+anagrafiche, e **chiunque poteva cancellare il registro delle azioni** — cioè la persona che
+il registro serve a incolpare poteva ripulirlo. Ora il valore predefinito è «no», ogni
+entità ha una regola esplicita, il registro si allunga e non si accorcia, e un test rifiuta
+di lasciar passare una tabella nuova senza una decisione.
+
+Poi: `Math.random()` non genera più credenziali (seme d'accesso e password temporanee usano
+`crypto.getRandomValues`); il QR non passa più da `api.qrserver.com`, dove la credenziale
+finiva nei log di un terzo a ogni apertura della schermata; l'errore di vincolo del database
+non rimanda più al client il valore che l'ha violato.
+
+**Le prenotazioni dei soci erano morte.** `Booking` non era fra le entità scrivibili dal
+socio: il portale mostrava il pulsante e il server rispondeva 403. Ora si prenota, e si
+disdice solo la propria — le prenotazioni si leggono tutte perché è da lì che si contano i
+posti liberi, e questo non deve diventare il permesso di disdire quelle degli altri.
+`cancelBooking` chiamava inoltre `Booking.bulkUpdate`, che non esiste da nessuna parte.
+
+Sul modulo allenamento: la fila di settimane si azzerava a ogni cambio di ora legale
+(sette per 86.400.000 millisecondi non sono sempre una settimana); le note di un esercizio
+erano indicizzate in due modi diversi e finivano sull'esercizio sbagliato; una riga con
+posizione nulla creava un esercizio fantasma che rendeva la sessione incancellabile; e
+spostando un esercizio fuori da un superset la lettera restava, lasciando un «gruppo di uno».
+
 ### 10 settembre 2026 (sera) — gli allenamenti si correggono, la sala non è la scheda
 
 **Un allenamento chiuso era congelato per sempre.** Premuto «Termina», né il socio né lo
