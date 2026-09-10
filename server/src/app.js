@@ -33,9 +33,15 @@ export function buildApp({ publicBaseUrl = 'http://localhost:3001', logger = tru
 	// sotto: `nosniff` impedisce al browser di indovinare un tipo diverso da quello
 	// dichiarato, e una CSP che non concede nulla toglie a un documento servito da qui la
 	// possibilità di eseguire script o chiamare altri indirizzi.
+	//
+	// `decorateReply: false`: `reply.sendFile` deve appartenere allo static del frontend, non
+	// a questo. Le intestazioni qui sopra vivono nella chiusura del plugin che le registra, non
+	// nella cartella: se fosse questo a decorare `sendFile`, anche l'index.html mandato al
+	// router (più sotto) uscirebbe con la CSP degli upload, e la pagina resterebbe nera.
 	app.register(fastifyStatic, {
 		root: UPLOAD_DIR,
 		prefix: '/uploads/',
+		decorateReply: false,
 		setHeaders(res) {
 			res.setHeader('X-Content-Type-Options', 'nosniff');
 			res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
@@ -64,9 +70,6 @@ export function buildApp({ publicBaseUrl = 'http://localhost:3001', logger = tru
 		app.register(fastifyStatic, {
 			root: DIST_DIR,
 			prefix: '/',
-			// Lo static è già registrato per gli upload: senza questo, il secondo tentativo
-			// di aggiungere `reply.sendFile` fallisce e il server non parte.
-			decorateReply: false,
 		});
 
 		// Le rotte dell'applicazione (/crm, /calendario, /member-portal…) esistono solo nel
