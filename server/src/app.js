@@ -67,9 +67,27 @@ export function buildApp({ publicBaseUrl = 'http://localhost:3001', logger = tru
 	//
 	// In sviluppo la cartella non esiste (ci pensa Vite sulla 5173) e questo blocco si salta.
 	if (existsSync(DIST_DIR)) {
+		// La cache la decidiamo noi, file per file (`cacheControl: false` toglie di mezzo quella
+		// automatica). I due casi sono opposti e vanno separati:
+		//
+		// index.html non si conserva. Non è pignoleria: quando il server risponde 304, il
+		// browser tiene le intestazioni che aveva in memoria e aggiorna solo quelle presenti
+		// nella risposta. Un'intestazione sbagliata mandata una volta — è successo con la CSP
+		// degli upload — resta quindi appiccicata alla pagina a ogni ricaricamento, anche dopo
+		// che il server ha smesso di mandarla, e l'unica via d'uscita per chi la subisce è
+		// svuotare la cache a mano. `no-store` significa che non c'è nulla da conservare, e
+		// quindi nulla che possa restare indietro. Il guscio pesa meno di due kilobyte.
+		//
+		// Tutto il resto in dist/ ha l'impronta del contenuto nel nome (index-B-iU0N-6.js): un
+		// file con quel nome non cambierà mai, e index.html cita i nomi nuovi a ogni rilascio.
 		app.register(fastifyStatic, {
 			root: DIST_DIR,
 			prefix: '/',
+			cacheControl: false,
+			setHeaders(res, percorsoFile) {
+				const eIlGuscio = path.basename(percorsoFile) === 'index.html';
+				res.setHeader('Cache-Control', eIlGuscio ? 'no-store' : 'public, max-age=31536000, immutable');
+			},
 		});
 
 		// Le rotte dell'applicazione (/crm, /calendario, /member-portal…) esistono solo nel
