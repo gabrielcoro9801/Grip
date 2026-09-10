@@ -121,14 +121,14 @@ export default function CourseSessionsList({
           <DialogHeader><DialogTitle>Riepilogo prenotazioni</DialogTitle></DialogHeader>
           {bookAllResult && (
             <div className="space-y-2">
-              <div className="flex items-center gap-2 p-3 rounded-lg bg-emerald-50 border border-emerald-200">
-                <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
-                <p className="text-sm font-medium text-emerald-700">{bookAllResult.confirmed} confermate</p>
+              <div className="flex items-center gap-2 p-3 rounded-lg bg-success/10 border border-success/30">
+                <CheckCircle2 className="w-5 h-5 text-success shrink-0" />
+                <p className="text-sm font-medium text-success">{bookAllResult.confirmed} confermate</p>
               </div>
               {bookAllResult.waitlisted > 0 && (
-                <div className="flex items-center gap-2 p-3 rounded-lg bg-amber-50 border border-amber-200">
-                  <AlertCircle className="w-5 h-5 text-amber-600 shrink-0" />
-                  <p className="text-sm font-medium text-amber-700">{bookAllResult.waitlisted} in lista d'attesa</p>
+                <div className="flex items-center gap-2 p-3 rounded-lg bg-warning/10 border border-warning/30">
+                  <AlertCircle className="w-5 h-5 text-warning shrink-0" />
+                  <p className="text-sm font-medium text-warning">{bookAllResult.waitlisted} in lista d'attesa</p>
                 </div>
               )}
               {bookAllResult.alreadyBooked > 0 && (
@@ -163,9 +163,9 @@ export default function CourseSessionsList({
           <DialogHeader><DialogTitle>Riepilogo cancellazioni</DialogTitle></DialogHeader>
           {cancelAllResult && (
             <div className="space-y-2">
-              <div className="flex items-center gap-2 p-3 rounded-lg bg-emerald-50 border border-emerald-200">
-                <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
-                <p className="text-sm font-medium text-emerald-700">{cancelAllResult.cancelled} prenotazioni cancellate</p>
+              <div className="flex items-center gap-2 p-3 rounded-lg bg-success/10 border border-success/30">
+                <CheckCircle2 className="w-5 h-5 text-success shrink-0" />
+                <p className="text-sm font-medium text-success">{cancelAllResult.cancelled} prenotazioni cancellate</p>
               </div>
               {cancelAllResult.promotions > 0 && (
                 <p className="text-sm text-muted-foreground">{cancelAllResult.promotions} promozioni dalla lista d'attesa</p>

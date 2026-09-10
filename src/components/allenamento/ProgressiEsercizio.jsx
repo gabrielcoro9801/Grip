@@ -125,6 +125,7 @@ export default function ProgressiEsercizio({ nomeEsercizio, righe, onChiudi }) {
             {/* Gli stessi numeri leggibili senza vedere il grafico. */}
             <details className="text-xs">
               <summary className="text-muted-foreground cursor-pointer">Vedi i numeri</summary>
+              <div className="overflow-x-auto">
               <table className="w-full mt-2">
                 <caption className="sr-only">Massimale stimato di {nomeEsercizio}, allenamento per allenamento</caption>
                 <thead>
@@ -144,6 +145,7 @@ export default function ProgressiEsercizio({ nomeEsercizio, righe, onChiudi }) {
                   ))}
                 </tbody>
               </table>
+              </div>
             </details>
           </>
         )}

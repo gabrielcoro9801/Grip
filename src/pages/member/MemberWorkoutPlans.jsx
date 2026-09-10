@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo, lazy, Suspense } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "@/api/client";
 import { useMemberAuth } from "@/lib/MemberAuthContext";
@@ -14,7 +14,10 @@ import { useConfirm } from "@/components/shared/ConfirmDialog";
 import { formatData, formatDataOra } from "@/lib/format";
 import { etichettaGruppo } from "@/lib/gruppiMuscolari";
 import { formatRecupero, formatDurata, totaleSerie, riepilogoSerie, riepilogoRpe, recordPerEsercizio, statisticheSettimanali } from "@/lib/scheda";
-import ProgressiEsercizio from "@/components/allenamento/ProgressiEsercizio";
+// Il grafico si apre toccando un record, e si porta dietro la libreria dei grafici: un
+// terzo di megabyte che nessuno scarica finché non lo chiede. Caricarlo con la pagina
+// significherebbe farlo pagare a ogni socio che apre l'allenamento per avviare una routine.
+const ProgressiEsercizio = lazy(() => import("@/components/allenamento/ProgressiEsercizio"));
 
 export default function MemberWorkoutPlans() {
   const { memberUser } = useMemberAuth();
@@ -353,11 +356,13 @@ export default function MemberWorkoutPlans() {
       )}
 
       {esercizioAperto && (
-        <ProgressiEsercizio
-          nomeEsercizio={esercizioAperto}
-          righe={righe}
-          onChiudi={() => setEsercizioAperto(null)}
-        />
+        <Suspense fallback={null}>
+          <ProgressiEsercizio
+            nomeEsercizio={esercizioAperto}
+            righe={righe}
+            onChiudi={() => setEsercizioAperto(null)}
+          />
+        </Suspense>
       )}
 
       {dialogoConferma}

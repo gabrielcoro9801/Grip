@@ -27,13 +27,13 @@ export default function CourseSessionCard({
           <p className="text-xs text-muted-foreground">{formatData(session.date, "giorno")}</p>
         </div>
         {memberBooking ? (
-          <Badge variant="outline" className={`text-xs flex-shrink-0 ${memberBooking.status === "confirmed" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-amber-50 text-amber-700 border-amber-200"}`}>
+          <Badge variant="outline" className={`text-xs flex-shrink-0 ${memberBooking.status === "confirmed" ? "bg-success/10 text-success border-success/30" : "bg-warning/10 text-warning border-warning/30"}`}>
             {memberBooking.status === "confirmed" ? "Prenotato" : `Lista #${memberBooking.waitlist_position}`}
           </Badge>
         ) : isFull ? (
-          <Badge variant="outline" className="text-xs flex-shrink-0 bg-red-50 text-red-700 border-red-200">Completo</Badge>
+          <Badge variant="outline" className="text-xs flex-shrink-0 bg-destructive/10 text-destructive border-destructive/30">Completo</Badge>
         ) : (
-          <Badge variant="outline" className="text-xs flex-shrink-0 bg-emerald-50 text-emerald-700 border-emerald-200">{available} di {capacity} posti</Badge>
+          <Badge variant="outline" className="text-xs flex-shrink-0 bg-success/10 text-success border-success/30">{available} di {capacity} posti</Badge>
         )}
       </div>
       <div className="flex items-center gap-3 text-xs text-muted-foreground">

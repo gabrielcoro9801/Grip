@@ -581,7 +581,7 @@ export default function EditorScheda() {
                               serve nessuna finestra per dirlo. */}
                           {indice > 0 && (
                             <Button
-                              variant="ghost" size="icon" className="h-7 w-7"
+                              variant="ghost" size="icon" className="h-9 w-9"
                               aria-label={
                                 esercizio.gruppo && esercizi[indice - 1].gruppo === esercizio.gruppo
                                   ? `Stacca ${esercizio.exercise_name} dal superset`
@@ -600,7 +600,7 @@ export default function EditorScheda() {
                             </Button>
                           )}
                           <Button
-                            variant="ghost" size="icon" className="h-7 w-7"
+                            variant="ghost" size="icon" className="h-9 w-9"
                             aria-label={`Sposta ${esercizio.exercise_name} più in alto`}
                             disabled={indice === 0}
                             onClick={() => spostaEsercizio(indice, -1)}
@@ -608,7 +608,7 @@ export default function EditorScheda() {
                             <ChevronUp className="w-3.5 h-3.5" aria-hidden="true" />
                           </Button>
                           <Button
-                            variant="ghost" size="icon" className="h-7 w-7"
+                            variant="ghost" size="icon" className="h-9 w-9"
                             aria-label={`Sposta ${esercizio.exercise_name} più in basso`}
                             disabled={indice === esercizi.length - 1}
                             onClick={() => spostaEsercizio(indice, 1)}
@@ -616,7 +616,7 @@ export default function EditorScheda() {
                             <ChevronDown className="w-3.5 h-3.5" aria-hidden="true" />
                           </Button>
                           <Button
-                            variant="ghost" size="icon" className="h-7 w-7 text-destructive"
+                            variant="ghost" size="icon" className="h-9 w-9 text-destructive"
                             aria-label={`Togli ${esercizio.exercise_name} dalla routine`}
                             onClick={() => rimuoviEsercizio(indice)}
                           >
@@ -694,7 +694,7 @@ export default function EditorScheda() {
                               {!soloLettura && (
                                 <td className="py-1.5 pr-2">
                                   <Button
-                                    variant="ghost" size="icon" className="h-7 w-7 text-destructive"
+                                    variant="ghost" size="icon" className="h-9 w-9 text-destructive"
                                     aria-label={`Elimina la serie ${indiceSerie + 1} di ${esercizio.exercise_name}`}
                                     // L'ultima serie non si toglie: un esercizio senza serie non
                                     // è un esercizio, e la scheda non si salverebbe. Per toglierlo

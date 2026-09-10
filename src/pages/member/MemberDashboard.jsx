@@ -74,7 +74,7 @@ export default function MemberDashboard() {
                 <div className="flex items-center gap-1"><Calendar className="w-3 h-3" /> Fine: {formatData(activeSub.end_date, "media")}</div>
               </div>
               {expiringSoon && (
-                <div className="flex items-center gap-2 p-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-700 text-xs">
+                <div className="flex items-center gap-2 p-2 rounded-lg bg-warning/10 border border-warning/30 text-warning text-xs">
                   <AlertCircle className="w-4 h-4" />
                   In scadenza tra {daysToExpiry} giorni
                 </div>

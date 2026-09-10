@@ -1,4 +1,4 @@
-import React from "react";
+import React, { Suspense } from "react";
 import { Outlet, Link, useLocation } from "react-router-dom";
 import { useMemberAuth } from "@/lib/MemberAuthContext";
 import MemberLogin from "./MemberLogin";
@@ -74,6 +74,7 @@ export default function MemberLayout() {
           ))}
         </nav>
         <div className="p-2 border-t border-sidebar-border space-y-2">
+          <SelettoreTema />
           <div className="px-3 py-2 rounded-lg bg-sidebar-accent/50">
             <p className="text-sm font-medium text-white truncate">{memberUser.nome}</p>
           </div>
@@ -106,7 +107,11 @@ export default function MemberLayout() {
         </header>
 
         <main className="flex-1 overflow-y-auto pb-20 lg:pb-0">
-          <Outlet />
+          {/* Come nel gestionale: cambiando scheda resta la barra in basso, invece di
+              sparire tutto per il tempo di caricare la pagina. */}
+          <Suspense fallback={<LoadingState minHeight="min-h-[60vh]" label="Caricamento della pagina" />}>
+            <Outlet />
+          </Suspense>
         </main>
 
         {/* Mobile bottom tab bar */}

@@ -177,7 +177,7 @@ export default function CalendarView({ data, reload }) {
                   <div className="flex items-center gap-2 text-muted-foreground"><Calendar className="w-4 h-4" /> {formatData(selectedSession.date, "estesa")}</div>
                   <div className="flex items-center gap-2 text-muted-foreground"><Clock className="w-4 h-4" /> {selectedSession.start_time}–{selectedSession.end_time}</div>
                   <div className="flex items-center gap-2 text-muted-foreground"><MapPin className="w-4 h-4" /> {roomName(selectedSession.room_id)}</div>
-                  <div className="flex items-center gap-2 text-muted-foreground"><Users className="w-4 h-4" /> {info.confirmed}/{info.capacity} iscritti {info.waitlisted > 0 && <span className="text-amber-600">(+{info.waitlisted} attesa)</span>}</div>
+                  <div className="flex items-center gap-2 text-muted-foreground"><Users className="w-4 h-4" /> {info.confirmed}/{info.capacity} iscritti {info.waitlisted > 0 && <span className="text-warning">(+{info.waitlisted} attesa)</span>}</div>
                 </div>
                 <Button className="w-full" variant="outline" onClick={() => { setManageSessionId(selectedSession.id); setSelectedSession(null); }}>
                   <Pencil className="w-4 h-4 mr-1" /> Modifica sessione

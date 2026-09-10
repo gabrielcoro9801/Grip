@@ -5,6 +5,8 @@ import PageHeader from "@/components/shared/PageHeader";
 import StatusBadge from "@/components/shared/StatusBadge";
 import { Link } from "react-router-dom";
 import { LoadingState } from "@/components/shared/Spinner";
+import { EmptyState } from "@/components/shared/StateViews";
+import { CreditCard } from "lucide-react";
 import { formatData, formatEuro } from "@/lib/format";
 
 export default function SubscriptionsList() {
@@ -44,6 +46,13 @@ export default function SubscriptionsList() {
         </Select>
       </PageHeader>
 
+      {filtered.length === 0 ? (
+        <EmptyState
+          icon={CreditCard}
+          title="Nessuna iscrizione"
+          description="Le iscrizioni nascono dalla scheda di un socio, assegnandogli un abbonamento del catalogo."
+        />
+      ) : (
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
@@ -72,6 +81,7 @@ export default function SubscriptionsList() {
           </tbody>
         </table>
       </div>
+      )}
     </div>
   );
 }

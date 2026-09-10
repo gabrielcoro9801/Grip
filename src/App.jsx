@@ -1,38 +1,53 @@
+import { lazy, Suspense } from 'react';
 import { Toaster } from "@/components/ui/toaster"
 import { QueryClientProvider } from '@tanstack/react-query'
 import { queryClientInstance } from '@/lib/query-client'
 import { BrowserRouter as Router, Route, Routes, Navigate, useParams } from 'react-router-dom';
 import PageNotFound from './lib/PageNotFound';
 import ScrollToTop from './components/ScrollToTop';
-import AppLayout from '@/components/layout/AppLayout';
-import Dashboard from '@/pages/Dashboard';
-import CrmLayout from '@/pages/crm/CrmLayout';
-import MembersList from '@/pages/crm/MembersList';
-import MemberDetail from '@/pages/crm/MemberDetail';
-import PlansCatalog from '@/pages/crm/PlansCatalog';
-import SubscriptionsList from '@/pages/crm/SubscriptionsList';
-import AllenamentoLayout from '@/pages/allenamento/AllenamentoLayout';
-import LibreriaEsercizi from '@/pages/allenamento/LibreriaEsercizi';
-import SchedeModello from '@/pages/allenamento/SchedeModello';
-import SchedeAssegnate from '@/pages/allenamento/SchedeAssegnate';
-import AllenamentiSvolti from '@/pages/allenamento/AllenamentiSvolti';
-import EditorScheda from '@/pages/allenamento/EditorScheda';
-import CalendarPage from '@/pages/CalendarPage';
 import { MemberAuthProvider } from '@/lib/MemberAuthContext';
-import MemberLayout from '@/pages/member/MemberLayout';
-import MemberDashboard from '@/pages/member/MemberDashboard';
-import MemberDocuments from '@/pages/member/MemberDocuments';
-import MemberSubscription from '@/pages/member/MemberSubscription';
-import MemberProfile from '@/pages/member/MemberProfile';
-import MemberQR from '@/pages/member/MemberQR';
-import MemberCoursesCalendar from '@/pages/member/MemberCoursesCalendar';
-import MemberWorkoutPlans from '@/pages/member/MemberWorkoutPlans';
-import SessioneAllenamento from '@/pages/member/SessioneAllenamento';
-import Admin from '@/pages/admin/Admin';
-import AuditLogPage from '@/pages/admin/AuditLogPage';
-import StaffLogin from '@/pages/StaffLogin';
 import { StaffAuthProvider } from '@/lib/StaffAuthContext';
 import PermissionGate from '@/components/PermissionGate';
+import { LoadingState } from '@/components/shared/Spinner';
+import ErrorBoundary from '@/components/shared/ErrorBoundary';
+import { TemaProvider } from '@/lib/tema';
+
+// Ogni pagina è caricata quando la si apre, non prima.
+//
+// L'applicazione è una sola, ma le persone che la usano sono due: il socio che apre il
+// portale dal telefono si scaricava anche tutto il gestionale — anagrafiche, calendario,
+// amministrazione, l'editor delle schede — cioè la maggior parte di un pacchetto da
+// 750 kB per usarne una fetta. Con `lazy` il codice si divide da sé lungo le rotte: chi
+// entra in `/member-portal` prende il portale, chi entra in `/crm` prende il gestionale, e
+// nessuno dei due porta con sé l'altro.
+//
+// Restano caricate subito solo le cose che servono comunque a decidere dove andare: il
+// router, i due contesti di autenticazione e la pagina "non trovato".
+const AppLayout = lazy(() => import('@/components/layout/AppLayout'));
+const Dashboard = lazy(() => import('@/pages/Dashboard'));
+const CrmLayout = lazy(() => import('@/pages/crm/CrmLayout'));
+const MembersList = lazy(() => import('@/pages/crm/MembersList'));
+const MemberDetail = lazy(() => import('@/pages/crm/MemberDetail'));
+const PlansCatalog = lazy(() => import('@/pages/crm/PlansCatalog'));
+const SubscriptionsList = lazy(() => import('@/pages/crm/SubscriptionsList'));
+const AllenamentoLayout = lazy(() => import('@/pages/allenamento/AllenamentoLayout'));
+const LibreriaEsercizi = lazy(() => import('@/pages/allenamento/LibreriaEsercizi'));
+const SchedeModello = lazy(() => import('@/pages/allenamento/SchedeModello'));
+const SchedeAssegnate = lazy(() => import('@/pages/allenamento/SchedeAssegnate'));
+const AllenamentiSvolti = lazy(() => import('@/pages/allenamento/AllenamentiSvolti'));
+const EditorScheda = lazy(() => import('@/pages/allenamento/EditorScheda'));
+const CalendarPage = lazy(() => import('@/pages/CalendarPage'));
+const MemberLayout = lazy(() => import('@/pages/member/MemberLayout'));
+const MemberDashboard = lazy(() => import('@/pages/member/MemberDashboard'));
+const MemberDocuments = lazy(() => import('@/pages/member/MemberDocuments'));
+const MemberSubscription = lazy(() => import('@/pages/member/MemberSubscription'));
+const MemberProfile = lazy(() => import('@/pages/member/MemberProfile'));
+const MemberQR = lazy(() => import('@/pages/member/MemberQR'));
+const MemberCoursesCalendar = lazy(() => import('@/pages/member/MemberCoursesCalendar'));
+const MemberWorkoutPlans = lazy(() => import('@/pages/member/MemberWorkoutPlans'));
+const SessioneAllenamento = lazy(() => import('@/pages/member/SessioneAllenamento'));
+const Admin = lazy(() => import('@/pages/admin/Admin'));
+const AuditLogPage = lazy(() => import('@/pages/admin/AuditLogPage'));
 
 // Il vecchio /crm/members/:id porta alla stessa scheda del socio: il redirect
 // deve portarsi dietro l'id, altrimenti un link salvato finisce sull'elenco.
@@ -46,6 +61,10 @@ const RedirectSocio = () => {
 // MemberLogin allo stesso modo).
 const AppRoutes = () => {
   return (
+    // Il riquadro d'attesa copre il momento fra il clic e l'arrivo del pezzo di codice.
+    // A rete normale non si vede: i file sono piccoli e stanno nella cache del browser
+    // dalla seconda volta in poi.
+    <Suspense fallback={<LoadingState minHeight="min-h-screen" label="Caricamento della pagina" />}>
     <Routes>
       <Route path="/member-portal" element={<MemberAuthProvider><MemberLayout /></MemberAuthProvider>}>
         <Route index element={<MemberDashboard />} />
@@ -97,20 +116,27 @@ const AppRoutes = () => {
 
       <Route path="*" element={<PageNotFound />} />
     </Routes>
+    </Suspense>
   );
 };
 
 function App() {
   return (
-    <StaffAuthProvider>
-      <QueryClientProvider client={queryClientInstance}>
-        <Router>
-          <ScrollToTop />
-          <AppRoutes />
-        </Router>
-        <Toaster />
-      </QueryClientProvider>
-    </StaffAuthProvider>
+    // La rete più esterna: un errore dentro una qualsiasi schermata veniva raccolto da
+    // nessuno, React smontava tutto e restava una pagina bianca senza spiegazioni.
+    <ErrorBoundary>
+      <TemaProvider>
+      <StaffAuthProvider>
+        <QueryClientProvider client={queryClientInstance}>
+          <Router>
+            <ScrollToTop />
+            <AppRoutes />
+          </Router>
+          <Toaster />
+        </QueryClientProvider>
+      </StaffAuthProvider>
+      </TemaProvider>
+    </ErrorBoundary>
   )
 }
 

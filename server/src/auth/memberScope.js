@@ -73,14 +73,19 @@ const CAMPI_NASCOSTI = {
 };
 
 // Le uniche cose che un socio crea da sé: i propri allenamenti — la sessione che avvia e
-// le serie che spunta mentre si allena — e le proprie prenotazioni ai corsi. Tutto il
-// resto lo registra la palestra.
+// le serie che spunta mentre si allena. Tutto il resto lo registra la palestra.
 //
-// **QRAccesso non è più qui.** Il codice d'accesso se lo creava il socio, con lo stato che
+// **QRAccesso non è qui.** Il codice d'accesso se lo creava il socio, con lo stato che
 // voleva: bastava una richiesta per rifarsi una credenziale attiva dopo essere stato
 // revocato, e la revoca diventava una formalità. Ora il codice lo emette la palestra, e il
 // socio lo chiede soltanto a /api/qr/codice.
-const SCRIVIBILI = new Set(['WorkoutSession', 'WorkoutLog', 'Booking']);
+//
+// **Nemmeno Booking è qui.** Prenotare non è scrivere una riga: è decidere se c'è posto, e
+// quel conto dipende da tutte le altre prenotazioni della stessa lezione. Da questo
+// endpoint il socio manderebbe una riga già decisa, con lo stato dentro, e il server la
+// scriverebbe senza guardare — cioè si prenoterebbe su una lezione piena. Si passa da
+// /api/prenotazioni, che conta dentro una transazione.
+const SCRIVIBILI = new Set(['WorkoutSession', 'WorkoutLog']);
 
 export function memberPuoLeggere(entityName) {
 	return LEGGIBILI.has(entityName);

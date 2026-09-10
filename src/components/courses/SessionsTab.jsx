@@ -42,7 +42,7 @@ export default function SessionsTab({ data, reload }) {
     setSaving(true);
     try {
       const member = members.find(m => m.id === memberId);
-      const result = await createBooking(bookSession, memberId, member?.full_name || "", bookings);
+      const result = await createBooking(bookSession, memberId);
       if (!result.ok) {
         toast({ variant: "destructive", title: "Prenotazione bloccata", description: result.error });
       } else if (result.status === "confirmed") {
@@ -83,8 +83,8 @@ export default function SessionsTab({ data, reload }) {
                     <div className="flex items-center gap-1"><MapPin className="w-3 h-3" /> {roomName(session.room_id)}</div>
                     <div className="flex items-center gap-1">
                       <Users className="w-3 h-3" />
-                      <span className={info.isFull ? "text-red-600 font-medium" : ""}>{info.confirmed}/{info.capacity} posti</span>
-                      {info.waitlisted > 0 && <span className="text-amber-600">(+{info.waitlisted} attesa)</span>}
+                      <span className={info.isFull ? "text-destructive font-medium" : ""}>{info.confirmed}/{info.capacity} posti</span>
+                      {info.waitlisted > 0 && <span className="text-warning">(+{info.waitlisted} attesa)</span>}
                     </div>
                   </div>
                   <Button size="sm" variant="outline" className="w-full mt-3 text-xs h-7" onClick={() => { setBookSession(session); setMemberId(""); }}>
@@ -110,9 +110,9 @@ export default function SessionsTab({ data, reload }) {
                   <div className="font-medium">{course?.name}</div>
                   <div className="text-xs text-muted-foreground">{formatData(bookSession.date, "estesaBreve")} — {bookSession.start_time}–{bookSession.end_time}</div>
                   {info.isFull ? (
-                    <p className="text-sm text-amber-600 mt-1">Completo ({info.confirmed}/{info.capacity}). La prenotazione andrà in lista d'attesa (posizione #{info.waitlisted + 1}).</p>
+                    <p className="text-sm text-warning mt-1">Completo ({info.confirmed}/{info.capacity}). La prenotazione andrà in lista d'attesa (posizione #{info.waitlisted + 1}).</p>
                   ) : (
-                    <p className="text-sm text-emerald-600 mt-1">Posti residui: {info.available} su {info.capacity}</p>
+                    <p className="text-sm text-success mt-1">Posti residui: {info.available} su {info.capacity}</p>
                   )}
                 </div>
               );

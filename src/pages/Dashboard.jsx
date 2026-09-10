@@ -78,9 +78,9 @@ export default function Dashboard() {
   const activeMembers = subscriptions.filter(s => s.status === "active").length;
 
   const kpis = [
-    { label: "Soci attivi", value: activeMembers, icon: UserCheck, color: "text-emerald-600", bg: "bg-emerald-50" },
-    { label: "Soci iscritti", value: members.length, icon: Users, color: "text-blue-600", bg: "bg-blue-50" },
-    { label: "Certificati in scadenza", value: certAlerts.length, icon: FileWarning, color: "text-amber-600", bg: "bg-amber-50" },
+    { label: "Soci attivi", value: activeMembers, icon: UserCheck, color: "text-success", bg: "bg-success/10" },
+    { label: "Soci iscritti", value: members.length, icon: Users, color: "text-info", bg: "bg-info/10" },
+    { label: "Certificati in scadenza", value: certAlerts.length, icon: FileWarning, color: "text-warning", bg: "bg-warning/10" },
     { label: "Prossime lezioni", value: upcomingBookings.length, icon: Calendar, color: "text-violet-600", bg: "bg-violet-50" },
   ];
 
@@ -116,7 +116,7 @@ export default function Dashboard() {
         <Card className="border-0 shadow-sm">
           <CardHeader className="pb-3">
             <CardTitle className="text-base font-heading flex items-center gap-2">
-              <FileWarning className="w-4 h-4 text-amber-500" />
+              <FileWarning className="w-4 h-4 text-warning" />
               Avvisi certificati
               {certAlerts.length > 0 && (
                 <Badge variant="destructive" className="text-xs ml-auto">{certAlerts.length}</Badge>
@@ -129,12 +129,12 @@ export default function Dashboard() {
             ) : (
               <div className="space-y-3">
                 {certAlerts.map(cert => (
-                  <div key={cert.id} className={`flex items-center justify-between p-3 rounded-lg ${cert.expired ? "bg-red-50" : "bg-amber-50"}`}>
+                  <div key={cert.id} className={`flex items-center justify-between p-3 rounded-lg ${cert.expired ? "bg-destructive/10" : "bg-warning/10"}`}>
                     <div>
                       <p className="text-sm font-medium">{cert.member_name}</p>
                       <p className="text-xs text-muted-foreground">{cert.file_name}</p>
                     </div>
-                    <Badge variant="outline" className={`text-xs ${cert.expired ? "bg-red-100 text-red-700 border-red-200" : "bg-amber-100 text-amber-700 border-amber-200"}`}>
+                    <Badge variant="outline" className={`text-xs ${cert.expired ? "bg-destructive/10 text-destructive border-destructive/30" : "bg-warning/10 text-warning border-warning/30"}`}>
                       {cert.expired ? `Scaduto da ${Math.abs(cert.daysLeft)}g` : `${cert.daysLeft}g residui`}
                     </Badge>
                   </div>
@@ -148,7 +148,7 @@ export default function Dashboard() {
         <Card className="border-0 shadow-sm">
           <CardHeader className="pb-3">
             <CardTitle className="text-base font-heading flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4 text-amber-500" />
+              <AlertTriangle className="w-4 h-4 text-warning" />
               Rinnovi abbonamenti
               {subAlerts.length > 0 && (
                 <Badge variant="destructive" className="text-xs ml-auto">{subAlerts.length}</Badge>
@@ -161,7 +161,7 @@ export default function Dashboard() {
             ) : (
               <div className="space-y-3">
                 {subAlerts.map(sub => (
-                  <div key={sub.id} className={`flex items-center justify-between p-3 rounded-lg ${sub.daysLeft < 0 ? "bg-red-50" : "bg-amber-50"}`}>
+                  <div key={sub.id} className={`flex items-center justify-between p-3 rounded-lg ${sub.daysLeft < 0 ? "bg-destructive/10" : "bg-warning/10"}`}>
                     <div>
                       <p className="text-sm font-medium">{sub.member_name}</p>
                       <p className="text-xs text-muted-foreground">{sub.plan_name}</p>

@@ -75,7 +75,7 @@ export default function BookingsTab({ data, reload }) {
                   </td>
                   <td className="py-3 px-4">
                     {b.status !== "cancelled" && (
-                      <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => handleCancel(b)}>
+                      <Button variant="ghost" size="icon" className="h-9 w-9 text-destructive" onClick={() => handleCancel(b)}>
                         <Trash2 className="w-3.5 h-3.5" />
                       </Button>
                     )}

@@ -272,14 +272,14 @@ export default function LibreriaEsercizi() {
                                 {puoModificare && (
                                   <div className="flex items-center gap-0.5 shrink-0 -mt-1 -mr-2">
                                     <Button
-                                      variant="ghost" size="icon" className="h-7 w-7"
+                                      variant="ghost" size="icon" className="h-9 w-9"
                                       aria-label={`Modifica ${esercizio.name}`}
                                       onClick={() => apriModifica(esercizio)}
                                     >
                                       <Pencil className="w-3.5 h-3.5" aria-hidden="true" />
                                     </Button>
                                     <Button
-                                      variant="ghost" size="icon" className="h-7 w-7 text-destructive"
+                                      variant="ghost" size="icon" className="h-9 w-9 text-destructive"
                                       aria-label={`Elimina ${esercizio.name}`}
                                       onClick={() => elimina(esercizio)}
                                     >

@@ -270,11 +270,11 @@ export default function MemberDetail() {
           </div>
           <div className="flex items-center gap-2 mt-2">
             {member.gdpr_consent ? (
-              <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 text-xs">
+              <Badge variant="outline" className="bg-success/10 text-success border-success/30 text-xs">
                 <Shield className="w-3 h-3 mr-1" /> Consenso GDPR {member.gdpr_consent_date && `(${formatData(member.gdpr_consent_date, "media")})`}
               </Badge>
             ) : (
-              <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200 text-xs">Nessun consenso GDPR</Badge>
+              <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/30 text-xs">Nessun consenso GDPR</Badge>
             )}
           </div>
         </div>
@@ -330,7 +330,7 @@ export default function MemberDetail() {
                         <p className="text-xs text-muted-foreground">{doc.file_name || "Nessun file"}</p>
                       </div>
                       {daysLeft !== null && (
-                        <Badge variant="outline" className={`text-xs ${daysLeft < 0 ? "bg-red-100 text-red-700 border-red-200" : daysLeft < 30 ? "bg-amber-100 text-amber-700 border-amber-200" : "bg-emerald-100 text-emerald-700 border-emerald-200"}`}>
+                        <Badge variant="outline" className={`text-xs ${daysLeft < 0 ? "bg-destructive/10 text-destructive border-destructive/30" : daysLeft < 30 ? "bg-warning/10 text-warning border-warning/30" : "bg-success/10 text-success border-success/30"}`}>
                           {daysLeft < 0 ? "Scaduto" : `${daysLeft}g residui`}
                         </Badge>
                       )}
@@ -366,7 +366,7 @@ export default function MemberDetail() {
                     Credenziale: {qrAccess.codice}
                   </p>
                   <p className="text-xs text-muted-foreground">Generata il {formatData(qrAccess.data_generazione, "media")}</p>
-                  <Badge variant="outline" className={`mt-1 text-xs ${qrAccess.stato === "attivo" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-red-50 text-red-700 border-red-200"}`}>
+                  <Badge variant="outline" className={`mt-1 text-xs ${qrAccess.stato === "attivo" ? "bg-success/10 text-success border-success/30" : "bg-destructive/10 text-destructive border-destructive/30"}`}>
                     {qrAccess.stato === "attivo" ? "Attivo" : "Revocato"}
                   </Badge>
                 </div>
@@ -397,7 +397,7 @@ export default function MemberDetail() {
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-muted-foreground">Account</span>
-                  <Badge variant="outline" className={`text-xs ${portalAccount.attivo ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-red-50 text-red-700 border-red-200"}`}>
+                  <Badge variant="outline" className={`text-xs ${portalAccount.attivo ? "bg-success/10 text-success border-success/30" : "bg-destructive/10 text-destructive border-destructive/30"}`}>
                     {portalAccount.attivo ? "Attivo" : "Disattivato"}
                   </Badge>
                 </div>
@@ -415,12 +415,12 @@ export default function MemberDetail() {
                 Genera password
               </Button>
             </div>
-            {!member?.email && <p className="text-xs text-amber-600 mt-2">Il socio non ha un'email: impossibile creare l'account portale</p>}
+            {!member?.email && <p className="text-xs text-warning mt-2">Il socio non ha un'email: impossibile creare l'account portale</p>}
             {generatedPassword && (
               <div className="mt-3 p-3 rounded-lg bg-muted">
                 <p className="text-xs text-muted-foreground mb-1">Password generata:</p>
                 <p className="font-mono text-sm font-medium break-all">{generatedPassword}</p>
-                <p className="text-xs text-amber-600 mt-1">Comunica questa password al socio</p>
+                <p className="text-xs text-warning mt-1">Comunica questa password al socio</p>
               </div>
             )}
           </CardContent>
@@ -545,7 +545,7 @@ export default function MemberDetail() {
               </Select>
             </div>
             <div><Label>Data inizio abbonamento</Label><Input type="date" value={subForm.start_date} onChange={e => setSubForm({...subForm, start_date: e.target.value})} /></div>
-            {dateError && <p className="text-xs text-red-600 font-medium -mt-1">{dateError}</p>}
+            {dateError && <p className="text-xs text-destructive font-medium -mt-1">{dateError}</p>}
             <Button type="submit" className="w-full" disabled={!subForm.plan_id || saving}>
               {saving ? "Registrazione..." : "Crea abbonamento"}
             </Button>

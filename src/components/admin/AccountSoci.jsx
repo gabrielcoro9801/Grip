@@ -108,7 +108,7 @@ export default function AccountSoci({ accounts, members, reload }) {
 											{acc.nome}
 											{/* Un accesso al portale senza anagrafica dietro: chi lo usa entra e non
 											    trova niente. Va segnalato, non nascosto. */}
-											<Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 text-[10px] ml-1">
+											<Badge variant="outline" className="bg-warning/10 text-warning border-warning/30 text-[10px] ml-1">
 												<AlertTriangle className="w-3 h-3 mr-1" /> Senza anagrafica
 											</Badge>
 										</span>
@@ -120,9 +120,9 @@ export default function AccountSoci({ accounts, members, reload }) {
 								<td className="py-3 px-4 text-muted-foreground">{acc.email || "—"}</td>
 								<td className="py-3 px-4">
 									{acc.attivo ? (
-										<Badge className="bg-emerald-100 text-emerald-700 border-emerald-200">Attivo</Badge>
+										<Badge className="bg-success/10 text-success border-success/30">Attivo</Badge>
 									) : (
-										<Badge className="bg-red-100 text-red-700 border-red-200">Sospeso</Badge>
+										<Badge className="bg-destructive/10 text-destructive border-destructive/30">Sospeso</Badge>
 									)}
 								</td>
 								<td className="py-3 px-4 text-muted-foreground text-xs">
@@ -130,19 +130,19 @@ export default function AccountSoci({ accounts, members, reload }) {
 								</td>
 								<td className="py-3 px-4">
 									<div className="flex items-center justify-end gap-1">
-										<Button variant="ghost" size="icon" className="h-7 w-7" title="Reimposta password" onClick={() => setResetTarget(acc)}>
+										<Button variant="ghost" size="icon" className="h-9 w-9" title="Reimposta password" onClick={() => setResetTarget(acc)}>
 											<KeyRound className="w-3.5 h-3.5" />
 										</Button>
 										<Button
 											variant="ghost"
 											size="icon"
-											className="h-7 w-7"
+											className="h-9 w-9"
 											title={acc.attivo ? "Sospendi l'accesso" : "Riattiva l'accesso"}
 											onClick={() => commutaAttivo(acc)}
 										>
 											{acc.attivo
 												? <Ban className="w-3.5 h-3.5 text-destructive" />
-												: <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />}
+												: <CheckCircle2 className="w-3.5 h-3.5 text-success" />}
 										</Button>
 									</div>
 								</td>

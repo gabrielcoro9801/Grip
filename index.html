@@ -1,8 +1,28 @@
 <!doctype html>
-<html lang="en">
+<html lang="it">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
+    <script>
+      // Il tema si applica **prima** che React parta.
+      //
+      // Facendolo dentro l'applicazione, fra il caricamento della pagina e il primo
+      // disegno passa un istante in cui il fondo è bianco: chi ha scelto il tema scuro si
+      // prende una schermata chiara in faccia a ogni apertura. Sono poche righe qui, ma
+      // sono l'unico posto che gira abbastanza presto.
+      (function () {
+        try {
+          var scelta = localStorage.getItem('grip_tema') || 'sistema';
+          var scuro =
+            scelta === 'scuro' ||
+            (scelta === 'sistema' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+          if (scuro) document.documentElement.classList.add('dark');
+        } catch (e) {
+          // Navigazione privata o cookie bloccati: si resta sul tema chiaro.
+        }
+      })();
+    </script>
     <link
       rel="icon"
       type="image/svg+xml"

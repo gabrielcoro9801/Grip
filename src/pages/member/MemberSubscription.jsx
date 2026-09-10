@@ -68,15 +68,15 @@ export default function MemberSubscription() {
                     </div>
                   )}
                   {expired ? (
-                    <div className="flex items-center gap-2 p-2 rounded-lg bg-red-50 border border-red-200 text-red-700 text-xs">
+                    <div className="flex items-center gap-2 p-2 rounded-lg bg-destructive/10 border border-destructive/30 text-destructive text-xs">
                       <AlertCircle className="w-4 h-4" /> Abbonamento scaduto
                     </div>
                   ) : expiringSoon ? (
-                    <div className="flex items-center gap-2 p-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-700 text-xs">
+                    <div className="flex items-center gap-2 p-2 rounded-lg bg-warning/10 border border-warning/30 text-warning text-xs">
                       <Clock className="w-4 h-4" /> In scadenza tra {daysToExpiry} giorni
                     </div>
                   ) : (
-                    <div className="flex items-center gap-2 p-2 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs">
+                    <div className="flex items-center gap-2 p-2 rounded-lg bg-success/10 border border-success/30 text-success text-xs">
                       <CheckCircle className="w-4 h-4" /> Attivo — scade tra {daysToExpiry} giorni
                     </div>
                   )}

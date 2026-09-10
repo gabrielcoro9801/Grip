@@ -59,7 +59,7 @@ export default function MemberCoursesCalendar() {
   const handleBook = async (session) => {
     setActionLoading(true);
     try {
-      const result = await createBooking(session, memberUser.member_id, memberUser.nome, bookings);
+      const result = await createBooking(session, memberUser.member_id);
       if (!result.ok) {
         toast({ title: "Prenotazione non riuscita", description: result.error, variant: "destructive" });
       } else if (result.status === "confirmed") {
@@ -90,7 +90,7 @@ export default function MemberCoursesCalendar() {
     setActionLoading(true);
     let result = null;
     try {
-      result = await bookAllSessions(sessionsToBook, memberUser.member_id, memberUser.nome, bookings);
+      result = await bookAllSessions(sessionsToBook, memberUser.member_id, bookings);
       loadData();
     } catch (err) {
       toast({ title: "Errore", description: err.message, variant: "destructive" });

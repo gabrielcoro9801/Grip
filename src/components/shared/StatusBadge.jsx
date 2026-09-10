@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
  * Ne convivevano tre: questo componente con la palette scritta a mano, le
  * mappe STATO_LABEL/STATO_VARIANT duplicate in cinque file, e i <Badge> con
  * le classi colore inline. Ora gli stati stanno tutti qui, e i colori
- * passano dai token del tema invece che da bg-emerald-50 & co.
+ * passano dai token del tema invece che da bg-success/10 & co.
  */
 
 // Cinque toni, non venti colori: è quello che uno stato deve comunicare.
