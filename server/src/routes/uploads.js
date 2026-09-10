@@ -12,14 +12,25 @@ import { pipeline } from 'node:stream/promises';
 import path from 'node:path';
 import { getUserFromRequest } from '../auth/tokens.js';
 
-const ALLOWED_MIME = new Set([
-	'application/pdf',
-	'image/png',
-	'image/jpeg',
-	'image/gif',
-	'image/webp',
-	'image/svg+xml',
-]);
+// Tipi ammessi, ognuno con l'estensione con cui viene salvato.
+//
+// L'estensione **non** si prende dal nome del file mandato dal client: il tipo veniva
+// controllato qui, ma il nome memorizzato conservava l'estensione scelta da chi caricava.
+// Bastava dichiarare `image/png` e chiamare il file `x.html` per farsi salvare una pagina
+// HTML servita da /uploads/*, cioè dallo stesso indirizzo dell'applicazione: il codice
+// dentro quella pagina poteva leggere il token di sessione dal localStorage e mandarlo
+// altrove. L'estensione la decide questa tabella, e nient'altro.
+//
+// **SVG non è più ammesso.** È un documento XML che esegue script quando lo si apre
+// direttamente, quindi come vettore vale quanto un file HTML; per un logo o la foto di un
+// esercizio, PNG e WebP bastano.
+const ESTENSIONE_PER_TIPO = {
+	'application/pdf': '.pdf',
+	'image/png': '.png',
+	'image/jpeg': '.jpg',
+	'image/gif': '.gif',
+	'image/webp': '.webp',
+};
 
 export default async function uploadRoutes(fastify, options) {
 	const { uploadDir, publicBaseUrl } = options;
@@ -40,15 +51,17 @@ export default async function uploadRoutes(fastify, options) {
 		const data = await request.file();
 		if (!data) return reply.code(400).send({ error: 'Nessun file ricevuto.' });
 
-		if (!ALLOWED_MIME.has(data.mimetype)) {
+		const ext = ESTENSIONE_PER_TIPO[data.mimetype];
+		if (!ext) {
 			return reply.code(400).send({ error: `Tipo di file non consentito: ${data.mimetype}` });
 		}
 
 		await mkdir(uploadDir, { recursive: true });
 
-		// Nome generato lato server: un nome scelto dal client potrebbe contenere
-		// path traversal o sovrascrivere file esistenti.
-		const ext = path.extname(data.filename || '').slice(0, 10);
+		// Nome ed estensione decisi dal server: un nome scelto dal client potrebbe contenere
+		// path traversal, sovrascrivere file esistenti, o — con un'estensione eseguibile dal
+		// browser — trasformare l'archivio in un punto da cui servire codice sul nostro
+		// stesso dominio.
 		const storedName = `${randomUUID()}${ext}`;
 		const destination = path.join(uploadDir, storedName);
 

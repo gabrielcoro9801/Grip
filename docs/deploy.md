@@ -102,6 +102,7 @@ Sempre sotto **Variables** del servizio backend:
 | `DATABASE_URL` | `${{Postgres.DATABASE_URL}}` | riferimento, non copia |
 | `NODE_ENV` | `production` | attiva i controlli: senza, il server parte con le impostazioni di sviluppo |
 | `JWT_SECRET` | una stringa lunga e casuale | firma i token: con un segreto noto chiunque può firmarsi un accesso da amministratore |
+| `QR_SECRET` | un'altra stringa lunga e casuale | firma il codice d'accesso che cambia ogni minuto: è ciò che impedisce di ricavare i codici futuri da uno screenshot. Se manca si usa `JWT_SECRET`, quindi l'applicazione parte lo stesso — ma due usi per una chiave sola è una scorciatoia, non una scelta |
 | `CORS_ORIGIN` | `https://gripcore.it` | con un servizio solo non serve davvero, ma il server la pretende |
 | `PUBLIC_BASE_URL` | `https://gripcore.it` | entra negli URL delle ricevute PDF |
 | `UPLOAD_DIR` | `/data/uploads` | vedi 2.4 |

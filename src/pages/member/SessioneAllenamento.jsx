@@ -176,13 +176,20 @@ export default function SessioneAllenamento() {
       // uno perché la macchina era occupata, e quella deviazione deve ricomparire alla
       // riapertura. Se la routine non c'è più, restano solo le righe registrate.
       const previsti = routineCorrente?.esercizi ?? [];
-      const indiciRegistrati = [...new Set(diQuestaSessione.map((r) => r.exercise_index ?? 0))];
+      // La posizione si normalizza **una volta sola**, qui, e da qui in giù si usa solo
+      // questa. Prima si raccoglieva con `?? 0` e si confrontava con `=== r.exercise_index`:
+      // una riga con posizione nulla generava un esercizio fantasma alla posizione 0 a cui
+      // non veniva mai agganciato il proprio identificativo, quindi restava invisibile e
+      // incancellabile — e bloccava per sempre la cancellazione della sessione, perché la
+      // chiave esterna la teneva in vita.
+      const posizioneDi = (riga) => riga.exercise_index ?? 0;
+      const indiciRegistrati = [...new Set(diQuestaSessione.map(posizioneDi))];
       const posizioni = [...new Set([...previsti.map((_, i) => i), ...indiciRegistrati])]
         .filter((i) => i >= 0)
         .sort((a, b) => a - b)
         .map((indice) => {
           const daScheda = previsti[indice];
-          const registrata = diQuestaSessione.find((r) => r.exercise_index === indice);
+          const registrata = diQuestaSessione.find((r) => posizioneDi(r) === indice);
           return {
             indice,
             esercizio: {
@@ -202,7 +209,7 @@ export default function SessioneAllenamento() {
 
       setEsercizi(
         posizioni.map(({ esercizio, indice: indiceEsercizio }) => {
-          const gia = diQuestaSessione.filter((r) => r.exercise_index === indiceEsercizio);
+          const gia = diQuestaSessione.filter((r) => posizioneDi(r) === indiceEsercizio);
           // `posizione` è l'indice con cui le serie sono registrate, e non cambia mai. La
           // posizione nell'array invece si sposta appena si toglie un esercizio: usarla
           // per scrivere aggancerebbe le serie successive all'esercizio sbagliato.
@@ -329,7 +336,7 @@ export default function SessioneAllenamento() {
         reps_fatte: repsFatte,
         rpe_percepito: numero(riga.rpe) ?? riga.rpe_previsto ?? null,
         data: new Date().toISOString().split("T")[0],
-        note: noteEsercizi[indiceEsercizio] ?? "",
+        note: noteEsercizi[esercizio.posizione] ?? "",
       });
       cambiaRiga(indiceEsercizio, indiceSerie, "logId", creato.id);
 
@@ -398,7 +405,7 @@ export default function SessioneAllenamento() {
         peso_usato: numero(riga.kg),
         reps_fatte: numero(riga.reps),
         rpe_percepito: numero(riga.rpe),
-        note: noteEsercizi[indiceEsercizio] ?? "",
+        note: noteEsercizi[esercizi[indiceEsercizio].posizione] ?? "",
       });
     } catch (err) {
       toast({ title: "Correzione non salvata", description: err.message, variant: "destructive" });
@@ -629,9 +636,19 @@ export default function SessioneAllenamento() {
     try {
       // Prima le serie, poi la sessione: la chiave esterna punta da quelle a questa, e
       // togliendo prima la sessione il database rifiuterebbe.
-      const daCancellare = esercizi.flatMap((es) => es.righe.filter((r) => r.logId).map((r) => r.logId));
-      for (const logId of daCancellare) {
-        await api.entities.WorkoutLog.delete(logId);
+      //
+      // Le righe si rileggono dal server invece di prenderle da quelle a schermo: se anche
+      // una sola non fosse agganciata a una riga visibile — una posizione che non combacia,
+      // una spunta arrivata da un altro dispositivo — resterebbe lì a tenere in vita la
+      // sessione, e l'allenamento diventerebbe impossibile da buttare via. Che è
+      // esattamente il vicolo cieco da cui questa funzione serve a uscire.
+      const tutte = await api.entities.WorkoutLog.filter(
+        { member_id: memberUser.member_id },
+        "-data",
+        1000
+      );
+      for (const riga of tutte.filter((r) => r.session_id === sessionId)) {
+        await api.entities.WorkoutLog.delete(riga.id);
       }
       await api.entities.WorkoutSession.delete(sessionId);
       toast({ title: "Allenamento annullato" });
@@ -806,8 +823,8 @@ export default function SessioneAllenamento() {
               {!bloccato && (
                 <Input
                   className="h-8 text-sm mb-1.5 border-dashed"
-                  value={noteEsercizi[indiceEsercizio] ?? ""}
-                  onChange={(e) => setNoteEsercizi((n) => ({ ...n, [indiceEsercizio]: e.target.value }))}
+                  value={noteEsercizi[esercizio.posizione] ?? ""}
+                  onChange={(e) => setNoteEsercizi((n) => ({ ...n, [esercizio.posizione]: e.target.value }))}
                   onBlur={() => {
                     // Le serie già spuntate si riallineano alla nota appena scritta.
                     esercizio.righe.forEach((riga, indiceSerie) => {

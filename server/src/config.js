@@ -40,6 +40,17 @@ export const config = {
 	jwtScadenza: process.env.JWT_EXPIRES_IN || '12h',
 
 	/**
+	 * La chiave con cui si firma il codice d'accesso che cambia ogni minuto.
+	 *
+	 * Deve restare sul server: è ciò che impedisce di ricavare i codici futuri da uno
+	 * screenshot. Se non è impostata si usa quella dei token — non è l'ideale tenerne una
+	 * sola per due usi, ma è infinitamente meglio di una derivazione senza chiave, ed
+	 * evita che un'installazione già in piedi smetta di far entrare i soci al primo
+	 * aggiornamento.
+	 */
+	qrSecret: process.env.QR_SECRET || undefined,
+
+	/**
 	 * Origini ammesse dal browser. In sviluppo qualunque, perché Vite e il server girano su
 	 * porte diverse e l'unico a raggiungerli è chi sta davanti al computer.
 	 */

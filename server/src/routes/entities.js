@@ -11,7 +11,7 @@ import {
 } from '../entities/hooks.js';
 import { getUserFromRequest } from '../auth/tokens.js';
 import { canWriteEntity } from '../auth/authorize.js';
-import { memberPuoLeggere, memberPuoScrivere, colonnaProprietario, nascondiCampiPerSocio, forzaProprietario } from '../auth/memberScope.js';
+import { memberPuoLeggere, memberPuoScrivere, colonnaProprietario, colonnaProprietarioScrittura, nascondiCampiPerSocio, forzaProprietario } from '../auth/memberScope.js';
 import { staffAccounts } from '../db/schema/index.js';
 import { registerPgErrorHandler } from './errorHandler.js';
 
@@ -37,7 +37,7 @@ export default async function entityRoutes(fastify) {
 		const scrittura = WRITE_METHODS.has(request.method);
 		const consentito = user.ruolo === 'member'
 			? memberPuoScrivere(name)
-			: canWriteEntity(user.ruolo, name);
+			: canWriteEntity(user.ruolo, name, request.method);
 		if (name && scrittura && !consentito) {
 			return reply.code(403).send({ error: 'Il tuo ruolo non consente questa modifica.' });
 		}
@@ -153,7 +153,13 @@ export default async function entityRoutes(fastify) {
 		const source = Array.isArray(request.body) ? request.body : [];
 		const items = [];
 		for (const item of source) {
-			items.push(translateToJs(table, await applyWriteTransform(entityName, item)));
+			let riga = await applyWriteTransform(entityName, item);
+			// L'appartenenza va imposta anche qui, non solo sulla creazione singola: finché
+			// mancava, bastava passare da /bulk invece che dalla rotta normale per creare
+			// righe intestate a un altro socio — il controllo c'era, e si aggirava
+			// cambiando indirizzo.
+			if (request.memberId) riga = forzaProprietario(entityName, riga, request.memberId);
+			items.push(translateToJs(table, riga));
 		}
 		if (!items.length) return [];
 		const rows = await db.insert(table).values(items).returning();
@@ -175,7 +181,10 @@ export default async function entityRoutes(fastify) {
 	 */
 	async function rigaNonSua(request, entityName, table) {
 		if (!request.memberId) return false;
-		const colonna = colonnaProprietario(entityName);
+		// La colonna della scrittura, non quella della lettura: le prenotazioni si leggono
+		// tutte ma si modificano solo le proprie, e con la colonna di lettura un socio
+		// potrebbe disdire la prenotazione di chiunque.
+		const colonna = colonnaProprietarioScrittura(entityName);
 		if (!colonna) return false;
 		const { dbNameToColumn, dbNameToJsKey } = getColumnMaps(table);
 		const [row] = await db.select().from(table).where(eq(dbNameToColumn.id, request.params.id)).limit(1);

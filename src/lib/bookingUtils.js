@@ -68,8 +68,12 @@ export async function cancelBooking(bookingId) {
       promoted = true;
       const remaining = waitlist.slice(1);
       if (remaining.length > 0) {
-        await api.entities.Booking.bulkUpdate(
-          remaining.map((b, i) => ({ id: b.id, waitlist_position: i + 1 }))
+        // Una chiamata per riga: `bulkUpdate` non esiste — non sul client (che espone solo
+        // bulkCreate) e non sul server, dove non c'è nessuna rotta PUT /bulk. Chiamarlo
+        // sollevava un TypeError proprio dopo aver già promosso il primo in lista, quindi
+        // la disdetta risultava fatta a metà e le posizioni restavano sfalsate per sempre.
+        await Promise.all(
+          remaining.map((b, i) => api.entities.Booking.update(b.id, { waitlist_position: i + 1 }))
         );
       }
     }
@@ -80,8 +84,8 @@ export async function cancelBooking(bookingId) {
     });
     waitlist.sort((a, b) => (a.waitlist_position || 999) - (b.waitlist_position || 999));
     if (waitlist.length > 0) {
-      await api.entities.Booking.bulkUpdate(
-        waitlist.map((b, i) => ({ id: b.id, waitlist_position: i + 1 }))
+      await Promise.all(
+        waitlist.map((b, i) => api.entities.Booking.update(b.id, { waitlist_position: i + 1 }))
       );
     }
   }

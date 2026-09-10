@@ -36,14 +36,33 @@ const COLONNA_PROPRIETARIO = {
 };
 
 /**
+ * La colonna che dice di chi è una riga **quando la si scrive**.
+ *
+ * Quasi sempre coincide con quella della lettura, ma non per le prenotazioni: quelle si
+ * leggono tutte, perché è da lì che si contano i posti liberi e la lista d'attesa di ogni
+ * lezione, e se ne scrivono solo di proprie. Tenere una mappa sola costringerebbe a
+ * scegliere fra due cose che non sono la stessa: chi posso vedere, e a nome di chi posso
+ * agire.
+ */
+const COLONNA_PROPRIETARIO_SCRITTURA = {
+	...COLONNA_PROPRIETARIO,
+	Booking: 'member_id',
+};
+
+/**
  * Impone che un record creato da un socio appartenga a lui.
  * Senza questo, basterebbe cambiare un identificativo nella richiesta per generare un
  * codice di accesso valido intestato a un altro.
  */
 export function forzaProprietario(entityName, body, memberId) {
-	const colonna = COLONNA_PROPRIETARIO[entityName];
+	const colonna = COLONNA_PROPRIETARIO_SCRITTURA[entityName];
 	if (!colonna || colonna === 'id') return body;
 	return { ...body, [colonna]: memberId };
+}
+
+/** Colonna su cui verificare che una riga da modificare o cancellare sia davvero sua. */
+export function colonnaProprietarioScrittura(entityName) {
+	return COLONNA_PROPRIETARIO_SCRITTURA[entityName] ?? null;
 }
 
 // Le prenotazioni fanno eccezione: servono tutte, perché è da quelle che si contano i posti
@@ -53,10 +72,15 @@ const CAMPI_NASCOSTI = {
 	Booking: ['member_name'],
 };
 
-// Le uniche cose che un socio crea da sé: il proprio codice di accesso e i propri
-// allenamenti — la sessione che avvia e le serie che spunta mentre si allena. Tutto il
+// Le uniche cose che un socio crea da sé: i propri allenamenti — la sessione che avvia e
+// le serie che spunta mentre si allena — e le proprie prenotazioni ai corsi. Tutto il
 // resto lo registra la palestra.
-const SCRIVIBILI = new Set(['QRAccesso', 'WorkoutSession', 'WorkoutLog']);
+//
+// **QRAccesso non è più qui.** Il codice d'accesso se lo creava il socio, con lo stato che
+// voleva: bastava una richiesta per rifarsi una credenziale attiva dopo essere stato
+// revocato, e la revoca diventava una formalità. Ora il codice lo emette la palestra, e il
+// socio lo chiede soltanto a /api/qr/codice.
+const SCRIVIBILI = new Set(['WorkoutSession', 'WorkoutLog', 'Booking']);
 
 export function memberPuoLeggere(entityName) {
 	return LEGGIBILI.has(entityName);

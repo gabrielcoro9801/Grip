@@ -12,7 +12,13 @@ export function registerPgErrorHandler(fastify) {
 	fastify.setErrorHandler((error, request, reply) => {
 		const message = PG_ERROR_MESSAGES[error.code];
 		if (message) {
-			reply.code(400).send({ error: message, detail: error.detail });
+			// `error.detail` di Postgres contiene il valore che ha violato il vincolo — cose
+			// come «Key (email)=(vittima@example.com) already exists». Rimandarlo al client
+			// trasformava ogni vincolo in uno strumento per indovinare dati di righe che non
+			// si ha diritto di leggere: si prova un valore, e la risposta conferma se c'è.
+			// Nei log serve, in risposta no.
+			request.log.warn({ code: error.code, detail: error.detail }, 'vincolo del database violato');
+			reply.code(400).send({ error: message });
 			return;
 		}
 		// Fastify segnala da sé gli errori di richiesta (JSON malformato, corpo vuoto,

@@ -13,7 +13,10 @@ import bcrypt from 'bcryptjs';
 import { inArray } from 'drizzle-orm';
 import { buildApp } from '../src/app.js';
 import { db, pool } from '../src/db/client.js';
-import { members, staffAccounts, subscriptions, qrAccessi, exercisePlans, workoutLogs } from '../src/db/schema/index.js';
+import {
+	members, staffAccounts, subscriptions, qrAccessi, exercisePlans, workoutLogs,
+	rooms, courses, events, sessions, bookings,
+} from '../src/db/schema/index.js';
 
 const PASSWORD = 'prova-permessi-1234';
 
@@ -27,6 +30,11 @@ const idAccount = [];
 const idAbbonamenti = [];
 const idSchede = [];
 const idAllenamenti = [];
+const idPrenotazioni = [];
+let idSala;
+let idCorso;
+let idEvento;
+let idSessioneCorso;
 
 async function login(email) {
 	const res = await app.inject({
@@ -98,6 +106,38 @@ before(async () => {
 	idModello = schede[0].id;
 	idSchede.push(...schede.map((s) => s.id));
 
+	// Una lezione vera su cui prenotare: senza, non si può provare che il socio prenoti
+	// solo per sé, che è il punto.
+	const [sala] = await db.insert(rooms).values({ name: `Sala prova ${suffisso}`, capacity: 20 }).returning();
+	idSala = sala.id;
+	const [corso] = await db.insert(courses).values({ name: `Corso prova ${suffisso}` }).returning();
+	idCorso = corso.id;
+	const [evento] = await db
+		.insert(events)
+		.values({
+			courseId: corso.id,
+			roomId: sala.id,
+			capacity: 20,
+			recurrenceType: 'single',
+			startDate: '2026-12-01',
+			startTime: '10:00',
+			endTime: '11:00',
+		})
+		.returning();
+	idEvento = evento.id;
+	const [sessione] = await db
+		.insert(sessions)
+		.values({
+			eventId: evento.id,
+			date: '2026-12-01',
+			startTime: '10:00',
+			endTime: '11:00',
+			roomId: sala.id,
+			capacity: 20,
+		})
+		.returning();
+	idSessioneCorso = sessione.id;
+
 	tokenSocio = await login(account[0].email);
 	tokenAdmin = await login(account[1].email);
 });
@@ -106,6 +146,11 @@ after(async () => {
 	// I codici di accesso li generano i test stessi e puntano al socio: vanno via per
 	// primi, o l'anagrafica resta agganciata da una chiave esterna.
 	if (idSocio) await db.delete(qrAccessi).where(inArray(qrAccessi.clienteId, [idSocio, idEstraneo]));
+	if (idPrenotazioni.length) await db.delete(bookings).where(inArray(bookings.id, idPrenotazioni));
+	if (idSessioneCorso) await db.delete(sessions).where(inArray(sessions.id, [idSessioneCorso]));
+	if (idEvento) await db.delete(events).where(inArray(events.id, [idEvento]));
+	if (idCorso) await db.delete(courses).where(inArray(courses.id, [idCorso]));
+	if (idSala) await db.delete(rooms).where(inArray(rooms.id, [idSala]));
 	if (idAllenamenti.length) await db.delete(workoutLogs).where(inArray(workoutLogs.id, idAllenamenti));
 	if (idSchede.length) await db.delete(exercisePlans).where(inArray(exercisePlans.id, idSchede));
 	if (idAbbonamenti.length) await db.delete(subscriptions).where(inArray(subscriptions.id, idAbbonamenti));
@@ -214,24 +259,41 @@ describe('cosa un socio legge di sé', () => {
 });
 
 describe('cosa un socio può scrivere', () => {
-	test('genera il proprio codice di accesso', async () => {
+	test('il codice di accesso non se lo emette da sé', async () => {
+		// Prima poteva, con lo stato che voleva: bastava una richiesta per rifarsi una
+		// credenziale «attiva» dopo essere stati revocati, e la revoca durava fino alla
+		// visita successiva del socio. Ora il codice lo emette la palestra.
 		const res = await come(tokenSocio, {
 			method: 'POST',
 			url: '/api/entities/QRAccesso',
 			payload: { cliente_id: idSocio, codice: `PROVA-${Date.now()}`, stato: 'attivo' },
 		});
-		assert.equal(res.statusCode, 201);
-		assert.equal(res.json().cliente_id, idSocio);
+		assert.equal(res.statusCode, 403);
 	});
 
-	test('un codice intestato a un altro socio viene riportato a chi lo chiede', async () => {
+	test('e nemmeno passando da /bulk', async () => {
+		// La creazione singola imponeva l'intestatario, la creazione in blocco no: si
+		// aggirava il controllo cambiando indirizzo, non permessi.
 		const res = await come(tokenSocio, {
 			method: 'POST',
-			url: '/api/entities/QRAccesso',
-			payload: { cliente_id: idEstraneo, codice: `PROVA-ALTRUI-${Date.now()}`, stato: 'attivo' },
+			url: '/api/entities/QRAccesso/bulk',
+			payload: [{ cliente_id: idEstraneo, codice: `PROVA-BULK-${Date.now()}`, stato: 'attivo' }],
+		});
+		assert.equal(res.statusCode, 403);
+	});
+
+	test('le righe create in blocco restano intestate a chi le crea', async () => {
+		// Per le entità che il socio scrive davvero, /bulk deve imporre il proprietario
+		// esattamente come la creazione singola.
+		const res = await come(tokenSocio, {
+			method: 'POST',
+			url: '/api/entities/WorkoutLog/bulk',
+			payload: [{ member_id: idEstraneo, exercise_name: 'Panca', data: '2026-01-03', reps_fatte: 5 }],
 		});
 		assert.equal(res.statusCode, 201);
-		assert.equal(res.json().cliente_id, idSocio, 'il server deve imporre il proprietario');
+		const creati = res.json();
+		idAllenamenti.push(...creati.map((r) => r.id));
+		assert.equal(creati[0].member_id, idSocio, 'il server deve imporre il proprietario anche in blocco');
 	});
 
 	test('non crea né modifica nulla che riguardi la gestione', async () => {
@@ -285,6 +347,38 @@ describe('cosa un socio può scrivere', () => {
 		});
 		assert.equal(modifica.statusCode, 200);
 		assert.equal(modifica.json().reps_fatte, 6);
+	});
+
+	test('prenota un corso, e la prenotazione è sua', async () => {
+		// Prenotare era semplicemente impossibile: Booking non era fra le entità scrivibili
+		// dal socio, quindi il portale mostrava il pulsante e il server rispondeva 403.
+		// L'intera funzione di autoprenotazione era morta.
+		const res = await come(tokenSocio, {
+			method: 'POST',
+			url: '/api/entities/Booking',
+			// L'intestatario lo impone il server: qui si chiede di prenotare per un altro.
+			payload: { session_id: idSessioneCorso, member_id: idEstraneo, status: 'confirmed' },
+		});
+		assert.equal(res.statusCode, 201);
+		assert.equal(res.json().member_id, idSocio, 'non si prenota a nome di un altro');
+		idPrenotazioni.push(res.json().id);
+	});
+
+	test('disdice la propria, non quella di un altro', async () => {
+		const [altrui] = await db
+			.insert(bookings)
+			.values({ sessionId: idSessioneCorso, memberId: idEstraneo, status: 'confirmed' })
+			.returning();
+		idPrenotazioni.push(altrui.id);
+
+		// Le prenotazioni si leggono tutte — servono a contare i posti liberi — ma questo
+		// non deve diventare il permesso di disdire quelle degli altri.
+		const res = await come(tokenSocio, { method: 'DELETE', url: `/api/entities/Booking/${altrui.id}` });
+		assert.equal(res.statusCode, 404);
+
+		const mia = idPrenotazioni[0];
+		const sua = await come(tokenSocio, { method: 'DELETE', url: `/api/entities/Booking/${mia}` });
+		assert.equal(sua.statusCode, 200);
 	});
 
 	test('non cancella nemmeno la propria anagrafica', async () => {

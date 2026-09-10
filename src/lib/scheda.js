@@ -215,12 +215,23 @@ export function statisticheSettimanali(sessioni, adesso = Date.now()) {
   const questaSettimana = concluse.filter((s) => new Date(s.iniziata_alle).getTime() >= inizioSettimana).length;
   const questoMese = concluse.filter((s) => new Date(s.iniziata_alle).getTime() >= inizioMese.getTime()).length;
 
-  const SETTIMANA = 7 * 86400000;
+  // Si torna indietro di sette **giorni di calendario**, non di sette per 86.400.000
+  // millisecondi: con l'ora legale una settimana ne dura una in più o in meno, e il
+  // cursore finirebbe alle 23 della domenica invece che a mezzanotte del lunedì. Le chiavi
+  // sono mezzanotti locali esatte, quindi il confronto fallirebbe e la fila si azzererebbe
+  // da sola l'ultima domenica di marzo e di ottobre — proprio il numero che nessuno vuole
+  // veder sparire.
+  const settimanaPrima = (quando) => {
+    const giorno = new Date(quando);
+    giorno.setDate(giorno.getDate() - 7);
+    return lunedi(giorno);
+  };
+
   let settimaneDiFila = 0;
-  let cursore = settimaneConSeduta.has(inizioSettimana) ? inizioSettimana : inizioSettimana - SETTIMANA;
+  let cursore = settimaneConSeduta.has(inizioSettimana) ? inizioSettimana : settimanaPrima(inizioSettimana);
   while (settimaneConSeduta.has(cursore)) {
     settimaneDiFila += 1;
-    cursore -= SETTIMANA;
+    cursore = settimanaPrima(cursore);
   }
 
   return { questaSettimana, questoMese, settimaneDiFila };
@@ -295,6 +306,29 @@ export function raggruppaPerSuperset(esercizi) {
     }
   });
   return gruppi;
+}
+
+/**
+ * Toglie la lettera a chi è rimasto solo nel proprio giro.
+ *
+ * Un superset è fatto di almeno due esercizi **vicini**: appena uno resta isolato — perché
+ * è stato spostato, o perché è stato tolto il suo compagno — la lettera non descrive più
+ * niente, ma continua a comparire a schermo come «Superset A» su un esercizio solo e a
+ * finire nella scheda salvata. Si passa da qui dopo ogni riordino.
+ */
+export function togliGruppiOrfani(esercizi) {
+  const gruppi = raggruppaPerSuperset(esercizi);
+  const orfane = new Set(
+    gruppi.filter((g) => g.gruppo && g.esercizi.length === 1).map((g) => g.gruppo)
+  );
+  // Una lettera è orfana solo se **nessun** giro la usa davvero: lo stesso codice può
+  // comparire in due punti della routine, e uno dei due può essere ancora un vero superset.
+  const valide = new Set(
+    gruppi.filter((g) => g.gruppo && g.esercizi.length > 1).map((g) => g.gruppo)
+  );
+  return (esercizi ?? []).map((es) =>
+    es.gruppo && orfane.has(es.gruppo) && !valide.has(es.gruppo) ? { ...es, gruppo: null } : es
+  );
 }
 
 /** La prima lettera libera, per creare un gruppo nuovo. */
