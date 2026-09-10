@@ -10,7 +10,7 @@
 import test, { before, after, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import { existsSync, writeFileSync, rmSync } from 'node:fs';
+import { existsSync, readdirSync, writeFileSync, rmSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { buildApp } from '../src/app.js';
 import { pool } from '../src/db/client.js';
@@ -44,6 +44,24 @@ describe('le intestazioni delle pagine servite', () => {
 		assert.equal(risposta.statusCode, 200);
 		assert.match(risposta.headers['content-type'], /text\/html/);
 		assert.equal(risposta.headers['content-security-policy'], undefined);
+	});
+
+	// Il seguito della stessa storia: la CSP sbagliata era sparita dal server, ma i browser che
+	// l'avevano già presa continuavano a vedere la pagina nera. Rispondendo 304 il server non
+	// ripete le intestazioni, e il browser tiene quelle vecchie: finché il guscio è conservabile,
+	// un errore mandato una volta non si può più ritirare.
+	test('il guscio non si conserva in cache', { skip: !existsSync(DIST_DIR) && 'dist/ non compilata' }, async () => {
+		const risposta = await app.inject({ method: 'GET', url: '/member-portal', headers: { accept: 'text/html' } });
+
+		assert.equal(risposta.headers['cache-control'], 'no-store');
+	});
+
+	test('i file con impronta nel nome si conservano a lungo', { skip: !existsSync(DIST_DIR) && 'dist/ non compilata' }, async () => {
+		const nome = readdirSync(path.join(DIST_DIR, 'assets')).find((f) => f.endsWith('.js'));
+		const risposta = await app.inject({ method: 'GET', url: `/assets/${nome}` });
+
+		assert.equal(risposta.statusCode, 200);
+		assert.match(risposta.headers['cache-control'], /immutable/);
 	});
 
 	test('un file caricato resta senza permessi', async () => {
