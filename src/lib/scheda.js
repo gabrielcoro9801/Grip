@@ -182,6 +182,50 @@ export function statisticheAllenamento(righe) {
   return { serie, volume };
 }
 
+/** Il lunedì della settimana di una data, a mezzanotte. La settimana comincia di lunedì. */
+function lunedi(quando) {
+  const giorno = new Date(quando);
+  giorno.setHours(0, 0, 0, 0);
+  // getDay() dà 0 per domenica: va trattata come ultimo giorno, non come primo.
+  const scarto = (giorno.getDay() + 6) % 7;
+  giorno.setDate(giorno.getDate() - scarto);
+  return giorno.getTime();
+}
+
+/**
+ * Quante volte ci si è allenati, e da quante settimane non si salta.
+ *
+ * È la misura che fa tornare le persone: "tre volte questa settimana" dice più di
+ * qualsiasi grafico, e la fila di settimane è la cosa che nessuno vuole interrompere.
+ *
+ * La fila conta le settimane consecutive con almeno una seduta, all'indietro. Si parte
+ * dalla settimana in corso solo se ci si è già allenati: altrimenti si guarda quella
+ * prima, perché è lunedì mattina e non aver ancora fatto niente non è saltare una
+ * settimana — sarebbe una fila che si azzera ogni domenica a mezzanotte.
+ */
+export function statisticheSettimanali(sessioni, adesso = Date.now()) {
+  const concluse = (sessioni ?? []).filter((s) => s.terminata_alle);
+  const settimaneConSeduta = new Set(concluse.map((s) => lunedi(s.iniziata_alle)));
+
+  const inizioSettimana = lunedi(adesso);
+  const inizioMese = new Date(adesso);
+  inizioMese.setDate(1);
+  inizioMese.setHours(0, 0, 0, 0);
+
+  const questaSettimana = concluse.filter((s) => new Date(s.iniziata_alle).getTime() >= inizioSettimana).length;
+  const questoMese = concluse.filter((s) => new Date(s.iniziata_alle).getTime() >= inizioMese.getTime()).length;
+
+  const SETTIMANA = 7 * 86400000;
+  let settimaneDiFila = 0;
+  let cursore = settimaneConSeduta.has(inizioSettimana) ? inizioSettimana : inizioSettimana - SETTIMANA;
+  while (settimaneConSeduta.has(cursore)) {
+    settimaneDiFila += 1;
+    cursore -= SETTIMANA;
+  }
+
+  return { questaSettimana, questoMese, settimaneDiFila };
+}
+
 /** Quanto è durata una sessione, in secondi. Se è ancora aperta, quanto sta durando. */
 export function durataSessione(sessione, adesso = Date.now()) {
   if (!sessione?.iniziata_alle) return 0;

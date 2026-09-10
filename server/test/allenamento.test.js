@@ -471,17 +471,57 @@ describe('cosa vede il personal trainer', () => {
 		);
 	});
 
-	test('la reception li legge ma non li riscrive', async () => {
-		// La matrice le dà "crm_plans": ["view"]. Finché WorkoutSession e WorkoutLog non
-		// erano mappate sul modulo, quel limite valeva solo per i pulsanti nascosti.
-		const lettura = await come(tokenReception, { method: 'GET', url: '/api/entities/WorkoutSession' });
-		assert.equal(lettura.statusCode, 200);
+	test('ma non li riscrive: il diario è di chi si allena', async () => {
+		// Nemmeno l'amministratore. Correggere dall'esterno lo storico di una persona
+		// significherebbe cambiare quello che ha fatto senza che se ne accorga: chi si
+		// allena sistema i propri errori, e l'istruttore, se vede un numero strano, glielo
+		// fa notare.
+		for (const [chi, token] of [['la reception', tokenReception], ["l'amministratore", tokenPt]]) {
+			const lettura = await come(token, { method: 'GET', url: '/api/entities/WorkoutSession' });
+			assert.equal(lettura.statusCode, 200, `${chi} deve poterli leggere`);
 
-		const scrittura = await come(tokenReception, {
-			method: 'PUT',
-			url: `/api/entities/WorkoutSession/${idSessione}`,
-			payload: { note: 'ci metto mano io' },
+			const scrittura = await come(token, {
+				method: 'PUT',
+				url: `/api/entities/WorkoutSession/${idSessione}`,
+				payload: { note: 'ci metto mano io' },
+			});
+			assert.equal(scrittura.statusCode, 403, `${chi} non deve poterli riscrivere`);
+
+			const cancellazione = await come(token, {
+				method: 'DELETE',
+				url: `/api/entities/WorkoutSession/${idSessione}`,
+			});
+			assert.equal(cancellazione.statusCode, 403, `${chi} non deve poterli cancellare`);
+		}
+	});
+
+	test('il socio invece corregge e cancella i propri', async () => {
+		// È la via d'uscita da un allenamento creato per sbaglio: senza, resterebbe per
+		// sempre nel volume, nel conteggio delle sedute e nei record.
+		const sessione = await come(tokenSocio, {
+			method: 'POST',
+			url: '/api/entities/WorkoutSession',
+			payload: {
+				member_id: idSocio,
+				plan_id: idScheda,
+				plan_name: 'Forza — prova',
+				routine_index: 0,
+				routine_name: 'Giorno 1 — Spinta',
+				iniziata_alle: new Date().toISOString(),
+				terminata_alle: new Date().toISOString(),
+			},
 		});
-		assert.equal(scrittura.statusCode, 403);
+		assert.equal(sessione.statusCode, 201);
+		const id = sessione.json().id;
+
+		const correzione = await come(tokenSocio, {
+			method: 'PUT',
+			url: `/api/entities/WorkoutSession/${id}`,
+			payload: { note: 'giornata storta' },
+		});
+		assert.equal(correzione.statusCode, 200, 'una seduta chiusa resta correggibile');
+
+		const cancellazione = await come(tokenSocio, { method: 'DELETE', url: `/api/entities/WorkoutSession/${id}` });
+		assert.equal(cancellazione.statusCode, 200, 'e cancellabile');
 	});
 });

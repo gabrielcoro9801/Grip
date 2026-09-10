@@ -9,8 +9,10 @@ import { LoadingState } from "@/components/shared/Spinner";
 import { ErrorState } from "@/components/shared/StateViews";
 import { useConfirm } from "@/components/shared/ConfirmDialog";
 import { useToast } from "@/components/ui/use-toast";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import TimerRecupero from "@/components/allenamento/TimerRecupero";
-import { ChevronDown, Plus, Check, Timer, Trash2, StickyNote } from "lucide-react";
+import SelettoreEsercizi from "@/components/allenamento/SelettoreEsercizi";
+import { ChevronDown, Plus, Check, Timer, Trash2, StickyNote, Repeat, X } from "lucide-react";
 import { etichettaGruppo } from "@/lib/gruppiMuscolari";
 import {
   formatDurata, formatRecupero, statisticheAllenamento, tipoSerie, TIPI_SERIE,
@@ -44,6 +46,8 @@ export default function SessioneAllenamento() {
   const [routine, setRoutine] = useState(null);
   const [descrizioni, setDescrizioni] = useState(new Map());
   const [immagini, setImmagini] = useState(new Map());
+  // Il catalogo intero serve al selettore, quando si sostituisce o si aggiunge in sala.
+  const [catalogo, setCatalogo] = useState([]);
   const [precedenti, setPrecedenti] = useState(new Map());
   const [record, setRecord] = useState(new Map());
 
@@ -55,6 +59,15 @@ export default function SessioneAllenamento() {
   const [adesso, setAdesso] = useState(Date.now());
   const [recupero, setRecupero] = useState(null); // { scadenza, durataSecondi }
   const [chiusuraInCorso, setChiusuraInCorso] = useState(false);
+
+  // Un allenamento già chiuso si apre in lettura e si sblocca solo chiedendolo: correggere
+  // per sbaglio uno storico che si stava soltanto guardando è più facile di quanto sembri.
+  const [modificaAttiva, setModificaAttiva] = useState(false);
+  // I record battuti oggi, per il riepilogo finale.
+  const [recordBattuti, setRecordBattuti] = useState([]);
+  const [riepilogo, setRiepilogo] = useState(null);
+  // null | { modo: "aggiungi" } | { modo: "sostituisci", indice }
+  const [selettore, setSelettore] = useState(null);
 
   // Le righe con una scrittura in volo, per non spuntarle due volte.
   //
@@ -97,6 +110,7 @@ export default function SessioneAllenamento() {
         api.entities.WorkoutSession.filter({ member_id: memberUser.member_id }, "-iniziata_alle", 200),
       ]);
 
+      setCatalogo(catalogo);
       setDescrizioni(new Map(catalogo.map((e) => [e.id, e.description])));
       setImmagini(new Map(catalogo.filter((e) => e.image_url).map((e) => [e.id, e.image_url])));
 
@@ -157,27 +171,42 @@ export default function SessioneAllenamento() {
       // Le serie previste dalla scheda, più quelle già spuntate in questa sessione: è così
       // che un allenamento interrotto si riapre esattamente dov'era.
       //
-      // Quando la routine non c'è più si parte dalle sole righe registrate, ricostruendo un
-      // esercizio per ogni posizione che compare: la scheda è cambiata, l'allenamento no.
-      const posizioni = routineCorrente
-        ? (routineCorrente.esercizi ?? []).map((esercizio, indice) => ({ esercizio, indice }))
-        : [...new Set(diQuestaSessione.map((r) => r.exercise_index ?? 0))]
-            .sort((a, b) => a - b)
-            .map((indice) => ({
-              indice,
-              esercizio: {
+      // Le posizioni sono l'unione di quelle previste dalla scheda e di quelle che compaiono
+      // fra le righe registrate: chi si allena può aggiungere un esercizio o sostituirne
+      // uno perché la macchina era occupata, e quella deviazione deve ricomparire alla
+      // riapertura. Se la routine non c'è più, restano solo le righe registrate.
+      const previsti = routineCorrente?.esercizi ?? [];
+      const indiciRegistrati = [...new Set(diQuestaSessione.map((r) => r.exercise_index ?? 0))];
+      const posizioni = [...new Set([...previsti.map((_, i) => i), ...indiciRegistrati])]
+        .filter((i) => i >= 0)
+        .sort((a, b) => a - b)
+        .map((indice) => {
+          const daScheda = previsti[indice];
+          const registrata = diQuestaSessione.find((r) => r.exercise_index === indice);
+          return {
+            indice,
+            esercizio: {
+              ...(daScheda ?? {
                 exercise_id: null,
-                exercise_name: diQuestaSessione.find((r) => r.exercise_index === indice)?.exercise_name ?? "Esercizio",
-                muscle_group: diQuestaSessione.find((r) => r.exercise_index === indice)?.muscle_group ?? "altro",
                 recupero_secondi: null,
                 note: "",
                 serie: [],
-              },
-            }));
+              }),
+              // Il nome registrato vince su quello della scheda: se l'esercizio è stato
+              // sostituito in sala, l'allenamento racconta cosa è stato fatto davvero.
+              exercise_name: registrata?.exercise_name ?? daScheda?.exercise_name ?? "Esercizio",
+              muscle_group: registrata?.muscle_group || daScheda?.muscle_group || "altro",
+            },
+          };
+        });
 
       setEsercizi(
         posizioni.map(({ esercizio, indice: indiceEsercizio }) => {
           const gia = diQuestaSessione.filter((r) => r.exercise_index === indiceEsercizio);
+          // `posizione` è l'indice con cui le serie sono registrate, e non cambia mai. La
+          // posizione nell'array invece si sposta appena si toglie un esercizio: usarla
+          // per scrivere aggancerebbe le serie successive all'esercizio sbagliato.
+          const posizione = indiceEsercizio;
           const quanteRighe = Math.max(
             esercizio.serie?.length ?? 0,
             // Se l'ultima volta si erano aggiunte serie oltre quelle previste, le righe in
@@ -187,6 +216,7 @@ export default function SessioneAllenamento() {
           );
           return {
             ...esercizio,
+            posizione,
             righe: Array.from({ length: quanteRighe }, (_, indiceSerie) => {
               const prevista = esercizio.serie?.[indiceSerie];
               const registrata = gia.find((r) => r.set_index === indiceSerie);
@@ -288,7 +318,7 @@ export default function SessioneAllenamento() {
         plan_id: sessione.plan_id,
         plan_name: sessione.plan_name,
         session_id: sessionId,
-        exercise_index: indiceEsercizio,
+        exercise_index: esercizio.posizione,
         set_index: indiceSerie,
         exercise_name: esercizio.exercise_name,
         muscle_group: esercizio.muscle_group ?? "",
@@ -345,6 +375,12 @@ export default function SessioneAllenamento() {
       });
       return copia;
     });
+    // Tenuti da parte per il riepilogo di fine seduta: uno stesso esercizio può battere
+    // il record due volte, e nel riepilogo deve comparire una volta sola, col migliore.
+    setRecordBattuti((precedenti) => [
+      ...precedenti.filter((r) => r.nome !== esercizio.exercise_name),
+      { nome: esercizio.exercise_name, peso: numero(riga.kg), reps: repsFatte, massimale: adessoStimato },
+    ]);
     toast({
       title: `Record su ${esercizio.exercise_name}`,
       description: precedente
@@ -418,6 +454,85 @@ export default function SessioneAllenamento() {
     );
   };
 
+  /**
+   * Sostituisce un esercizio con un altro, o ne aggiunge uno che non era previsto.
+   *
+   * Serve perché la sala non è la scheda: la macchina è occupata, il manubrio da 24 non
+   * c'è, la spalla non gradisce. Senza questa via, l'unica scelta era saltare l'esercizio
+   * o registrare sotto un nome sbagliato quello che si è fatto davvero.
+   *
+   * La scheda non viene toccata: la deviazione vive nell'allenamento, e la prossima volta
+   * si riparte da quello che il personal trainer ha scritto.
+   */
+  const applicaSelettore = async (scelti) => {
+    const scelto = scelti[0];
+    if (!scelto) return;
+
+    if (selettore?.modo === "aggiungi") {
+      setEsercizi((precedenti) => [
+        ...precedenti,
+        {
+          // Una posizione nuova, oltre tutte quelle esistenti: non deve accavallarsi a
+          // quella di un esercizio previsto dalla scheda.
+          posizione: Math.max(-1, ...precedenti.map((e) => e.posizione ?? -1)) + 1,
+          exercise_id: scelto.id,
+          exercise_name: scelto.name,
+          muscle_group: scelto.muscle_group ?? "altro",
+          recupero_secondi: null,
+          note: "",
+          serie: [],
+          righe: [{ reps_previste: "", rpe_previsto: null, tipo: "normale", kg: "", reps: "", rpe: "", fatta: false, logId: null }],
+        },
+      ]);
+      return;
+    }
+
+    const indice = selettore.indice;
+    const esercizio = esercizi[indice];
+    setEsercizi((precedenti) =>
+      precedenti.map((es, i) =>
+        i === indice
+          ? { ...es, exercise_id: scelto.id, exercise_name: scelto.name, muscle_group: scelto.muscle_group ?? "altro" }
+          : es
+      )
+    );
+    // Le serie già spuntate vanno intestate al nuovo esercizio, o lo storico direbbe di
+    // aver fatto qualcosa che non si è fatto.
+    for (const riga of esercizio.righe.filter((r) => r.logId)) {
+      try {
+        await api.entities.WorkoutLog.update(riga.logId, {
+          exercise_name: scelto.name,
+          muscle_group: scelto.muscle_group ?? "altro",
+        });
+      } catch (err) {
+        toast({ title: "Sostituzione non salvata del tutto", description: err.message, variant: "destructive" });
+      }
+    }
+  };
+
+  const togliEsercizio = async (indiceEsercizio) => {
+    const esercizio = esercizi[indiceEsercizio];
+    const registrate = esercizio.righe.filter((r) => r.logId);
+    const ok = await conferma({
+      title: `Togliere ${esercizio.exercise_name} da questo allenamento?`,
+      description: registrate.length
+        ? `Le ${registrate.length} ${registrate.length === 1 ? "serie registrata" : "serie registrate"} vengono cancellate. La scheda non cambia.`
+        : "Non l'hai ancora iniziato. La scheda non cambia.",
+      confirmLabel: "Togli",
+      destructive: true,
+    });
+    if (!ok) return;
+    for (const riga of registrate) {
+      try {
+        await api.entities.WorkoutLog.delete(riga.logId);
+      } catch (err) {
+        toast({ title: "Non è stato possibile togliere", description: err.message, variant: "destructive" });
+        return;
+      }
+    }
+    setEsercizi((precedenti) => precedenti.filter((_, i) => i !== indiceEsercizio));
+  };
+
   const rimuoviSerie = async (indiceEsercizio, indiceSerie) => {
     const riga = esercizi[indiceEsercizio].righe[indiceSerie];
     if (riga.logId) {
@@ -468,11 +583,14 @@ export default function SessioneAllenamento() {
     setChiusuraInCorso(true);
     try {
       await api.entities.WorkoutSession.update(sessionId, { terminata_alle: new Date().toISOString() });
-      toast({
-        title: "Allenamento registrato",
-        description: `${formatDurata(durataSecondi)} · ${statistiche.serieFatte} serie`,
+      // Il riepilogo invece di uscire e basta: è il momento in cui la fatica diventa un
+      // risultato che si vede, e i record battuti vanno detti quando contano.
+      setRiepilogo({
+        durata: durataSecondi,
+        serie: statistiche.serieFatte,
+        volume: statistiche.volume,
+        record: recordBattuti,
       });
-      navigate("/member-portal/allenamento");
     } catch (err) {
       toast({ title: "Non è stato possibile chiudere l'allenamento", description: err.message, variant: "destructive" });
       setChiusuraInCorso(false);
@@ -494,12 +612,16 @@ export default function SessioneAllenamento() {
    * database.
    */
   const annulla = async () => {
+    const chiuso = Boolean(sessione?.terminata_alle);
     const ok = await conferma({
-      title: "Annullare l'allenamento?",
+      title: chiuso ? "Eliminare questo allenamento?" : "Annullare l'allenamento?",
       description: statistiche.serieFatte
-        ? `Le ${statistiche.serieFatte} ${statistiche.serieFatte === 1 ? "serie registrata" : "serie registrate"} vengono cancellate. Non resta niente nello storico.`
-        : "Non hai ancora registrato niente: si cancella e basta.",
-      confirmLabel: "Annulla l'allenamento",
+        ? `Le ${statistiche.serieFatte} ${statistiche.serieFatte === 1 ? "serie registrata" : "serie registrate"} vengono cancellate. ` +
+          (chiuso
+            ? "Sparisce dallo storico, dal conteggio delle sedute e dai record."
+            : "Non resta niente nello storico.")
+        : "Non c'è niente di registrato: si cancella e basta.",
+      confirmLabel: chiuso ? "Elimina" : "Annulla l'allenamento",
       destructive: true,
     });
     if (!ok) return;
@@ -525,6 +647,8 @@ export default function SessioneAllenamento() {
   if (!sessione) return null;
 
   const giaChiusa = Boolean(sessione.terminata_alle);
+  // Si compila mentre ci si allena, e su uno storico solo dopo aver chiesto di correggerlo.
+  const bloccato = giaChiusa && !modificaAttiva;
   // La scheda è stata modificata mentre l'allenamento era aperto: si può ancora leggere e
   // chiudere quello che è stato fatto, ma non c'è più niente da eseguire.
   const routinePersa = !routine;
@@ -545,20 +669,31 @@ export default function SessioneAllenamento() {
               <p className="font-heading font-semibold text-sm truncate">{sessione.routine_name}</p>
               <p className="text-xs text-muted-foreground truncate">{sessione.plan_name}</p>
             </div>
-            {!giaChiusa && (
-              <>
-                <Button
-                  variant="ghost" size="icon" className="text-destructive"
-                  onClick={annulla} disabled={chiusuraInCorso}
-                  aria-label="Annulla l'allenamento e cancella quello che hai registrato"
-                  title="Annulla l'allenamento"
-                >
-                  <Trash2 className="w-4 h-4" aria-hidden="true" />
-                </Button>
-                <Button size="sm" onClick={termina} disabled={chiusuraInCorso}>
-                  Termina
-                </Button>
-              </>
+            {/* Cancellare vale sempre, anche a seduta chiusa: un allenamento creato per
+                sbaglio finisce nel volume, nel conteggio e nei record, e senza una via per
+                toglierlo resterebbe lì a falsare i numeri per sempre. */}
+            <Button
+              variant="ghost" size="icon" className="text-destructive"
+              onClick={annulla} disabled={chiusuraInCorso}
+              aria-label={giaChiusa ? "Elimina questo allenamento dallo storico" : "Annulla l'allenamento"}
+              title={giaChiusa ? "Elimina" : "Annulla l'allenamento"}
+            >
+              <Trash2 className="w-4 h-4" aria-hidden="true" />
+            </Button>
+            {giaChiusa ? (
+              // Un allenamento chiuso si apre in lettura: si sblocca chiedendolo, così
+              // guardando lo storico non si corregge niente per sbaglio.
+              <Button
+                size="sm"
+                variant={modificaAttiva ? "default" : "outline"}
+                onClick={() => setModificaAttiva((attiva) => !attiva)}
+              >
+                {modificaAttiva ? "Fine modifiche" : "Correggi"}
+              </Button>
+            ) : (
+              <Button size="sm" onClick={termina} disabled={chiusuraInCorso}>
+                Termina
+              </Button>
             )}
           </div>
 
@@ -632,6 +767,29 @@ export default function SessioneAllenamento() {
                     )}
                   </div>
                 </div>
+                {/* La sala non è la scheda: la macchina è occupata, il manubrio non c'è.
+                    Si sostituisce o si toglie l'esercizio senza toccare la scheda, che
+                    resta com'è per la prossima volta. */}
+                {!bloccato && (
+                  <div className="flex items-center gap-0.5 shrink-0 -mr-2">
+                    <Button
+                      variant="ghost" size="icon" className="h-8 w-8"
+                      aria-label={`Sostituisci ${esercizio.exercise_name} con un altro esercizio`}
+                      title="Sostituisci"
+                      onClick={() => setSelettore({ modo: "sostituisci", indice: indiceEsercizio })}
+                    >
+                      <Repeat className="w-4 h-4" aria-hidden="true" />
+                    </Button>
+                    <Button
+                      variant="ghost" size="icon" className="h-8 w-8 text-destructive"
+                      aria-label={`Togli ${esercizio.exercise_name} da questo allenamento`}
+                      title="Togli"
+                      onClick={() => togliEsercizio(indiceEsercizio)}
+                    >
+                      <X className="w-4 h-4" aria-hidden="true" />
+                    </Button>
+                  </div>
+                )}
               </div>
 
               {/* La nota del personal trainer: si legge, non si tocca. */}
@@ -645,7 +803,7 @@ export default function SessioneAllenamento() {
               {/* La nota di chi si allena, su questo allenamento: "spalla destra tirava",
                   "cambiata macchina". Finisce sulle serie registrate, così quando il
                   personal trainer guarda lo storico trova scritto anche il perché. */}
-              {!giaChiusa && (
+              {!bloccato && (
                 <Input
                   className="h-8 text-sm mb-1.5 border-dashed"
                   value={noteEsercizi[indiceEsercizio] ?? ""}
@@ -700,7 +858,7 @@ export default function SessioneAllenamento() {
                                 riscaldamento, e non deve costare l'apertura di un menu. */}
                             <button
                               type="button"
-                              disabled={giaChiusa}
+                              disabled={bloccato}
                               onClick={() => ruotaTipoSerie(indiceEsercizio, indiceSerie)}
                               aria-label={`Serie ${indiceSerie + 1}: ${tipoSerie(riga.tipo).etichetta}. Tocca per cambiare tipo.`}
                               className={cn(
@@ -727,7 +885,7 @@ export default function SessioneAllenamento() {
                           </td>
                           <td className="py-1 px-1">
                             <Input
-                              type="number" inputMode="decimal" step="0.5" disabled={giaChiusa}
+                              type="number" inputMode="decimal" step="0.5" disabled={bloccato}
                               className="h-9 text-center text-sm"
                               value={riga.kg}
                               onChange={(e) => cambiaRiga(indiceEsercizio, indiceSerie, "kg", e.target.value)}
@@ -738,7 +896,7 @@ export default function SessioneAllenamento() {
                           </td>
                           <td className="py-1 px-1">
                             <Input
-                              type="number" inputMode="numeric" disabled={giaChiusa}
+                              type="number" inputMode="numeric" disabled={bloccato}
                               className="h-9 text-center text-sm"
                               value={riga.reps}
                               onChange={(e) => cambiaRiga(indiceEsercizio, indiceSerie, "reps", e.target.value)}
@@ -752,7 +910,7 @@ export default function SessioneAllenamento() {
                           </td>
                           <td className="py-1 px-1">
                             <Input
-                              type="number" inputMode="decimal" min="1" max="10" step="0.5" disabled={giaChiusa}
+                              type="number" inputMode="decimal" min="1" max="10" step="0.5" disabled={bloccato}
                               className="h-9 text-center text-sm"
                               value={riga.rpe}
                               onChange={(e) => cambiaRiga(indiceEsercizio, indiceSerie, "rpe", e.target.value)}
@@ -764,7 +922,7 @@ export default function SessioneAllenamento() {
                           <td className="py-1 pl-1">
                             <button
                               type="button"
-                              disabled={giaChiusa}
+                              disabled={bloccato}
                               onClick={() => spuntaSerie(indiceEsercizio, indiceSerie)}
                               aria-pressed={riga.fatta}
                               aria-label={`Segna come fatta la serie ${indiceSerie + 1} di ${esercizio.exercise_name}`}
@@ -785,7 +943,7 @@ export default function SessioneAllenamento() {
                 </table>
               </div>
 
-              {!giaChiusa && (
+              {!bloccato && (
                 <div className="flex gap-2 mt-2">
                   <Button
                     variant="outline" size="sm" className="flex-1"
@@ -809,6 +967,12 @@ export default function SessioneAllenamento() {
           );
         })}
 
+        {!bloccato && (
+          <Button variant="outline" className="w-full" onClick={() => setSelettore({ modo: "aggiungi" })}>
+            <Plus className="w-4 h-4 mr-1" aria-hidden="true" /> Aggiungi un esercizio
+          </Button>
+        )}
+
         {!giaChiusa && (
           <Button className="w-full" size="lg" onClick={termina} disabled={chiusuraInCorso}>
             Termina allenamento
@@ -830,6 +994,65 @@ export default function SessioneAllenamento() {
           onChiudi={() => setRecupero(null)}
         />
       )}
+
+      <SelettoreEsercizi
+        aperto={Boolean(selettore)}
+        onChiudi={() => setSelettore(null)}
+        esercizi={catalogo}
+        onAggiungi={applicaSelettore}
+      />
+
+      {/* Il riepilogo di fine seduta: il momento in cui la fatica diventa un numero che si
+          vede, e l'unico in cui i record battuti oggi valgono qualcosa. */}
+      <Dialog
+        open={Boolean(riepilogo)}
+        onOpenChange={(aperto) => !aperto && navigate("/member-portal/allenamento")}
+      >
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Allenamento finito</DialogTitle>
+            <DialogDescription>{sessione.routine_name}</DialogDescription>
+          </DialogHeader>
+
+          <dl className="grid grid-cols-3 gap-2 text-center py-2">
+            <div>
+              <dt className="text-xs text-muted-foreground">Durata</dt>
+              <dd className="text-lg font-semibold tabular-nums">{formatDurata(riepilogo?.durata ?? 0)}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-muted-foreground">Volume</dt>
+              <dd className="text-lg font-semibold tabular-nums">
+                {Math.round(riepilogo?.volume ?? 0).toLocaleString("it-IT")}
+                <span className="text-xs text-muted-foreground"> kg</span>
+              </dd>
+            </div>
+            <div>
+              <dt className="text-xs text-muted-foreground">Serie</dt>
+              <dd className="text-lg font-semibold tabular-nums">{riepilogo?.serie ?? 0}</dd>
+            </div>
+          </dl>
+
+          {riepilogo?.record?.length > 0 && (
+            <div className="rounded-lg bg-success/10 border border-success/20 p-3">
+              <p className="text-sm font-semibold text-success mb-1">
+                {riepilogo.record.length === 1 ? "Un record battuto" : `${riepilogo.record.length} record battuti`}
+              </p>
+              <ul className="space-y-0.5">
+                {riepilogo.record.map((r) => (
+                  <li key={r.nome} className="text-xs flex justify-between gap-2">
+                    <span className="truncate">{r.nome}</span>
+                    <span className="whitespace-nowrap tabular-nums">{r.peso}kg × {r.reps}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          <Button className="w-full" onClick={() => navigate("/member-portal/allenamento")}>
+            Chiudi
+          </Button>
+        </DialogContent>
+      </Dialog>
 
       {dialogoConferma}
     </div>

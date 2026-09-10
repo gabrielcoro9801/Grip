@@ -36,12 +36,18 @@ const ENTITY_MODULES = {
 	// valeva solo per i pulsanti nascosti, e la stessa richiesta fatta a mano passava.
 	Exercise: 'crm_plans',
 	ExercisePlan: 'crm_plans',
-	// Gli allenamenti svolti: lo staff li legge per seguire i soci, e li corregge solo se
-	// ha la modifica sulle schede. Il socio non passa di qui — le proprie sessioni e le
-	// proprie serie le scrive comunque, da memberPuoScrivere.
-	WorkoutSession: 'crm_plans',
-	WorkoutLog: 'crm_plans',
 };
+
+// Gli allenamenti svolti: lo staff li **legge** per seguire i soci, ma non li scrive.
+//
+// Sono il diario di quello che una persona ha fatto in sala, e correggerlo dall'esterno
+// significherebbe cambiare il suo storico senza che se ne accorga. Chi si allena sistema i
+// propri errori — cancellare una seduta creata per sbaglio, correggere un carico battuto
+// male — e l'istruttore, se vede un numero strano, glielo fa notare.
+//
+// Il socio non passa da qui: le proprie sessioni e le proprie serie le scrive comunque,
+// attraverso memberPuoScrivere.
+const SOLO_IL_PROPRIETARIO = new Set(['WorkoutSession', 'WorkoutLog']);
 
 // Entità che solo un amministratore può modificare, a prescindere dalla matrice:
 // da qui si creano gli account e si assegnano i ruoli, cioè si decide chi può fare cosa.
@@ -55,6 +61,7 @@ const SOLA_LETTURA = new Set(['ParametroFiscale']);
 export function canWriteEntity(role, entityName) {
 	if (role === 'member') return false;
 	if (SOLA_LETTURA.has(entityName)) return false;
+	if (SOLO_IL_PROPRIETARIO.has(entityName)) return false;
 	if (ADMIN_ONLY_WRITE.has(entityName)) return role === 'admin';
 
 	const modulo = ENTITY_MODULES[entityName];

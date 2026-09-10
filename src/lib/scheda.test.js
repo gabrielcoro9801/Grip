@@ -26,6 +26,7 @@ import {
 	totaleSerieScheda,
 	durataSessione,
 	tipoSerie,
+	statisticheSettimanali,
 } from './scheda.js';
 
 describe('volume e serie di un allenamento', () => {
@@ -236,6 +237,83 @@ describe('cosa impedisce di salvare una scheda', () => {
 			}),
 			/Panca/,
 		);
+	});
+});
+
+describe('quante volte ci si allena', () => {
+	// Mercoledì 10 settembre 2026, ora locale: la settimana corrente parte da lunedì 8.
+	const mercoledi = new Date(2026, 8, 10, 12, 0, 0).getTime();
+	const seduta = (quando) => ({
+		iniziata_alle: new Date(quando).toISOString(),
+		terminata_alle: new Date(quando + 3600000).toISOString(),
+	});
+
+	test('conta le sedute della settimana e del mese', () => {
+		const s = statisticheSettimanali(
+			[
+				seduta(new Date(2026, 8, 8, 10).getTime()), // lunedì, questa settimana
+				seduta(new Date(2026, 8, 9, 10).getTime()), // martedì, questa settimana
+				seduta(new Date(2026, 8, 3, 10).getTime()), // settimana prima, stesso mese
+				seduta(new Date(2026, 7, 20, 10).getTime()), // mese prima
+			],
+			mercoledi,
+		);
+		assert.equal(s.questaSettimana, 2);
+		assert.equal(s.questoMese, 3);
+	});
+
+	test('un allenamento non terminato non conta', () => {
+		// È in corso: contarlo direbbe che ci si è allenati quando non è ancora finita.
+		const s = statisticheSettimanali(
+			[{ iniziata_alle: new Date(2026, 8, 9, 10).toISOString(), terminata_alle: null }],
+			mercoledi,
+		);
+		assert.equal(s.questaSettimana, 0);
+	});
+
+	test('la fila conta le settimane consecutive', () => {
+		const s = statisticheSettimanali(
+			[
+				seduta(new Date(2026, 8, 9, 10).getTime()), // questa
+				seduta(new Date(2026, 8, 2, 10).getTime()), // -1
+				seduta(new Date(2026, 7, 26, 10).getTime()), // -2
+			],
+			mercoledi,
+		);
+		assert.equal(s.settimaneDiFila, 3);
+	});
+
+	test('una settimana saltata interrompe la fila', () => {
+		const s = statisticheSettimanali(
+			[
+				seduta(new Date(2026, 8, 9, 10).getTime()), // questa
+				// niente nella settimana del 31 agosto
+				seduta(new Date(2026, 7, 26, 10).getTime()),
+			],
+			mercoledi,
+		);
+		assert.equal(s.settimaneDiFila, 1);
+	});
+
+	test('non essersi ancora allenati questa settimana non azzera la fila', () => {
+		// Altrimenti ogni domenica a mezzanotte la fila tornerebbe a zero, e sarebbe una
+		// misura che punisce chi si allena il mercoledì.
+		const s = statisticheSettimanali(
+			[
+				seduta(new Date(2026, 8, 2, 10).getTime()), // -1
+				seduta(new Date(2026, 7, 26, 10).getTime()), // -2
+			],
+			mercoledi,
+		);
+		assert.equal(s.settimaneDiFila, 2);
+	});
+
+	test('senza allenamenti la fila è zero', () => {
+		assert.deepEqual(statisticheSettimanali([], mercoledi), {
+			questaSettimana: 0,
+			questoMese: 0,
+			settimaneDiFila: 0,
+		});
 	});
 });
 

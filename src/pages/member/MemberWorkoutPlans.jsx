@@ -13,7 +13,7 @@ import { EmptyState, ErrorState } from "@/components/shared/StateViews";
 import { useConfirm } from "@/components/shared/ConfirmDialog";
 import { formatData, formatDataOra } from "@/lib/format";
 import { etichettaGruppo } from "@/lib/gruppiMuscolari";
-import { formatRecupero, formatDurata, totaleSerie, riepilogoSerie, riepilogoRpe, recordPerEsercizio } from "@/lib/scheda";
+import { formatRecupero, formatDurata, totaleSerie, riepilogoSerie, riepilogoRpe, recordPerEsercizio, statisticheSettimanali } from "@/lib/scheda";
 import ProgressiEsercizio from "@/components/allenamento/ProgressiEsercizio";
 
 export default function MemberWorkoutPlans() {
@@ -55,6 +55,7 @@ export default function MemberWorkoutPlans() {
   // spezzare in due lo stesso allenamento.
   const inCorso = useMemo(() => sessioni.find((s) => !s.terminata_alle), [sessioni]);
   const concluse = useMemo(() => sessioni.filter((s) => s.terminata_alle), [sessioni]);
+  const andamento = useMemo(() => statisticheSettimanali(sessioni), [sessioni]);
 
   // I record, dal migliore al peggiore: in cima quello di cui si va piu fieri.
   const record = useMemo(
@@ -127,6 +128,31 @@ export default function MemberWorkoutPlans() {
         <h1 className="text-xl font-heading font-bold">Allenamento</h1>
         <p className="text-sm text-muted-foreground">Scegli la giornata da fare e avviala</p>
       </div>
+
+      {/* Quante volte ci si è allenati: è la misura che fa tornare le persone, molto più
+          di qualsiasi grafico. La fila di settimane è quella che nessuno vuole spezzare. */}
+      {concluse.length > 0 && (
+        <Card className="border-0 shadow-sm">
+          <CardContent className="p-4">
+            <dl className="grid grid-cols-3 gap-2 text-center">
+              <div>
+                <dt className="text-xs text-muted-foreground">Questa settimana</dt>
+                <dd className="text-xl font-semibold tabular-nums">{andamento.questaSettimana}</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-muted-foreground">Questo mese</dt>
+                <dd className="text-xl font-semibold tabular-nums">{andamento.questoMese}</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-muted-foreground">Settimane di fila</dt>
+                <dd className="text-xl font-semibold tabular-nums text-primary">
+                  {andamento.settimaneDiFila}
+                </dd>
+              </div>
+            </dl>
+          </CardContent>
+        </Card>
+      )}
 
       {inCorso && (
         <Card className="border-0 shadow-sm bg-primary/5 ring-1 ring-primary/20">

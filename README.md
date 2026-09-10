@@ -105,6 +105,41 @@ Tre punti che si sbagliano quasi sempre, spiegati lì per esteso:
 
 ## Stato del progetto
 
+### 10 settembre 2026 (sera) — gli allenamenti si correggono, la sala non è la scheda
+
+**Un allenamento chiuso era congelato per sempre.** Premuto «Termina», né il socio né lo
+staff potevano più toccarlo: il pulsante che cancella stava dentro `{!giaChiusa && …}` e
+tutti i campi erano disabilitati. Non era un fastidio estetico — una seduta creata per
+sbaglio entrava nel volume, nel conteggio e nei **record**, e bastava un 600 al posto di 60
+per creare un record falso che poi nessun record vero avrebbe più battuto.
+
+Ora un allenamento passato si **elimina** sempre, e si **corregge** premendo «Correggi»:
+si apre in lettura e si sblocca solo chiedendolo, così guardando lo storico non si cambia
+niente per sbaglio.
+
+**Il diario è di chi si allena.** `WorkoutSession` e `WorkoutLog` sono in sola lettura per
+tutto lo staff, amministratore compreso: correggere dall'esterno lo storico di una persona
+vorrebbe dire cambiare quello che ha fatto senza che se ne accorga. L'istruttore guarda e,
+se vede un numero strano, glielo fa notare.
+
+**La sala non è la scheda.** Durante l'allenamento si può **sostituire** un esercizio
+(macchina occupata, manubrio che non c'è), **aggiungerne** uno o **toglierlo**. La deviazione
+vive nell'allenamento e non tocca la scheda, che resta com'è per la volta dopo. Le serie già
+spuntate vengono reintestate al nuovo esercizio, o lo storico direbbe di aver fatto qualcosa
+che non si è fatto. L'indice con cui una serie è registrata è ora stabile: usare la
+posizione nell'elenco avrebbe agganciato le serie all'esercizio sbagliato appena se ne
+toglie uno.
+
+**Un riepilogo a fine seduta** con durata, volume, serie e i record battuti quel giorno, e
+in cima al portale **quante volte ci si è allenati** — questa settimana, questo mese, e da
+quante settimane non si salta. Non essersi ancora allenati nella settimana in corso non
+azzera la fila: sarebbe una misura che punisce chi si allena il mercoledì.
+
+Le regole di calcolo (volume, record, superset, fila di settimane) hanno ora **34 prove**
+con `node --test`, lanciabili con `npm test` dalla radice. Non è stato aggiunto nessun
+framework: bastava che `lib/scheda.js` importasse `gruppiMuscolari` per percorso relativo
+invece che con l'alias `@`, come già fa `lib/permissions.js`.
+
 ### 10 settembre 2026 (pomeriggio) — il personal trainer vede, e la scheda si arricchisce
 
 Controllo di qualità sulla sezione appena scritta, più le funzioni che mancavano rispetto
