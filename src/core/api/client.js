@@ -8,18 +8,66 @@
  * Dove sta il backend.
  *
  * In produzione è **lo stesso indirizzo del sito**: il server Fastify serve sia le pagine
- * sia l'API, quindi basta un percorso relativo. Da lì discendono due semplificazioni che
- * valgono più di quanto sembri — niente CORS da configurare, perché non c'è nessuna chiamata
- * fra domini diversi, e nessun indirizzo da tenere aggiornato in due posti.
+ * sia l'API, quindi basta un percorso relativo — vuoto, che è il valore predefinito qui
+ * sotto. Da lì discendono due semplificazioni che valgono più di quanto sembri: niente CORS
+ * da configurare, perché non c'è nessuna chiamata fra domini diversi, e nessun indirizzo da
+ * tenere aggiornato in due posti.
  *
  * In sviluppo invece sono due processi separati (Vite sulla 5173, il server sulla 3001), e
- * l'indirizzo serve per forza. `VITE_API_BASE_URL` resta come scappatoia se un giorno si
- * volessero separare di nuovo.
+ * l'indirizzo serve per forza.
+ *
+ * Perché arriva da fuori invece di essere letto qui. Prima questa riga diceva
+ * `import.meta.env.VITE_API_BASE_URL`, che è una cosa di Vite: fuori da Vite `import.meta.env`
+ * non esiste proprio, e il file non si poteva nemmeno caricare — l'ha scoperto il primo test
+ * che ha provato a importarlo con `node --test`. Un'app su telefono avrebbe avuto lo stesso
+ * problema, ma se ne sarebbe accorta molto più tardi. Ora la domanda "dove sta il backend"
+ * la risponde chi avvia l'applicazione, che è l'unico a saperlo.
+ *
+ * Nota per il giorno del telefono: là il percorso relativo non vuol dire niente, e questo
+ * valore dovrà essere un indirizzo assoluto.
  */
-const API_BASE = import.meta.env.VITE_API_BASE_URL
-	?? (import.meta.env.DEV ? 'http://localhost:3001' : '');
+let API_BASE = '';
 
-const TOKEN_KEY = 'grip_auth_token';
+export function configuraRete({ baseUrl = '' } = {}) {
+	API_BASE = baseUrl;
+}
+
+/**
+ * Due sessioni, due chiavi.
+ *
+ * Prima ce n'era una sola, `grip_auth_token`, per lo staff e per i soci. Sembra un
+ * dettaglio e non lo è: chi lavora in palestra e ha anche un suo abbonamento non poteva
+ * tenere aperti il gestionale e il portale nello stesso browser — entrare da una parte
+ * buttava fuori dall'altra, perché il secondo accesso sovrascriveva il token del primo.
+ *
+ * La chiave non si sceglie guardando dentro al token: si sceglie in base all'**area** in cui
+ * l'applicazione sta girando, che è un'informazione che core/ non può ricavare da sé (non
+ * sa cosa sia un indirizzo web, e sul telefono non ci sarebbe comunque). Gliela passa chi
+ * avvia l'applicazione, con `impostaArea`.
+ */
+const CHIAVI = {
+	staff: 'grip_staff_token',
+	member: 'grip_member_token',
+};
+
+// La chiave di prima. Serve solo alla migrazione qui sotto, e si potrà togliere — insieme a
+// `migraSessioneVecchia` — passato qualche mese dal rilascio (settembre 2026).
+const CHIAVE_VECCHIA = 'grip_auth_token';
+
+let areaCorrente = 'staff';
+
+/**
+ * Dice a quale delle due applicazioni appartengono le chiamate che seguono.
+ * La chiama chi avvia l'interfaccia, una volta sola, prima del primo disegno.
+ */
+export function impostaArea(area) {
+	if (!CHIAVI[area]) throw new Error(`Area sconosciuta: ${area}`);
+	areaCorrente = area;
+}
+
+export function areaAttiva() {
+	return areaCorrente;
+}
 
 /* eslint-disable no-undef -- Le uniche righe di core/ che parlano col browser, e sono qui
    di proposito, segnalate invece che nascoste.
@@ -28,17 +76,60 @@ const TOKEN_KEY = 'grip_auth_token';
    in SecureStore, che per giunta ha un'interfaccia asincrona. La forma giusta è che il
    token venga tenuto in memoria e che chi avvia l'applicazione passi da fuori uno spazio di
    archiviazione — così questo file non sa più su cosa scrive.
-   Finché quel lavoro non è fatto, queste tre righe restano l'unica dipendenza dal browser
-   in tutto core/, e il lint le rende impossibili da dimenticare. */
+   Finché quel lavoro non è fatto, queste righe restano l'unica dipendenza dal browser in
+   tutto core/, e il lint le rende impossibili da dimenticare. */
+function leggi(chiave) {
+	try {
+		return localStorage.getItem(chiave);
+	} catch {
+		// Navigazione privata o cookie bloccati: si resta senza sessione, non si esplode.
+		return null;
+	}
+}
+
+function scrivi(chiave, valore) {
+	try {
+		if (valore) localStorage.setItem(chiave, valore);
+		else localStorage.removeItem(chiave);
+	} catch {
+		// Come sopra: l'applicazione funziona lo stesso, solo non ricorda l'accesso.
+	}
+}
+
+/**
+ * Porta avanti chi era già connesso quando c'era una chiave sola.
+ *
+ * Il token vecchio viene copiato in **entrambe** le chiavi nuove, e quella vecchia
+ * cancellata. Sembra sbagliato dare a tutte e due lo stesso token, e invece è la cosa
+ * semplice che funziona: nessuno deve aprire il token e interpretarne il contenuto — cosa
+ * che richiederebbe di decodificarlo e di fidarsene — perché a dire chi è quel token ci
+ * pensa `/api/auth/me`, che rilegge l'account dal database. L'area a cui non appartiene lo
+ * scarta al primo controllo e cancella la propria chiave.
+ *
+ * In pratica: chi era dentro resta dentro, e chi era entrato come socio, la prima volta che
+ * apre il gestionale, trova la schermata di accesso — che è il comportamento giusto.
+ */
+export function migraSessioneVecchia() {
+	const vecchio = leggi(CHIAVE_VECCHIA);
+	if (!vecchio) return;
+	if (leggi(CHIAVI.staff) || leggi(CHIAVI.member)) {
+		// Migrazione già avvenuta: la chiave vecchia è un residuo.
+		scrivi(CHIAVE_VECCHIA, null);
+		return;
+	}
+	scrivi(CHIAVI.staff, vecchio);
+	scrivi(CHIAVI.member, vecchio);
+	scrivi(CHIAVE_VECCHIA, null);
+}
+/* eslint-enable no-undef */
+
 export function getToken() {
-	return localStorage.getItem(TOKEN_KEY);
+	return leggi(CHIAVI[areaCorrente]);
 }
 
 export function setToken(token) {
-	if (token) localStorage.setItem(TOKEN_KEY, token);
-	else localStorage.removeItem(TOKEN_KEY);
+	scrivi(CHIAVI[areaCorrente], token);
 }
-/* eslint-enable no-undef */
 
 function authHeaders() {
 	const token = getToken();

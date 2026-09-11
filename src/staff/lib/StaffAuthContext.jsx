@@ -32,7 +32,19 @@ export function StaffAuthProvider({ children }) {
     }
     api.auth
       .me()
-      .then((user) => { applicaPermessiDi(user); setStaffUser(user); })
+      .then((user) => {
+        // Il controllo del ruolo serve anche qui, non solo al momento dell'accesso: la
+        // sessione si ripristina da un token già presente, e quel token può essere di un
+        // socio. Senza, il portiere sta solo sulla porta d'ingresso e non sulla finestra —
+        // e al socio si apriva il gestionale, vuoto perché non ha nessun permesso, invece
+        // della schermata di accesso.
+        if (user.ruolo === "member") {
+          setToken(null);
+          return;
+        }
+        applicaPermessiDi(user);
+        setStaffUser(user);
+      })
       .catch(() => setToken(null))
       .finally(() => setLoading(false));
   }, []);

@@ -1,13 +1,9 @@
 import { lazy, Suspense } from 'react';
 import { Toaster } from "@/ui/primitivi/toaster"
-import { QueryClientProvider } from '@tanstack/react-query'
-import { queryClientInstance } from '@/staff/lib/query-client'
 import { BrowserRouter as Router, Route, Routes, Navigate, useParams } from 'react-router-dom';
 import PageNotFound from '@/ui/PageNotFound';
 import ScrollToTop from '@/ui/ScrollToTop';
 import { MemberAuthProvider } from '@/member/session/MemberAuthContext';
-import { StaffAuthProvider } from '@/staff/lib/StaffAuthContext';
-import PermissionGate from '@/staff/components/PermissionGate';
 import { LoadingState } from '@/ui/Spinner';
 import ErrorBoundary from '@/ui/ErrorBoundary';
 import { TemaProvider } from '@/ui/tema';
@@ -23,7 +19,12 @@ import { TemaProvider } from '@/ui/tema';
 //
 // Restano caricate subito solo le cose che servono comunque a decidere dove andare: il
 // router, i due contesti di autenticazione e la pagina "non trovato".
-const AppLayout = lazy(() => import('@/staff/components/AppLayout'));
+const StaffShell = lazy(() => import('@/staff/StaffShell'));
+// Anche il guardiano dei permessi è caricato su richiesta, non perché sia grosso ma per
+// quello che si porta dietro: la matrice dei permessi dello staff. Importato subito, finiva
+// nel pacchetto d'ingresso — quello che scarica anche un socio che apre il portale dal
+// telefono, e a cui di `admin_users` non importa niente.
+const PermissionGate = lazy(() => import('@/staff/components/PermissionGate'));
 const Dashboard = lazy(() => import('@/staff/pages/Dashboard'));
 const CrmLayout = lazy(() => import('@/staff/pages/crm/CrmLayout'));
 const MembersList = lazy(() => import('@/staff/pages/crm/MembersList'));
@@ -85,7 +86,7 @@ const AppRoutes = () => {
         <Route path="allenamento/sessione/:id" element={<SessioneAllenamento />} />
       </Route>
 
-      <Route element={<AppLayout />}>
+      <Route element={<StaffShell />}>
           <Route path="/" element={<Dashboard />} />
           {/* Gli slug del gestionale sono in italiano come le voci che li
               nominano. I vecchi percorsi in inglese restano come redirect,
@@ -142,15 +143,14 @@ function App() {
     // nessuno, React smontava tutto e restava una pagina bianca senza spiegazioni.
     <ErrorBoundary>
       <TemaProvider>
-      <StaffAuthProvider>
-        <QueryClientProvider client={queryClientInstance}>
-          <Router>
-            <ScrollToTop />
-            <AppRoutes />
-          </Router>
-          <Toaster />
-        </QueryClientProvider>
-      </StaffAuthProvider>
+        <Router>
+          <ScrollToTop />
+          <AppRoutes />
+        </Router>
+        {/* I messaggi in sovrimpressione servono a entrambe le aree, quindi restano qui.
+            La sessione dello staff invece è scesa dentro <StaffShell>: avvolgeva anche il
+            portale soci, che non ne ha bisogno e non deve scaricarsela. */}
+        <Toaster />
       </TemaProvider>
     </ErrorBoundary>
   )

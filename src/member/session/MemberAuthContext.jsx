@@ -26,12 +26,18 @@ export function MemberAuthProvider({ children }) {
     api.auth
       .me()
       .then((user) => {
-        // Lo stesso token vale per staff e soci: qui accettiamo solo i soci, altrimenti
-        // un utente dello staff autenticato entrerebbe nel portale soci senza avere
-        // un'anagrafica collegata da mostrare.
+        // Qui accettiamo solo i soci, altrimenti un utente dello staff autenticato
+        // entrerebbe nel portale senza avere un'anagrafica collegata da mostrare.
+        //
+        // Se il token non è di un socio va anche buttato via, non solo ignorato: la
+        // sessione del portale ha una chiave sua, e tenerci dentro il token di qualcun
+        // altro significa ritentare la stessa domanda a ogni apertura, con la stessa
+        // risposta.
         if (user.ruolo === "member" && user.linked_member_id) {
           setMemberUser(toMemberSession(user));
+          return;
         }
+        setToken(null);
       })
       .catch(() => setToken(null))
       .finally(() => setLoading(false));
