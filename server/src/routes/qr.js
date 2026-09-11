@@ -6,8 +6,9 @@
 // nessuno dei due può calcolarlo per conto proprio.
 import { eq, and } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { qrAccessi, staffAccounts, members } from '../db/schema/index.js';
+import { qrAccessi, members } from '../db/schema/index.js';
 import { getUserFromRequest } from '../auth/tokens.js';
+import { socioDiAccount } from '../auth/socioCorrente.js';
 import { codiceDinamico, verificaCodice, semeDelCodice } from '../lib/qrDinamico.js';
 import { msResiduiFinestra } from '../../../shared/qrDinamico.js';
 
@@ -33,16 +34,12 @@ export default async function qrRoutes(fastify) {
 		if (utente.ruolo === 'member') {
 			// Un socio ottiene il proprio e basta: il collegamento si rilegge dal database e
 			// non dal token, così revocarlo ha effetto subito.
-			const [account] = await db
-				.select({ memberId: staffAccounts.linkedMemberId })
-				.from(staffAccounts)
-				.where(eq(staffAccounts.id, utente.sub))
-				.limit(1);
-			if (!account?.memberId) return reply.code(403).send({ error: 'Account non collegato a un socio.' });
-			if (clienteRichiesto && clienteRichiesto !== account.memberId) {
+			const memberId = await socioDiAccount(utente.sub);
+			if (!memberId) return reply.code(403).send({ error: 'Account non collegato a un socio.' });
+			if (clienteRichiesto && clienteRichiesto !== memberId) {
 				return reply.code(403).send({ error: 'Non consentito.' });
 			}
-			clienteId = account.memberId;
+			clienteId = memberId;
 		} else if (!clienteId) {
 			return reply.code(400).send({ error: 'Manca cliente_id.' });
 		}

@@ -17,9 +17,10 @@
 // transazione, con la lezione bloccata, è l'unico modo di non far succedere.
 import { eq, and, ne, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { bookings, sessions, members, staffAccounts } from '../db/schema/index.js';
+import { bookings, sessions, members } from '../db/schema/index.js';
 import { getUserFromRequest } from '../auth/tokens.js';
 import { canWriteEntity } from '../auth/authorize.js';
+import { socioDiAccount } from '../auth/socioCorrente.js';
 
 export default async function prenotazioniRoutes(fastify) {
 	fastify.addHook('preHandler', async (request, reply) => {
@@ -29,13 +30,9 @@ export default async function prenotazioniRoutes(fastify) {
 		if (utente.ruolo === 'member') {
 			// Il socio collegato si rilegge dal database e non dal token, così togliere il
 			// collegamento ha effetto subito.
-			const [account] = await db
-				.select({ memberId: staffAccounts.linkedMemberId })
-				.from(staffAccounts)
-				.where(eq(staffAccounts.id, utente.sub))
-				.limit(1);
-			if (!account?.memberId) return reply.code(403).send({ error: 'Account non collegato a un socio.' });
-			request.memberId = account.memberId;
+			const memberId = await socioDiAccount(utente.sub);
+			if (!memberId) return reply.code(403).send({ error: 'Account non collegato a un socio.' });
+			request.memberId = memberId;
 		} else if (!canWriteEntity(utente.ruolo, 'Booking')) {
 			return reply.code(403).send({ error: 'Il tuo ruolo non consente questa modifica.' });
 		}

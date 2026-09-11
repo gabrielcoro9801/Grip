@@ -12,7 +12,7 @@ import {
 import { getUserFromRequest } from '../auth/tokens.js';
 import { canWriteEntity } from '../auth/authorize.js';
 import { memberPuoLeggere, memberPuoScrivere, colonnaProprietario, colonnaProprietarioScrittura, nascondiCampiPerSocio, forzaProprietario } from '../auth/memberScope.js';
-import { staffAccounts } from '../db/schema/index.js';
+import { socioDiAccount } from '../auth/socioCorrente.js';
 import { registerPgErrorHandler } from './errorHandler.js';
 
 const WRITE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
@@ -50,15 +50,11 @@ export default async function entityRoutes(fastify) {
 			}
 			// Il socio a cui l'account è collegato si legge dal database e non dal token:
 			// così revocare il collegamento ha effetto subito.
-			const [account] = await db
-				.select({ memberId: staffAccounts.linkedMemberId })
-				.from(staffAccounts)
-				.where(eq(staffAccounts.id, user.sub))
-				.limit(1);
-			if (!account?.memberId) {
+			const memberId = await socioDiAccount(user.sub);
+			if (!memberId) {
 				return reply.code(403).send({ error: 'Account non collegato a un socio.' });
 			}
-			request.memberId = account.memberId;
+			request.memberId = memberId;
 		}
 	});
 

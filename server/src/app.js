@@ -12,6 +12,7 @@ import organizationRoutes from './routes/organizations.js';
 import ruoliRoutes from './routes/ruoli.js';
 import qrRoutes from './routes/qr.js';
 import prenotazioniRoutes from './routes/prenotazioni.js';
+import memberRoutes from './routes/member/index.js';
 import { ENTITY_NAMES } from './entities/registry.js';
 import { config } from './config.js';
 
@@ -53,6 +54,10 @@ export function buildApp({ publicBaseUrl = 'http://localhost:3001', logger = tru
 	app.register(ruoliRoutes);
 	app.register(qrRoutes);
 	app.register(prenotazioniRoutes);
+	// L'API del portale soci, sotto un prefisso suo e con una versione nel percorso: è il
+	// contratto che un domani reggerà un'app installata, che non si aggiorna a comando.
+	// Registrata prima delle rotte generiche perché è la più specifica.
+	app.register(memberRoutes, { prefix: '/api/member/v1' });
 	app.register(entityRoutes);
 	app.register(uploadRoutes, { uploadDir: UPLOAD_DIR, publicBaseUrl });
 
