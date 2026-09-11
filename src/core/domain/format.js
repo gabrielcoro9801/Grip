@@ -11,7 +11,12 @@
 // 0.1 + 0.2 diventi 0.30000000000000004 in una prima nota.
 
 import moment from "moment";
-import "moment/locale/it";
+// L'estensione `.js` non è pignoleria: senza, questo import lo risolve solo un bundler.
+// Sotto `node --test` — o in qualunque runtime che non sia Vite — il file non si carica
+// affatto, e con lui non si carica niente di quello che lo importa. È lo stesso genere di
+// legame nascosto che aveva `import.meta.env` nel client: si scopre il giorno in cui si
+// prova a portare core/ altrove, cioè il giorno peggiore.
+import "moment/locale/it.js";
 
 // Importare questo modulo basta a mettere moment in italiano ovunque: i file
 // che chiamano moment(...).format("ddd D MMM") direttamente ne beneficiano.
@@ -126,6 +131,10 @@ export function parseImporto(input) {
   if (typeof input === "number") return Number.isFinite(input) ? input : null;
   if (!input) return null;
   const pulito = String(input).replace(/[^\d,.-]/g, "");
+  // Senza una cifra non è un importo, è un'altra cosa. Prima si arrivava a `Number("")`,
+  // che fa **zero**: scrivere "ciao" in un campo importo dava zero euro invece di un
+  // errore, e zero è un valore plausibile che nessuno va a ricontrollare.
+  if (!/\d/.test(pulito)) return null;
   // Se ci sono entrambi, l'ultimo separatore è quello decimale.
   const ultimaVirgola = pulito.lastIndexOf(",");
   const ultimoPunto = pulito.lastIndexOf(".");
