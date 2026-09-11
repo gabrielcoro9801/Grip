@@ -1,16 +1,16 @@
 import { lazy, Suspense } from 'react';
-import { Toaster } from "@/components/ui/toaster"
+import { Toaster } from "@/ui/primitivi/toaster"
 import { QueryClientProvider } from '@tanstack/react-query'
-import { queryClientInstance } from '@/lib/query-client'
+import { queryClientInstance } from '@/staff/lib/query-client'
 import { BrowserRouter as Router, Route, Routes, Navigate, useParams } from 'react-router-dom';
-import PageNotFound from './lib/PageNotFound';
-import ScrollToTop from './components/ScrollToTop';
-import { MemberAuthProvider } from '@/lib/MemberAuthContext';
-import { StaffAuthProvider } from '@/lib/StaffAuthContext';
-import PermissionGate from '@/components/PermissionGate';
-import { LoadingState } from '@/components/shared/Spinner';
-import ErrorBoundary from '@/components/shared/ErrorBoundary';
-import { TemaProvider } from '@/lib/tema';
+import PageNotFound from '@/ui/PageNotFound';
+import ScrollToTop from '@/ui/ScrollToTop';
+import { MemberAuthProvider } from '@/member/session/MemberAuthContext';
+import { StaffAuthProvider } from '@/staff/lib/StaffAuthContext';
+import PermissionGate from '@/staff/components/PermissionGate';
+import { LoadingState } from '@/ui/Spinner';
+import ErrorBoundary from '@/ui/ErrorBoundary';
+import { TemaProvider } from '@/ui/tema';
 
 // Ogni pagina è caricata quando la si apre, non prima.
 //
@@ -23,37 +23,37 @@ import { TemaProvider } from '@/lib/tema';
 //
 // Restano caricate subito solo le cose che servono comunque a decidere dove andare: il
 // router, i due contesti di autenticazione e la pagina "non trovato".
-const AppLayout = lazy(() => import('@/components/layout/AppLayout'));
-const Dashboard = lazy(() => import('@/pages/Dashboard'));
-const CrmLayout = lazy(() => import('@/pages/crm/CrmLayout'));
-const MembersList = lazy(() => import('@/pages/crm/MembersList'));
-const MemberDetail = lazy(() => import('@/pages/crm/MemberDetail'));
-const PlansCatalog = lazy(() => import('@/pages/crm/PlansCatalog'));
-const SubscriptionsList = lazy(() => import('@/pages/crm/SubscriptionsList'));
-const AllenamentoLayout = lazy(() => import('@/pages/allenamento/AllenamentoLayout'));
-const LibreriaEsercizi = lazy(() => import('@/pages/allenamento/LibreriaEsercizi'));
-const SchedeModello = lazy(() => import('@/pages/allenamento/SchedeModello'));
-const SchedeAssegnate = lazy(() => import('@/pages/allenamento/SchedeAssegnate'));
-const AllenamentiSvolti = lazy(() => import('@/pages/allenamento/AllenamentiSvolti'));
-const EditorScheda = lazy(() => import('@/pages/allenamento/EditorScheda'));
-const CorsiLayout = lazy(() => import('@/pages/corsi/CorsiLayout'));
-const Calendario = lazy(() => import('@/pages/corsi/Calendario'));
-const Prenotazioni = lazy(() => import('@/pages/corsi/Prenotazioni'));
-const CatalogoCorsi = lazy(() => import('@/pages/corsi/CatalogoCorsi'));
-const Sale = lazy(() => import('@/pages/corsi/Sale'));
-const Istruttori = lazy(() => import('@/pages/corsi/Istruttori'));
-const Categorie = lazy(() => import('@/pages/corsi/Categorie'));
-const MemberLayout = lazy(() => import('@/pages/member/MemberLayout'));
-const MemberDashboard = lazy(() => import('@/pages/member/MemberDashboard'));
-const MemberDocuments = lazy(() => import('@/pages/member/MemberDocuments'));
-const MemberSubscription = lazy(() => import('@/pages/member/MemberSubscription'));
-const MemberProfile = lazy(() => import('@/pages/member/MemberProfile'));
-const MemberQR = lazy(() => import('@/pages/member/MemberQR'));
-const MemberCoursesCalendar = lazy(() => import('@/pages/member/MemberCoursesCalendar'));
-const MemberWorkoutPlans = lazy(() => import('@/pages/member/MemberWorkoutPlans'));
-const SessioneAllenamento = lazy(() => import('@/pages/member/SessioneAllenamento'));
-const Admin = lazy(() => import('@/pages/admin/Admin'));
-const AuditLogPage = lazy(() => import('@/pages/admin/AuditLogPage'));
+const AppLayout = lazy(() => import('@/staff/components/AppLayout'));
+const Dashboard = lazy(() => import('@/staff/pages/Dashboard'));
+const CrmLayout = lazy(() => import('@/staff/pages/crm/CrmLayout'));
+const MembersList = lazy(() => import('@/staff/pages/crm/MembersList'));
+const MemberDetail = lazy(() => import('@/staff/pages/crm/MemberDetail'));
+const PlansCatalog = lazy(() => import('@/staff/pages/crm/PlansCatalog'));
+const SubscriptionsList = lazy(() => import('@/staff/pages/crm/SubscriptionsList'));
+const AllenamentoLayout = lazy(() => import('@/staff/pages/allenamento/AllenamentoLayout'));
+const LibreriaEsercizi = lazy(() => import('@/staff/pages/allenamento/LibreriaEsercizi'));
+const SchedeModello = lazy(() => import('@/staff/pages/allenamento/SchedeModello'));
+const SchedeAssegnate = lazy(() => import('@/staff/pages/allenamento/SchedeAssegnate'));
+const AllenamentiSvolti = lazy(() => import('@/staff/pages/allenamento/AllenamentiSvolti'));
+const EditorScheda = lazy(() => import('@/staff/pages/allenamento/EditorScheda'));
+const CorsiLayout = lazy(() => import('@/staff/pages/corsi/CorsiLayout'));
+const Calendario = lazy(() => import('@/staff/pages/corsi/Calendario'));
+const Prenotazioni = lazy(() => import('@/staff/pages/corsi/Prenotazioni'));
+const CatalogoCorsi = lazy(() => import('@/staff/pages/corsi/CatalogoCorsi'));
+const Sale = lazy(() => import('@/staff/pages/corsi/Sale'));
+const Istruttori = lazy(() => import('@/staff/pages/corsi/Istruttori'));
+const Categorie = lazy(() => import('@/staff/pages/corsi/Categorie'));
+const MemberLayout = lazy(() => import('@/member/pages/MemberLayout'));
+const MemberDashboard = lazy(() => import('@/member/pages/MemberDashboard'));
+const MemberDocuments = lazy(() => import('@/member/pages/MemberDocuments'));
+const MemberSubscription = lazy(() => import('@/member/pages/MemberSubscription'));
+const MemberProfile = lazy(() => import('@/member/pages/MemberProfile'));
+const MemberQR = lazy(() => import('@/member/pages/MemberQR'));
+const MemberCoursesCalendar = lazy(() => import('@/member/pages/MemberCoursesCalendar'));
+const MemberWorkoutPlans = lazy(() => import('@/member/pages/MemberWorkoutPlans'));
+const SessioneAllenamento = lazy(() => import('@/member/pages/SessioneAllenamento'));
+const Admin = lazy(() => import('@/staff/pages/admin/Admin'));
+const AuditLogPage = lazy(() => import('@/staff/pages/admin/AuditLogPage'));
 
 // Il vecchio /crm/members/:id porta alla stessa scheda del socio: il redirect
 // deve portarsi dietro l'id, altrimenti un link salvato finisce sull'elenco.
