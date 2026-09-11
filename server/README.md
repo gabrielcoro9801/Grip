@@ -197,6 +197,21 @@ npm test
 Serve il database in esecuzione, non il server: i test costruiscono l'app in memoria e la
 interrogano con `app.inject()`.
 
+### La prova in un browser vero
+
+```
+npm run build            # nella radice: la verifica serve il build corrente
+cd server && npm run verifica:browser
+```
+
+`app.inject()` dice se le rotte rispondono, non se l'applicazione si apre. Le cose che si
+rompono nel mezzo — un token letto prima che l'archivio sia pronto, un provider montato nel
+ramo sbagliato — si vedono solo aprendo le pagine. Lo script fa esattamente questo, e in
+particolare prova la cosa che prima era impossibile: tenere aperti il gestionale e il
+portale soci **nello stesso browser**. Si crea due account e li cancella alla fine.
+
+Il browser si installa una volta sola con `npx playwright install chromium`.
+
 `test/scritture.test.js` copre la partita doppia — la logica che, quando sbaglia, non dà
 errore: produce una scrittura che quadra e che è sul conto sbagliato. Quasi ogni caso
 ricontrolla l'invariante *dare = avere*, e uno scandaglio verifica su 200.000 importi che

@@ -14,7 +14,8 @@
     "db:studio": "drizzle-kit studio",
     "db:seed": "node src/seed.js",
     "db:deploy": "node src/migrate.js",
-    "db:reset-admin": "node src/reset-admin.js"
+    "db:reset-admin": "node src/reset-admin.js",
+    "verifica:browser": "node scripts/verifica-browser.mjs"
   },
   "dependencies": {
     "@fastify/cors": "^10.0.1",
