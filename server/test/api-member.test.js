@@ -353,6 +353,150 @@ describe("l'allenamento", () => {
 		assert.equal(dati.registrate[0].exercise_name, 'Panca piana');
 	});
 
+	test("la schermata dell'allenamento arriva in una richiesta sola", async () => {
+		const dati = (await come(tokenSocio, `/api/member/v1/allenamento/sessioni/${idSessione}`)).json();
+
+		// Erano cinque richieste, due delle quali si portavano via mille righe di storico e
+		// duecento sessioni — in palestra, mentre uno si allena.
+		assert.ok(Array.isArray(dati.catalogo), 'serve il catalogo, per sostituire un esercizio in sala');
+		assert.ok(Array.isArray(dati.record), 'i record di partenza li calcola il server');
+		assert.ok(Array.isArray(dati.precedente), 'come era andata la volta prima');
+		assert.equal(dati.sessione.id, idSessione);
+	});
+
+	describe('registrare e correggere una serie', () => {
+		let idNuovaSerie;
+		let idAperta;
+
+		// Serve un allenamento **aperto**: su uno chiuso il server rifiuta, ed è giusto così.
+		before(async () => {
+			const [aperta] = await db
+				.insert(workoutSessions)
+				.values({ memberId: idSocio, planName: 'In corso', routineIndex: 0, iniziataAlle: new Date() })
+				.returning();
+			idAperta = aperta.id;
+		});
+
+		after(async () => {
+			if (idAperta) {
+				await db.delete(workoutLogs).where(inArray(workoutLogs.sessionId, [idAperta]));
+				await db.delete(workoutSessions).where(inArray(workoutSessions.id, [idAperta]));
+			}
+		});
+
+		test('una serie si registra senza dire a chi appartiene', async () => {
+			// Il client manda solo quello che ha osservato. Socio, scheda e allenamento li
+			// mette il server leggendo la sessione: un identificativo che arriva da fuori è
+			// un identificativo che si può cambiare.
+			const res = await app.inject({
+				method: 'POST',
+				url: `/api/member/v1/allenamento/sessioni/${idAperta}/serie`,
+				headers: { authorization: `Bearer ${tokenSocio}` },
+				payload: { esercizio_index: 1, serie_index: 0, exercise_name: 'Stacco', peso_usato: 100, reps_fatte: 5 },
+			});
+
+			assert.equal(res.statusCode, 201, res.body);
+			const { serie } = res.json();
+			idNuovaSerie = serie.id;
+			assert.equal(serie.exercise_name, 'Stacco');
+
+			// E il socio è quello giusto, anche se nessuno l'ha detto.
+			const [riga] = await db.select().from(workoutLogs).where(inArray(workoutLogs.id, [idNuovaSerie]));
+			assert.equal(riga.memberId, idSocio);
+			assert.equal(riga.sessionId, idAperta);
+		});
+
+		test('si corregge quello che si è digitato male', async () => {
+			const res = await app.inject({
+				method: 'PATCH',
+				url: `/api/member/v1/allenamento/serie/${idNuovaSerie}`,
+				headers: { authorization: `Bearer ${tokenSocio}` },
+				payload: { peso_usato: 110, tipo_serie: 'cedimento' },
+			});
+
+			assert.equal(res.statusCode, 200, res.body);
+			const { serie } = res.json();
+			assert.equal(Number(serie.peso_usato), 110);
+			assert.equal(serie.tipo_serie, 'cedimento');
+			// Quello che non si tocca resta com'era.
+			assert.equal(serie.reps_fatte, 5);
+		});
+
+		test('la spunta si può togliere', async () => {
+			const res = await app.inject({
+				method: 'DELETE',
+				url: `/api/member/v1/allenamento/serie/${idNuovaSerie}`,
+				headers: { authorization: `Bearer ${tokenSocio}` },
+			});
+
+			assert.equal(res.statusCode, 200, res.body);
+			const rimaste = await db.select().from(workoutLogs).where(inArray(workoutLogs.id, [idNuovaSerie]));
+			assert.equal(rimaste.length, 0);
+		});
+
+		test("su un allenamento di un altro non si scrive, e si risponde 'non trovato'", async () => {
+			const [altrui] = await db
+				.insert(workoutSessions)
+				.values({ memberId: idEstraneo, planName: "Scheda dell'estraneo", iniziataAlle: new Date() })
+				.returning();
+
+			const res = await app.inject({
+				method: 'POST',
+				url: `/api/member/v1/allenamento/sessioni/${altrui.id}/serie`,
+				headers: { authorization: `Bearer ${tokenSocio}` },
+				payload: { exercise_name: 'Intrusione', peso_usato: 1, reps_fatte: 1 },
+			});
+			assert.equal(res.statusCode, 404, res.body);
+
+			const scritte = await db.select().from(workoutLogs).where(inArray(workoutLogs.sessionId, [altrui.id]));
+			assert.equal(scritte.length, 0, 'la serie è stata scritta lo stesso');
+
+			await db.delete(workoutSessions).where(inArray(workoutSessions.id, [altrui.id]));
+		});
+	});
+
+	test("chiudere l'allenamento non accetta l'ora dal telefono", async () => {
+		const [aperta] = await db
+			.insert(workoutSessions)
+			.values({ memberId: idSocio, planName: 'Da chiudere', iniziataAlle: new Date(Date.now() - 600000) })
+			.returning();
+
+		const prima = Date.now();
+		const res = await app.inject({
+			method: 'POST',
+			url: `/api/member/v1/allenamento/sessioni/${aperta.id}/termina`,
+			headers: { authorization: `Bearer ${tokenSocio}` },
+			// Un telefono con l'orologio sbagliato: l'ora che manda va ignorata.
+			payload: { terminata_alle: '1999-01-01T00:00:00Z' },
+		});
+		assert.equal(res.statusCode, 200, res.body);
+
+		const chiusa = res.json().sessione;
+		const quando = new Date(chiusa.terminata_alle).getTime();
+		assert.ok(quando >= prima - 5000, `l'ora di fine viene dal client: ${chiusa.terminata_alle}`);
+
+		// Chiuderlo due volte è il secondo tocco su un pulsante che aveva già funzionato: non
+		// deve spostare l'ora di fine né dare errore.
+		const ancora = await app.inject({
+			method: 'POST',
+			url: `/api/member/v1/allenamento/sessioni/${aperta.id}/termina`,
+			headers: { authorization: `Bearer ${tokenSocio}` },
+		});
+		assert.equal(ancora.statusCode, 200);
+		assert.equal(ancora.json().sessione.terminata_alle, chiusa.terminata_alle);
+
+		// E su un allenamento chiuso non si registra più.
+		const tardi = await app.inject({
+			method: 'POST',
+			url: `/api/member/v1/allenamento/sessioni/${aperta.id}/serie`,
+			headers: { authorization: `Bearer ${tokenSocio}` },
+			payload: { exercise_name: 'Fuori tempo', peso_usato: 1, reps_fatte: 1 },
+		});
+		assert.equal(tardi.statusCode, 409, tardi.body);
+
+		await db.delete(workoutSessions).where(inArray(workoutSessions.id, [aperta.id]));
+	});
+
 	test('annullare cancella sessione e serie insieme', async () => {
 		const res = await app.inject({
 			method: 'DELETE',

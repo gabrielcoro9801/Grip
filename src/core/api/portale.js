@@ -90,3 +90,41 @@ export function caricaSessioneAllenamento(id) {
 export function annullaSessioneAllenamento(id) {
 	return api.richiesta(`${BASE}/allenamento/sessioni/${id}`, { method: 'DELETE' });
 }
+
+/**
+ * Registra una serie appena fatta.
+ *
+ * Si manda solo quello che si è osservato — peso, ripetizioni, sforzo. A chi appartiene la
+ * serie e a quale scheda lo decide il server leggendo la sessione: un identificativo che
+ * parte da qui sarebbe un identificativo che si può cambiare.
+ */
+export async function registraSerie(idSessione, dati) {
+	const { serie } = await api.richiesta(`${BASE}/allenamento/sessioni/${idSessione}/serie`, {
+		method: 'POST',
+		body: dati,
+	});
+	return serie;
+}
+
+/** Corregge una serie già registrata: capita di sbagliare a digitare sotto il bilanciere. */
+export async function correggiSerie(idSerie, cambi) {
+	const { serie } = await api.richiesta(`${BASE}/allenamento/serie/${idSerie}`, {
+		method: 'PATCH',
+		body: cambi,
+	});
+	return serie;
+}
+
+/** Toglie una serie: la spunta si può sempre togliere. */
+export function eliminaSerie(idSerie) {
+	return api.richiesta(`${BASE}/allenamento/serie/${idSerie}`, { method: 'DELETE' });
+}
+
+/** Chiude l'allenamento. L'ora di fine la mette il server, non l'orologio del telefono. */
+export async function terminaSessioneAllenamento(idSessione, { note } = {}) {
+	const { sessione } = await api.richiesta(`${BASE}/allenamento/sessioni/${idSessione}/termina`, {
+		method: 'POST',
+		body: { note },
+	});
+	return sessione;
+}

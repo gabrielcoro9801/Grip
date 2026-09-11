@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { api } from "@/core/api/client";
+import {
+  caricaSessioneAllenamento, registraSerie, correggiSerie, eliminaSerie,
+  terminaSessioneAllenamento, annullaSessioneAllenamento,
+} from "@/core/api/portale";
 import { useMemberAuth } from "@/member/session/MemberAuthContext";
 import { Button } from "@/ui/primitivi/button";
 import { Input } from "@/ui/primitivi/input";
@@ -16,7 +19,7 @@ import { ChevronDown, Plus, Check, Timer, Trash2, StickyNote, Repeat, X } from "
 import { etichettaGruppo } from "@/core/domain/gruppiMuscolari";
 import {
   formatDurata, formatRecupero, statisticheAllenamento, tipoSerie, TIPI_SERIE,
-  ultimoDelGiro, massimaleStimato, recordPerEsercizio,
+  ultimoDelGiro, massimaleStimato,
 } from "@/core/domain/scheda";
 import { cn } from "@/ui/utils";
 
@@ -93,80 +96,75 @@ export default function SessioneAllenamento() {
     setCaricamento(true);
     setErrore(null);
     try {
-      const sessioneCorrente = await api.entities.WorkoutSession.get(sessionId);
+      // Una richiesta sola. Erano cinque, e due di quelle si portavano via mille righe di
+      // storico e duecento sessioni per ricavarne due mappe — **in palestra, mentre uno si
+      // allena**, cioè sulla rete peggiore e sul dispositivo più lento della giornata.
+      //
+      // Il lavoro di incrocio — qual era la serie corrispondente l'ultima volta, quali erano
+      // i record prima di oggi — lo fa il server. Qui resta la traduzione nei nomi che il
+      // resto della schermata usa già.
+      const dati = await caricaSessioneAllenamento(sessionId);
+
+      const sessioneCorrente = {
+        id: dati.sessione.id,
+        plan_id: dati.sessione.scheda_id,
+        plan_name: dati.sessione.scheda_nome,
+        routine_index: dati.sessione.routine_index,
+        routine_name: dati.sessione.routine_nome,
+        iniziata_alle: dati.sessione.iniziata_alle,
+        terminata_alle: dati.sessione.terminata_alle,
+        note: dati.sessione.note,
+      };
       setSessione(sessioneCorrente);
 
-      const [scheda, catalogo, registrate, sessioniDelSocio] = await Promise.all([
-        api.entities.ExercisePlan.get(sessioneCorrente.plan_id),
-        api.entities.Exercise.list(),
-        // Filtrato per scheda lato server: senza, si scaricava tutto lo storico del socio
-        // per poi tenerne le prime 500 righe, e dopo qualche mese il "precedente" spariva
-        // in silenzio perché era finito oltre il taglio.
-        api.entities.WorkoutLog.filter(
-          { member_id: memberUser.member_id, plan_id: sessioneCorrente.plan_id },
-          "-data",
-          1000
-        ),
-        api.entities.WorkoutSession.filter({ member_id: memberUser.member_id }, "-iniziata_alle", 200),
-      ]);
-
+      const catalogo = dati.catalogo.map((e) => ({
+        id: e.id,
+        name: e.nome,
+        muscle_group: e.gruppo,
+        description: e.descrizione,
+        image_url: e.immagine,
+      }));
       setCatalogo(catalogo);
       setDescrizioni(new Map(catalogo.map((e) => [e.id, e.description])));
       setImmagini(new Map(catalogo.filter((e) => e.image_url).map((e) => [e.id, e.image_url])));
 
       // La routine può non esserci più: l'istruttore ha modificato la scheda mentre
-      // l'allenamento era aperto. Non è un errore da schermata bianca — fermarsi qui
-      // renderebbe la sessione impossibile da chiudere, e il socio resterebbe con un
+      // l'allenamento era aperto. Il server manda `null` e qui non si tratta come un errore —
+      // fermarsi renderebbe la sessione impossibile da chiudere, e il socio resterebbe con un
       // allenamento in corso per sempre. Si mostra quello che ha registrato e lo si lascia
       // chiudere.
-      const routineCorrente = (scheda.routines ?? [])[sessioneCorrente.routine_index] ?? null;
+      const routineCorrente = dati.routine;
       setRoutine(routineCorrente);
 
-      const diQuestaSessione = registrate.filter((r) => r.session_id === sessionId);
+      // Le serie registrate arrivano già solo quelle di questo allenamento.
+      const daApi = (r) => ({
+        id: r.id,
+        session_id: r.sessione_id,
+        exercise_index: r.esercizio_index,
+        set_index: r.serie_index,
+        exercise_name: r.exercise_name,
+        muscle_group: r.muscle_group,
+        tipo_serie: r.tipo_serie,
+        peso_usato: r.peso_usato,
+        reps_fatte: r.reps_fatte,
+        rpe_percepito: r.rpe_percepito,
+        data: r.data,
+        note: r.note,
+      });
+      const diQuestaSessione = dati.registrate.map(daApi);
 
-      // Quello che si è fatto l'ultima volta, serie per serie. È il riferimento su cui si
-      // decide il carico di oggi: senza, ogni allenamento riparte da un campo vuoto e da
-      // uno sforzo di memoria.
-      //
-      // Il "quando" si prende dalla sessione e non dalla riga: `data` è una DATE senza ora,
-      // quindi due allenamenti dello stesso giorno si ordinerebbero a caso e il
-      // "precedente" potrebbe essere il più vecchio dei due. `iniziata_alle` è un istante
-      // vero.
-      //
-      // E si guarda solo la **stessa routine**: lo stesso esercizio può stare in due
-      // giornate diverse con carichi diversi, e mescolarle darebbe un riferimento che non
-      // è mai stato eseguito in quella giornata.
-      const passate = sessioniDelSocio
-        .filter(
-          (s) =>
-            s.id !== sessionId &&
-            s.plan_id === sessioneCorrente.plan_id &&
-            s.routine_index === sessioneCorrente.routine_index
-        )
-        .sort((a, b) => new Date(b.iniziata_alle) - new Date(a.iniziata_alle));
+      // Quello che si è fatto l'ultima volta, serie per serie: è il riferimento su cui si
+      // decide il carico di oggi. Quale sia "l'ultima volta" lo stabilisce il server —
+      // stessa scheda, stessa routine, ordinando per `iniziata_alle` e non per `data`, che
+      // è un giorno senza ora e non distingue due allenamenti dello stesso giorno.
+      setPrecedenti(new Map(
+        dati.precedente.map(daApi).map((r) => [`${r.exercise_name}__${r.set_index}`, r])
+      ));
 
-      const perSessione = new Map();
-      for (const riga of registrate) {
-        if (!riga.session_id) continue;
-        if (!perSessione.has(riga.session_id)) perSessione.set(riga.session_id, []);
-        perSessione.get(riga.session_id).push(riga);
-      }
-
-      const perPosizione = new Map();
-      for (const passata of passate) {
-        for (const riga of perSessione.get(passata.id) ?? []) {
-          const chiave = `${riga.exercise_name}__${riga.set_index}`;
-          // Le sessioni sono ordinate dalla più recente: la prima che scrive una posizione
-          // è quella che vince.
-          if (!perPosizione.has(chiave)) perPosizione.set(chiave, riga);
-        }
-      }
-      setPrecedenti(perPosizione);
-
-      // I record di partenza: tutto quello che il socio ha gia registrato su questa
-      // scheda, tolto quello che sta facendo adesso — altrimenti la prima serie di oggi
-      // si confronterebbe con se stessa e non sarebbe mai un record.
-      setRecord(recordPerEsercizio(registrate.filter((r) => r.session_id !== sessionId)));
+      // I record di partenza, calcolati dal server su questa scheda escludendo l'allenamento
+      // in corso: altrimenti la prima serie di oggi si confronterebbe con sé stessa e non
+      // sarebbe mai un record. Qui tornano in mappa, che è la forma che la schermata usa.
+      setRecord(new Map(dati.record.map(({ nome, migliore }) => [nome, migliore])));
 
       // Le serie previste dalla scheda, più quelle già spuntate in questa sessione: è così
       // che un allenamento interrotto si riapre esattamente dov'era.
@@ -299,7 +297,7 @@ export default function SessioneAllenamento() {
       cambiaRiga(indiceEsercizio, indiceSerie, "fatta", false);
       if (riga.logId) {
         try {
-          await api.entities.WorkoutLog.delete(riga.logId);
+          await eliminaSerie(riga.logId);
           cambiaRiga(indiceEsercizio, indiceSerie, "logId", null);
         } catch (err) {
           cambiaRiga(indiceEsercizio, indiceSerie, "fatta", true);
@@ -320,13 +318,13 @@ export default function SessioneAllenamento() {
     }
 
     try {
-      const creato = await api.entities.WorkoutLog.create({
-        member_id: memberUser.member_id,
-        plan_id: sessione.plan_id,
-        plan_name: sessione.plan_name,
-        session_id: sessionId,
-        exercise_index: esercizio.posizione,
-        set_index: indiceSerie,
+      // Si manda solo quello che si è osservato. A chi appartiene la serie, a quale scheda
+      // e a quale allenamento lo decide il server leggendo la sessione: prima quei tre
+      // identificativi partivano da qui, e un identificativo che parte dal client è un
+      // identificativo che si può cambiare.
+      const creato = await registraSerie(sessionId, {
+        esercizio_index: esercizio.posizione,
+        serie_index: indiceSerie,
         exercise_name: esercizio.exercise_name,
         muscle_group: esercizio.muscle_group ?? "",
         // Il tipo si congela qui: se domani il PT trasforma quel riscaldamento in una serie
@@ -335,7 +333,6 @@ export default function SessioneAllenamento() {
         peso_usato: numero(riga.kg),
         reps_fatte: repsFatte,
         rpe_percepito: numero(riga.rpe) ?? riga.rpe_previsto ?? null,
-        data: new Date().toISOString().split("T")[0],
         note: noteEsercizi[esercizio.posizione] ?? "",
       });
       cambiaRiga(indiceEsercizio, indiceSerie, "logId", creato.id);
@@ -401,7 +398,7 @@ export default function SessioneAllenamento() {
     const riga = esercizi[indiceEsercizio]?.righe[indiceSerie];
     if (!riga?.fatta || !riga.logId) return;
     try {
-      await api.entities.WorkoutLog.update(riga.logId, {
+      await correggiSerie(riga.logId, {
         peso_usato: numero(riga.kg),
         reps_fatte: numero(riga.reps),
         rpe_percepito: numero(riga.rpe),
@@ -425,7 +422,7 @@ export default function SessioneAllenamento() {
     const prossimo = codici[(codici.indexOf(riga.tipo ?? "normale") + 1) % codici.length];
     cambiaRiga(indiceEsercizio, indiceSerie, "tipo", prossimo);
     if (riga.fatta && riga.logId) {
-      api.entities.WorkoutLog.update(riga.logId, { tipo_serie: prossimo }).catch((err) => {
+      correggiSerie(riga.logId, { tipo_serie: prossimo }).catch((err) => {
         toast({ title: "Tipo non salvato", description: err.message, variant: "destructive" });
       });
     }
@@ -507,7 +504,7 @@ export default function SessioneAllenamento() {
     // aver fatto qualcosa che non si è fatto.
     for (const riga of esercizio.righe.filter((r) => r.logId)) {
       try {
-        await api.entities.WorkoutLog.update(riga.logId, {
+        await correggiSerie(riga.logId, {
           exercise_name: scelto.name,
           muscle_group: scelto.muscle_group ?? "altro",
         });
@@ -531,7 +528,7 @@ export default function SessioneAllenamento() {
     if (!ok) return;
     for (const riga of registrate) {
       try {
-        await api.entities.WorkoutLog.delete(riga.logId);
+        await eliminaSerie(riga.logId);
       } catch (err) {
         toast({ title: "Non è stato possibile togliere", description: err.message, variant: "destructive" });
         return;
@@ -544,7 +541,7 @@ export default function SessioneAllenamento() {
     const riga = esercizi[indiceEsercizio].righe[indiceSerie];
     if (riga.logId) {
       try {
-        await api.entities.WorkoutLog.delete(riga.logId);
+        await eliminaSerie(riga.logId);
       } catch (err) {
         toast({ title: "Non è stato possibile eliminare la serie", description: err.message, variant: "destructive" });
         return;
@@ -589,7 +586,10 @@ export default function SessioneAllenamento() {
     if (!ok) return;
     setChiusuraInCorso(true);
     try {
-      await api.entities.WorkoutSession.update(sessionId, { terminata_alle: new Date().toISOString() });
+      // L'ora di fine la mette il server. Se partisse da qui, l'orologio di un telefono
+      // sbagliato — o semplicemente in un altro fuso — darebbe durate negative o allenamenti
+      // finiti prima di cominciare.
+      await terminaSessioneAllenamento(sessionId);
       // Il riepilogo invece di uscire e basta: è il momento in cui la fatica diventa un
       // risultato che si vede, e i record battuti vanno detti quando contano.
       setRiepilogo({
@@ -634,23 +634,14 @@ export default function SessioneAllenamento() {
     if (!ok) return;
     setChiusuraInCorso(true);
     try {
-      // Prima le serie, poi la sessione: la chiave esterna punta da quelle a questa, e
-      // togliendo prima la sessione il database rifiuterebbe.
+      // Una richiesta, una transazione: o sparisce tutto, o non sparisce niente.
       //
-      // Le righe si rileggono dal server invece di prenderle da quelle a schermo: se anche
-      // una sola non fosse agganciata a una riga visibile — una posizione che non combacia,
-      // una spunta arrivata da un altro dispositivo — resterebbe lì a tenere in vita la
-      // sessione, e l'allenamento diventerebbe impossibile da buttare via. Che è
-      // esattamente il vicolo cieco da cui questa funzione serve a uscire.
-      const tutte = await api.entities.WorkoutLog.filter(
-        { member_id: memberUser.member_id },
-        "-data",
-        1000
-      );
-      for (const riga of tutte.filter((r) => r.session_id === sessionId)) {
-        await api.entities.WorkoutLog.delete(riga.id);
-      }
-      await api.entities.WorkoutSession.delete(sessionId);
+      // Erano N+1 — si rileggevano mille righe di storico, si cancellava una serie per
+      // volta, poi la sessione — e una rete che cadeva a metà lasciava righe orfane che
+      // tenevano in vita la sessione con la chiave esterna, rendendo l'allenamento
+      // impossibile da buttare via. Che è esattamente il vicolo cieco da cui questa
+      // funzione serve a uscire.
+      await annullaSessioneAllenamento(sessionId);
       toast({ title: "Allenamento annullato" });
       navigate("/member-portal/allenamento");
     } catch (err) {
