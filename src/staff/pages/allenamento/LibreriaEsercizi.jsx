@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { api } from "@/core/api/client";
+import { caricaFile } from "@/staff/lib/uploads";
 import { useStaffAuth } from "@/staff/lib/StaffAuthContext";
 import { canEdit } from "@/staff/lib/permissions";
 import { Card, CardContent } from "@/ui/primitivi/card";
@@ -124,7 +125,7 @@ export default function LibreriaEsercizi() {
     try {
       // La stessa rotta dei documenti e del logo: in produzione scrive sul volume
       // persistente, e /uploads/* è servito anche al portale soci, che deve poterla vedere.
-      const { file_url } = await api.integrations.Core.UploadFile({ file });
+      const { file_url } = await caricaFile({ file });
       setForm((precedente) => ({ ...precedente, image_url: file_url }));
     } catch (err) {
       toast({ title: "Immagine non caricata", description: err.message, variant: "destructive" });
