@@ -23,13 +23,19 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 
+# I gusci sono due, uno per applicazione: `index.html` per il gestionale e
+# `member.html` per il portale soci. Questo COPY è un elenco scritto a mano, e
+# un guscio dimenticato non fa fallire niente qui: fallisce Vite più sotto,
+# oppure — peggio — l'immagine parte e quel lato del sito dà 404. Da qui la
+# guardia dopo il build.
+#
 # `shared/` serve anche al frontend: permessi e ruoli sono gli stessi dei due
 # lati, e vivono lì apposta per non poter divergere.
 # `tailwind.config.js` e `postcss.config.js` non sono facoltativi: senza, PostCSS
 # non elabora Tailwind e la build riesce comunque, ma produce un CSS vuoto. Il
 # risultato è un sito che funziona e si presenta come HTML senza stili — un
 # errore che non compare in nessun log.
-COPY vite.config.js jsconfig.json index.html tailwind.config.js postcss.config.js components.json ./
+COPY vite.config.js jsconfig.json index.html member.html tailwind.config.js postcss.config.js components.json ./
 COPY src ./src
 COPY shared ./shared
 
@@ -44,6 +50,17 @@ RUN test -n "$(find dist/assets -name '*.css' -size +20k -print -quit)" \
     || (echo "ERRORE: il CSS prodotto è troppo piccolo — Tailwind non ha generato le classi." \
         && echo "Controlla che tailwind.config.js e postcss.config.js siano copiati nell'immagine." \
         && ls -la dist/assets && exit 1)
+
+# Le applicazioni sono due e servono due gusci. Se `member.html` non arriva nella
+# fase di build — basta dimenticarlo nel COPY qui sopra — l'immagine si costruisce
+# lo stesso e il gestionale funziona: è solo il portale soci a dare 404, e
+# nessuno se ne accorge finché non lo apre un socio. Meglio non partire affatto.
+RUN for guscio in index.html member.html; do \
+      test -f "dist/$guscio" \
+        || (echo "ERRORE: manca dist/$guscio — il guscio non è stato compilato." \
+            && echo "Controlla che sia elencato nel COPY e in vite.config.js (build.rollupOptions.input)." \
+            && ls -la dist && exit 1); \
+    done
 
 # --- Fase 2: l'immagine che gira --------------------------------------------
 FROM node:22-alpine AS runtime
