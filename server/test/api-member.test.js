@@ -18,7 +18,7 @@ import { buildApp } from '../src/app.js';
 import { db, pool } from '../src/db/client.js';
 import {
 	members, staffAccounts, subscriptions, memberDocuments, qrAccessi,
-	rooms, courses, events, sessions, bookings,
+	rooms, courses, events, sessions, bookings, workoutSessions, workoutLogs,
 } from '../src/db/schema/index.js';
 
 const PASSWORD = 'prova-api-member-1234';
@@ -260,6 +260,118 @@ describe("l'agenda dei corsi", () => {
 	});
 });
 
+describe('prenotare e disdire dal portale', () => {
+	const posta = (token, url, payload) =>
+		app.inject({ method: 'POST', url, payload, headers: { authorization: `Bearer ${token}` } });
+
+	test('un token dello staff non entra nemmeno in scrittura', async () => {
+		const res = await posta(tokenAdmin, `/api/member/v1/corsi/lezioni/${idLezione}/prenota`, {});
+		assert.equal(res.statusCode, 403, res.body);
+	});
+
+	test('su una lezione al completo si finisce in lista d\'attesa, non in errore', async () => {
+		// La lezione del test ha due posti e due confermati: è piena.
+		const res = await posta(tokenSocio, `/api/member/v1/corsi/lezioni/${idLezione}/prenota`, {});
+
+		// Il socio ha già una prenotazione su questa lezione: la regola condivisa con il
+		// gestionale risponde 409, ed è giusto così.
+		assert.equal(res.statusCode, 409, res.body);
+	});
+
+	test('non si disdice la prenotazione di un altro, e si risponde "non trovata"', async () => {
+		const dellEstraneo = idPrenotazioni[1];
+		const res = await posta(tokenSocio, `/api/member/v1/corsi/prenotazioni/${dellEstraneo}/disdici`, {});
+
+		assert.equal(res.statusCode, 404, res.body);
+
+		// E deve essere ancora lì: un 404 che nasconde una cancellazione sarebbe peggio del problema.
+		const [ancora] = await db.select().from(bookings).where(inArray(bookings.id, [dellEstraneo]));
+		assert.equal(ancora.status, 'confirmed');
+	});
+});
+
+describe("l'allenamento", () => {
+	let idSessione;
+	let idSerie;
+
+	test('lo storico arriva con i conti già fatti', async () => {
+		const [sessione] = await db
+			.insert(workoutSessions)
+			.values({
+				memberId: idSocio, planName: 'Forza A', routineIndex: 0, routineName: 'Giorno 1',
+				iniziataAlle: new Date(Date.now() - 3600000), terminataAlle: new Date(),
+			})
+			.returning();
+		idSessione = sessione.id;
+
+		const [serie] = await db
+			.insert(workoutLogs)
+			.values({
+				memberId: idSocio, sessionId: sessione.id, exerciseIndex: 0, setIndex: 0,
+				exerciseName: 'Panca piana', tipoSerie: 'normale', pesoUsato: '80', repsFatte: 8, data: oggi,
+			})
+			.returning();
+		idSerie = serie.id;
+
+		const dati = (await come(tokenSocio, '/api/member/v1/allenamento')).json();
+
+		assert.ok(Array.isArray(dati.storico));
+		assert.ok(dati.storico.some((s) => s.id === idSessione));
+		assert.equal(dati.sessione_in_corso, null);
+
+		// I conti li fa il server con le stesse funzioni delle pagine: qui si verifica che
+		// arrivino fatti, non che il client debba rifarli.
+		assert.equal(typeof dati.settimana?.questaSettimana, 'number');
+
+		// I record vanno controllati per **contenuto**, non per presenza. La funzione di
+		// dominio restituisce una Map, e una Map che finisce in JSON diventa `{}`: un
+		// controllo di verità la lascerebbe passare, perché anche `{}` è vero. È successo.
+		assert.ok(Array.isArray(dati.record), 'i record devono essere una lista, non una Map svuotata dal JSON');
+		const panca = dati.record.find((r) => r.nome === 'Panca piana');
+		assert.ok(panca, 'il record della panca doveva esserci');
+		assert.equal(panca.migliore.peso, 80);
+		assert.equal(panca.migliore.reps, 8);
+	});
+
+	test("l'allenamento di un altro socio non si apre", async () => {
+		const [altrui] = await db
+			.insert(workoutSessions)
+			.values({ memberId: idEstraneo, planName: "Scheda dell'estraneo", iniziataAlle: new Date() })
+			.returning();
+
+		const res = await come(tokenSocio, `/api/member/v1/allenamento/sessioni/${altrui.id}`);
+		assert.equal(res.statusCode, 404, res.body);
+
+		await db.delete(workoutSessions).where(inArray(workoutSessions.id, [altrui.id]));
+	});
+
+	test('una sessione si apre con le serie già spuntate', async () => {
+		const dati = (await come(tokenSocio, `/api/member/v1/allenamento/sessioni/${idSessione}`)).json();
+
+		assert.equal(dati.sessione.id, idSessione);
+		assert.equal(dati.registrate.length, 1);
+		assert.equal(dati.registrate[0].exercise_name, 'Panca piana');
+	});
+
+	test('annullare cancella sessione e serie insieme', async () => {
+		const res = await app.inject({
+			method: 'DELETE',
+			url: `/api/member/v1/allenamento/sessioni/${idSessione}`,
+			headers: { authorization: `Bearer ${tokenSocio}` },
+		});
+		assert.equal(res.statusCode, 200, res.body);
+
+		// Il punto della transazione: prima erano N+1 richieste dal browser, e una rete che
+		// cadeva a metà lasciava serie orfane che nessuna schermata avrebbe più mostrato.
+		const serieRimaste = await db.select().from(workoutLogs).where(inArray(workoutLogs.id, [idSerie]));
+		const sessioniRimaste = await db.select().from(workoutSessions).where(inArray(workoutSessions.id, [idSessione]));
+		assert.equal(serieRimaste.length, 0, 'sono rimaste serie orfane');
+		assert.equal(sessioniRimaste.length, 0);
+		idSessione = null;
+		idSerie = null;
+	});
+});
+
 describe('il contratto resta quello promesso', () => {
 	// Un campo che sparisce o cambia nome rompe le app installate che non hanno aggiornato.
 	// Questo test non giudica se i campi siano quelli giusti: fissa quelli pubblicati.
@@ -267,10 +379,13 @@ describe('il contratto resta quello promesso', () => {
 		const dati = (await come(tokenSocio, '/api/member/v1/profilo')).json();
 
 		assert.deepEqual(Object.keys(dati).sort(), ['abbonamento', 'documenti', 'socio']);
-		assert.deepEqual(Object.keys(dati.socio).sort(), ['codice_socio', 'data_nascita', 'email', 'id', 'nome', 'telefono']);
+		assert.deepEqual(
+			Object.keys(dati.socio).sort(),
+			['codice_socio', 'contatto_emergenza', 'data_nascita', 'email', 'id', 'indirizzo', 'nome', 'note', 'telefono']
+		);
 		assert.deepEqual(
 			Object.keys(dati.abbonamento).sort(),
-			['fine', 'giorni_alla_scadenza', 'id', 'in_scadenza', 'inizio', 'piano', 'stato']
+			['fine', 'giorni_alla_scadenza', 'id', 'in_scadenza', 'ingressi_residui', 'inizio', 'piano', 'stato']
 		);
 	});
 

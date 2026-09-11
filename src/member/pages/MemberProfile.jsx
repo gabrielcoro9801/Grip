@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { api } from "@/core/api/client";
+import { caricaProfilo } from "@/core/api/portale";
 import { useMemberAuth } from "@/member/session/MemberAuthContext";
 import { Card, CardContent } from "@/ui/primitivi/card";
 import SelettoreTema from "@/ui/SelettoreTema";
@@ -12,18 +12,16 @@ import { LoadingState } from "@/ui/Spinner";
 import { formatData } from "@/core/domain/format";
 
 export default function MemberProfile() {
-  const { memberUser, logout } = useMemberAuth();
+  const { logout } = useMemberAuth();
   const [member, setMember] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showReport, setShowReport] = useState(false);
 
   useEffect(() => {
-    if (!memberUser?.member_id) return;
-    api.entities.Member.get(memberUser.member_id).then(m => {
-      setMember(m);
-      setLoading(false);
-    });
-  }, [memberUser?.member_id]);
+    caricaProfilo()
+      .then((profilo) => setMember(profilo?.socio ?? null))
+      .finally(() => setLoading(false));
+  }, []);
 
   if (loading) {
     return <LoadingState minHeight="p-8" />;
@@ -31,12 +29,18 @@ export default function MemberProfile() {
 
   const fields = [
     { icon: Hash, label: "Codice socio", value: member?.codice_socio },
-    { icon: User, label: "Nome completo", value: member?.full_name },
+    { icon: User, label: "Nome completo", value: member?.nome },
     { icon: Mail, label: "Email", value: member?.email },
-    { icon: Phone, label: "Telefono", value: member?.phone },
-    { icon: Calendar, label: "Data di nascita", value: member?.date_of_birth ? formatData(member.date_of_birth, "media") : null },
-    { icon: MapPin, label: "Indirizzo", value: member?.address },
-    { icon: Heart, label: "Contatto di emergenza", value: member?.emergency_contact_name ? `${member.emergency_contact_name}${member.emergency_contact_phone ? " — " + member.emergency_contact_phone : ""}` : null },
+    { icon: Phone, label: "Telefono", value: member?.telefono },
+    { icon: Calendar, label: "Data di nascita", value: member?.data_nascita ? formatData(member.data_nascita, "media") : null },
+    { icon: MapPin, label: "Indirizzo", value: member?.indirizzo },
+    {
+      icon: Heart,
+      label: "Contatto di emergenza",
+      value: member?.contatto_emergenza
+        ? [member.contatto_emergenza.nome, member.contatto_emergenza.telefono].filter(Boolean).join(" — ")
+        : null,
+    },
   ];
 
   return (
@@ -59,10 +63,10 @@ export default function MemberProfile() {
               </div>
             </div>
           ))}
-          {member?.notes && (
+          {member?.note && (
             <div className="pt-2">
               <p className="text-xs text-muted-foreground">Note</p>
-              <p className="text-sm">{member.notes}</p>
+              <p className="text-sm">{member.note}</p>
             </div>
           )}
         </CardContent>

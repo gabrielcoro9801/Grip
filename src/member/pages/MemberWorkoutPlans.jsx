@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo, lazy, Suspense } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "@/core/api/client";
+import { caricaAllenamento, annullaSessioneAllenamento, caricaProgressiEsercizio } from "@/core/api/portale";
 import { useMemberAuth } from "@/member/session/MemberAuthContext";
 import { Card, CardContent } from "@/ui/primitivi/card";
 import { Button } from "@/ui/primitivi/button";
@@ -13,7 +14,7 @@ import { EmptyState, ErrorState } from "@/ui/StateViews";
 import { useConfirm } from "@/ui/ConfirmDialog";
 import { formatData, formatDataOra } from "@/core/domain/format";
 import { etichettaGruppo } from "@/core/domain/gruppiMuscolari";
-import { formatRecupero, formatDurata, totaleSerie, riepilogoSerie, riepilogoRpe, recordPerEsercizio, statisticheSettimanali } from "@/core/domain/scheda";
+import { formatRecupero, formatDurata, totaleSerie, riepilogoSerie, riepilogoRpe } from "@/core/domain/scheda";
 // Il grafico si apre toccando un record, e si porta dietro la libreria dei grafici: un
 // terzo di megabyte che nessuno scarica finché non lo chiede. Caricarlo con la pagina
 // significherebbe farlo pagare a ogni socio che apre l'allenamento per avviare una routine.
@@ -31,63 +32,65 @@ export default function MemberWorkoutPlans() {
   const [errore, setErrore] = useState(null);
   const [avvioInCorso, setAvvioInCorso] = useState(null);
   const [annullamentoInCorso, setAnnullamentoInCorso] = useState(false);
-  const [righe, setRighe] = useState([]);
+  // Andamento e record arrivano calcolati dal server, non si ricavano più qui.
+  const [andamento, setAndamento] = useState(null);
+  const [record, setRecord] = useState([]);
   const [esercizioAperto, setEsercizioAperto] = useState(null);
+  const [serieEsercizio, setSerieEsercizio] = useState([]);
 
+  // Una richiesta sola, e i conti già fatti.
+  //
+  // Erano tre, e la terza si portava via **mille** righe di serie eseguite per ricavarne una
+  // tabella di record: tutto lo storico di chi si allena da anni, scaricato su un telefono
+  // per mostrarne un riepilogo. Ora record e statistiche della settimana arrivano calcolati,
+  // con le stesse funzioni di dominio che girerebbero qui (`shared/scheda.js`).
   const carica = useCallback(async () => {
     setErrore(null);
     try {
-      const [s, ses, log] = await Promise.all([
-        api.entities.ExercisePlan.filter({ member_id: memberUser.member_id }),
-        api.entities.WorkoutSession.filter({ member_id: memberUser.member_id }, "-iniziata_alle", 50),
-        api.entities.WorkoutLog.filter({ member_id: memberUser.member_id }, "-data", 1000),
-      ]);
-      setSchede(s);
-      setSessioni(ses);
-      setRighe(log);
+      const dati = await caricaAllenamento();
+      setSchede(dati.schede);
+      setSessioni(dati.sessione_in_corso ? [dati.sessione_in_corso, ...dati.storico] : dati.storico);
+      setAndamento(dati.settimana);
+      setRecord(dati.record);
     } catch (err) {
       setErrore(err);
     }
     setCaricamento(false);
-  }, [memberUser]);
+  }, []);
 
   useEffect(() => { carica(); }, [carica]);
+
+  // Le serie del grafico si chiedono quando il grafico si apre, e riguardano un esercizio
+  // solo: prima si disegnava sullo storico intero, che era già stato scaricato tutto.
+  useEffect(() => {
+    if (!esercizioAperto) { setSerieEsercizio([]); return undefined; }
+    let vivo = true;
+    caricaProgressiEsercizio(esercizioAperto)
+      .then((serie) => { if (vivo) setSerieEsercizio(serie); })
+      .catch(() => { if (vivo) setSerieEsercizio([]); });
+    return () => { vivo = false; };
+  }, [esercizioAperto]);
 
   // Un allenamento lasciato aperto: il telefono si è bloccato, si è usciti per rispondere
   // a un messaggio. Va ritrovato in cima, o si finisce per avviarne un secondo e
   // spezzare in due lo stesso allenamento.
   const inCorso = useMemo(() => sessioni.find((s) => !s.terminata_alle), [sessioni]);
   const concluse = useMemo(() => sessioni.filter((s) => s.terminata_alle), [sessioni]);
-  const andamento = useMemo(() => statisticheSettimanali(sessioni), [sessioni]);
-
-  // I record, dal migliore al peggiore: in cima quello di cui si va piu fieri.
-  const record = useMemo(
-    () => [...recordPerEsercizio(righe).entries()]
-      .map(([nome, migliore]) => ({ nome, migliore }))
-      .sort((a, b) => b.migliore.massimale - a.migliore.massimale),
-    [righe],
-  );
 
   const annullaInCorso = async () => {
     const ok = await conferma({
       title: "Annullare l'allenamento in corso?",
-      description: `«${inCorso.routine_name}» e tutto quello che ci hai registrato vengono cancellati.`,
+      description: `«${inCorso.routine_nome}» e tutto quello che ci hai registrato vengono cancellati.`,
       confirmLabel: "Annulla l'allenamento",
       destructive: true,
     });
     if (!ok) return;
     setAnnullamentoInCorso(true);
     try {
-      // Prima le serie e poi la sessione: la chiave esterna punta da quelle a questa.
-      const daCancellare = await api.entities.WorkoutLog.filter(
-        { member_id: memberUser.member_id },
-        "-data",
-        1000
-      );
-      for (const riga of daCancellare.filter((r) => r.session_id === inCorso.id)) {
-        await api.entities.WorkoutLog.delete(riga.id);
-      }
-      await api.entities.WorkoutSession.delete(inCorso.id);
+      // Una richiesta, una transazione. Prima erano N+1 — una cancellazione per ogni serie,
+      // poi la sessione — e una rete che cadeva a metà lasciava righe orfane, senza un
+      // allenamento a cui appartenere, che nessuna schermata avrebbe più mostrato.
+      await annullaSessioneAllenamento(inCorso.id);
       toast({ title: "Allenamento annullato" });
       await carica();
     } catch (err) {
@@ -110,7 +113,7 @@ export default function MemberWorkoutPlans() {
       const sessione = await api.entities.WorkoutSession.create({
         member_id: memberUser.member_id,
         plan_id: scheda.id,
-        plan_name: scheda.name,
+        plan_name: scheda.nome,
         routine_index: indiceRoutine,
         routine_name: routine.nome,
         iniziata_alle: new Date().toISOString(),
@@ -134,7 +137,7 @@ export default function MemberWorkoutPlans() {
 
       {/* Quante volte ci si è allenati: è la misura che fa tornare le persone, molto più
           di qualsiasi grafico. La fila di settimane è quella che nessuno vuole spezzare. */}
-      {concluse.length > 0 && (
+      {concluse.length > 0 && andamento && (
         <Card className="border-0 shadow-sm">
           <CardContent className="p-4">
             <dl className="grid grid-cols-3 gap-2 text-center">
@@ -163,7 +166,7 @@ export default function MemberWorkoutPlans() {
             <div className="min-w-0 flex-1">
               <p className="text-sm font-semibold">Allenamento in corso</p>
               <p className="text-xs text-muted-foreground truncate">
-                {inCorso.routine_name} · {inCorso.plan_name} · iniziato {formatDataOra(inCorso.iniziata_alle)}
+                {inCorso.routine_nome} · {inCorso.scheda_nome} · iniziato {formatDataOra(inCorso.iniziata_alle)}
               </p>
             </div>
             <Button size="sm" onClick={() => navigate(`/member-portal/allenamento/sessione/${inCorso.id}`)}>
@@ -192,7 +195,7 @@ export default function MemberWorkoutPlans() {
           <Card key={scheda.id} className="border-0 shadow-sm">
             <CardContent className="p-4 space-y-3">
               <div>
-                <h2 className="font-heading font-semibold">{scheda.name}</h2>
+                <h2 className="font-heading font-semibold">{scheda.nome}</h2>
                 <p className="text-xs text-muted-foreground">
                   Assegnata il {formatData(scheda.assigned_date, "media")} ·{" "}
                   {(scheda.routines ?? []).length}{" "}
@@ -337,9 +340,9 @@ export default function MemberWorkoutPlans() {
                     className="w-full text-left py-2 flex items-center justify-between gap-2 hover:text-primary transition-colors"
                   >
                     <span className="min-w-0">
-                      <span className="block text-sm font-medium truncate">{sessione.routine_name}</span>
+                      <span className="block text-sm font-medium truncate">{sessione.routine_nome}</span>
                       <span className="block text-xs text-muted-foreground truncate">
-                        {sessione.plan_name} · {formatDataOra(sessione.iniziata_alle)}
+                        {sessione.scheda_nome} · {formatDataOra(sessione.iniziata_alle)}
                       </span>
                     </span>
                     <span className="text-xs text-muted-foreground whitespace-nowrap tabular-nums">
@@ -359,7 +362,7 @@ export default function MemberWorkoutPlans() {
         <Suspense fallback={null}>
           <ProgressiEsercizio
             nomeEsercizio={esercizioAperto}
-            righe={righe}
+            righe={serieEsercizio}
             onChiudi={() => setEsercizioAperto(null)}
           />
         </Suspense>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { api } from "@/core/api/client";
+import { caricaProfilo, caricaAccesso } from "@/core/api/portale";
 import { useMemberAuth } from "@/member/session/MemberAuthContext";
 import { Card, CardContent } from "@/ui/primitivi/card";
 import { Badge } from "@/ui/primitivi/badge";
@@ -8,7 +8,6 @@ import { qrDataUrl } from "@/ui/qr/qrImmagine";
 import { useQrDinamico } from "@/ui/hooks/useQrDinamico";
 import { DURATA_FINESTRA_MS } from "../../../shared/qrDinamico.js";
 import StatusBadge from "@/ui/StatusBadge";
-import moment from "moment";
 import { LoadingState } from "@/ui/Spinner";
 import { formatData } from "@/core/domain/format";
 
@@ -16,33 +15,28 @@ const SECONDI_FINESTRA = DURATA_FINESTRA_MS / 1000;
 
 export default function MemberQR() {
   const { memberUser } = useMemberAuth();
-  const [qr, setQr] = useState(null);
+  const [accesso, setAccesso] = useState(null);
   const [member, setMember] = useState(null);
-  const [subscriptions, setSubscriptions] = useState([]);
+  const [activeSub, setActiveSub] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!memberUser?.member_id) return;
     (async () => {
-      const [m, subs, qrs] = await Promise.all([
-        api.entities.Member.get(memberUser.member_id),
-        api.entities.Subscription.filter({ member_id: memberUser.member_id }),
-        api.entities.QRAccesso.filter({ cliente_id: memberUser.member_id }),
-      ]);
-      setMember(m);
-      setSubscriptions(subs);
       // La credenziale la emette la palestra, non il socio.
       //
       // Prima questa schermata se la creava da sola quando non la trovava, e siccome
       // nessuno controllava lo `stato` dichiarato, bastava aprirla dopo essere stati
       // revocati per rifarsene una attiva: la revoca durava fino alla successiva visita
       // del socio. Ora se non c'è, non c'è, e lo si dice.
-      setQr(qrs[0] ?? null);
+      const [profilo, statoAccesso] = await Promise.all([caricaProfilo(), caricaAccesso()]);
+      setMember(profilo?.socio ?? null);
+      setActiveSub(profilo?.abbonamento ?? null);
+      setAccesso(statoAccesso);
       setLoading(false);
     })();
-  }, [memberUser?.member_id]);
+  }, []);
 
-  const isRevoked = qr?.stato === "revocato";
+  const isRevoked = accesso?.stato === "revocato";
   // Il codice lo firma il server: qui si dice solo per chi (sé stessi) e se ha senso
   // chiederlo. Un QR revocato non si chiede nemmeno.
   const { codice, secondiResidui, stato, errore } = useQrDinamico(null, !isRevoked);
@@ -62,15 +56,15 @@ export default function MemberQR() {
     return <LoadingState minHeight="p-8" />;
   }
 
-  const activeSub = subscriptions.find(s => s.status === "active");
-  const daysToExpiry = activeSub ? moment(activeSub.end_date).diff(moment(), "days") : null;
-  const canAccess = activeSub && daysToExpiry >= 0 && !isRevoked;
+  // Se l'abbonamento sia ancora buono lo dice il server, con i giorni già contati.
+  const daysToExpiry = activeSub?.giorni_alla_scadenza ?? null;
+  const canAccess = Boolean(activeSub) && activeSub.stato === "active" && daysToExpiry >= 0 && !isRevoked;
 
   return (
     <div className="min-h-[calc(100vh-3.5rem)] lg:min-h-screen flex flex-col items-center justify-center p-4 sm:p-6 space-y-6">
       <div className="text-center">
         <h1 className="text-xl font-heading font-bold">QR accesso</h1>
-        <p className="text-sm text-muted-foreground">{member?.full_name || memberUser.nome}</p>
+        <p className="text-sm text-muted-foreground">{member?.nome || memberUser.nome}</p>
       </div>
 
       {/* QR Code */}
@@ -152,11 +146,11 @@ export default function MemberQR() {
         <CardContent className="p-4">
           <div className="flex items-center justify-between">
             <span className="text-sm text-muted-foreground">Stato abbonamento</span>
-            {activeSub ? <StatusBadge status={activeSub.status} /> : <Badge variant="destructive">Nessuno</Badge>}
+            {activeSub ? <StatusBadge status={activeSub.stato} /> : <Badge variant="destructive">Nessuno</Badge>}
           </div>
           {activeSub && (
             <p className="text-xs text-muted-foreground mt-1">
-              {activeSub.plan_name} — scade il {formatData(activeSub.end_date, "media")}
+              {activeSub.piano} — scade il {formatData(activeSub.fine, "media")}
             </p>
           )}
           {canAccess ? (

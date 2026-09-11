@@ -3,7 +3,7 @@ import { ChevronLeft } from "lucide-react";
 import CourseSessionsList from "@/member/components/CourseSessionsList";
 import { formatData } from "@/core/domain/format";
 
-export default function CoursesByCategory({ enrichedSessions, bookings, memberUser, onBook, onCancel, onBookAll, onCancelAll, actionLoading }) {
+export default function CoursesByCategory({ enrichedSessions, onBook, onCancel, onBookAll, onCancelAll, actionLoading }) {
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [selectedCourse, setSelectedCourse] = useState(null);
 
@@ -11,7 +11,7 @@ export default function CoursesByCategory({ enrichedSessions, bookings, memberUs
 
   const upcomingSessions = useMemo(() => {
     return enrichedSessions
-      .filter(s => s.status === "active" && s.date >= today)
+      .filter(s => s.date >= today)
       .sort((a, b) => a.date.localeCompare(b.date) || a.start_time.localeCompare(b.start_time));
   }, [enrichedSessions, today]);
 
@@ -97,8 +97,6 @@ export default function CoursesByCategory({ enrichedSessions, bookings, memberUs
       course={course}
       categoryName={categoryList.find(c => c.id === selectedCategory)?.name}
       sessions={courseSessions}
-      bookings={bookings}
-      memberUser={memberUser}
       onBook={onBook}
       onCancel={onCancel}
       onBookAll={onBookAll}

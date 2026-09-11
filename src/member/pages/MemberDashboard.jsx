@@ -1,41 +1,35 @@
 import React, { useState, useEffect } from "react";
-import { api } from "@/core/api/client";
+import { caricaProfilo } from "@/core/api/portale";
 import { useMemberAuth } from "@/member/session/MemberAuthContext";
 import { Link } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/ui/primitivi/card";
 import { Button } from "@/ui/primitivi/button";
 import { CreditCard, QrCode, FileText, User, ChevronRight, Calendar, AlertCircle } from "lucide-react";
 import StatusBadge from "@/ui/StatusBadge";
-import moment from "moment";
 import { LoadingState } from "@/ui/Spinner";
 import { formatData } from "@/core/domain/format";
 
 export default function MemberDashboard() {
   const { memberUser } = useMemberAuth();
-  const [member, setMember] = useState(null);
-  const [subscriptions, setSubscriptions] = useState([]);
+  const [profilo, setProfilo] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  // Una richiesta sola: anagrafica e abbonamento arrivano insieme, e quale sia
+  // l'abbonamento in corso lo ha già deciso il server.
   useEffect(() => {
-    if (!memberUser?.member_id) return;
-    (async () => {
-      const [m, subs] = await Promise.all([
-        api.entities.Member.get(memberUser.member_id),
-        api.entities.Subscription.filter({ member_id: memberUser.member_id }),
-      ]);
-      setMember(m);
-      setSubscriptions(subs);
-      setLoading(false);
-    })();
-  }, [memberUser?.member_id]);
+    caricaProfilo()
+      .then(setProfilo)
+      .finally(() => setLoading(false));
+  }, []);
 
   if (loading) {
     return <LoadingState minHeight="p-8" />;
   }
 
-  const activeSub = subscriptions.find(s => s.status === "active") || subscriptions[0];
-  const daysToExpiry = activeSub ? moment(activeSub.end_date).diff(moment(), "days") : null;
-  const expiringSoon = daysToExpiry !== null && daysToExpiry <= 7 && daysToExpiry >= 0;
+  const member = profilo?.socio;
+  const activeSub = profilo?.abbonamento;
+  const daysToExpiry = activeSub?.giorni_alla_scadenza ?? null;
+  const expiringSoon = Boolean(activeSub?.in_scadenza) && daysToExpiry >= 0;
 
   const quickLinks = [
     { label: "Documenti", path: "/member-portal/documenti", icon: FileText, desc: "I tuoi documenti" },
@@ -48,7 +42,7 @@ export default function MemberDashboard() {
       {/* Welcome */}
       <div>
         <h1 className="text-2xl font-heading font-bold">
-          Ciao, {member?.full_name?.split(" ")[0] || memberUser.nome}
+          Ciao, {member?.nome?.split(" ")[0] || memberUser.nome}
         </h1>
         <p className="text-sm text-muted-foreground">Benvenuto nella tua area personale</p>
       </div>
@@ -66,12 +60,12 @@ export default function MemberDashboard() {
           ) : (
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <h3 className="font-medium">{activeSub.plan_name}</h3>
-                <StatusBadge status={activeSub.status} />
+                <h3 className="font-medium">{activeSub.piano}</h3>
+                <StatusBadge status={activeSub.stato} />
               </div>
               <div className="grid grid-cols-2 gap-1 text-xs text-muted-foreground">
-                <div className="flex items-center gap-1"><Calendar className="w-3 h-3" /> Inizio: {formatData(activeSub.start_date, "media")}</div>
-                <div className="flex items-center gap-1"><Calendar className="w-3 h-3" /> Fine: {formatData(activeSub.end_date, "media")}</div>
+                <div className="flex items-center gap-1"><Calendar className="w-3 h-3" /> Inizio: {formatData(activeSub.inizio, "media")}</div>
+                <div className="flex items-center gap-1"><Calendar className="w-3 h-3" /> Fine: {formatData(activeSub.fine, "media")}</div>
               </div>
               {expiringSoon && (
                 <div className="flex items-center gap-2 p-2 rounded-lg bg-warning/10 border border-warning/30 text-warning text-xs">
@@ -79,8 +73,8 @@ export default function MemberDashboard() {
                   In scadenza tra {daysToExpiry} giorni
                 </div>
               )}
-              {activeSub.sessions_remaining != null && (
-                <p className="text-xs text-muted-foreground">Ingressi residui: {activeSub.sessions_remaining}</p>
+              {activeSub.ingressi_residui != null && (
+                <p className="text-xs text-muted-foreground">Ingressi residui: {activeSub.ingressi_residui}</p>
               )}
               <Link to="/member-portal/abbonamento">
                 <Button variant="ghost" size="sm" className="w-full mt-1">

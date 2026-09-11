@@ -3,10 +3,9 @@ import { Button } from "@/ui/primitivi/button";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import moment from "moment";
 import CourseSessionCard from "@/member/components/CourseSessionCard";
-import { getSessionAvailability, getMemberBooking } from "@/core/domain/bookingUtils";
 import { formatData } from "@/core/domain/format";
 
-export default function CoursesByCalendar({ enrichedSessions, bookings, memberUser, onBook, onCancel, actionLoading }) {
+export default function CoursesByCalendar({ enrichedSessions, onBook, onCancel, actionLoading }) {
   const [weekStart, setWeekStart] = useState(() => {
     const today = new Date();
     const dow = today.getDay();
@@ -37,9 +36,11 @@ export default function CoursesByCalendar({ enrichedSessions, bookings, memberUs
     return `${moment(start).format("D MMMM")}–${moment(end).format("D MMMM")}`;
   }, [weekDays]);
 
+  // Le lezioni annullate non arrivano nemmeno: l'agenda le esclude sul server. Prima qui
+  // c'era un filtro su `status`, che ora sarebbe una domanda già risposta.
   const daySessions = useMemo(() => {
     return enrichedSessions
-      .filter(s => s.date === selectedDate && s.status === "active")
+      .filter(s => s.date === selectedDate)
       .sort((a, b) => a.start_time.localeCompare(b.start_time));
   }, [enrichedSessions, selectedDate]);
 
@@ -66,7 +67,7 @@ export default function CoursesByCalendar({ enrichedSessions, bookings, memberUs
         {weekDays.map(d => {
           const dateStr = d.toISOString().split("T")[0];
           const isSelected = dateStr === selectedDate;
-          const sess = enrichedSessions.filter(s => s.date === dateStr && s.status === "active");
+          const sess = enrichedSessions.filter(s => s.date === dateStr);
           const cats = new Map();
           sess.forEach(s => {
             if (s._category && !cats.has(s._category.id)) cats.set(s._category.id, s._category);
@@ -91,14 +92,13 @@ export default function CoursesByCalendar({ enrichedSessions, bookings, memberUs
           <p className="text-sm text-muted-foreground text-center py-8">Nessun corso programmato per questa data</p>
         ) : (
           daySessions.map(session => {
-            const info = getSessionAvailability(session, bookings);
-            const memberBooking = getMemberBooking(session.id, memberUser.member_id, bookings);
+            const memberBooking = session._miaPrenotazione;
             return (
               <CourseSessionCard
                 key={session.id}
                 session={session}
-                available={info.available}
-                capacity={info.capacity}
+                available={session._posti.liberi}
+                capacity={session._posti.capienza}
                 memberBooking={memberBooking}
                 onBook={() => onBook(session)}
                 onCancel={() => onCancel(memberBooking.id)}
