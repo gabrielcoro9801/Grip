@@ -1,6 +1,6 @@
 // Dominio staff: Collaboratore (anagrafica di chi lavora per l'ente) e StaffAccount
 // (login/sessione — da NON confondere con Collaboratore, vedi nota sotto).
-import { pgTable, uuid, varchar, text, boolean, date, timestamp } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, text, boolean, date, integer, timestamp } from 'drizzle-orm/pg-core';
 import { organizations } from './common.js';
 
 export const collaboratori = pgTable('collaboratori', {
@@ -35,4 +35,15 @@ export const staffAccounts = pgTable('staff_accounts', {
 	linkedCollaboratoreId: uuid('linked_collaboratore_id').references(() => collaboratori.id),
 	linkedMemberId: uuid('linked_member_id'), // FK logica -> members.id (import evitato per non ciclare crm.js->hr.js)
 	lastActivityDate: timestamp('last_activity_date', { withTimezone: true }),
+	// Il numero che rende revocabile una sessione.
+	//
+	// Un token firmato vale finché non scade, e nessuno può fermarlo: se un telefono viene
+	// rubato o un account va chiuso, la revoca non ha alcun effetto fino alla scadenza. Con
+	// questo numero dentro al token, alzarlo di uno invalida all'istante tutte le sessioni di
+	// quell'account — è l'unica forma di "esci da tutti i dispositivi" possibile senza tenere
+	// un elenco dei token emessi.
+	//
+	// Diventa indispensabile il giorno in cui esiste un'app installata: lì le sessioni durano
+	// settimane, e sono venti righe che non si aggiungono più volentieri dopo.
+	tokenVersion: integer('token_version').notNull().default(1),
 });

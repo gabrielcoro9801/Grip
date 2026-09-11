@@ -13,6 +13,9 @@ import ruoliRoutes from './routes/ruoli.js';
 import qrRoutes from './routes/qr.js';
 import prenotazioniRoutes from './routes/prenotazioni.js';
 import memberRoutes from './routes/member/index.js';
+import { firmaValida, nomeFileDa } from './lib/urlFirmati.js';
+import { getUserFromRequest } from './auth/tokens.js';
+import { sessioneRevocata } from './auth/revoca.js';
 import { ENTITY_NAMES } from './entities/registry.js';
 import { config } from './config.js';
 
@@ -28,17 +31,57 @@ export function buildApp({ publicBaseUrl = 'http://localhost:3001', logger = tru
 	// aperto è accettabile solo in locale, da restringere prima di qualunque deploy.
 	app.register(cors, { origin: config.origineConsentita });
 	app.register(multipart, { limits: { fileSize: 10 * 1024 * 1024 } });
-	// I file caricati sono serviti dallo stesso indirizzo dell'applicazione, quindi qualsiasi
-	// cosa il browser accetti di eseguire da lì gira sul nostro dominio. L'estensione la
-	// decide già il server (routes/uploads.js), ma queste due intestazioni sono la rete
-	// sotto: `nosniff` impedisce al browser di indovinare un tipo diverso da quello
-	// dichiarato, e una CSP che non concede nulla toglie a un documento servito da qui la
-	// possibilità di eseguire script o chiamare altri indirizzi.
+	// I file caricati non si servono più a chiunque conosca l'indirizzo.
+	//
+	// Il nome è casuale e quindi non si indovina, ma un indirizzo si condivide, finisce in
+	// una cronologia, nel log di un proxy, in uno screenshot — e fra questi file ci sono i
+	// certificati medici dei soci, cioè dati sanitari. "Difficile da indovinare" non è un
+	// controllo d'accesso.
+	//
+	// Il controllo è una firma nell'indirizzo (`lib/urlFirmati.js`) e non il token di
+	// sessione, perché un file non si chiede con `fetch`: sta in un `<img src>` o in un
+	// `<a href>`, e quelle richieste il browser le manda senza nessuna intestazione nostra.
+	//
+	// A chi non ha la firma si risponde 404 e non 403: di un file che non può vedere non gli
+	// si conferma nemmeno l'esistenza.
+	app.addHook('onRequest', async (request, reply) => {
+		const percorso = (request.raw.url ?? '').split('?')[0];
+		if (!percorso.startsWith('/uploads/')) return;
+
+		const nome = nomeFileDa(percorso);
+		if (!nome || !firmaValida(nome, request.query?.scade, request.query?.firma)) {
+			return reply.code(404).send({ error: 'Non trovato' });
+		}
+	});
+
+	// Una sessione revocata smette di valere subito, non alla scadenza del token.
+	//
+	// Il controllo sta qui, in un punto solo, e non dentro ogni gruppo di rotte: è una
+	// garanzia di sicurezza, e le garanzie di sicurezza sparse in sette file diventano sei
+	// garanzie e una dimenticanza. Costa una lettura per richiesta autenticata, che su un
+	// gestionale di palestra non si vede — e in cambio "esci da tutti i dispositivi" esiste
+	// davvero, che con le sessioni dei soci a trenta giorni serve.
+	//
+	// Le richieste senza token passano di qui senza toccare il database: a rifiutarle ci
+	// pensano le rotte, ognuna con la sua regola.
+	app.addHook('preHandler', async (request, reply) => {
+		const claims = getUserFromRequest(request);
+		if (!claims) return;
+		if (await sessioneRevocata(claims)) {
+			return reply.code(401).send({ error: 'Sessione non più valida.' });
+		}
+	});
+
+	// Le due intestazioni sono la seconda difesa, e resta necessaria: la firma dice *chi* può
+	// aprire il file, queste dicono cosa quel file può fare una volta aperto. `nosniff`
+	// impedisce al browser di indovinare un tipo diverso da quello dichiarato, e una CSP che
+	// non concede nulla toglie a un documento servito da qui la possibilità di eseguire script
+	// o di chiamare altri indirizzi — cioè di comportarsi da pagina del nostro dominio.
 	//
 	// `decorateReply: false`: `reply.sendFile` deve appartenere allo static del frontend, non
-	// a questo. Le intestazioni qui sopra vivono nella chiusura del plugin che le registra, non
-	// nella cartella: se fosse questo a decorare `sendFile`, anche l'index.html mandato al
-	// router (più sotto) uscirebbe con la CSP degli upload, e la pagina resterebbe nera.
+	// a questo. Le intestazioni vivono nella chiusura del plugin che le registra, non nella
+	// cartella: se fosse questo a decorare `sendFile`, anche l'index.html mandato al router
+	// (più sotto) uscirebbe con la CSP degli upload, e la pagina resterebbe nera.
 	app.register(fastifyStatic, {
 		root: UPLOAD_DIR,
 		prefix: '/uploads/',

@@ -6,6 +6,7 @@ import { eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { staffAccounts } from '../db/schema/index.js';
 import { signToken, getUserFromRequest } from '../auth/tokens.js';
+import { revocaSessioniDi } from '../auth/revoca.js';
 import { matriceCorrente } from '../../../shared/permissions.js';
 
 // Ciò che il client può vedere di un account: mai l'hash della password.
@@ -58,7 +59,8 @@ export default async function authRoutes(fastify) {
 			.where(eq(staffAccounts.id, account.id));
 
 		const user = toPublicUser(account);
-		return { token: signToken({ sub: account.id, ruolo: account.ruolo }), user };
+		// `tv` nel token: e' cio che permette di revocare questa sessione (auth/revoca.js).
+		return { token: signToken({ sub: account.id, ruolo: account.ruolo, tv: account.tokenVersion }), user };
 	});
 
 	// GET /api/auth/me — valida il token e restituisce lo stato aggiornato dell'account.
@@ -103,6 +105,10 @@ export default async function authRoutes(fastify) {
 			.update(staffAccounts)
 			.set({ passwordHash: await bcrypt.hash(newPassword, 10) })
 			.where(eq(staffAccounts.id, account.id));
+
+		// Chi conosceva la vecchia password non deve restare dentro: cambiarla butta fuori
+		// tutte le sessioni di questo account, compresa quella da cui si sta chiedendo.
+		await revocaSessioniDi(account.id);
 
 		return { success: true };
 	});

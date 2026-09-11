@@ -15,6 +15,7 @@ import { fileURLToPath } from 'node:url';
 import { buildApp } from '../src/app.js';
 import { pool } from '../src/db/client.js';
 import { config } from '../src/config.js';
+import { firmaUrl } from '../src/lib/urlFirmati.js';
 
 const serverRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DIST_DIR = path.resolve(serverRoot, '..', 'dist');
@@ -99,8 +100,12 @@ describe('le intestazioni delle pagine servite', () => {
 		assert.match(risposta.headers['cache-control'], /immutable/);
 	});
 
+	// L'indirizzo va firmato: da quando i file caricati non sono più aperti a chiunque
+	// (`lib/urlFirmati.js`), senza firma si riceve 404. Qui interessano le intestazioni, cioè
+	// che un file aperto non possa comportarsi da pagina del nostro dominio: le due difese
+	// convivono, una non sostituisce l'altra.
 	test('un file caricato resta senza permessi', async () => {
-		const risposta = await app.inject({ method: 'GET', url: '/uploads/__sonda-intestazioni.txt' });
+		const risposta = await app.inject({ method: 'GET', url: firmaUrl('/uploads/__sonda-intestazioni.txt') });
 
 		assert.equal(risposta.statusCode, 200);
 		assert.equal(risposta.headers['content-security-policy'], "default-src 'none'; sandbox");
