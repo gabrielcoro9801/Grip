@@ -15,10 +15,9 @@ import { generateQRCode, generaPasswordTemporanea } from "@/staff/lib/qrUtils";
 import { qrDataUrl } from "@/ui/qr/qrImmagine";
 import { useQrDinamico } from "@/ui/hooks/useQrDinamico";
 import { logAction } from "@/staff/lib/auditLog";
-import moment from "moment";
 import { useToast } from "@/ui/primitivi/use-toast";
 import { LoadingState } from "@/ui/Spinner";
-import { formatData, formatDataOra, formatEuro } from "@/core/domain/format";
+import { formatData, formatDataOra, formatEuro, toIsoDate, aggiungiGiorni, giorniAllaData } from "@/core/domain/format";
 import { totaleSerieScheda, totaleEsercizi, formatDurata, durataSessione } from "@/core/domain/scheda";
 
 export default function MemberDetail() {
@@ -115,7 +114,7 @@ export default function MemberDetail() {
     setSaving(true);
     try {
       const startDate = subForm.start_date;
-      const endDate = moment(startDate).add(plan.duration_days, "days").format("YYYY-MM-DD");
+      const endDate = toIsoDate(aggiungiGiorni(startDate, plan.duration_days));
 
       await api.entities.Subscription.create({
         member_id: id, plan_id: plan.id, plan_name: plan.name,
@@ -323,7 +322,7 @@ export default function MemberDetail() {
             ) : (
               <div className="space-y-3">
                 {documents.map(doc => {
-                  const daysLeft = doc.expiry_date ? moment(doc.expiry_date).diff(moment(), "days") : null;
+                  const daysLeft = giorniAllaData(doc.expiry_date);
                   return (
                     <div key={doc.id} className="p-3 rounded-lg bg-muted/50 flex items-center justify-between">
                       <div>
