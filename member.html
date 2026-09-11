@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
+    <script>
+      // Il tema si applica **prima** che React parta.
+      //
+      // Facendolo dentro l'applicazione, fra il caricamento della pagina e il primo
+      // disegno passa un istante in cui il fondo è bianco: chi ha scelto il tema scuro si
+      // prende una schermata chiara in faccia a ogni apertura. Sono poche righe qui, ma
+      // sono l'unico posto che gira abbastanza presto.
+      (function () {
+        try {
+          var scelta = localStorage.getItem('grip_tema') || 'sistema';
+          var scuro =
+            scelta === 'scuro' ||
+            (scelta === 'sistema' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+          if (scuro) document.documentElement.classList.add('dark');
+        } catch (e) {
+          // Navigazione privata o cookie bloccati: si resta sul tema chiaro.
+        }
+      })();
+    </script>
+    <link
+      rel="icon"
+      type="image/svg+xml"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2310b981'/%3E%3Ctext x='16' y='23' font-family='system-ui,sans-serif' font-size='19' font-weight='700' fill='white' text-anchor='middle'%3EG%3C/text%3E%3C/svg%3E"
+    />
+    <title>Grip — Area Soci</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/member/main.jsx"></script>
+  </body>
+</html>
