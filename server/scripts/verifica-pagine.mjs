@@ -27,6 +27,7 @@ import { db, pool } from '../src/db/client.js';
 import {
 	members, staffAccounts, subscriptions, memberDocuments, qrAccessi,
 	rooms, courses, categories, events, sessions, bookings,
+	exercises, exercisePlans, workoutSessions, workoutLogs,
 } from '../src/db/schema/index.js';
 
 const PASSWORD = 'verifica-pagine-1234';
@@ -44,6 +45,8 @@ const CORSO = `Corso Verifica ${suffisso}`;
 const CATEGORIA = `Categoria Verifica ${suffisso}`;
 const NOME_SOCIO = 'Socio Giro Pagine';
 const CODICE_SOCIO = '009902';
+const SCHEDA = `Scheda Verifica ${suffisso}`;
+const ESERCIZIO = `Panca Verifica ${suffisso}`;
 
 const PAGINE_STAFF = [
 	['/', null], ['/crm', null], ['/crm/abbonamenti', null], ['/crm/iscrizioni', null],
@@ -58,7 +61,7 @@ const PAGINE_STAFF = [
 const PAGINE_SOCIO = [
 	['/member-portal', PIANO],
 	['/member-portal/corsi', CATEGORIA],
-	['/member-portal/allenamento', null],
+	['/member-portal/allenamento', SCHEDA],
 	['/member-portal/documenti', DOCUMENTO],
 	['/member-portal/abbonamento', PIANO],
 	['/member-portal/qr', NOME_SOCIO],
@@ -113,6 +116,9 @@ let idCategoria;
 let idCorso;
 let idEvento;
 let idLezione;
+let idEsercizio;
+let idScheda;
+let idAllenamento;
 
 const oggi = new Date().toISOString().split('T')[0];
 const fraTreGiorni = new Date(Date.now() + 3 * 86400000).toISOString().split('T')[0];
@@ -176,6 +182,47 @@ try {
 		.returning();
 	idPrenotazioni.push(...prenotate.map((p) => p.id));
 
+	// Una scheda assegnata e un allenamento **aperto**: è la schermata che si usa mentre ci
+	// si allena, ed è quella che non si può provare senza avere un allenamento in corso.
+	const [esercizio] = await db
+		.insert(exercises)
+		.values({ name: ESERCIZIO, muscleGroup: 'petto', description: 'Esercizio di prova' })
+		.returning();
+	idEsercizio = esercizio.id;
+
+	const [scheda] = await db
+		.insert(exercisePlans)
+		.values({
+			memberId: socio.id,
+			memberName: NOME_SOCIO,
+			name: SCHEDA,
+			assignedDate: oggi,
+			routines: [{
+				nome: 'Giorno 1',
+				note: '',
+				esercizi: [{
+					exercise_id: esercizio.id,
+					exercise_name: ESERCIZIO,
+					muscle_group: 'petto',
+					recupero_secondi: 90,
+					note: '',
+					serie: [{ reps: 8, rpe: 8 }, { reps: 8, rpe: 8 }],
+				}],
+			}],
+		})
+		.returning();
+	idScheda = scheda.id;
+
+	const [allenamento] = await db
+		.insert(workoutSessions)
+		.values({
+			memberId: socio.id, planId: scheda.id, planName: SCHEDA,
+			routineIndex: 0, routineName: 'Giorno 1', iniziataAlle: new Date(),
+		})
+		.returning();
+	idAllenamento = allenamento.id;
+	PAGINE_SOCIO.push([`/member-portal/allenamento/sessione/${allenamento.id}`, ESERCIZIO]);
+
 	app = buildApp({ logger: false });
 	await app.listen({ port: PORTA, host: '127.0.0.1' });
 	const BASE = `http://127.0.0.1:${PORTA}`;
@@ -191,9 +238,48 @@ try {
 	const pagSocio = await (await browser.newContext()).newPage();
 	await entra(pagSocio, BASE, '/member-portal', emailSocio);
 	for (const [percorso, atteso] of PAGINE_SOCIO) await apri(pagSocio, percorso, atteso, BASE);
+
+	// Spuntare una serie, come si fa in sala.
+	//
+	// Aprire la pagina dice che i dati arrivano; non dice che si possa **usarla**. È la
+	// schermata in cui ogni tocco scrive sul server — un allenamento tenuto in memoria fino
+	// al "Termina" è un allenamento che prima o poi si perde per intero — quindi la prova
+	// che conta è: tocco, e la serie è sul server.
+	console.log('\nUSARE LA SCHERMATA (non solo aprirla)');
+	await pagSocio.goto(`${BASE}/member-portal/allenamento/sessione/${idAllenamento}`, { waitUntil: 'networkidle' });
+	await pagSocio.waitForTimeout(1200);
+
+	const spunta = pagSocio.getByLabel(/Segna come fatta la serie 1/i).first();
+	if (await spunta.count()) {
+		await spunta.click();
+		await pagSocio.waitForTimeout(1800);
+
+		const registrate = await db.select().from(workoutLogs).where(inArray(workoutLogs.sessionId, [idAllenamento]));
+		const ok = registrate.length === 1 && registrate[0].exerciseName === ESERCIZIO;
+		if (!ok) problemi.push({ percorso: 'spuntare una serie', errori: [`righe sul server: ${registrate.length}`], testo: '' });
+		console.log(`  ${ok ? 'OK     ' : 'ROTTA  '} la serie spuntata arriva sul server`);
+
+		// E togliendo la spunta la registrazione sparisce: una serie non fatta che resta
+		// scritta è un allenamento che dice il falso.
+		await spunta.click();
+		await pagSocio.waitForTimeout(1800);
+		const dopo = await db.select().from(workoutLogs).where(inArray(workoutLogs.sessionId, [idAllenamento]));
+		const okTolta = dopo.length === 0;
+		if (!okTolta) problemi.push({ percorso: 'togliere la spunta', errori: [`righe rimaste: ${dopo.length}`], testo: '' });
+		console.log(`  ${okTolta ? 'OK     ' : 'ROTTA  '} togliendo la spunta la serie sparisce`);
+	} else {
+		problemi.push({ percorso: 'spuntare una serie', errori: ['pulsante non trovato'], testo: '' });
+		console.log('  ROTTA   la serie non si può spuntare: pulsante non trovato');
+	}
 } finally {
 	if (browser) await browser.close();
 	if (app) await app.close();
+	if (idAllenamento) {
+		await db.delete(workoutLogs).where(inArray(workoutLogs.sessionId, [idAllenamento]));
+		await db.delete(workoutSessions).where(inArray(workoutSessions.id, [idAllenamento]));
+	}
+	if (idScheda) await db.delete(exercisePlans).where(inArray(exercisePlans.id, [idScheda]));
+	if (idEsercizio) await db.delete(exercises).where(inArray(exercises.id, [idEsercizio]));
 	if (idPrenotazioni.length) await db.delete(bookings).where(inArray(bookings.id, idPrenotazioni));
 	if (idLezione) await db.delete(sessions).where(inArray(sessions.id, [idLezione]));
 	if (idEvento) await db.delete(events).where(inArray(events.id, [idEvento]));
@@ -208,8 +294,10 @@ try {
 	await pool.end();
 }
 
-const totale = PAGINE_STAFF.length + PAGINE_SOCIO.length;
-console.log(`\n${totale - problemi.length}/${totale} pagine si aprono e mostrano quello che devono`);
+// I controlli sono le pagine più le due prove d'uso: contarli tutti, o un fallimento
+// nell'interazione si nasconderebbe dietro un "23/23 pagine" rassicurante.
+const totale = PAGINE_STAFF.length + PAGINE_SOCIO.length + 2;
+console.log(`\n${totale - problemi.length}/${totale} controlli superati`);
 if (problemi.length) {
 	console.log('\nDettaglio:');
 	for (const p of problemi) {

@@ -3,7 +3,7 @@ import { db } from '../../db/client.js';
 import {
 	members, subscriptions, memberDocuments, qrAccessi,
 	courses, categories, instructors, rooms, events, sessions, bookings,
-	exercisePlans, workoutSessions, workoutLogs,
+	exercisePlans, workoutSessions, workoutLogs, exercises,
 } from '../../db/schema/index.js';
 import { statisticheSettimanali, recordPerEsercizio } from '../../../../shared/scheda.js';
 import { getUserFromRequest } from '../../auth/tokens.js';
@@ -471,12 +471,141 @@ export default async function memberRoutes(fastify) {
 			? await db.select().from(workoutLogs).where(eq(workoutLogs.sessionId, precedenti[0].id))
 			: [];
 
+		// Il catalogo serve a due cose in questa schermata: mostrare descrizione e foto
+		// dell'esercizio che si sta facendo, e permettere di aggiungerne o sostituirne uno
+		// in sala. Non contiene dati di nessuno.
+		const catalogo = await db.select().from(exercises).orderBy(exercises.name);
+
+		// I record di partenza: quello che il socio ha già fatto su questa scheda, **tolto**
+		// quello che sta registrando adesso — altrimenti la prima serie di oggi si
+		// confronterebbe con sé stessa e non sarebbe mai un record.
+		const suQuestaScheda = sessione.planId
+			? await db
+				.select()
+				.from(workoutLogs)
+				.where(and(
+					eq(workoutLogs.memberId, request.idSocio),
+					eq(workoutLogs.planId, sessione.planId),
+					ne(workoutLogs.sessionId, sessione.id),
+				))
+			: [];
+
 		return {
 			sessione: sessioneVersoApi(sessione),
 			routine: (scheda?.routines ?? [])[sessione.routineIndex] ?? null,
 			registrate: registrate.map(serieVersoApi),
 			precedente: serieDiPrima.map(serieVersoApi),
+			catalogo: catalogo.map((e) => ({
+				id: e.id,
+				nome: e.name,
+				gruppo: e.muscleGroup,
+				descrizione: e.description,
+				immagine: firmaUrl(e.imageUrl),
+			})),
+			record: [...recordPerEsercizio(suQuestaScheda.map(serieVersoApi)).entries()]
+				.map(([nome, migliore]) => ({ nome, migliore })),
 		};
+	});
+
+	/**
+	 * Registra una serie appena fatta.
+	 *
+	 * Di suo il client manda **solo** quello che ha osservato: peso, ripetizioni, sforzo. A
+	 * chi appartiene la serie, a quale scheda e a quale allenamento lo decide il server
+	 * leggendo la sessione — prima arrivavano dalla richiesta, e un identificativo che arriva
+	 * da fuori è un identificativo che si può cambiare.
+	 */
+	fastify.post('/allenamento/sessioni/:id/serie', async (request, reply) => {
+		const sessione = await sessioneDelSocio(request.params.id, request.idSocio);
+		if (!sessione) return reply.code(404).send({ error: 'Allenamento inesistente.' });
+		if (sessione.terminataAlle) return reply.code(409).send({ error: 'Questo allenamento è già chiuso.' });
+
+		const c = request.body ?? {};
+		const [creata] = await db
+			.insert(workoutLogs)
+			.values({
+				memberId: request.idSocio,
+				sessionId: sessione.id,
+				planId: sessione.planId,
+				planName: sessione.planName,
+				exerciseIndex: c.esercizio_index ?? null,
+				setIndex: c.serie_index ?? null,
+				exerciseName: c.exercise_name ?? null,
+				muscleGroup: c.muscle_group ?? null,
+				// Il tipo si congela qui: se domani l'istruttore trasforma quel riscaldamento
+				// in una serie di lavoro, gli allenamenti già fatti non si ricalcolano da soli.
+				tipoSerie: c.tipo_serie ?? 'normale',
+				pesoUsato: c.peso_usato ?? null,
+				repsFatte: c.reps_fatte ?? null,
+				rpePercepito: c.rpe_percepito ?? null,
+				data: new Date().toISOString().split('T')[0],
+				note: c.note ?? null,
+			})
+			.returning();
+
+		reply.code(201);
+		return { serie: serieVersoApi(creata) };
+	});
+
+	/** Corregge una serie già registrata: capita di sbagliare a digitare sotto il bilanciere. */
+	fastify.patch('/allenamento/serie/:id', async (request, reply) => {
+		const [riga] = await db
+			.select()
+			.from(workoutLogs)
+			.where(and(eq(workoutLogs.id, request.params.id), eq(workoutLogs.memberId, request.idSocio)))
+			.limit(1);
+		if (!riga) return reply.code(404).send({ error: 'Serie inesistente.' });
+
+		const c = request.body ?? {};
+		const cambi = {};
+		if ('peso_usato' in c) cambi.pesoUsato = c.peso_usato;
+		if ('reps_fatte' in c) cambi.repsFatte = c.reps_fatte;
+		if ('rpe_percepito' in c) cambi.rpePercepito = c.rpe_percepito;
+		if ('tipo_serie' in c) cambi.tipoSerie = c.tipo_serie;
+		if ('note' in c) cambi.note = c.note;
+		if (!Object.keys(cambi).length) return { serie: serieVersoApi(riga) };
+
+		const [aggiornata] = await db
+			.update(workoutLogs)
+			.set(cambi)
+			.where(eq(workoutLogs.id, riga.id))
+			.returning();
+		return { serie: serieVersoApi(aggiornata) };
+	});
+
+	/** Toglie una serie: la spunta si può sempre togliere. */
+	fastify.delete('/allenamento/serie/:id', async (request, reply) => {
+		const cancellate = await db
+			.delete(workoutLogs)
+			.where(and(eq(workoutLogs.id, request.params.id), eq(workoutLogs.memberId, request.idSocio)))
+			.returning({ id: workoutLogs.id });
+		if (!cancellate.length) return reply.code(404).send({ error: 'Serie inesistente.' });
+		return { eliminata: true };
+	});
+
+	/**
+	 * Chiude l'allenamento.
+	 *
+	 * L'istante lo mette il server. Se arrivasse dal client, l'orologio di un telefono
+	 * sbagliato — o semplicemente in un altro fuso — renderebbe durate negative o
+	 * allenamenti che finiscono prima di cominciare.
+	 */
+	fastify.post('/allenamento/sessioni/:id/termina', async (request, reply) => {
+		const sessione = await sessioneDelSocio(request.params.id, request.idSocio);
+		if (!sessione) return reply.code(404).send({ error: 'Allenamento inesistente.' });
+		// Chiuderlo due volte non è un errore: è il secondo tocco su un pulsante che aveva
+		// già funzionato, e non deve spostare l'ora di fine.
+		if (sessione.terminataAlle) return { sessione: sessioneVersoApi(sessione) };
+
+		const cambi = { terminataAlle: new Date() };
+		if (request.body?.note !== undefined) cambi.note = request.body.note;
+
+		const [chiusa] = await db
+			.update(workoutSessions)
+			.set(cambi)
+			.where(eq(workoutSessions.id, sessione.id))
+			.returning();
+		return { sessione: sessioneVersoApi(chiusa) };
 	});
 
 	/**
@@ -504,6 +633,16 @@ export default async function memberRoutes(fastify) {
 		if (esito.errore) return reply.code(esito.errore).send({ error: esito.messaggio });
 		return { annullato: true };
 	});
+}
+
+/** Una sessione, ma solo se è di chi la chiede. Altrimenti null, e chi chiama risponde 404. */
+async function sessioneDelSocio(id, idSocio) {
+	const [sessione] = await db
+		.select()
+		.from(workoutSessions)
+		.where(and(eq(workoutSessions.id, id), eq(workoutSessions.memberId, idSocio)))
+		.limit(1);
+	return sessione ?? null;
 }
 
 // La traduzione verso l'API: le colonne di Drizzle sono in camelCase, il contratto è in
