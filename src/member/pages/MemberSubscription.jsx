@@ -1,25 +1,20 @@
 import React, { useState, useEffect } from "react";
-import { api } from "@/core/api/client";
-import { useMemberAuth } from "@/member/session/MemberAuthContext";
+import { caricaAbbonamenti } from "@/core/api/portale";
 import { Card, CardContent } from "@/ui/primitivi/card";
 import { Calendar, AlertCircle, CheckCircle, Clock, CreditCard } from "lucide-react";
 import StatusBadge from "@/ui/StatusBadge";
-import moment from "moment";
 import { LoadingState } from "@/ui/Spinner";
 import { formatData, formatEuro } from "@/core/domain/format";
 
 export default function MemberSubscription() {
-  const { memberUser } = useMemberAuth();
   const [subscriptions, setSubscriptions] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!memberUser?.member_id) return;
-    api.entities.Subscription.filter({ member_id: memberUser.member_id }, "-start_date").then(subs => {
-      setSubscriptions(subs);
-      setLoading(false);
-    });
-  }, [memberUser?.member_id]);
+    caricaAbbonamenti()
+      .then(setSubscriptions)
+      .finally(() => setLoading(false));
+  }, []);
 
   if (loading) {
     return <LoadingState minHeight="p-8" />;
@@ -42,29 +37,30 @@ export default function MemberSubscription() {
       ) : (
         <div className="space-y-3">
           {subscriptions.map(sub => {
-            const daysToExpiry = moment(sub.end_date).diff(moment(), "days");
-            const expiringSoon = daysToExpiry <= 7 && daysToExpiry >= 0;
-            const expired = daysToExpiry < 0;
+            // Quanto manca alla scadenza lo conta il server: qui resta solo come dirlo.
+            const daysToExpiry = sub.giorni_alla_scadenza;
+            const expired = daysToExpiry != null && daysToExpiry < 0;
+            const expiringSoon = daysToExpiry != null && daysToExpiry <= 7 && daysToExpiry >= 0;
             return (
               <Card key={sub.id} className="border-0 shadow-sm">
                 <CardContent className="p-4 space-y-3">
                   <div className="flex items-center justify-between">
-                    <h3 className="font-medium">{sub.plan_name}</h3>
-                    <StatusBadge status={sub.status} />
+                    <h3 className="font-medium">{sub.piano}</h3>
+                    <StatusBadge status={sub.stato} />
                   </div>
                   <div className="grid grid-cols-2 gap-2 text-sm">
                     <div className="flex items-center gap-1.5 text-muted-foreground">
                       <Calendar className="w-4 h-4" /> Inizio
-                      <span className="font-medium text-foreground ml-1">{formatData(sub.start_date, "media")}</span>
+                      <span className="font-medium text-foreground ml-1">{formatData(sub.inizio, "media")}</span>
                     </div>
                     <div className="flex items-center gap-1.5 text-muted-foreground">
                       <Calendar className="w-4 h-4" /> Scadenza
-                      <span className="font-medium text-foreground ml-1">{formatData(sub.end_date, "media")}</span>
+                      <span className="font-medium text-foreground ml-1">{formatData(sub.fine, "media")}</span>
                     </div>
                   </div>
-                  {sub.sessions_remaining != null && (
+                  {sub.ingressi_residui != null && (
                     <div className="text-sm text-muted-foreground">
-                      Ingressi residui: <span className="font-medium text-foreground">{sub.sessions_remaining}</span>
+                      Ingressi residui: <span className="font-medium text-foreground">{sub.ingressi_residui}</span>
                     </div>
                   )}
                   {expired ? (
@@ -80,8 +76,8 @@ export default function MemberSubscription() {
                       <CheckCircle className="w-4 h-4" /> Attivo — scade tra {daysToExpiry} giorni
                     </div>
                   )}
-                  {sub.price_paid != null && (
-                    <p className="text-xs text-muted-foreground">Importo pagato: {formatEuro(sub.price_paid)}</p>
+                  {sub.prezzo_pagato != null && (
+                    <p className="text-xs text-muted-foreground">Importo pagato: {formatEuro(sub.prezzo_pagato)}</p>
                   )}
                 </CardContent>
               </Card>

@@ -1,31 +1,29 @@
 import React, { useState, useEffect } from "react";
-import { api } from "@/core/api/client";
-import { useMemberAuth } from "@/member/session/MemberAuthContext";
+import { caricaDocumenti } from "@/core/api/portale";
 import { Card, CardContent } from "@/ui/primitivi/card";
 import { Badge } from "@/ui/primitivi/badge";
 import { FileText, Download, AlertCircle, CheckCircle, Clock } from "lucide-react";
-import moment from "moment";
 import { LoadingState } from "@/ui/Spinner";
 import { formatData } from "@/core/domain/format";
 
 export default function MemberDocuments() {
-  const { memberUser } = useMemberAuth();
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!memberUser?.member_id) return;
-    api.entities.MemberDocument.filter({ member_id: memberUser.member_id }, "-created_date").then(docs => {
-      setDocuments(docs);
-      setLoading(false);
-    });
-  }, [memberUser?.member_id]);
+    caricaDocumenti()
+      .then(setDocuments)
+      .finally(() => setLoading(false));
+  }, []);
 
-  const getExpiryStatus = (expiryDate) => {
-    if (!expiryDate) return null;
-    const days = moment(expiryDate).diff(moment(), "days");
-    if (days < 0) return { label: "Scaduto", variant: "destructive", icon: AlertCircle };
-    if (days <= 30) return { label: `In scadenza (${days}g)`, variant: "secondary", icon: Clock };
+  // Se un documento sia scaduto o in scadenza lo dice il server. Stava qui, con la soglia
+  // dei trenta giorni scritta dentro la pagina — e quella dei sette nella schermata
+  // iniziale: la stessa politica in due punti, dove nessuno la cerca. Alla pagina resta
+  // solo come mostrarla.
+  const statoScadenza = (doc) => {
+    if (!doc.scadenza) return null;
+    if (doc.scaduto) return { label: "Scaduto", variant: "destructive", icon: AlertCircle };
+    if (doc.in_scadenza) return { label: `In scadenza (${doc.giorni_alla_scadenza}g)`, variant: "secondary", icon: Clock };
     return { label: "Valido", variant: "default", icon: CheckCircle };
   };
 
@@ -50,7 +48,7 @@ export default function MemberDocuments() {
       ) : (
         <div className="space-y-3">
           {documents.map(doc => {
-            const expiry = getExpiryStatus(doc.expiry_date);
+            const expiry = statoScadenza(doc);
             return (
               <Card key={doc.id} className="border-0 shadow-sm">
                 <CardContent className="p-4">
@@ -59,12 +57,12 @@ export default function MemberDocuments() {
                       <FileText className="w-5 h-5 text-primary" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <h3 className="font-medium text-sm">{doc.document_type}</h3>
+                      <h3 className="font-medium text-sm">{doc.tipo}</h3>
                       <p className="text-xs text-muted-foreground">
-                        Caricato il {formatData(doc.created_date, "media")}
+                        Caricato il {formatData(doc.caricato_il, "media")}
                         {doc.caricato_da && ` da ${doc.caricato_da}`}
                       </p>
-                      {doc.notes && <p className="text-xs text-muted-foreground mt-1">{doc.notes}</p>}
+                      {doc.note && <p className="text-xs text-muted-foreground mt-1">{doc.note}</p>}
                       {expiry && (
                         <Badge variant={expiry.variant} className="mt-2 text-xs flex items-center gap-1 w-fit">
                           <expiry.icon className="w-3 h-3" />
@@ -72,8 +70,8 @@ export default function MemberDocuments() {
                         </Badge>
                       )}
                     </div>
-                    {doc.file_url && (
-                      <a href={doc.file_url} target="_blank" rel="noopener noreferrer" download={doc.file_name}>
+                    {doc.url && (
+                      <a href={doc.url} target="_blank" rel="noopener noreferrer" download={doc.nome_file}>
                         <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center hover:bg-primary/20 transition-colors">
                           <Download className="w-4 h-4 text-primary" />
                         </div>

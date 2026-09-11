@@ -108,6 +108,11 @@ const ENTITY_NAMES = [
 ];
 
 export const api = {
+	// Una richiesta qualunque all'API, con il token già attaccato e gli errori già tradotti.
+	// La usa `portale.js`, che parla con rotte dedicate invece che con l'endpoint generico
+	// delle entità: senza questa, dovrebbe rifarsi da capo la gestione di token ed errori.
+	richiesta: request,
+
 	entities: Object.fromEntries(ENTITY_NAMES.map((name) => [name, buildEntityClient(name)])),
 
 	organizzazione: {

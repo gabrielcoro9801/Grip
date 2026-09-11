@@ -15,12 +15,10 @@
 // posto nello stesso istante leggono entrambi "un posto libero" e si confermano entrambi:
 // nessuno dei due ha barato, ma la lezione ha un iscritto di troppo. Contare dentro una
 // transazione, con la lezione bloccata, è l'unico modo di non far succedere.
-import { eq, and, ne, sql } from 'drizzle-orm';
-import { db } from '../db/client.js';
-import { bookings, sessions, members } from '../db/schema/index.js';
 import { getUserFromRequest } from '../auth/tokens.js';
 import { canWriteEntity } from '../auth/authorize.js';
 import { socioDiAccount } from '../auth/socioCorrente.js';
+import { prenota, disdici } from '../lib/prenotazioni.js';
 
 export default async function prenotazioniRoutes(fastify) {
 	fastify.addHook('preHandler', async (request, reply) => {
@@ -55,62 +53,7 @@ export default async function prenotazioniRoutes(fastify) {
 		if (!memberId) return reply.code(400).send({ error: 'Manca il socio.' });
 
 		try {
-			const esito = await db.transaction(async (tx) => {
-				// `FOR UPDATE` sulla lezione: due richieste sull'ultimo posto si mettono in
-				// fila invece di contare le stesse prenotazioni e confermarsi a vicenda.
-				const [lezione] = await tx
-					.select()
-					.from(sessions)
-					.where(eq(sessions.id, sessionId))
-					.limit(1)
-					.for('update');
-				if (!lezione) return { errore: 404, messaggio: 'Lezione inesistente.' };
-				if (lezione.status !== 'active') return { errore: 400, messaggio: 'La lezione è stata annullata.' };
-
-				const oggi = new Date().toISOString().split('T')[0];
-				if (String(lezione.date) < oggi) {
-					return { errore: 400, messaggio: 'La lezione è già passata.' };
-				}
-
-				const [gia] = await tx
-					.select({ id: bookings.id })
-					.from(bookings)
-					.where(and(
-						eq(bookings.sessionId, sessionId),
-						eq(bookings.memberId, memberId),
-						ne(bookings.status, 'cancelled'),
-					))
-					.limit(1);
-				if (gia) return { errore: 409, messaggio: 'Hai già una prenotazione per questa lezione.' };
-
-				const [{ confermate, inAttesa }] = await tx
-					.select({
-						confermate: sql`count(*) filter (where ${bookings.status} = 'confirmed')`.mapWith(Number),
-						inAttesa: sql`count(*) filter (where ${bookings.status} = 'waitlisted')`.mapWith(Number),
-					})
-					.from(bookings)
-					.where(eq(bookings.sessionId, sessionId));
-
-				const [socio] = await tx
-					.select({ nome: members.fullName })
-					.from(members)
-					.where(eq(members.id, memberId))
-					.limit(1);
-				if (!socio) return { errore: 404, messaggio: 'Socio inesistente.' };
-
-				const pieno = confermate >= (lezione.capacity ?? 0);
-				const [creata] = await tx
-					.insert(bookings)
-					.values({
-						sessionId,
-						memberId,
-						memberName: socio.nome,
-						status: pieno ? 'waitlisted' : 'confirmed',
-						waitlistPosition: pieno ? inAttesa + 1 : null,
-					})
-					.returning();
-				return { creata };
-			});
+			const esito = await prenota({ sessionId, memberId });
 
 			if (esito.errore) return reply.code(esito.errore).send({ error: esito.messaggio });
 			reply.code(201);
@@ -140,55 +83,7 @@ export default async function prenotazioniRoutes(fastify) {
 	 */
 	fastify.post('/api/prenotazioni/:id/disdici', async (request, reply) => {
 		try {
-			const esito = await db.transaction(async (tx) => {
-				const [prenotazione] = await tx
-					.select()
-					.from(bookings)
-					.where(eq(bookings.id, request.params.id))
-					.limit(1)
-					.for('update');
-				if (!prenotazione) return { errore: 404, messaggio: 'Prenotazione inesistente.' };
-
-				// Un socio disdice le proprie. "Non trovata" e non "vietato": a chi non deve
-				// vederla non si conferma nemmeno che esista.
-				if (request.memberId && String(prenotazione.memberId) !== String(request.memberId)) {
-					return { errore: 404, messaggio: 'Prenotazione inesistente.' };
-				}
-				if (prenotazione.status === 'cancelled') return { promossa: null };
-
-				await tx
-					.update(bookings)
-					.set({ status: 'cancelled', waitlistPosition: null })
-					.where(eq(bookings.id, prenotazione.id));
-
-				// Solo una disdetta confermata libera un posto: chi era in lista d'attesa e
-				// rinuncia non promuove nessuno, sposta solo la coda.
-				const eraConfermata = prenotazione.status === 'confirmed';
-
-				const coda = await tx
-					.select()
-					.from(bookings)
-					.where(and(eq(bookings.sessionId, prenotazione.sessionId), eq(bookings.status, 'waitlisted')))
-					.orderBy(bookings.waitlistPosition, bookings.createdDate);
-
-				let promossa = null;
-				let daRinumerare = coda;
-				if (eraConfermata && coda.length > 0) {
-					promossa = coda[0];
-					await tx
-						.update(bookings)
-						.set({ status: 'confirmed', waitlistPosition: null })
-						.where(eq(bookings.id, promossa.id));
-					daRinumerare = coda.slice(1);
-				}
-
-				for (const [indice, riga] of daRinumerare.entries()) {
-					if (riga.waitlistPosition === indice + 1) continue;
-					await tx.update(bookings).set({ waitlistPosition: indice + 1 }).where(eq(bookings.id, riga.id));
-				}
-
-				return { promossa };
-			});
+			const esito = await disdici({ bookingId: request.params.id, soloDelSocio: request.memberId ?? null });
 
 			if (esito.errore) return reply.code(esito.errore).send({ error: esito.messaggio });
 			return {

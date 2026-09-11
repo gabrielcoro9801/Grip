@@ -1,12 +1,15 @@
-import { eq, and, gte, lte, inArray, ne, desc } from 'drizzle-orm';
+import { eq, and, gte, lte, inArray, ne, desc, isNotNull } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import {
 	members, subscriptions, memberDocuments, qrAccessi,
 	courses, categories, instructors, rooms, events, sessions, bookings,
+	exercisePlans, workoutSessions, workoutLogs,
 } from '../../db/schema/index.js';
+import { statisticheSettimanali, recordPerEsercizio } from '../../../../shared/scheda.js';
 import { getUserFromRequest } from '../../auth/tokens.js';
 import { socioDiAccount } from '../../auth/socioCorrente.js';
 import { codiceDinamico } from '../../lib/qrDinamico.js';
+import { prenota, disdici } from '../../lib/prenotazioni.js';
 import { msResiduiFinestra } from '../../../../shared/qrDinamico.js';
 
 /**
@@ -102,6 +105,11 @@ export default async function memberRoutes(fastify) {
 				email: socio.email,
 				telefono: socio.phone,
 				data_nascita: socio.dateOfBirth,
+				indirizzo: socio.address,
+				contatto_emergenza: socio.emergencyContactName
+					? { nome: socio.emergencyContactName, telefono: socio.emergencyContactPhone }
+					: null,
+				note: socio.notes,
 			},
 			abbonamento: corrente && {
 				id: corrente.id,
@@ -111,6 +119,7 @@ export default async function memberRoutes(fastify) {
 				fine: corrente.endDate,
 				giorni_alla_scadenza: giorniDaOggi(corrente.endDate),
 				in_scadenza: entroGiorni(corrente.endDate, 7),
+				ingressi_residui: corrente.sessionsRemaining,
 			},
 			documenti: {
 				totale: documenti.length,
@@ -159,6 +168,8 @@ export default async function memberRoutes(fastify) {
 				scaduto: scaduto(d.expiryDate),
 				in_scadenza: entroGiorni(d.expiryDate, 30) && !scaduto(d.expiryDate),
 				caricato_il: d.createdDate,
+				caricato_da: d.caricatoDa,
+				note: d.notes,
 			})),
 		};
 	});
@@ -171,17 +182,24 @@ export default async function memberRoutes(fastify) {
 	 * fa una: davanti al tornello, con la rete della palestra, la differenza si sente.
 	 */
 	fastify.get('/accesso', async (request) => {
-		const [qr] = await db
+		// Tutti i codici del socio, non solo quelli attivi: "non ne hai uno" e "il tuo è
+		// stato revocato" sono due cose diverse da dire a chi sta davanti al tornello, e
+		// distinguerle serve a mandarlo alla reception con la domanda giusta.
+		const suoi = await db
 			.select()
 			.from(qrAccessi)
-			.where(and(eq(qrAccessi.clienteId, request.idSocio), eq(qrAccessi.stato, 'attivo')))
-			.limit(1);
+			.where(eq(qrAccessi.clienteId, request.idSocio));
 
-		if (!qr) return { attivo: false, codice: null, valido_per_ms: null };
+		const attivo = suoi.find((q) => q.stato === 'attivo');
+		if (!attivo) {
+			const stato = suoi.some((q) => q.stato === 'revocato') ? 'revocato' : 'assente';
+			return { stato, attivo: false, codice: null, valido_per_ms: null };
+		}
 
 		return {
+			stato: 'attivo',
 			attivo: true,
-			codice: codiceDinamico(qr.codice),
+			codice: codiceDinamico(attivo.codice),
 			valido_per_ms: msResiduiFinestra(),
 		};
 	});
@@ -284,6 +302,238 @@ export default async function memberRoutes(fastify) {
 			giorni: [...giorni.entries()].map(([data, lezioni]) => ({ data, lezioni })),
 		};
 	});
+
+	/**
+	 * Prenota una lezione.
+	 *
+	 * Il socio è quello della sessione, non uno che arriva nella richiesta: dall'indirizzo
+	 * non c'è modo di prenotare per un altro. La regola — se c'è posto, se si finisce in
+	 * lista d'attesa, in che posizione — è la stessa che usa il gestionale, perché è
+	 * letteralmente la stessa funzione (`lib/prenotazioni.js`).
+	 */
+	fastify.post('/corsi/lezioni/:id/prenota', async (request, reply) => {
+		const esito = await prenota({ sessionId: request.params.id, memberId: request.idSocio });
+		if (esito.errore) return reply.code(esito.errore).send({ error: esito.messaggio });
+
+		reply.code(201);
+		return {
+			prenotazione: {
+				id: esito.creata.id,
+				lezione_id: esito.creata.sessionId,
+				stato: esito.creata.status,
+				posizione_attesa: esito.creata.waitlistPosition,
+			},
+		};
+	});
+
+	/**
+	 * Disdice una propria prenotazione.
+	 *
+	 * Di quella di un altro si risponde "non trovata", non "non consentito": a chi non deve
+	 * vederla non si conferma nemmeno che esista.
+	 */
+	fastify.post('/corsi/prenotazioni/:id/disdici', async (request, reply) => {
+		const esito = await disdici({ bookingId: request.params.id, soloDelSocio: request.idSocio });
+		if (esito.errore) return reply.code(esito.errore).send({ error: esito.messaggio });
+
+		// Chi è stato promosso dalla lista d'attesa non lo diciamo: è un altro socio, e al
+		// portale non serve saperlo. Al gestionale sì, e infatti la sua rotta lo restituisce.
+		return { disdetta: true };
+	});
+
+	// --- L'allenamento ------------------------------------------------------------------
+
+	/**
+	 * Le schede del socio, l'allenamento eventualmente lasciato aperto, lo storico e i conti.
+	 *
+	 * Sostituisce tre richieste, di cui una si portava via **mille** righe di serie eseguite
+	 * per ricavarne due tabelle di riepilogo. Record e statistiche settimanali li calcola il
+	 * server e li manda già fatti: al telefono arrivano numeri, non uno storico da digerire.
+	 *
+	 * Le funzioni che li calcolano sono le stesse che usano le pagine (`shared/scheda.js`):
+	 * non una riscrittura lato server, che avrebbe voluto dire due definizioni di "quanto ho
+	 * sollevato questa settimana" destinate a divergere senza dare errore.
+	 */
+	fastify.get('/allenamento', async (request) => {
+		const [schede, sessioniSvolte] = await Promise.all([
+			db.select().from(exercisePlans).where(eq(exercisePlans.memberId, request.idSocio)),
+			db
+				.select()
+				.from(workoutSessions)
+				.where(eq(workoutSessions.memberId, request.idSocio))
+				.orderBy(desc(workoutSessions.iniziataAlle))
+				.limit(50),
+		]);
+
+		const righe = await db
+			.select()
+			.from(workoutLogs)
+			.where(eq(workoutLogs.memberId, request.idSocio))
+			.orderBy(desc(workoutLogs.data))
+			.limit(1000);
+
+		// Le funzioni di dominio parlano la lingua dell'API (snake_case), come le righe che
+		// ricevevano prima dal client.
+		const righeApi = righe.map(serieVersoApi);
+		const sessioniApi = sessioniSvolte.map(sessioneVersoApi);
+
+		const inCorso = sessioniApi.find((s) => !s.terminata_alle) ?? null;
+
+		return {
+			schede: schede.map((s) => ({
+				id: s.id,
+				nome: s.name,
+				note: s.notes,
+				assegnata_il: s.assignedDate,
+				routines: s.routines ?? [],
+			})),
+			sessione_in_corso: inCorso,
+			storico: sessioniApi.filter((s) => s.terminata_alle),
+			settimana: statisticheSettimanali(sessioniApi.filter((s) => s.terminata_alle)),
+			// `recordPerEsercizio` restituisce una Map, e una Map che finisce in JSON diventa
+			// `{}` — senza errori, senza avvisi, semplicemente vuota. Qui si traduce in una
+			// lista ordinata dal record più alto, che è anche l'ordine in cui la schermata
+			// li mostra.
+			record: [...recordPerEsercizio(righeApi).entries()]
+				.map(([nome, migliore]) => ({ nome, migliore }))
+				.sort((a, b) => b.migliore.massimale - a.migliore.massimale),
+		};
+	});
+
+	/**
+	 * Le serie fatte su un solo esercizio, per il grafico dei progressi.
+	 *
+	 * Il grafico si apre toccando un record, e riguarda un esercizio alla volta. Prima per
+	 * disegnarlo il portale usava lo storico intero che si era già scaricato — mille righe
+	 * per rappresentarne una manciata. Qui si chiede quello che serve, quando serve.
+	 */
+	fastify.get('/allenamento/progressi', async (request, reply) => {
+		const esercizio = request.query.esercizio;
+		if (!esercizio) return reply.code(400).send({ error: 'Manca il nome dell\'esercizio.' });
+
+		const righe = await db
+			.select()
+			.from(workoutLogs)
+			.where(and(eq(workoutLogs.memberId, request.idSocio), eq(workoutLogs.exerciseName, esercizio)))
+			.orderBy(workoutLogs.data);
+
+		return { esercizio, serie: righe.map(serieVersoApi) };
+	});
+
+	/**
+	 * Un allenamento da eseguire o da riprendere: la routine, le serie già spuntate, e come
+	 * era andata la volta prima.
+	 *
+	 * `precedente` è il conto che il portale faceva scaricandosi mille righe di storico e
+	 * duecento sessioni, **in palestra, mentre uno si allena**. Qui è una query.
+	 */
+	fastify.get('/allenamento/sessioni/:id', async (request, reply) => {
+		const [sessione] = await db
+			.select()
+			.from(workoutSessions)
+			.where(and(eq(workoutSessions.id, request.params.id), eq(workoutSessions.memberId, request.idSocio)))
+			.limit(1);
+		// Di un allenamento altrui si risponde "non trovato": a chi non deve vederlo non si
+		// conferma nemmeno che esista.
+		if (!sessione) return reply.code(404).send({ error: 'Allenamento inesistente.' });
+
+		const [scheda] = sessione.planId
+			? await db.select().from(exercisePlans).where(eq(exercisePlans.id, sessione.planId)).limit(1)
+			: [];
+
+		const registrate = await db
+			.select()
+			.from(workoutLogs)
+			.where(eq(workoutLogs.sessionId, sessione.id))
+			.orderBy(workoutLogs.exerciseIndex, workoutLogs.setIndex);
+
+		// Come era andata l'ultima volta sulla stessa routine. Si guarda a `iniziata_alle` e
+		// non a `data`, che è una data senza ora e non distingue due allenamenti dello stesso
+		// giorno.
+		const precedenti = sessione.planId != null && sessione.routineIndex != null
+			? await db
+				.select({ id: workoutSessions.id })
+				.from(workoutSessions)
+				.where(and(
+					eq(workoutSessions.memberId, request.idSocio),
+					eq(workoutSessions.planId, sessione.planId),
+					eq(workoutSessions.routineIndex, sessione.routineIndex),
+					ne(workoutSessions.id, sessione.id),
+					isNotNull(workoutSessions.terminataAlle),
+				))
+				.orderBy(desc(workoutSessions.iniziataAlle))
+				.limit(1)
+			: [];
+
+		const serieDiPrima = precedenti.length
+			? await db.select().from(workoutLogs).where(eq(workoutLogs.sessionId, precedenti[0].id))
+			: [];
+
+		return {
+			sessione: sessioneVersoApi(sessione),
+			routine: (scheda?.routines ?? [])[sessione.routineIndex] ?? null,
+			registrate: registrate.map(serieVersoApi),
+			precedente: serieDiPrima.map(serieVersoApi),
+		};
+	});
+
+	/**
+	 * Annulla un allenamento: la sessione e tutte le sue serie, insieme.
+	 *
+	 * Il portale lo faceva con N+1 richieste — una per ogni serie, poi la sessione — e se il
+	 * telefono perdeva la rete a metà restavano righe orfane, senza un allenamento a cui
+	 * appartenere, che nessuna schermata avrebbe mai più mostrato. Qui è una transazione: o
+	 * sparisce tutto, o non sparisce niente.
+	 */
+	fastify.delete('/allenamento/sessioni/:id', async (request, reply) => {
+		const esito = await db.transaction(async (tx) => {
+			const [sessione] = await tx
+				.select({ id: workoutSessions.id })
+				.from(workoutSessions)
+				.where(and(eq(workoutSessions.id, request.params.id), eq(workoutSessions.memberId, request.idSocio)))
+				.limit(1);
+			if (!sessione) return { errore: 404, messaggio: 'Allenamento inesistente.' };
+
+			await tx.delete(workoutLogs).where(eq(workoutLogs.sessionId, sessione.id));
+			await tx.delete(workoutSessions).where(eq(workoutSessions.id, sessione.id));
+			return { annullato: true };
+		});
+
+		if (esito.errore) return reply.code(esito.errore).send({ error: esito.messaggio });
+		return { annullato: true };
+	});
+}
+
+// La traduzione verso l'API: le colonne di Drizzle sono in camelCase, il contratto è in
+// snake_case come il resto delle risposte.
+function sessioneVersoApi(s) {
+	return {
+		id: s.id,
+		scheda_id: s.planId,
+		scheda_nome: s.planName,
+		routine_index: s.routineIndex,
+		routine_nome: s.routineName,
+		iniziata_alle: s.iniziataAlle,
+		terminata_alle: s.terminataAlle,
+		note: s.note,
+	};
+}
+
+function serieVersoApi(r) {
+	return {
+		id: r.id,
+		sessione_id: r.sessionId,
+		esercizio_index: r.exerciseIndex,
+		serie_index: r.setIndex,
+		exercise_name: r.exerciseName,
+		muscle_group: r.muscleGroup,
+		tipo_serie: r.tipoSerie,
+		peso_usato: r.pesoUsato,
+		reps_fatte: r.repsFatte,
+		rpe_percepito: r.rpePercepito,
+		data: r.data,
+		note: r.note,
+	};
 }
 
 // --- Le date, contate una volta sola -------------------------------------------------

@@ -3,14 +3,14 @@ import { Button } from "@/ui/primitivi/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/ui/primitivi/dialog";
 import { ChevronLeft, CheckCircle2, AlertCircle, ListChecks, XCircle } from "lucide-react";
 import CourseSessionCard from "@/member/components/CourseSessionCard";
-import { getSessionAvailability, getMemberBooking } from "@/core/domain/bookingUtils";
 
+// Ogni lezione si porta dietro i propri posti e l'eventuale prenotazione di chi guarda:
+// non serve più l'elenco di tutte le prenotazioni della palestra, che è quello che il
+// portale si scaricava per fare questi stessi conti.
 export default function CourseSessionsList({
   course,
   categoryName,
   sessions,
-  bookings,
-  memberUser,
   onBook,
   onCancel,
   onBookAll,
@@ -23,25 +23,14 @@ export default function CourseSessionsList({
   const [bookAllResult, setBookAllResult] = useState(null);
   const [cancelAllResult, setCancelAllResult] = useState(null);
 
-  const sessionsToBook = useMemo(() => {
-    return sessions.filter(s => {
-      const existing = bookings.find(
-        b => b.session_id === s.id && b.member_id === memberUser.member_id && b.status !== "cancelled"
-      );
-      return !existing;
-    });
-  }, [sessions, bookings, memberUser]);
+  const sessionsToBook = useMemo(() => sessions.filter((s) => !s._miaPrenotazione), [sessions]);
 
   const alreadyBookedCount = sessions.length - sessionsToBook.length;
 
-  const memberActiveBookings = useMemo(() => {
-    const sessionIds = new Set(sessions.map(s => s.id));
-    return bookings.filter(b =>
-      sessionIds.has(b.session_id) &&
-      b.member_id === memberUser.member_id &&
-      b.status !== "cancelled"
-    );
-  }, [sessions, bookings, memberUser]);
+  const memberActiveBookings = useMemo(
+    () => sessions.filter((s) => s._miaPrenotazione).map((s) => s._miaPrenotazione),
+    [sessions]
+  );
 
   const handleConfirmBookAll = async () => {
     setShowBookAllPreview(false);
@@ -80,14 +69,13 @@ export default function CourseSessionsList({
       ) : (
         <div className="space-y-3">
           {sessions.map(session => {
-            const info = getSessionAvailability(session, bookings);
-            const memberBooking = getMemberBooking(session.id, memberUser.member_id, bookings);
+            const memberBooking = session._miaPrenotazione;
             return (
               <CourseSessionCard
                 key={session.id}
                 session={session}
-                available={info.available}
-                capacity={info.capacity}
+                available={session._posti.liberi}
+                capacity={session._posti.capienza}
                 memberBooking={memberBooking}
                 onBook={() => onBook(session)}
                 onCancel={() => onCancel(memberBooking.id)}
