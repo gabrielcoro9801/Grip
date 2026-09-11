@@ -17,6 +17,7 @@ import {
   arrotonda, centesimi, daCentesimi, sommaImporti, stessoImporto,
   formatEuro, formatEuroSegnato, formatNumero, formatPercentuale, parseImporto,
   formatData, formatDataOra, formatOra, formatMeseAnno, toIsoDate, FORMATI_DATA,
+  giorniTra, aggiungiGiorni, stessoGiornoOdopo,
 } from './format.js';
 
 // Gli spazi che Intl mette fra numero e valuta non sono spazi normali: confrontarli
@@ -132,7 +133,10 @@ describe('le date', () => {
     // erano dodici e più prima che venissero ridotti a questi.
     assert.deepEqual(
       Object.keys(FORMATI_DATA).sort(),
-      ['breve', 'estesa', 'estesaBreve', 'giorno', 'giornoBreve', 'giornoMese', 'iso', 'media', 'mese']
+      [
+        'breve', 'estesa', 'estesaBreve', 'giorno', 'giornoBreve', 'giornoMese',
+        'giornoMeseLungo', 'giornoNumero', 'iso', 'media', 'mese', 'settimanaBreve',
+      ]
     );
   });
 
@@ -144,6 +148,14 @@ describe('le date', () => {
     assert.equal(formatData(istante, 'breve', { ora: true }), '31/01/2026 14:30');
   });
 
+  test('i nomi di mesi e giorni non hanno il punto', () => {
+    // Intl in italiano abbrevia con il punto ("gen."), moment senza. Le schermate sono
+    // sempre state senza: "sab. 31 gen." sembra un refuso, non un'abbreviazione.
+    assert.equal(formatData('2026-01-31', 'giorno'), 'sab 31 gen');
+    assert.equal(formatData('2026-01-31', 'giornoBreve'), '31 gen');
+    assert.equal(formatData('2026-01-31', 'media'), '31 gen 2026');
+  });
+
   test('quando manca, o non è una data, si scrive il trattino', () => {
     for (const niente of [null, undefined, '', 'non una data']) {
       assert.equal(formatData(niente), '—');
@@ -152,5 +164,42 @@ describe('le date', () => {
     }
     assert.equal(toIsoDate(null), '');
     assert.equal(formatData(null, 'breve', { vuoto: 'mai' }), 'mai');
+  });
+});
+
+describe('i giorni si contano sul calendario, non a millisecondi', () => {
+  test('quanti giorni mancano', () => {
+    assert.equal(giorniTra('2026-02-10', '2026-02-01'), 9);
+    assert.equal(giorniTra('2026-02-01', '2026-02-10'), -9);
+    assert.equal(giorniTra('2026-02-01', '2026-02-01'), 0);
+  });
+
+  test("l'ora del giorno non sposta il conto", () => {
+    // È il motivo per cui si azzera a mezzanotte: contando gli istanti, una scadenza a fine
+    // giornata darebbe "mancano 0 giorni" alle otto di sera e "1" alle otto di mattina,
+    // cioè due risposte diverse alla stessa domanda.
+    assert.equal(giorniTra('2026-02-10T23:59:00', '2026-02-09T00:01:00'), 1);
+    assert.equal(giorniTra('2026-02-10T00:01:00', '2026-02-09T23:59:00'), 1);
+  });
+
+  test("il cambio dell'ora legale non fa perdere un giorno", () => {
+    // In Italia l'ora legale entra l'ultima domenica di marzo: quella settimana ha un'ora
+    // in meno. Senza arrotondare, sette giorni darebbero 6,96 e quindi 6.
+    assert.equal(giorniTra('2026-04-01', '2026-03-25'), 7);
+    assert.equal(giorniTra('2026-11-01', '2026-10-25'), 7);
+  });
+
+  test('spostare una data di N giorni', () => {
+    assert.equal(toIsoDate(aggiungiGiorni('2026-01-31', 1)), '2026-02-01');
+    assert.equal(toIsoDate(aggiungiGiorni('2026-03-01', -1)), '2026-02-28');
+    assert.equal(toIsoDate(aggiungiGiorni('2026-01-01', 365)), '2027-01-01');
+    assert.equal(aggiungiGiorni(null, 1), null);
+  });
+
+  test('stesso giorno o dopo', () => {
+    assert.equal(stessoGiornoOdopo('2026-02-10', '2026-02-10'), true);
+    assert.equal(stessoGiornoOdopo('2026-02-11', '2026-02-10'), true);
+    assert.equal(stessoGiornoOdopo('2026-02-09', '2026-02-10'), false);
+    assert.equal(stessoGiornoOdopo(null), false);
   });
 });

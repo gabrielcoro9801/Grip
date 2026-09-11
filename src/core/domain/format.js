@@ -10,17 +10,18 @@
 // `arrotonda`/`sommaImporti`, che passano dai centesimi interi ed evitano che
 // 0.1 + 0.2 diventi 0.30000000000000004 in una prima nota.
 
-import moment from "moment";
-// L'estensione `.js` non è pignoleria: senza, questo import lo risolve solo un bundler.
-// Sotto `node --test` — o in qualunque runtime che non sia Vite — il file non si carica
-// affatto, e con lui non si carica niente di quello che lo importa. È lo stesso genere di
-// legame nascosto che aveva `import.meta.env` nel client: si scopre il giorno in cui si
-// prova a portare core/ altrove, cioè il giorno peggiore.
-import "moment/locale/it.js";
-
-// Importare questo modulo basta a mettere moment in italiano ovunque: i file
-// che chiamano moment(...).format("ddd D MMM") direttamente ne beneficiano.
-moment.locale("it");
+// Le date le scrive `Intl`, che è nel linguaggio: niente libreria.
+//
+// Prima c'era moment, e il motivo per toglierlo non è la moda — è il peso. Si portava via
+// 125 kB compressi, scaricati da ogni socio che apre il portale dal telefono, per fare un
+// lavoro che il browser sa già fare. `Intl.DateTimeFormat` conosce l'italiano meglio di
+// qualunque tabella che potremmo scrivere noi, ed esiste ovunque: nei browser, in Node,
+// su React Native.
+//
+// Il prezzo è che Intl non parla di "pattern": non gli si dice `dddd D MMMM`, gli si
+// chiedono i pezzi — giorno della settimana, giorno, mese — e li si mette in fila. È quello
+// che fa `pezziData` qui sotto, ed è anche il motivo per cui i formati ammessi restano un
+// elenco chiuso invece di stringhe libere.
 
 export const LOCALE = "it-IT";
 export const TIMEZONE = "Europe/Rome";
@@ -174,62 +175,203 @@ export const FORMATI_DATA = {
   giornoMese: "DD/MM",
   mese: "MMMM YYYY",
   iso: "YYYY-MM-DD",
+  // I tre qui sotto servono alle intestazioni del calendario, che mostrano un pezzo di data
+  // per volta: la colonna del giorno, il numero sotto, e l'intervallo della settimana.
+  giornoMeseLungo: "D MMMM",
+  giornoNumero: "D",
+  settimanaBreve: "ddd",
 };
 
 /**
- * Le date "solo giorno" arrivano dal backend come stringa YYYY-MM-DD.
- * `new Date("2026-01-31")` le legge come mezzanotte UTC e in Europe/Rome
- * possono retrocedere al giorno prima: moment sulla stringa nuda le tratta
- * invece come data locale, che è il comportamento voluto.
+ * Da qualunque cosa a una `Date`, o null.
+ *
+ * **La riga che conta è quella sulle date nude.** Le scadenze arrivano dal server come
+ * `YYYY-MM-DD`, e `new Date("2026-01-31")` le legge come mezzanotte **UTC**: in un fuso
+ * dietro Greenwich diventano il 30, cioè ogni abbonamento scade un giorno prima. Una
+ * scadenza è un giorno sul calendario, non un istante, quindi qui la si costruisce come
+ * data locale — che è quello che faceva moment, ed è il comportamento da conservare.
  */
-function toMoment(value) {
+function aData(value) {
   if (value === null || value === undefined || value === "") return null;
-  const m = moment(value);
-  return m.isValid() ? m : null;
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+
+  if (typeof value === "string") {
+    const soloGiorno = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim());
+    if (soloGiorno) {
+      const [, anno, mese, giorno] = soloGiorno;
+      return new Date(Number(anno), Number(mese) - 1, Number(giorno));
+    }
+  }
+
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+// I formattatori si costruiscono una volta sola: crearne uno nuovo a ogni data costa più
+// del formattare, e queste funzioni girano dentro liste lunghe.
+const formattatori = new Map();
+function pezziData(data, opzioni) {
+  const chiave = JSON.stringify(opzioni);
+  let f = formattatori.get(chiave);
+  if (!f) {
+    f = new Intl.DateTimeFormat(LOCALE, opzioni);
+    formattatori.set(chiave, f);
+  }
+  return Object.fromEntries(f.formatToParts(data).map((p) => [p.type, p.value]));
+}
+
+// Ogni formato è una funzione che mette in fila i pezzi che Intl restituisce. Sembra più
+// verboso di `"dddd D MMMM YYYY"`, e in cambio i nomi di giorni e mesi li conosce il
+// linguaggio: non c'è una tabella di traduzioni da tenere aggiornata, e cambiare lingua un
+// domani è cambiare `LOCALE`.
+const COSTRUTTORI = {
+  breve: (d) => {
+    const p = pezziData(d, { day: "2-digit", month: "2-digit", year: "numeric" });
+    return `${p.day}/${p.month}/${p.year}`;
+  },
+  media: (d) => {
+    const p = pezziData(d, { day: "numeric", month: "short", year: "numeric" });
+    return `${p.day} ${senzaPunto(p.month)} ${p.year}`;
+  },
+  estesa: (d) => {
+    const p = pezziData(d, { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+    return `${p.weekday} ${p.day} ${p.month} ${p.year}`;
+  },
+  estesaBreve: (d) => {
+    const p = pezziData(d, { weekday: "long", day: "numeric", month: "long" });
+    return `${p.weekday} ${p.day} ${p.month}`;
+  },
+  giorno: (d) => {
+    const p = pezziData(d, { weekday: "short", day: "numeric", month: "short" });
+    return `${senzaPunto(p.weekday)} ${p.day} ${senzaPunto(p.month)}`;
+  },
+  giornoBreve: (d) => {
+    const p = pezziData(d, { day: "numeric", month: "short" });
+    return `${p.day} ${senzaPunto(p.month)}`;
+  },
+  giornoMese: (d) => {
+    const p = pezziData(d, { day: "2-digit", month: "2-digit" });
+    return `${p.day}/${p.month}`;
+  },
+  mese: (d) => {
+    const p = pezziData(d, { month: "long", year: "numeric" });
+    return `${p.month} ${p.year}`;
+  },
+  // Non passa da Intl: è la forma che il server si aspetta, e deve restare il giorno
+  // locale — lo stesso che l'utente vede a schermo, non quello UTC.
+  iso: (d) => `${d.getFullYear()}-${due(d.getMonth() + 1)}-${due(d.getDate())}`,
+  giornoMeseLungo: (d) => {
+    const p = pezziData(d, { day: "numeric", month: "long" });
+    return `${p.day} ${p.month}`;
+  },
+  giornoNumero: (d) => pezziData(d, { day: "numeric" }).day,
+  settimanaBreve: (d) => senzaPunto(pezziData(d, { weekday: "short" }).weekday),
+};
+
+// In italiano Intl abbrevia i mesi con il punto ("gen."), moment senza. Toglierlo mantiene
+// le schermate come sono sempre state, ed evita "sab. 31 gen." che sembra un refuso.
+const senzaPunto = (s) => String(s).replace(/\.$/, "");
+const due = (n) => String(n).padStart(2, "0");
+
+function oraDi(data, { secondi = false } = {}) {
+  const p = pezziData(data, {
+    hour: "2-digit",
+    minute: "2-digit",
+    ...(secondi ? { second: "2-digit" } : {}),
+    hourCycle: "h23",
+  });
+  return secondi ? `${p.hour}:${p.minute}:${p.second}` : `${p.hour}:${p.minute}`;
 }
 
 /**
  * Data localizzata.
- * @param formato chiave di FORMATI_DATA (o, per i casi davvero unici, un
- *   pattern moment).
+ * @param formato chiave di FORMATI_DATA.
  * @param ora aggiunge l'orario in coda, qualunque sia il formato scelto.
  */
 export function formatData(value, formato = "breve", { vuoto = PLACEHOLDER, ora = false } = {}) {
-  const m = toMoment(value);
-  if (!m) return vuoto;
-  const pattern = FORMATI_DATA[formato] || formato;
-  return m.format(ora ? `${pattern} HH:mm` : pattern);
+  const d = aData(value);
+  if (!d) return vuoto;
+  const costruisci = COSTRUTTORI[formato] ?? COSTRUTTORI.breve;
+  const testo = costruisci(d);
+  return ora ? `${testo} ${oraDi(d)}` : testo;
 }
 
 /** Data e ora: 31/01/2026 14:30. */
 export function formatDataOra(value, { vuoto = PLACEHOLDER, secondi = false } = {}) {
-  const m = toMoment(value);
-  if (!m) return vuoto;
-  return m.format(secondi ? "DD/MM/YYYY HH:mm:ss" : "DD/MM/YYYY HH:mm");
+  const d = aData(value);
+  if (!d) return vuoto;
+  return `${COSTRUTTORI.breve(d)} ${oraDi(d, { secondi })}`;
 }
 
 /** Solo l'ora: 14:30. */
 export function formatOra(value, { vuoto = PLACEHOLDER } = {}) {
-  const m = toMoment(value);
-  if (!m) return vuoto;
-  return m.format("HH:mm");
+  const d = aData(value);
+  return d ? oraDi(d) : vuoto;
 }
 
 /** Mese e anno per intero: "gennaio 2026". */
 export function formatMeseAnno(value, { vuoto = PLACEHOLDER } = {}) {
-  const m = toMoment(value);
-  if (!m) return vuoto;
-  return m.format(FORMATI_DATA.mese);
+  const d = aData(value);
+  return d ? COSTRUTTORI.mese(d) : vuoto;
 }
 
 /** Data in forma ISO YYYY-MM-DD, quella che il backend si aspetta. */
 export function toIsoDate(value) {
-  const m = toMoment(value);
-  return m ? m.format(FORMATI_DATA.iso) : "";
+  const d = aData(value);
+  return d ? COSTRUTTORI.iso(d) : "";
 }
 
 /** Valore per un <input type="datetime-local">. */
 export function toInputDateTime(value) {
-  const m = toMoment(value);
-  return m ? m.format("YYYY-MM-DDTHH:mm") : "";
+  const d = aData(value);
+  return d ? `${COSTRUTTORI.iso(d)}T${oraDi(d)}` : "";
+}
+
+// ------------------------------------------------- aritmetica dei giorni ---
+//
+// Quattro funzioni che prima venivano da moment (`diff`, `add`, `isSameOrAfter`) e che le
+// schermate usavano per rispondere sempre alla stessa domanda: quanti giorni mancano.
+//
+// Si ragiona in **giorni interi sul calendario**, non in millisecondi: una scadenza è un
+// giorno, e "mancano 0 giorni" a un abbonamento che scade stasera dev'essere la stessa
+// risposta che si darebbe alle otto di mattina. Contare gli istanti direbbe "manca mezza
+// giornata" e arrotonderebbe a zero o a uno a seconda dell'ora in cui si guarda.
+
+const GIORNO_MS = 24 * 60 * 60 * 1000;
+
+function aMezzanotte(value) {
+  const d = aData(value);
+  if (!d) return null;
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+}
+
+/**
+ * Giorni fra due date, contati sul calendario. Positivo se `a` viene dopo `b`.
+ * Senza il secondo argomento si conta da oggi.
+ */
+export function giorniTra(a, b = new Date()) {
+  const primo = aMezzanotte(a);
+  const secondo = aMezzanotte(b);
+  if (!primo || !secondo) return null;
+  // L'ora legale sposta un giorno di un'ora: senza arrotondare, due date a 24 giorni di
+  // distanza che attraversano il cambio darebbero 23,96 e quindi 23.
+  return Math.round((primo - secondo) / GIORNO_MS);
+}
+
+/** Quanti giorni mancano a una data. Negativo se è passata. */
+export function giorniAllaData(value) {
+  return giorniTra(value);
+}
+
+/** La stessa data spostata di N giorni (negativi per andare indietro). */
+export function aggiungiGiorni(value, giorni) {
+  const d = aMezzanotte(value);
+  if (!d) return null;
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate() + giorni);
+}
+
+/** Vera se `a` cade nello stesso giorno di `b` o dopo. */
+export function stessoGiornoOdopo(a, b = new Date()) {
+  const giorni = giorniTra(a, b);
+  return giorni !== null && giorni >= 0;
 }

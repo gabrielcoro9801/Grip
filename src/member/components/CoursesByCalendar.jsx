@@ -1,7 +1,6 @@
 import React, { useState, useMemo } from "react";
 import { Button } from "@/ui/primitivi/button";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import moment from "moment";
 import CourseSessionCard from "@/member/components/CourseSessionCard";
 import { formatData } from "@/core/domain/format";
 
@@ -31,9 +30,9 @@ export default function CoursesByCalendar({ enrichedSessions, onBook, onCancel, 
     const start = weekDays[0];
     const end = weekDays[6];
     if (start.getMonth() === end.getMonth()) {
-      return `${moment(start).format("D")}–${moment(end).format("D MMMM")}`;
+      return `${formatData(start, "giornoNumero")}–${formatData(end, "giornoMeseLungo")}`;
     }
-    return `${moment(start).format("D MMMM")}–${moment(end).format("D MMMM")}`;
+    return `${formatData(start, "giornoMeseLungo")}–${formatData(end, "giornoMeseLungo")}`;
   }, [weekDays]);
 
   // Le lezioni annullate non arrivano nemmeno: l'agenda le esclude sul server. Prima qui
@@ -76,8 +75,8 @@ export default function CoursesByCalendar({ enrichedSessions, onBook, onCancel, 
           return (
             <button key={dateStr} onClick={() => setSelectedDate(dateStr)}
               className={`py-2 rounded-lg text-center transition-colors ${isSelected ? "bg-primary text-primary-foreground" : "bg-card border border-border hover:border-primary"}`}>
-              <p className="text-[10px] uppercase">{moment(d).format("ddd")}</p>
-              <p className="text-lg font-bold">{moment(d).format("D")}</p>
+              <p className="text-[10px] uppercase">{formatData(d, "settimanaBreve")}</p>
+              <p className="text-lg font-bold">{formatData(d, "giornoNumero")}</p>
               <div className="flex justify-center gap-0.5 mt-1 h-2">
                 {catList.map(c => <div key={c.id} className="w-1.5 h-1.5 rounded-full" style={{ background: c.color }} />)}
               </div>

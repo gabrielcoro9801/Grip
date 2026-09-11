@@ -4,9 +4,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/ui/primitivi/card";
 import { Badge } from "@/ui/primitivi/badge";
 import { Users, UserCheck, Calendar, AlertTriangle, Clock, FileWarning } from "lucide-react";
 import StatusBadge from "@/ui/StatusBadge";
-import moment from "moment";
 import { LoadingState } from "@/ui/Spinner";
-import { formatData } from "@/core/domain/format";
+import { formatData, giorniAllaData, giorniTra, aggiungiGiorni, stessoGiornoOdopo } from "@/core/domain/format";
 
 export default function Dashboard() {
   const [members, setMembers] = useState([]);
@@ -45,15 +44,12 @@ export default function Dashboard() {
     );
   }
 
-  const today = moment();
-
   // Certificate alerts
   const certAlerts = documents
     .filter(d => d.document_type === "Medical Certificate" && d.expiry_date)
     .map(d => {
-      const exp = moment(d.expiry_date);
       const member = members.find(m => m.id === d.member_id);
-      const daysLeft = exp.diff(today, "days");
+      const daysLeft = giorniAllaData(d.expiry_date);
       return { ...d, member_name: member?.full_name || "Sconosciuto", daysLeft, expired: daysLeft < 0 };
     })
     .filter(d => d.daysLeft < 30)
@@ -61,18 +57,30 @@ export default function Dashboard() {
 
   // Subscription alerts
   const subAlerts = subscriptions
-    .filter(s => s.status === "expiring" || s.status === "expired" || (s.status === "active" && moment(s.end_date).diff(today, "days") <= 14))
+    // `giorniAllaData` risponde `null` quando la scadenza non c'è, e `null <= 14` in
+    // JavaScript è **vero**: senza questo controllo, un abbonamento senza data di fine
+    // comparirebbe fra quelli in scadenza. Con moment usciva NaN, che invece è falso —
+    // ed è il genere di differenza che una sostituzione si porta dietro in silenzio.
+    .filter(s => {
+      if (s.status === "expiring" || s.status === "expired") return true;
+      const giorni = giorniAllaData(s.end_date);
+      return s.status === "active" && giorni !== null && giorni <= 14;
+    })
     .map(s => {
       const member = members.find(m => m.id === s.member_id);
-      const daysLeft = moment(s.end_date).diff(today, "days");
+      const daysLeft = giorniAllaData(s.end_date);
       return { ...s, member_name: member?.full_name || "Sconosciuto", daysLeft };
     })
     .sort((a, b) => a.daysLeft - b.daysLeft);
 
   // Upcoming classes (next 7 days)
+  const fraUnaSettimana = aggiungiGiorni(new Date(), 7);
   const upcomingBookings = bookings
-    .filter(b => b.status !== "cancelled" && b._date && moment(b._date).isSameOrAfter(today, "day") && moment(b._date).isSameOrBefore(moment().add(7, "days"), "day"))
-    .sort((a, b) => moment(a._date).diff(moment(b._date)));
+    .filter(b =>
+      b.status !== "cancelled" && b._date
+      && stessoGiornoOdopo(b._date)
+      && stessoGiornoOdopo(fraUnaSettimana, b._date))
+    .sort((a, b) => giorniTra(a._date, b._date));
 
   // KPIs
   const activeMembers = subscriptions.filter(s => s.status === "active").length;
