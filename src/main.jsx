@@ -28,7 +28,10 @@ configuraRete({
 //    in cui questa domanda ha una risposta certa prima che React parta. Quando il portale
 //    avrà un suo punto d'ingresso diventerà una costante scritta in chiaro nei due file
 //    d'avvio, e questa riga sparirà.
-impostaArea(window.location.pathname.startsWith('/member-portal') ? 'member' : 'staff');
+//    Il confronto ignora le maiuscole perché il router fa lo stesso: `/Member-Portal` apre
+//    il portale. Distinguendole, quell'indirizzo avrebbe mostrato il portale usando però la
+//    sessione del gestionale — cioè la schermata di accesso a chi era già entrato.
+impostaArea(window.location.pathname.toLowerCase().startsWith('/member-portal') ? 'member' : 'staff');
 
 // La sessione si legge dall'archivio **prima** del primo disegno: l'archivio è asincrono, e
 // disegnare senza aspettarlo mostrerebbe per un istante la schermata di accesso a chi è già
