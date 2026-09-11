@@ -10,6 +10,7 @@ import { getUserFromRequest } from '../../auth/tokens.js';
 import { socioDiAccount } from '../../auth/socioCorrente.js';
 import { codiceDinamico } from '../../lib/qrDinamico.js';
 import { prenota, disdici } from '../../lib/prenotazioni.js';
+import { firmaUrl } from '../../lib/urlFirmati.js';
 import { msResiduiFinestra } from '../../../../shared/qrDinamico.js';
 
 /**
@@ -162,7 +163,8 @@ export default async function memberRoutes(fastify) {
 				id: d.id,
 				tipo: d.documentType,
 				nome_file: d.fileName,
-				url: d.fileUrl,
+				// Firmato: senza firma /uploads/ non apre piu niente (lib/urlFirmati.js).
+				url: firmaUrl(d.fileUrl),
 				scadenza: d.expiryDate,
 				giorni_alla_scadenza: giorniDaOggi(d.expiryDate),
 				scaduto: scaduto(d.expiryDate),

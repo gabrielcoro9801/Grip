@@ -38,6 +38,13 @@ export const config = {
 	),
 
 	jwtScadenza: process.env.JWT_EXPIRES_IN || '12h',
+	// I soci hanno una sessione più lunga, e non è una concessione: il gestionale lo si apre
+	// al lavoro, davanti a una tastiera, e rifare l'accesso ogni mattina è normale. Il portale
+	// lo si apre in palestra, col telefono in mano, spesso per mostrare un codice al tornello:
+	// una sessione che scade ogni dodici ore vorrebbe dire digitare la password sotto il
+	// bilanciere. Trenta giorni sono sostenibili **perché** una sessione ora si può revocare
+	// (vedi `token_version` in db/schema/hr.js); senza quello sarebbero stati un rischio.
+	jwtScadenzaSocio: process.env.MEMBER_JWT_EXPIRES_IN || '30d',
 
 	/**
 	 * La chiave con cui si firma il codice d'accesso che cambia ogni minuto.

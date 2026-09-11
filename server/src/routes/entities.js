@@ -7,6 +7,7 @@ import { entityRegistry } from '../entities/registry.js';
 import { getColumnMaps, translateToJs, translateToSnakeCase, translateManyToSnakeCase } from '../entities/columnMaps.js';
 import {
 	applyWriteTransform, stripHiddenFields, stripHiddenFieldsMany,
+	firmaFileInLettura, firmaFileInLetturaMolte, togliFirmaInScrittura,
 	CREATE_FORBIDDEN, UPDATE_FORBIDDEN, DELETE_FORBIDDEN, mutationBlockedReason,
 } from '../entities/hooks.js';
 import { getUserFromRequest } from '../auth/tokens.js';
@@ -98,7 +99,7 @@ export default async function entityRoutes(fastify) {
 		if (_limit) query = query.limit(parseInt(_limit, 10));
 
 		const rows = await query;
-		const risultato = stripHiddenFieldsMany(entityName, translateManyToSnakeCase(table, rows));
+		const risultato = firmaFileInLetturaMolte(stripHiddenFieldsMany(entityName, translateManyToSnakeCase(table, rows)));
 		return request.memberId ? nascondiCampiPerSocio(entityName, risultato) : risultato;
 	});
 
@@ -119,7 +120,7 @@ export default async function entityRoutes(fastify) {
 			}
 		}
 
-		const risultato = stripHiddenFields(entityName, translateToSnakeCase(table, row));
+		const risultato = firmaFileInLettura(stripHiddenFields(entityName, translateToSnakeCase(table, row)));
 		return request.memberId ? nascondiCampiPerSocio(entityName, risultato) : risultato;
 	});
 
@@ -130,13 +131,13 @@ export default async function entityRoutes(fastify) {
 			return reply.code(400).send({ error: CREATE_FORBIDDEN[entityName] });
 		}
 		const table = entityRegistry[entityName];
-		let body = await applyWriteTransform(entityName, request.body);
+		let body = await applyWriteTransform(entityName, togliFirmaInScrittura(request.body));
 		// Un socio crea solo record intestati a sé: l'appartenenza la impone il server,
 		// altrimenti basterebbe cambiare un identificativo nella richiesta.
 		if (request.memberId) body = forzaProprietario(entityName, body, request.memberId);
 		const [row] = await db.insert(table).values(translateToJs(table, body)).returning();
 		reply.code(201);
-		return stripHiddenFields(entityName, translateToSnakeCase(table, row));
+		return firmaFileInLettura(stripHiddenFields(entityName, translateToSnakeCase(table, row)));
 	});
 
 	// POST /api/entities/:name/bulk  (bulkCreate)
@@ -149,7 +150,7 @@ export default async function entityRoutes(fastify) {
 		const source = Array.isArray(request.body) ? request.body : [];
 		const items = [];
 		for (const item of source) {
-			let riga = await applyWriteTransform(entityName, item);
+			let riga = await applyWriteTransform(entityName, togliFirmaInScrittura(item));
 			// L'appartenenza va imposta anche qui, non solo sulla creazione singola: finché
 			// mancava, bastava passare da /bulk invece che dalla rotta normale per creare
 			// righe intestate a un altro socio — il controllo c'era, e si aggirava
@@ -160,7 +161,7 @@ export default async function entityRoutes(fastify) {
 		if (!items.length) return [];
 		const rows = await db.insert(table).values(items).returning();
 		reply.code(201);
-		return stripHiddenFieldsMany(entityName, translateManyToSnakeCase(table, rows));
+		return firmaFileInLetturaMolte(stripHiddenFieldsMany(entityName, translateManyToSnakeCase(table, rows)));
 	});
 
 	/**
@@ -201,14 +202,14 @@ export default async function entityRoutes(fastify) {
 		const bloccato = await mutationBlockedReason(entityName, table, request.params.id, 'update');
 		if (bloccato) return reply.code(400).send({ error: bloccato });
 		const { dbNameToColumn } = getColumnMaps(table);
-		let body = await applyWriteTransform(entityName, request.body);
+		let body = await applyWriteTransform(entityName, togliFirmaInScrittura(request.body));
 		// Nemmeno con una modifica si cambia intestatario: senza, un socio potrebbe
 		// spostare a un altro una riga sua, o prendersi la riga di qualcun altro in due passi.
 		if (request.memberId) body = forzaProprietario(entityName, body, request.memberId);
 		const data = translateToJs(table, body);
 		const [row] = await db.update(table).set(data).where(eq(dbNameToColumn.id, request.params.id)).returning();
 		if (!row) return reply.code(404).send({ error: 'Non trovato' });
-		return stripHiddenFields(entityName, translateToSnakeCase(table, row));
+		return firmaFileInLettura(stripHiddenFields(entityName, translateToSnakeCase(table, row)));
 	});
 
 	// DELETE /api/entities/:name/:id

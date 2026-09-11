@@ -1,0 +1,1 @@
+ALTER TABLE "staff_accounts" ADD COLUMN "token_version" integer DEFAULT 1 NOT NULL;
