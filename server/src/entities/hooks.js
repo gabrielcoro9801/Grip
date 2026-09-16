@@ -2,10 +2,8 @@
 // uscire dall'API, e trasformazioni da applicare in scrittura.
 import bcrypt from 'bcryptjs';
 import { firmaUrl, togliFirma } from '../lib/urlFirmati.js';
-import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { members } from '../db/schema/index.js';
-import { nextNumber } from '../lib/numbering.js';
+import { assegnaCodiceSocio } from '../lib/codiceSocio.js';
 
 // Campi rimossi da ogni risposta, per entità.
 const HIDDEN_FIELDS = {
@@ -14,9 +12,14 @@ const HIDDEN_FIELDS = {
 
 // Entità che non possono essere create, modificate o cancellate dall'endpoint generico,
 // con il motivo mostrato a chi ci prova.
-export const CREATE_FORBIDDEN = {};
-export const UPDATE_FORBIDDEN = {};
-export const DELETE_FORBIDDEN = {};
+//
+// La cronologia di un lead si scrive da /api/lead/:id/attivita, che prende l'autore dal
+// token: qui l'autore arriverebbe dal corpo, cioè chiunque potrebbe firmare una nota a nome
+// di un collega. E non si riscrive né si cancella, come il registro delle azioni.
+const CRONOLOGIA_LEAD = 'La cronologia di un lead si aggiorna dalla sua scheda, e non si modifica.';
+export const CREATE_FORBIDDEN = { LeadAttivita: CRONOLOGIA_LEAD };
+export const UPDATE_FORBIDDEN = { LeadAttivita: CRONOLOGIA_LEAD };
+export const DELETE_FORBIDDEN = { LeadAttivita: CRONOLOGIA_LEAD };
 
 /** Motivo per cui una singola riga non è modificabile, se ce n'è uno. */
 export async function mutationBlockedReason() {
@@ -41,12 +44,23 @@ const WRITE_TRANSFORMS = {
 	async Member(body) {
 		const rest = { ...(body ?? {}) };
 		if (!rest.codice_socio && rest.organization_id) {
-			const numero = await nextNumber(
-				db, rest.organization_id, 'codice_socio',
-				sql`SELECT MAX(CAST(NULLIF(regexp_replace(codice_socio, '\\D', '', 'g'), '') AS INTEGER)) FROM ${members}`,
-			);
-			rest.codice_socio = String(numero).padStart(6, '0');
+			rest.codice_socio = await assegnaCodiceSocio(db, rest.organization_id);
 		}
+		return rest;
+	},
+
+	// Lo stato di un lead racconta cose successe — una prova prenotata, una persona che si è
+	// presentata, un'iscrizione — e cambia solo passando dalle rotte che le fanno succedere
+	// (routes/lead.js), che scrivono anche la cronologia. Se passasse di qui, basterebbe un
+	// salvataggio del modulo anagrafico per segnare "iscritto" un lead senza nessun socio.
+	async Lead(body) {
+		const { stato: _s, convertito_member_id: _m, convertito_il: _i, ...rest } = body ?? {};
+		const oggi = new Date().toISOString().slice(0, 10);
+		if (rest.consenso_privacy === true && !rest.consenso_privacy_data) rest.consenso_privacy_data = oggi;
+		if (rest.consenso_marketing === true && !rest.consenso_marketing_data) rest.consenso_marketing_data = oggi;
+		if (rest.consenso_privacy === false) rest.consenso_privacy_data = null;
+		if (rest.consenso_marketing === false) rest.consenso_marketing_data = null;
+		rest.updated_date = new Date().toISOString();
 		return rest;
 	},
 };

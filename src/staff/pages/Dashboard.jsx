@@ -1,17 +1,30 @@
 import React, { useState, useEffect } from "react";
+import { Link } from "react-router-dom";
 import { api } from "@/core/api/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/ui/primitivi/card";
 import { Badge } from "@/ui/primitivi/badge";
-import { Users, UserCheck, Calendar, AlertTriangle, Clock, FileWarning } from "lucide-react";
+import { Users, UserCheck, Calendar, AlertTriangle, Clock, FileWarning, UserPlus, PhoneCall } from "lucide-react";
 import StatusBadge from "@/ui/StatusBadge";
 import { LoadingState } from "@/ui/Spinner";
-import { formatData, giorniAllaData, giorniTra, aggiungiGiorni, stessoGiornoOdopo } from "@/core/domain/format";
+import { useStaffAuth } from "@/staff/lib/StaffAuthContext";
+import { canAccess } from "@/staff/lib/permissions";
+import { formatData, giorniAllaData, giorniTra, aggiungiGiorni, stessoGiornoOdopo, toIsoDate } from "@/core/domain/format";
+import { leadPrevistiAiCorsi, leadDaRicontattare, proveDaEsitare } from "@/core/domain/lead";
+
+// La finestra dei lead previsti è la stessa delle prossime lezioni: una settimana.
+const GIORNI_PREVISTI = 7;
 
 export default function Dashboard() {
+  const { staffUser } = useStaffAuth();
+  // Chi non lavora sui lead non ha ragione di vederli qui, né di scaricarli.
+  const vedeLead = canAccess(staffUser?.ruolo, "crm_leads");
+
   const [members, setMembers] = useState([]);
   const [subscriptions, setSubscriptions] = useState([]);
   const [documents, setDocuments] = useState([]);
   const [bookings, setBookings] = useState([]);
+  const [corsi, setCorsi] = useState({ bookings: [], sessions: [], events: [], courses: [] });
+  const [leads, setLeads] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -23,7 +36,8 @@ export default function Dashboard() {
       api.entities.Session.list(),
       api.entities.Event.list(),
       api.entities.Course.list(),
-    ]).then(([m, s, d, b, sess, evts, crs]) => {
+      vedeLead ? api.entities.Lead.list() : Promise.resolve([]),
+    ]).then(([m, s, d, b, sess, evts, crs, l]) => {
       const resolvedBookings = b.map(bk => {
         const session = sess.find(s => s.id === bk.session_id);
         const event = evts.find(e => e.id === session?.event_id);
@@ -34,9 +48,11 @@ export default function Dashboard() {
       setSubscriptions(s);
       setDocuments(d);
       setBookings(resolvedBookings);
+      setCorsi({ bookings: b, sessions: sess, events: evts, courses: crs });
+      setLeads(l);
       setLoading(false);
     });
-  }, []);
+  }, [vedeLead]);
 
   if (loading) {
     return (
@@ -85,11 +101,22 @@ export default function Dashboard() {
   // KPIs
   const activeMembers = subscriptions.filter(s => s.status === "active").length;
 
+  // Lead ai corsi
+  const oggi = toIsoDate(new Date());
+  const previsti = vedeLead ? leadPrevistiAiCorsi({ ...corsi, leads }, oggi, GIORNI_PREVISTI) : [];
+  const provePreviste = previsti.reduce((n, g) => n + g.prove.length, 0);
+  const daEsitare = vedeLead ? proveDaEsitare(corsi, oggi) : [];
+  const daRicontattare = vedeLead ? leadDaRicontattare(leads, oggi) : [];
+
   const kpis = [
     { label: "Soci attivi", value: activeMembers, icon: UserCheck, color: "text-success", bg: "bg-success/10" },
     { label: "Soci iscritti", value: members.length, icon: Users, color: "text-info", bg: "bg-info/10" },
     { label: "Certificati in scadenza", value: certAlerts.length, icon: FileWarning, color: "text-warning", bg: "bg-warning/10" },
     { label: "Prossime lezioni", value: upcomingBookings.length, icon: Calendar, color: "text-violet-600", bg: "bg-violet-50" },
+    ...(vedeLead ? [
+      { label: `Prove in programma (${GIORNI_PREVISTI}g)`, value: provePreviste, icon: UserPlus, color: "text-info", bg: "bg-info/10" },
+      { label: "Lead da ricontattare", value: daRicontattare.length, icon: PhoneCall, color: "text-warning", bg: "bg-warning/10" },
+    ] : []),
   ];
 
   return (
@@ -100,7 +127,7 @@ export default function Dashboard() {
       </div>
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className={`grid grid-cols-2 gap-4 ${kpis.length > 4 ? "lg:grid-cols-3 xl:grid-cols-6" : "lg:grid-cols-4"}`}>
         {kpis.map(kpi => (
           <Card key={kpi.label} className="border-0 shadow-sm">
             <CardContent className="p-4 sm:p-5">
@@ -187,6 +214,73 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
+        {/* Lead previsti ai corsi */}
+        {vedeLead && (
+          <Card className="border-0 shadow-sm lg:col-span-2">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base font-heading flex items-center gap-2">
+                <UserPlus className="w-4 h-4 text-info" />
+                Lead previsti ai corsi ({GIORNI_PREVISTI} giorni)
+                <Link to="/crm/lead" className="ml-auto text-xs font-normal text-primary hover:underline">Tutti i lead</Link>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {daEsitare.length > 0 && (
+                // Prima delle prove di domani: una prova passata senza esito lascia il lead
+                // fermo in "prova prenotata", e nessuno lo richiama.
+                <div className="p-3 rounded-lg bg-warning/10 text-sm">
+                  <p className="font-medium">
+                    {daEsitare.length === 1 ? "Una prova passata" : `${daEsitare.length} prove passate`} senza esito
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Segna se la persona è venuta:{" "}
+                    {daEsitare.slice(0, 5).map((b, i) => (
+                      <React.Fragment key={b.id}>
+                        {i > 0 && ", "}
+                        <Link to={`/crm/lead/${b.lead_id}`} className="text-primary hover:underline">{b.member_name}</Link>
+                      </React.Fragment>
+                    ))}
+                    {daEsitare.length > 5 && ` e altre ${daEsitare.length - 5}`}
+                  </p>
+                </div>
+              )}
+              {previsti.length === 0 ? (
+                <p className="text-sm text-muted-foreground py-4 text-center">Nessuna prova in programma</p>
+              ) : (
+                <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {previsti.map(gruppo => (
+                    <div key={gruppo.corso.id ?? "senza-corso"} className="space-y-2">
+                      <p className="text-sm font-medium flex items-center justify-between">
+                        {gruppo.corso.nome}
+                        <span className="text-xs font-normal text-muted-foreground">
+                          {gruppo.prove.length} {gruppo.prove.length === 1 ? "prova" : "prove"}
+                        </span>
+                      </p>
+                      {gruppo.prove.map(p => (
+                        <Link
+                          key={p.booking_id}
+                          to={`/crm/lead/${p.lead_id}`}
+                          className="flex items-center justify-between gap-2 p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors"
+                        >
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium truncate">{p.nome}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {p.data === oggi ? "Oggi" : formatData(p.data, "giorno")} {p.inizio ? String(p.inizio).slice(0, 5) : ""}
+                            </p>
+                          </div>
+                          {p.stato_prenotazione === "waitlisted"
+                            ? <StatusBadge status="waitlisted" />
+                            : p.stato_lead && <StatusBadge status={p.stato_lead} />}
+                        </Link>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
         {/* Upcoming Classes */}
         <Card className="border-0 shadow-sm lg:col-span-2">
           <CardHeader className="pb-3">
@@ -206,7 +300,10 @@ export default function Dashboard() {
                       <p className="text-sm font-medium">{b._course_name || "Corso"}</p>
                       <p className="text-xs text-muted-foreground">{b.member_name} · {b._date ? formatData(b._date, "giorno") : "—"}</p>
                     </div>
-                    <StatusBadge status={b.status} />
+                    <div className="flex items-center gap-1.5">
+                      {b.lead_id && <StatusBadge status="prova" label="Prova" tone="info" />}
+                      <StatusBadge status={b.status} />
+                    </div>
                   </div>
                 ))}
               </div>

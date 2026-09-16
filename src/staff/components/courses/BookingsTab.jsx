@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from "react";
+import { Link } from "react-router-dom";
 import { Button } from "@/ui/primitivi/button";
 import { Input } from "@/ui/primitivi/input";
 import { Label } from "@/ui/primitivi/label";
@@ -68,7 +69,15 @@ export default function BookingsTab({ data, reload }) {
                 <tr key={b.id} className="border-b border-border/50 hover:bg-muted/30">
                   <td className="py-3 px-4 text-muted-foreground">{session ? formatData(session.date, "giorno") : "—"}</td>
                   <td className="py-3 px-4 font-medium">{details?.course?.name || "—"}</td>
-                  <td className="py-3 px-4">{b.member_name}</td>
+                  <td className="py-3 px-4">
+                    {b.lead_id ? (
+                      // Una prova: la persona non è ancora socia, e la sua scheda è quella del lead.
+                      <span className="inline-flex items-center gap-2">
+                        <Link to={`/crm/lead/${b.lead_id}`} className="hover:underline">{b.member_name}</Link>
+                        <StatusBadge status="prova" label="Prova" tone="info" />
+                      </span>
+                    ) : b.member_name}
+                  </td>
                   <td className="py-3 px-4">
                     <StatusBadge status={b.status} />
                     {b.status === "waitlisted" && b.waitlist_position && <span className="text-xs text-muted-foreground ml-1">#{b.waitlist_position}</span>}

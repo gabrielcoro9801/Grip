@@ -8,6 +8,7 @@ export const ROLES = {
 export const MODULES = {
   crm_members: { label: "CRM — Anagrafiche clienti" },
   crm_documents: { label: "CRM — Documenti/certificati" },
+  crm_leads: { label: "CRM — Lead e prove" },
   crm_plans: { label: "Allenamento — Esercizi e schede" },
   calendar: { label: "Calendario & Prenotazioni" },
   admin_users: { label: "Admin & Profili" },
@@ -26,6 +27,7 @@ export const PERMESSI_PREDEFINITI = {
   admin: {
     crm_members: ["view", "edit"],
     crm_documents: ["view", "edit"],
+    crm_leads: ["view", "edit"],
     crm_plans: ["view", "edit"],
     calendar: ["view", "edit"],
     admin_users: ["view", "edit"],
@@ -34,6 +36,7 @@ export const PERMESSI_PREDEFINITI = {
   reception: {
     crm_members: ["view", "edit"],
     crm_documents: ["view", "edit"],
+    crm_leads: ["view", "edit"],
     crm_plans: ["view"],
     calendar: ["view", "edit"],
     admin_users: [],
@@ -42,6 +45,8 @@ export const PERMESSI_PREDEFINITI = {
   istruttore: {
     crm_members: ["view"],
     crm_documents: ["view"],
+    // Vede chi viene a provare il suo corso; il lavoro commerciale non è suo.
+    crm_leads: ["view"],
     crm_plans: ["view", "edit"],
     calendar: ["view", "edit"],
     admin_users: [],

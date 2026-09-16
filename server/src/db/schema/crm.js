@@ -14,6 +14,10 @@ export const members = pgTable('members', {
 	emergencyContactPhone: varchar('emergency_contact_phone', { length: 64 }),
 	gdprConsent: boolean('gdpr_consent').default(false),
 	gdprConsentDate: date('gdpr_consent_date'),
+	// Il consenso alle comunicazioni promozionali, distinto da quello al trattamento: arriva
+	// dal lead quando si iscrive, e oggi nessuno lo usa per mandare niente.
+	consensoMarketing: boolean('consenso_marketing').notNull().default(false),
+	consensoMarketingData: date('consenso_marketing_data'),
 	// Progressivo a 6 cifre (es. "000007"), generato lato applicazione oggi — da
 	// sostituire con una SEQUENCE per organizzazione per evitare race condition.
 	codiceSocio: varchar('codice_socio', { length: 16 }),

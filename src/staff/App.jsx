@@ -20,6 +20,8 @@ const MembersList = lazy(() => import('@/staff/pages/crm/MembersList'));
 const MemberDetail = lazy(() => import('@/staff/pages/crm/MemberDetail'));
 const PlansCatalog = lazy(() => import('@/staff/pages/crm/PlansCatalog'));
 const SubscriptionsList = lazy(() => import('@/staff/pages/crm/SubscriptionsList'));
+const LeadList = lazy(() => import('@/staff/pages/crm/LeadList'));
+const LeadDetail = lazy(() => import('@/staff/pages/crm/LeadDetail'));
 const AllenamentoLayout = lazy(() => import('@/staff/pages/allenamento/AllenamentoLayout'));
 const LibreriaEsercizi = lazy(() => import('@/staff/pages/allenamento/LibreriaEsercizi'));
 const SchedeModello = lazy(() => import('@/staff/pages/allenamento/SchedeModello'));
@@ -61,6 +63,8 @@ export default function App() {
                   <Route path="soci/:id" element={<MemberDetail />} />
                   <Route path="abbonamenti" element={<PlansCatalog />} />
                   <Route path="iscrizioni" element={<SubscriptionsList />} />
+                  <Route path="lead" element={<PermissionGate module="crm_leads"><LeadList /></PermissionGate>} />
+                  <Route path="lead/:id" element={<PermissionGate module="crm_leads"><LeadDetail /></PermissionGate>} />
                   <Route path="members/:id" element={<RedirectSocio />} />
                   <Route path="plans" element={<Navigate to="/crm/abbonamenti" replace />} />
                   <Route path="subscriptions" element={<Navigate to="/crm/iscrizioni" replace />} />
