@@ -5,10 +5,11 @@
 import test, { before, after, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import bcrypt from 'bcryptjs';
-import { eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { buildApp } from '../src/app.js';
 import { db, pool } from '../src/db/client.js';
-import { members, staffAccounts, memberDocuments } from '../src/db/schema/index.js';
+import { members, staffAccounts, memberDocuments, numberingCounters } from '../src/db/schema/index.js';
+import { enteDellaNumerazione } from '../src/lib/codiceSocio.js';
 
 const PASSWORD = 'prova-anagrafica-1234';
 const CF = 'MRTMTT25D09F205Z';
@@ -17,6 +18,8 @@ let app;
 let tokenReception;
 const idSoci = [];
 const idAccount = [];
+let idEnte;
+let contatoreIniziale;
 
 const come = (opzioni) => app.inject({ ...opzioni, headers: { authorization: `Bearer ${tokenReception}` } });
 const crea = (payload) => come({ method: 'POST', url: '/api/entities/Member', payload });
@@ -31,6 +34,12 @@ before(async () => {
 		.values({ nome: 'Reception Anagrafica', email: `rec.anag.${suffisso}@test.local`, passwordHash: await bcrypt.hash(PASSWORD, 4), ruolo: 'reception' })
 		.returning();
 	idAccount.push(account.id);
+
+	// Ogni socio creato consuma un codice: a fine prova il contatore torna dov'era.
+	idEnte = await enteDellaNumerazione(db);
+	const [riga] = await db.select().from(numberingCounters)
+		.where(and(eq(numberingCounters.organizationId, idEnte), eq(numberingCounters.scope, 'codice_socio')));
+	contatoreIniziale = riga?.value ?? null;
 	const res = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { email: account.email, password: PASSWORD } });
 	tokenReception = res.json().token;
 });
@@ -41,6 +50,10 @@ after(async () => {
 		await db.delete(members).where(inArray(members.id, idSoci));
 	}
 	await db.delete(staffAccounts).where(inArray(staffAccounts.id, idAccount));
+	const dove = and(eq(numberingCounters.organizationId, idEnte), eq(numberingCounters.scope, 'codice_socio'));
+	if (contatoreIniziale === null) await db.delete(numberingCounters).where(dove);
+	// Mai sotto un codice ancora in uso: le altre prove girano in parallelo.
+	else await db.update(numberingCounters).set({ value: sql`GREATEST(${contatoreIniziale}, COALESCE((SELECT MAX(CAST(NULLIF(regexp_replace(codice_socio, '\\D', '', 'g'), '') AS INTEGER)) FROM ${members}), 0))` }).where(dove);
 	await app.close();
 	await pool.end();
 });
@@ -64,6 +77,11 @@ describe('creare un socio', () => {
 		assert.equal(res.json().full_name, 'Matteo Moretti');
 	});
 
+	test('il codice socio lo assegna sempre il contatore, anche senza ente nel modulo', async () => {
+		const [creato] = await db.select().from(members).where(eq(members.id, idSoci[0]));
+		assert.match(creato.codiceSocio, /^\d{6}$/);
+	});
+
 	test('lo stesso codice fiscale non vale per due soci, maiuscole o no', async () => {
 		const res = await crea({ nome: 'Altro', cognome: 'Socio', sesso: 'M', codice_fiscale: CF.toLowerCase() });
 		assert.equal(res.statusCode, 400);
@@ -78,13 +96,20 @@ describe('modificare un socio', () => {
 		assert.equal(res.json().full_name, 'Matteo Moretti Rossi');
 	});
 
+	test('il codice socio non si riscrive', async () => {
+		const [prima] = await db.select().from(members).where(eq(members.id, idSoci[0]));
+		const res = await modifica(idSoci[0], { codice_socio: 'XXXXXX' });
+		assert.equal(res.statusCode, 200, res.body);
+		assert.equal(res.json().codice_socio, prima.codiceSocio);
+	});
+
 	test('il codice fiscale non si svuota e non si sbaglia', async () => {
 		assert.equal((await modifica(idSoci[0], { codice_fiscale: '' })).statusCode, 400);
 		assert.equal((await modifica(idSoci[0], { codice_fiscale: 'NONVALIDO' })).statusCode, 400);
 	});
 
 	test('un socio di prima, senza codice fiscale, resta modificabile nel resto', async () => {
-		const [vecchio] = await db.insert(members).values({ nome: 'Socio', cognome: 'Storico' }).returning();
+		const [vecchio] = await db.insert(members).values({ nome: 'Socio', cognome: 'Storico', codiceSocio: `ST${String(Date.now()).replace(/\d/g, (c) => 'ABCDEFGHIJ'[c])}` }).returning();
 		idSoci.push(vecchio.id);
 		const res = await modifica(vecchio.id, { phone: '333 000' });
 		assert.equal(res.statusCode, 200, res.body);

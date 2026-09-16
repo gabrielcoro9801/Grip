@@ -121,7 +121,6 @@ export default async function memberRoutes(fastify) {
 				fine: corrente.endDate,
 				giorni_alla_scadenza: giorniDaOggi(corrente.endDate),
 				in_scadenza: entroGiorni(corrente.endDate, 7),
-				ingressi_residui: corrente.sessionsRemaining,
 			},
 			documenti: {
 				totale: documenti.length,
@@ -147,7 +146,6 @@ export default async function memberRoutes(fastify) {
 				fine: a.endDate,
 				giorni_alla_scadenza: giorniDaOggi(a.endDate),
 				prezzo_pagato: a.pricePaid,
-				ingressi_residui: a.sessionsRemaining,
 			})),
 		};
 	});

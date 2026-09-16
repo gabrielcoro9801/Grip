@@ -6,8 +6,8 @@ export const ROLES = {
 };
 
 export const MODULES = {
-  crm_members: { label: "CRM — Anagrafiche clienti" },
-  crm_documents: { label: "CRM — Documenti/certificati" },
+  crm_members: { label: "Gestione membri — Anagrafiche soci" },
+  crm_documents: { label: "Gestione membri — Documenti/certificati" },
   crm_leads: { label: "Lead — Contatti e canali" },
   crm_plans: { label: "Allenamento — Esercizi e schede" },
   calendar: { label: "Calendario & Prenotazioni" },

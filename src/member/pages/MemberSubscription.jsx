@@ -58,11 +58,6 @@ export default function MemberSubscription() {
                       <span className="font-medium text-foreground ml-1">{formatData(sub.fine, "media")}</span>
                     </div>
                   </div>
-                  {sub.ingressi_residui != null && (
-                    <div className="text-sm text-muted-foreground">
-                      Ingressi residui: <span className="font-medium text-foreground">{sub.ingressi_residui}</span>
-                    </div>
-                  )}
                   {expired ? (
                     <div className="flex items-center gap-2 p-2 rounded-lg bg-destructive/10 border border-destructive/30 text-destructive text-xs">
                       <AlertCircle className="w-4 h-4" /> Abbonamento scaduto

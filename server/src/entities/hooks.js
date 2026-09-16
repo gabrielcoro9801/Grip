@@ -1,12 +1,18 @@
 // Regole per-entità applicate dall'endpoint generico: campi che non devono mai
 // uscire dall'API, e trasformazioni da applicare in scrittura.
 import bcrypt from 'bcryptjs';
+import { eq } from 'drizzle-orm';
 import { firmaUrl, togliFirma } from '../lib/urlFirmati.js';
 import { db } from '../db/client.js';
 import { assegnaCodiceSocio } from '../lib/codiceSocio.js';
+import { plans } from '../db/schema/index.js';
 import {
 	sessoValido, normalizzaCodiceFiscale, codiceFiscaleValido, motivoDocumentoNonValido, tipoDocumentoValido,
 } from '../../../shared/anagrafica.js';
+import {
+	unitaDurataValida, statoTipoValido, motivoCambioStatoNonValido, motivoNonVendibile, dataFineAbbonamento,
+	oggiIso, NOTE_MASSIMO,
+} from '../../../shared/abbonamenti.js';
 
 // Campi rimossi da ogni risposta, per entità.
 const HIDDEN_FIELDS = {
@@ -17,10 +23,22 @@ const HIDDEN_FIELDS = {
 // con il motivo mostrato a chi ci prova.
 export const CREATE_FORBIDDEN = {};
 export const UPDATE_FORBIDDEN = {};
-export const DELETE_FORBIDDEN = {};
+export const DELETE_FORBIDDEN = {
+	// Le iscrizioni vendute puntano al tipo: cancellarlo lascerebbe iscrizioni senza origine.
+	Plan: "Un abbonamento del catalogo non si elimina: si sospende o si annulla.",
+};
 
-/** Motivo per cui una singola riga non è modificabile, se ce n'è uno. */
-export async function mutationBlockedReason() {
+/**
+ * Motivo per cui una singola riga non è modificabile, se ce n'è uno.
+ *
+ * @param corpo quello che la modifica vorrebbe scrivere: alcune regole dipendono da com'è la
+ *              riga oggi e da come diventerebbe (un tipo annullato non torna attivo).
+ */
+export async function mutationBlockedReason(entityName, _table, id, operazione, corpo) {
+	if (entityName === 'Plan' && operazione === 'update' && corpo && presente(corpo, 'stato')) {
+		const [tipo] = await db.select({ stato: plans.stato }).from(plans).where(eq(plans.id, id)).limit(1);
+		if (tipo) return motivoCambioStatoNonValido(tipo.stato, corpo.stato);
+	}
 	return null;
 }
 
@@ -88,9 +106,53 @@ const WRITE_TRANSFORMS = {
 	// fallire l'inserimento.
 	async Member(body, { creazione }) {
 		const rest = anagraficaSocio(body, { creazione });
-		if (creazione && !rest.codice_socio && rest.organization_id) {
-			rest.codice_socio = await assegnaCodiceSocio(db, rest.organization_id);
+		// Il codice è la chiave del socio: lo decide sempre il contatore, anche se il modulo ne
+		// manda uno, e non si riscrive in modifica.
+		if (creazione) rest.codice_socio = await assegnaCodiceSocio(db);
+		else delete rest.codice_socio;
+		return rest;
+	},
+
+	// Un tipo di abbonamento nasce completo e attivo, e poi si tocca solo nello stato: nome,
+	// prezzo e durata sono quelli con cui le iscrizioni sono state vendute.
+	async Plan(body, { creazione }) {
+		const rest = { ...(body ?? {}) };
+		if (!creazione) {
+			const campi = Object.keys(rest).filter((k) => !['id', 'stato', 'created_date', 'updated_date'].includes(k));
+			if (campi.length) throw rifiuta("Di un abbonamento del catalogo si cambia solo lo stato.");
+			if (!statoTipoValido(rest.stato)) throw rifiuta('Stato non valido: attivo, sospeso o annullato.');
+			return { stato: rest.stato, updated_date: new Date().toISOString() };
 		}
+		rest.name = String(rest.name ?? '').trim();
+		if (!rest.name) throw rifiuta("Il nome dell'abbonamento è obbligatorio.");
+		const prezzo = Number(rest.price);
+		if (vuoto(rest.price) || !Number.isFinite(prezzo) || prezzo < 0) throw rifiuta('Il prezzo non è valido.');
+		const durata = Number(rest.durata_valore);
+		if (!Number.isInteger(durata) || durata < 1) throw rifiuta('La durata deve essere un numero intero maggiore di zero.');
+		if (!unitaDurataValida(rest.durata_unita)) throw rifiuta('La durata va in giorni, mesi o anni.');
+		rest.durata_valore = durata;
+		if (vuoto(rest.vendibile_fino_al)) rest.vendibile_fino_al = null;
+		else if (!/^\d{4}-\d{2}-\d{2}$/.test(rest.vendibile_fino_al)) throw rifiuta('La data massima di vendita non è valida.');
+		else if (rest.vendibile_fino_al < oggiIso()) throw rifiuta('La data massima di vendita è già passata.');
+		if (vuoto(rest.description)) rest.description = null;
+		else if (String(rest.description).length > NOTE_MASSIMO) throw rifiuta(`Le note stanno in ${NOTE_MASSIMO} caratteri.`);
+		rest.stato = 'attivo';
+		return rest;
+	},
+
+	// Un'iscrizione si vende solo da un tipo vendibile, e la scadenza la calcola il server dalla
+	// durata del tipo: mesi di calendario, non giorni contati nel browser.
+	async Subscription(body, { creazione }) {
+		const rest = { ...(body ?? {}) };
+		if (!creazione || !rest.plan_id) return rest;
+		const [tipo] = await db.select().from(plans).where(eq(plans.id, rest.plan_id)).limit(1);
+		const motivo = motivoNonVendibile(tipo && { name: tipo.name, stato: tipo.stato, vendibile_fino_al: tipo.vendibileFinoAl });
+		if (motivo) throw rifiuta(motivo);
+		if (vuoto(rest.start_date)) rest.start_date = oggiIso();
+		rest.end_date = dataFineAbbonamento(rest.start_date, tipo.durataValore, tipo.durataUnita);
+		if (!rest.end_date) throw rifiuta("La data di inizio non è valida.");
+		rest.plan_name = tipo.name;
+		if (vuoto(rest.price_paid)) rest.price_paid = tipo.price;
 		return rest;
 	},
 

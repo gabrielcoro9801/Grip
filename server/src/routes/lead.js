@@ -6,7 +6,7 @@
 // persona due volte, una da socio e una da contatto ancora da richiamare.
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { leads, members, organizations } from '../db/schema/index.js';
+import { leads, members } from '../db/schema/index.js';
 import { getUserFromRequest } from '../auth/tokens.js';
 import { canWriteEntity } from '../auth/authorize.js';
 import { translateToJs, translateToSnakeCase } from '../entities/columnMaps.js';
@@ -55,8 +55,7 @@ export default async function leadRoutes(fastify) {
 			// Già trasformato — da un collega, o da un doppio clic — oppure cancellato.
 			if (!lead) return null;
 
-			const [ente] = await tx.select({ id: organizations.id }).from(organizations).limit(1);
-			const codiceSocio = ente ? await assegnaCodiceSocio(tx, ente.id) : null;
+			const codiceSocio = await assegnaCodiceSocio(tx);
 
 			const [creato] = await tx
 				.insert(members)

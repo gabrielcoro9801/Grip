@@ -28,9 +28,16 @@ export const members = pgTable('members', {
 	// lo scrive nessuno: lo darà il socio dal portale, con una notifica al titolare.
 	consensoMarketing: boolean('consenso_marketing').notNull().default(false),
 	consensoMarketingData: date('consenso_marketing_data'),
-	// Progressivo a 6 cifre (es. "000007"), generato lato applicazione oggi — da
-	// sostituire con una SEQUENCE per organizzazione per evitare race condition.
-	codiceSocio: varchar('codice_socio', { length: 16 }),
+	// Progressivo a 6 cifre (es. "000007"), assegnato dal contatore (lib/codiceSocio.js).
+	//
+	// È la chiave con cui la palestra riconosce un socio: obbligatorio e univoco. Non è la
+	// chiave primaria tecnica — una tabella ne ha una sola, e `id` resta quella a cui puntano
+	// abbonamenti, documenti, QR e prenotazioni — ma vale come chiave candidata: nessun socio
+	// senza, nessun codice due volte.
+	codiceSocio: varchar('codice_socio', { length: 16 }).notNull().unique('members_codice_socio_univoco'),
+	// La foto del profilo, facoltativa. Finisce in `_url` di proposito: esce firmata come ogni
+	// altro file caricato (entities/hooks.js).
+	fotoUrl: text('foto_url'),
 	notes: text('notes'),
 	createdDate: timestamp('created_date', { withTimezone: true }).notNull().defaultNow(),
 	updatedDate: timestamp('updated_date', { withTimezone: true }).notNull().defaultNow(),
@@ -39,17 +46,27 @@ export const members = pgTable('members', {
 	codiceFiscaleUnivoco: uniqueIndex('members_codice_fiscale_univoco').on(sql`upper(${table.codiceFiscale})`).where(sql`${table.codiceFiscale} IS NOT NULL`),
 }));
 
+// Un tipo di abbonamento del catalogo. Una volta creato non si modifica né si cancella: le
+// iscrizioni vendute ne portano il nome e la durata, e cambiarli dopo riscriverebbe la storia.
+// Si cambia solo lo stato (entities/hooks.js). Le regole stanno in shared/abbonamenti.js.
 export const plans = pgTable('plans', {
 	id: uuid('id').defaultRandom().primaryKey(),
 	name: varchar('name', { length: 255 }).notNull(),
 	price: numeric('price', { precision: 10, scale: 2 }).notNull(),
-	durationDays: integer('duration_days').notNull(),
-	sessionsIncluded: integer('sessions_included').notNull().default(999), // 999 = illimitato
-	description: text('description'),
-	isActive: boolean('is_active').notNull().default(true),
+	// Durata in giorni, mesi o anni: "un mese" scritto come 30 giorni sbagliava le scadenze.
+	durataValore: integer('durata_valore').notNull(),
+	durataUnita: varchar('durata_unita', { length: 8 }).notNull(), // giorni | mesi | anni
+	// L'ultimo giorno in cui il tipo si può vendere; vuoto, senza limite.
+	vendibileFinoAl: date('vendibile_fino_al'),
+	description: varchar('description', { length: 140 }), // le note: tre righe nella tile
+	stato: varchar('stato', { length: 12 }).notNull().default('attivo'), // attivo | sospeso | annullato
 	createdDate: timestamp('created_date', { withTimezone: true }).notNull().defaultNow(),
 	updatedDate: timestamp('updated_date', { withTimezone: true }).notNull().defaultNow(),
-});
+}, (table) => ({
+	unitaValida: check('plans_durata_unita_valida', sql`${table.durataUnita} IN ('giorni', 'mesi', 'anni')`),
+	durataPositiva: check('plans_durata_positiva', sql`${table.durataValore} > 0`),
+	statoValido: check('plans_stato_valido', sql`${table.stato} IN ('attivo', 'sospeso', 'annullato')`),
+}));
 
 export const subscriptions = pgTable('subscriptions', {
 	id: uuid('id').defaultRandom().primaryKey(),
@@ -59,7 +76,6 @@ export const subscriptions = pgTable('subscriptions', {
 	startDate: date('start_date').notNull(),
 	endDate: date('end_date'),
 	status: varchar('status', { length: 16 }).notNull().default('active'), // active | expiring | expired
-	sessionsRemaining: integer('sessions_remaining').default(999),
 	pricePaid: numeric('price_paid', { precision: 10, scale: 2 }),
 	createdDate: timestamp('created_date', { withTimezone: true }).notNull().defaultNow(),
 	updatedDate: timestamp('updated_date', { withTimezone: true }).notNull().defaultNow(),

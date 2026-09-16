@@ -44,7 +44,7 @@ before(async () => {
 
 	const [socio] = await db
 		.insert(members)
-		.values({ nome: 'Socio', cognome: 'Revoca', email: emailSocio })
+		.values({ nome: 'Socio', cognome: 'Revoca', codiceSocio: `RE${String(suffisso).replace(/\d/g, (c) => 'ABCDEFGHIJ'[c])}`, email: emailSocio })
 		.returning();
 	idSocio = socio.id;
 

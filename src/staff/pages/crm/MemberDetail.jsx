@@ -10,9 +10,11 @@ import { Label } from "@/ui/primitivi/label";
 import { Input } from "@/ui/primitivi/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/ui/primitivi/select";
 import StatusBadge from "@/ui/StatusBadge";
-import { ArrowLeft, Plus, CreditCard, Dumbbell, Shield, Calendar, QrCode, KeyRound, RefreshCw, History, Pencil } from "lucide-react";
+import { ArrowLeft, Plus, CreditCard, QrCode, KeyRound, RefreshCw, Pencil, UserRound } from "lucide-react";
 import CampiAnagrafica, { anagraficaDi, motivoAnagraficaIncompleta } from "@/staff/components/soci/CampiAnagrafica";
 import DocumentiSocio from "@/staff/components/soci/DocumentiSocio";
+import { AvatarSocio, SceltaFoto } from "@/staff/components/soci/FotoSocio";
+import { caricaFile } from "@/staff/lib/uploads";
 import { canEdit } from "@/staff/lib/permissions";
 import { etichettaSesso } from "@/core/domain/anagrafica";
 import { generateQRCode, generaPasswordTemporanea } from "@/staff/lib/qrUtils";
@@ -21,8 +23,31 @@ import { useQrDinamico } from "@/ui/hooks/useQrDinamico";
 import { logAction } from "@/staff/lib/auditLog";
 import { useToast } from "@/ui/primitivi/use-toast";
 import { LoadingState } from "@/ui/Spinner";
-import { formatData, formatDataOra, formatEuro, toIsoDate, aggiungiGiorni } from "@/core/domain/format";
-import { totaleSerieScheda, totaleEsercizi, formatDurata, durataSessione } from "@/core/domain/scheda";
+import { formatData, formatDataOra, formatEuro } from "@/core/domain/format";
+import { dataFineAbbonamento, descriviDurata, motivoNonVendibile, oggiIso } from "@/core/domain/abbonamenti";
+
+/** Gli anni compiuti a oggi, o null senza data di nascita. */
+function eta(dataNascita) {
+  if (!dataNascita) return null;
+  const nascita = new Date(dataNascita);
+  if (Number.isNaN(nascita.getTime())) return null;
+  const oggi = new Date();
+  let anni = oggi.getFullYear() - nascita.getFullYear();
+  if (oggi.getMonth() < nascita.getMonth() || (oggi.getMonth() === nascita.getMonth() && oggi.getDate() < nascita.getDate())) anni -= 1;
+  return anni;
+}
+
+/** Un dato della tile anagrafica: un trattino quando manca, così ogni scheda ha le stesse righe. */
+function DatoAnagrafico({ etichetta, children, mono }) {
+  return (
+    <div className="min-w-0">
+      <dt className="text-xs text-muted-foreground">{etichetta}</dt>
+      <dd className={`text-sm font-medium break-words ${mono ? "font-mono" : ""}`}>
+        {children || <span className="text-muted-foreground font-normal">—</span>}
+      </dd>
+    </div>
+  );
+}
 
 export default function MemberDetail() {
   const { id } = useParams();
@@ -32,16 +57,14 @@ export default function MemberDetail() {
   const [subscriptions, setSubscriptions] = useState([]);
   const [documents, setDocuments] = useState([]);
   const [plans, setPlans] = useState([]);
-  const [exercisePlans, setExercisePlans] = useState([]);
-  const [allenamenti, setAllenamenti] = useState([]);
-  const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showSubForm, setShowSubForm] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [subForm, setSubForm] = useState({ plan_id: "", start_date: new Date().toISOString().split("T")[0] });
+  const [subForm, setSubForm] = useState({ plan_id: "", start_date: oggiIso() });
   const [dateError, setDateError] = useState("");
   // L'anagrafica in modifica, o null quando la finestra è chiusa.
   const [anagrafica, setAnagrafica] = useState(null);
+  const [foto, setFoto] = useState({ file: null, rimossa: false });
   const puoModificare = canEdit(staffUser?.ruolo, "crm_members");
   const [qrAccess, setQrAccess] = useState(null);
   const [portalAccount, setPortalAccount] = useState(null);
@@ -55,39 +78,24 @@ export default function MemberDetail() {
     setLoading(true);
     setLoadError(false);
     try {
-      // Split into smaller batches to avoid rate limits
-      const [m, p] = await Promise.all([
+      // Schede, allenamenti e prenotazioni non stanno più nella scheda: se ne occupano le
+      // sezioni Allenamento e Gestione corsi. Con loro se ne vanno le letture di tutte le
+      // lezioni, gli eventi e i corsi dell'ente, che servivano solo a dare un nome a una
+      // prenotazione.
+      const [m, p, s, d, qr, sa] = await Promise.all([
         api.entities.Member.get(id),
         api.entities.Plan.list(),
-      ]);
-      const [s, d] = await Promise.all([
         api.entities.Subscription.filter({ member_id: id }),
         api.entities.MemberDocument.filter({ member_id: id }),
-      ]);
-      const [ep, b, qr, sa, sess, evts, crs, allen] = await Promise.all([
-        api.entities.ExercisePlan.filter({ member_id: id }),
-        api.entities.Booking.filter({ member_id: id }),
         api.entities.QRAccesso.filter({ cliente_id: id }),
         api.entities.StaffAccount.filter({ linked_member_id: id, ruolo: "member" }),
-        api.entities.Session.list(),
-        api.entities.Event.list(),
-        api.entities.Course.list(),
-        api.entities.WorkoutSession.filter({ member_id: id }, "-iniziata_alle", 10),
       ]);
-      const resolvedBookings = b.map(bk => {
-        const session = sess.find(s => s.id === bk.session_id);
-        const event = evts.find(e => e.id === session?.event_id);
-        const course = crs.find(c => c.id === event?.course_id);
-        return { ...bk, _course_name: course?.name, _date: session?.date };
-      });
 
       setMember(m);
       setSubscriptions(s);
       setDocuments(d);
-      setPlans(p.filter(pl => pl.is_active));
-      setExercisePlans(ep);
-      setAllenamenti(allen);
-      setBookings(resolvedBookings);
+      // Si propongono solo i tipi che si possono vendere oggi; il server lo ricontrolla.
+      setPlans(p.filter(pl => !motivoNonVendibile(pl)));
       setQrAccess(qr[0] || null);
       setPortalAccount(sa[0] || null);
       setLoading(false);
@@ -111,6 +119,9 @@ export default function MemberDetail() {
     return () => { vivo = false; };
   }, [codiceDinamico]);
 
+  const pianoScelto = plans.find(p => p.id === subForm.plan_id);
+  const scadenzaProposta = pianoScelto ? dataFineAbbonamento(subForm.start_date, pianoScelto.durata_valore, pianoScelto.durata_unita) : null;
+
   const handleNewSubscription = async (e) => {
     e.preventDefault();
     const plan = plans.find(p => p.id === subForm.plan_id);
@@ -118,17 +129,13 @@ export default function MemberDetail() {
     setDateError("");
     setSaving(true);
     try {
-      const startDate = subForm.start_date;
-      const endDate = toIsoDate(aggiungiGiorni(startDate, plan.duration_days));
-
+      // Scadenza e nome del tipo li fissa il server dalla durata del tipo: qui si mostrano soltanto.
       await api.entities.Subscription.create({
-        member_id: id, plan_id: plan.id, plan_name: plan.name,
-        start_date: startDate, end_date: endDate, status: "active",
-        sessions_remaining: plan.sessions_included, price_paid: plan.price,
+        member_id: id, plan_id: plan.id, start_date: subForm.start_date, status: "active", price_paid: plan.price,
       });
 
       setShowSubForm(false);
-      setSubForm({ plan_id: "", start_date: new Date().toISOString().split("T")[0] });
+      setSubForm({ plan_id: "", start_date: oggiIso() });
       loadData();
       toast({ title: "Abbonamento creato" });
     } catch (err) {
@@ -141,21 +148,29 @@ export default function MemberDetail() {
   const salvaAnagrafica = async (e) => {
     e.preventDefault();
     const dati = { ...anagrafica };
-    // La data del consenso si fissa quando il consenso arriva, non a ogni salvataggio.
-    if (dati.gdpr_consent && !member.gdpr_consent) dati.gdpr_consent_date = toIsoDate(new Date());
-    if (!dati.gdpr_consent) dati.gdpr_consent_date = null;
     setSaving(true);
     try {
+      if (foto.file) dati.foto_url = (await caricaFile({ file: foto.file })).file_url;
+      else if (foto.rimossa) dati.foto_url = null;
       await api.entities.Member.update(id, dati);
       await logAction(staffUser, "update", "member", `${dati.nome} ${dati.cognome}`.trim(), id, "Anagrafica modificata");
       toast({ title: "Anagrafica aggiornata" });
-      setAnagrafica(null);
+      chiudiAnagrafica();
       loadData();
     } catch (err) {
       toast({ title: "Anagrafica non salvata", description: err.message, variant: "destructive" });
     } finally {
       setSaving(false);
     }
+  };
+
+  const apriAnagrafica = () => {
+    setFoto({ file: null, rimossa: false });
+    setAnagrafica(anagraficaDi(member));
+  };
+  const chiudiAnagrafica = () => {
+    setAnagrafica(null);
+    setFoto({ file: null, rimossa: false });
   };
 
   const handleRevokeQR = async () => {
@@ -199,7 +214,7 @@ export default function MemberDetail() {
     try {
       if (portalAccount) {
         await api.entities.StaffAccount.update(portalAccount.id, { password: passwordForm.password });
-        await logAction(staffUser, "password_reset", "staff_account", `Portale socio — ${member?.full_name}`, portalAccount.id, "Password impostata dal CRM");
+        await logAction(staffUser, "password_reset", "staff_account", `Portale socio — ${member?.full_name}`, portalAccount.id, "Password impostata da Gestione membri");
       } else {
         const created = await api.entities.StaffAccount.create({
           nome: member?.full_name || "Socio",
@@ -209,7 +224,7 @@ export default function MemberDetail() {
           attivo: true,
           linked_member_id: id,
         });
-        await logAction(staffUser, "create", "staff_account", `Portale socio — ${member?.full_name}`, created.id, "Account portale socio creato dal CRM");
+        await logAction(staffUser, "create", "staff_account", `Portale socio — ${member?.full_name}`, created.id, "Account portale socio creato da Gestione membri");
       }
       toast({ title: "Password impostata", description: "Il socio può accedere al portale" });
       setShowPasswordDialog(false);
@@ -227,7 +242,7 @@ export default function MemberDetail() {
       const pwd = generaPasswordTemporanea();
       if (portalAccount) {
         await api.entities.StaffAccount.update(portalAccount.id, { password: pwd });
-        await logAction(staffUser, "password_reset", "staff_account", `Portale socio — ${member?.full_name}`, portalAccount.id, "Password generata dal CRM");
+        await logAction(staffUser, "password_reset", "staff_account", `Portale socio — ${member?.full_name}`, portalAccount.id, "Password generata da Gestione membri");
       } else {
         const created = await api.entities.StaffAccount.create({
           nome: member?.full_name || "Socio",
@@ -237,7 +252,7 @@ export default function MemberDetail() {
           attivo: true,
           linked_member_id: id,
         });
-        await logAction(staffUser, "create", "staff_account", `Portale socio — ${member?.full_name}`, created.id, "Account portale socio creato dal CRM");
+        await logAction(staffUser, "create", "staff_account", `Portale socio — ${member?.full_name}`, created.id, "Account portale socio creato da Gestione membri");
       }
       setGeneratedPassword(pwd);
       toast({ title: "Password generata" });
@@ -266,47 +281,54 @@ export default function MemberDetail() {
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-5xl mx-auto space-y-6">
       <Link to="/crm" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
-        <ArrowLeft className="w-4 h-4" /> Torna ai soci
+        <ArrowLeft className="w-4 h-4" /> Torna a Gestione membri
       </Link>
 
-      {/* Header */}
-      <div className="flex items-start gap-4">
-        <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-          <span className="text-lg font-bold text-primary">{member.full_name.split(" ").map(n => n[0]).join("")}</span>
-        </div>
-        <div className="flex-1">
-          <h1 className="text-xl font-heading font-bold">{member.full_name}</h1>
-          {member.codice_socio && (
-            <span className="inline-block mt-1 text-xs font-mono font-medium text-muted-foreground bg-muted px-2 py-0.5 rounded">
-              Codice socio: {member.codice_socio}
-            </span>
-          )}
-          <div className="flex flex-wrap gap-3 mt-1 text-sm text-muted-foreground">
-            {member.codice_fiscale
-              ? <span className="font-mono">{member.codice_fiscale}</span>
-              : <span className="text-destructive">Codice fiscale mancante</span>}
-            {member.sesso && <span>{etichettaSesso(member.sesso)}</span>}
-            {member.email && <span>{member.email}</span>}
-            {member.phone && <span>{member.phone}</span>}
-          </div>
-          <div className="flex items-center gap-2 mt-2">
-            {member.gdpr_consent ? (
-              <Badge variant="outline" className="bg-success/10 text-success border-success/30 text-xs">
-                <Shield className="w-3 h-3 mr-1" /> Consenso GDPR {member.gdpr_consent_date && `(${formatData(member.gdpr_consent_date, "media")})`}
-              </Badge>
-            ) : (
-              <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/30 text-xs">Nessun consenso GDPR</Badge>
-            )}
-          </div>
-        </div>
-        {puoModificare && (
-          <Button size="sm" variant="outline" onClick={() => setAnagrafica(anagraficaDi(member))}>
-            <Pencil className="w-3.5 h-3.5 mr-1" /> Modifica anagrafica
-          </Button>
-        )}
+      {/* Intestazione: chi è, e basta. I dati stanno tutti nella tile dell'anagrafica qui
+          sotto; ripeterli qui voleva dire leggerli due volte. */}
+      <div>
+        <h1 className="text-xl font-heading font-bold">{member.full_name}</h1>
+        <span className="inline-block mt-1 text-xs font-mono font-medium text-muted-foreground bg-muted px-2 py-0.5 rounded">
+          Codice socio: {member.codice_socio}
+        </span>
       </div>
 
       <div className="grid lg:grid-cols-2 gap-6">
+        {/* Anagrafica: la tile principale, a tutta larghezza. Stesso ordine del modulo, così
+            chi corregge un dato lo ritrova dove l'ha visto. */}
+        <Card className="border-0 shadow-sm lg:col-span-2">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-heading flex items-center gap-2"><UserRound className="w-4 h-4" /> Anagrafica</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-col sm:flex-row gap-6">
+              <AvatarSocio socio={member} size="lg" className="self-center sm:self-start" />
+              <dl className="flex-1 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-4">
+                <DatoAnagrafico etichetta="Nome">{member.nome}</DatoAnagrafico>
+                <DatoAnagrafico etichetta="Cognome">{member.cognome}</DatoAnagrafico>
+                <DatoAnagrafico etichetta="Codice fiscale" mono>{member.codice_fiscale}</DatoAnagrafico>
+                <DatoAnagrafico etichetta="Data di nascita">
+                  {member.date_of_birth && `${formatData(member.date_of_birth, "media")} (${eta(member.date_of_birth)} anni)`}
+                </DatoAnagrafico>
+                <DatoAnagrafico etichetta="Sesso">{etichettaSesso(member.sesso)}</DatoAnagrafico>
+                <DatoAnagrafico etichetta="Residenza">{member.address}</DatoAnagrafico>
+                <DatoAnagrafico etichetta="Telefono">{member.phone}</DatoAnagrafico>
+                <DatoAnagrafico etichetta="Email">{member.email}</DatoAnagrafico>
+                <DatoAnagrafico etichetta="Contatto di emergenza">{member.emergency_contact_name}</DatoAnagrafico>
+                <DatoAnagrafico etichetta="Telefono di emergenza">{member.emergency_contact_phone}</DatoAnagrafico>
+                <DatoAnagrafico etichetta="Socio dal">{formatData(member.created_date, "media")}</DatoAnagrafico>
+              </dl>
+            </div>
+            {puoModificare && (
+              <div className="flex justify-end mt-4">
+                <Button size="sm" variant="outline" onClick={apriAnagrafica}>
+                  <Pencil className="w-3.5 h-3.5 mr-1" /> Modifica anagrafica
+                </Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
         {/* Subscriptions */}
         <Card className="border-0 shadow-sm">
           <CardHeader className="pb-3 flex flex-row items-center justify-between">
@@ -323,7 +345,6 @@ export default function MemberDetail() {
                     <div>
                       <p className="text-sm font-medium">{sub.plan_name}</p>
                       <p className="text-xs text-muted-foreground">{formatData(sub.start_date, "giornoBreve")} — {formatData(sub.end_date, "media")}</p>
-                      {sub.sessions_remaining < 999 && <p className="text-xs text-muted-foreground">{sub.sessions_remaining} sessioni residue</p>}
                     </div>
                     <div className="text-right">
                       <StatusBadge status={sub.status} />
@@ -336,190 +357,85 @@ export default function MemberDetail() {
           </CardContent>
         </Card>
 
-        <DocumentiSocio socio={member} documenti={documents} puoModificare={puoModificare} staffUser={staffUser} onCambio={loadData} />
+        {/* I documenti occupano due righe: sono la tile più lunga, e affiancata ad abbonamenti
+            e accesso non lascia buchi nella griglia. */}
+        <div className="lg:row-span-2">
+          <DocumentiSocio socio={member} documenti={documents} puoModificare={puoModificare} staffUser={staffUser} onCambio={loadData} />
+        </div>
 
-        {/* QR Accesso */}
+        {/* Accesso: il QR per entrare in palestra e la password per entrare nel portale.
+            Sono le due credenziali del socio, e si gestiscono insieme. */}
         <Card className="border-0 shadow-sm">
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-heading flex items-center gap-2"><QrCode className="w-4 h-4" /> QR accesso</CardTitle>
+            <CardTitle className="text-sm font-heading flex items-center gap-2"><QrCode className="w-4 h-4" /> Accesso e portale</CardTitle>
           </CardHeader>
-          <CardContent>
-            {qrAccess ? (
-              <div className="flex items-center gap-4">
-                {immagineQr ? (
-                  <img src={immagineQr} alt="QR accesso" className="w-24 h-24 rounded-lg" />
-                ) : (
-                  <div className="w-24 h-24 rounded-lg bg-muted/40" />
-                )}
-                <div className="flex-1 min-w-0">
-                  {/* Il codice del minuto è quello da confrontare con il telefono del socio;
-                      la credenziale sotto è ciò che si revoca, e non cambia mai da sé. */}
-                  <p className="font-mono text-sm font-medium break-all">{codiceDinamico || "—"}</p>
-                  {qrAccess.stato === "attivo" && (
-                    <p className="text-xs text-muted-foreground">Cambia tra {secondiResidui}s</p>
+          <CardContent className="space-y-4">
+            <section aria-label="QR accesso">
+              {qrAccess ? (
+                <div className="flex items-center gap-4">
+                  {immagineQr ? (
+                    <img src={immagineQr} alt="QR accesso" className="w-24 h-24 rounded-lg" />
+                  ) : (
+                    <div className="w-24 h-24 rounded-lg bg-muted/40" />
                   )}
-                  <p className="text-[11px] text-muted-foreground font-mono break-all mt-1">
-                    Credenziale: {qrAccess.codice}
-                  </p>
-                  <p className="text-xs text-muted-foreground">Generata il {formatData(qrAccess.data_generazione, "media")}</p>
-                  <Badge variant="outline" className={`mt-1 text-xs ${qrAccess.stato === "attivo" ? "bg-success/10 text-success border-success/30" : "bg-destructive/10 text-destructive border-destructive/30"}`}>
-                    {qrAccess.stato === "attivo" ? "Attivo" : "Revocato"}
-                  </Badge>
-                </div>
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground py-2 text-center">Nessun QR generato</p>
-            )}
-            <div className="flex gap-2 mt-3">
-              {qrAccess?.stato === "attivo" && (
-                <Button size="sm" variant="outline" onClick={handleRevokeQR} disabled={saving}>
-                  Revoca
-                </Button>
-              )}
-              <Button size="sm" variant="outline" onClick={handleRegenerateQR} disabled={saving}>
-                <RefreshCw className="w-3 h-3 mr-1" /> {qrAccess ? "Rigenera" : "Genera"}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Portale socio */}
-        <Card className="border-0 shadow-sm">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-heading flex items-center gap-2"><KeyRound className="w-4 h-4" /> Portale socio</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {portalAccount ? (
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Account</span>
-                  <Badge variant="outline" className={`text-xs ${portalAccount.attivo ? "bg-success/10 text-success border-success/30" : "bg-destructive/10 text-destructive border-destructive/30"}`}>
-                    {portalAccount.attivo ? "Attivo" : "Disattivato"}
-                  </Badge>
-                </div>
-                <p className="text-xs text-muted-foreground">Email: {portalAccount.email || "—"}</p>
-                <p className="text-xs text-muted-foreground">Ultimo accesso: {portalAccount.last_activity_date ? formatDataOra(portalAccount.last_activity_date) : "Mai"}</p>
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground py-2 text-center">Nessun account portale</p>
-            )}
-            <div className="flex gap-2 mt-3">
-              <Button size="sm" variant="outline" onClick={() => { setShowPasswordDialog(true); setGeneratedPassword(""); }} disabled={saving || !member?.email}>
-                Imposta password
-              </Button>
-              <Button size="sm" variant="outline" onClick={handleGeneratePassword} disabled={saving || !member?.email}>
-                Genera password
-              </Button>
-            </div>
-            {!member?.email && <p className="text-xs text-warning mt-2">Il socio non ha un'email: impossibile creare l'account portale</p>}
-            {generatedPassword && (
-              <div className="mt-3 p-3 rounded-lg bg-muted">
-                <p className="text-xs text-muted-foreground mb-1">Password generata:</p>
-                <p className="font-mono text-sm font-medium break-all">{generatedPassword}</p>
-                <p className="text-xs text-warning mt-1">Comunica questa password al socio</p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Schede di allenamento */}
-        <Card className="border-0 shadow-sm">
-          <CardHeader className="pb-3 flex-row items-center justify-between space-y-0">
-            <CardTitle className="text-sm font-heading flex items-center gap-2"><Dumbbell className="w-4 h-4" /> Schede di allenamento</CardTitle>
-            {/* Si compone nell'editor, non qui: una scheda è righe di serie, e questa è
-                la vista d'insieme di un socio. Il socio arriva già scelto. */}
-            <Button variant="ghost" size="sm" className="text-xs" asChild>
-              <Link to={`/allenamento/schede/nuova?tipo=assegnata&member_id=${id}`}>
-                <Plus className="w-3.5 h-3.5 mr-1" aria-hidden="true" /> Nuova
-              </Link>
-            </Button>
-          </CardHeader>
-          <CardContent>
-            {exercisePlans.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-4 text-center">Nessuna scheda assegnata</p>
-            ) : (
-              <div className="space-y-3">
-                {exercisePlans.map(ep => {
-                  const serie = totaleSerieScheda(ep.routines);
-                  return (
-                    <Link
-                      key={ep.id}
-                      to={`/allenamento/schede/${ep.id}`}
-                      className="block p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors"
-                    >
-                      <p className="text-sm font-medium">{ep.name}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {ep.routines?.length || 0} routine · {totaleEsercizi(ep.routines)} esercizi · {serie} serie ·
-                        {" "}Assegnata il {formatData(ep.assigned_date, "media")}
-                      </p>
-                      {ep.notes && <p className="text-xs text-muted-foreground mt-1 italic">{ep.notes}</p>}
-                    </Link>
-                  );
-                })}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Ultimi allenamenti: la scheda dice cosa è stato prescritto, questa dice se
-            viene seguita. Senza, l'unico modo di saperlo era chiederlo al socio. */}
-        <Card className="border-0 shadow-sm">
-          <CardHeader className="pb-3 flex-row items-center justify-between space-y-0">
-            <CardTitle className="text-sm font-heading flex items-center gap-2">
-              <History className="w-4 h-4" aria-hidden="true" /> Ultimi allenamenti
-            </CardTitle>
-            {allenamenti.length > 0 && (
-              <Button variant="ghost" size="sm" className="text-xs" asChild>
-                <Link to="/allenamento/svolti">Vedi tutti</Link>
-              </Button>
-            )}
-          </CardHeader>
-          <CardContent>
-            {allenamenti.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-4 text-center">
-                Non ha ancora registrato nessun allenamento
-              </p>
-            ) : (
-              <ul className="divide-y divide-border">
-                {allenamenti.slice(0, 5).map(sessione => (
-                  <li key={sessione.id} className="py-2 flex items-center justify-between gap-2">
-                    <span className="min-w-0">
-                      <span className="block text-sm font-medium truncate">{sessione.routine_name}</span>
-                      <span className="block text-xs text-muted-foreground truncate">
-                        {sessione.plan_name} · {formatDataOra(sessione.iniziata_alle)}
-                      </span>
-                    </span>
-                    <span className="text-xs text-muted-foreground whitespace-nowrap tabular-nums">
-                      {sessione.terminata_alle ? formatDurata(durataSessione(sessione)) : "in corso"}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Upcoming Bookings */}
-        <Card className="border-0 shadow-sm lg:col-span-2">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-heading flex items-center gap-2"><Calendar className="w-4 h-4" /> Prenotazioni</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {bookings.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-4 text-center">Nessuna prenotazione</p>
-            ) : (
-              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                {bookings.map(b => (
-                  <div key={b.id} className="p-3 rounded-lg bg-muted/50 flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium">{b._course_name || "Corso"}</p>
-                      <p className="text-xs text-muted-foreground">{b._date ? formatData(b._date, "giorno") : "—"}</p>
-                    </div>
-                    <StatusBadge status={b.status} />
+                  <div className="flex-1 min-w-0">
+                    {/* Il codice del minuto è quello da confrontare con il telefono del socio;
+                        la credenziale sotto è ciò che si revoca, e non cambia mai da sé. */}
+                    <p className="font-mono text-sm font-medium break-all">{codiceDinamico || "—"}</p>
+                    {qrAccess.stato === "attivo" && (
+                      <p className="text-xs text-muted-foreground">Cambia tra {secondiResidui}s</p>
+                    )}
+                    <p className="text-[11px] text-muted-foreground font-mono break-all mt-1">
+                      Credenziale: {qrAccess.codice}
+                    </p>
+                    <p className="text-xs text-muted-foreground">Generata il {formatData(qrAccess.data_generazione, "media")}</p>
+                    <Badge variant="outline" className={`mt-1 text-xs ${qrAccess.stato === "attivo" ? "bg-success/10 text-success border-success/30" : "bg-destructive/10 text-destructive border-destructive/30"}`}>
+                      {qrAccess.stato === "attivo" ? "Attivo" : "Revocato"}
+                    </Badge>
                   </div>
-                ))}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground py-2 text-center">Nessun QR generato</p>
+              )}
+              <div className="flex gap-2 mt-3">
+                {qrAccess?.stato === "attivo" && (
+                  <Button size="sm" variant="outline" onClick={handleRevokeQR} disabled={saving}>
+                    Revoca
+                  </Button>
+                )}
+                <Button size="sm" variant="outline" onClick={handleRegenerateQR} disabled={saving}>
+                  <RefreshCw className="w-3 h-3 mr-1" /> {qrAccess ? "Rigenera" : "Genera"}
+                </Button>
               </div>
-            )}
+            </section>
+
+            <section aria-labelledby="portale-socio" className="border-t border-border pt-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h3 id="portale-socio" className="text-xs font-medium uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
+                  <KeyRound className="w-3.5 h-3.5" aria-hidden="true" /> Portale socio
+                </h3>
+                <p className="text-xs text-muted-foreground">
+                  Ultimo accesso: {portalAccount?.last_activity_date ? formatDataOra(portalAccount.last_activity_date) : "Mai"}
+                </p>
+              </div>
+              {/* L'account del portale si crea con l'email del socio: senza, i pulsanti restano
+                  spenti e il perché si legge passandoci sopra. */}
+              <div className="flex gap-2 mt-3" title={member.email ? undefined : "Serve l'email del socio per creare l'account del portale"}>
+                <Button size="sm" variant="outline" onClick={() => { setShowPasswordDialog(true); setGeneratedPassword(""); }} disabled={saving || !member.email}>
+                  Imposta password
+                </Button>
+                <Button size="sm" variant="outline" onClick={handleGeneratePassword} disabled={saving || !member.email}>
+                  Genera password
+                </Button>
+              </div>
+              {generatedPassword && (
+                <div className="mt-3 p-3 rounded-lg bg-muted">
+                  <p className="text-xs text-muted-foreground mb-1">Password generata:</p>
+                  <p className="font-mono text-sm font-medium break-all">{generatedPassword}</p>
+                  <p className="text-xs text-warning mt-1">Comunica questa password al socio</p>
+                </div>
+              )}
+            </section>
           </CardContent>
         </Card>
       </div>
@@ -535,13 +451,15 @@ export default function MemberDetail() {
                 <SelectTrigger><SelectValue placeholder="Seleziona un abbonamento" /></SelectTrigger>
                 <SelectContent>
                   {plans.map(p => (
-                    <SelectItem key={p.id} value={p.id}>{p.name} — {formatEuro(p.price)}</SelectItem>
+                    <SelectItem key={p.id} value={p.id}>{p.name} — {descriviDurata(p.durata_valore, p.durata_unita)} — {formatEuro(p.price)}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
             <div><Label>Data inizio abbonamento</Label><Input type="date" value={subForm.start_date} onChange={e => setSubForm({...subForm, start_date: e.target.value})} /></div>
             {dateError && <p className="text-xs text-destructive font-medium -mt-1">{dateError}</p>}
+            {scadenzaProposta && <p className="text-xs text-muted-foreground">Valido fino al {formatData(scadenzaProposta, "media")} compreso.</p>}
+            {showSubForm && plans.length === 0 && <p className="text-xs text-muted-foreground">Nessun abbonamento in vendita: controlla stato e data massima nel catalogo.</p>}
             <Button type="submit" className="w-full" disabled={!subForm.plan_id || saving}>
               {saving ? "Registrazione..." : "Crea abbonamento"}
             </Button>
@@ -549,7 +467,7 @@ export default function MemberDetail() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={!!anagrafica} onOpenChange={(aperta) => !aperta && setAnagrafica(null)}>
+      <Dialog open={!!anagrafica} onOpenChange={(aperta) => !aperta && chiudiAnagrafica()}>
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle>Modifica anagrafica</DialogTitle></DialogHeader>
           {anagrafica && (
@@ -560,9 +478,7 @@ export default function MemberDetail() {
                 </p>
               )}
               <CampiAnagrafica valori={anagrafica} onChange={setAnagrafica} />
-              {motivoAnagraficaIncompleta(anagrafica) && (
-                <p className="text-xs text-muted-foreground">{motivoAnagraficaIncompleta(anagrafica)}</p>
-              )}
+              <SceltaFoto socio={anagrafica} attuale={member.foto_url} file={foto.file} rimossa={foto.rimossa} onChange={setFoto} />
               <Button type="submit" className="w-full" disabled={Boolean(motivoAnagraficaIncompleta(anagrafica)) || saving}>
                 {saving ? "Salvataggio..." : "Salva"}
               </Button>
