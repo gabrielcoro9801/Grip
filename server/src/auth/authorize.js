@@ -27,6 +27,12 @@ const ENTITY_MODULES = {
 	QRAccesso: 'crm_members',
 	MemberDocument: 'crm_documents',
 
+	// Chi non è ancora socio, e la cronologia di cosa gli si è detto. La cronologia passa dal
+	// modulo per la lettura, ma dall'endpoint generico non si scrive affatto (vedi hooks.js):
+	// l'autore di una nota lo decide il token, non il corpo della richiesta.
+	Lead: 'crm_leads',
+	LeadAttivita: 'crm_leads',
+
 	// Corsi, calendario e prenotazioni.
 	Course: 'calendar',
 	Category: 'calendar',

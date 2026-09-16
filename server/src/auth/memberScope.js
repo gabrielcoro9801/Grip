@@ -67,9 +67,10 @@ export function colonnaProprietarioScrittura(entityName) {
 
 // Le prenotazioni fanno eccezione: servono tutte, perché è da quelle che si contano i posti
 // liberi e la lista d'attesa di ogni lezione. Quello che non serve è sapere *chi* ha
-// prenotato, quindi il nome viene rimosso dalla risposta.
+// prenotato, quindi il nome viene rimosso dalla risposta. Lo stesso vale per il lead che
+// viene a provare e per chi si è presentato: al socio arrivano solo posti occupati.
 const CAMPI_NASCOSTI = {
-	Booking: ['member_name'],
+	Booking: ['member_name', 'lead_id', 'presenza'],
 };
 
 // Le uniche cose che un socio crea da sé: i propri allenamenti — la sessione che avvia e

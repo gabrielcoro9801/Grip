@@ -20,7 +20,7 @@
  *   cd server && npm run verifica:pagine
  */
 import bcrypt from 'bcryptjs';
-import { inArray } from 'drizzle-orm';
+import { eq, and, inArray } from 'drizzle-orm';
 import { chromium } from 'playwright';
 import { buildApp } from '../src/app.js';
 import { db, pool } from '../src/db/client.js';
@@ -28,6 +28,7 @@ import {
 	members, staffAccounts, subscriptions, memberDocuments, qrAccessi,
 	rooms, courses, categories, events, sessions, bookings,
 	exercises, exercisePlans, workoutSessions, workoutLogs,
+	leads, organizations, numberingCounters, auditLogs,
 } from '../src/db/schema/index.js';
 
 const PASSWORD = 'verifica-pagine-1234';
@@ -47,12 +48,16 @@ const NOME_SOCIO = 'Socio Giro Pagine';
 const CODICE_SOCIO = '009902';
 const SCHEDA = `Scheda Verifica ${suffisso}`;
 const ESERCIZIO = `Panca Verifica ${suffisso}`;
+// Due lead: uno viene a provare fra tre giorni e deve comparire in Dashboard; l'altro ha
+// provato ieri, e su di lui si fa il lavoro vero — segnare che è venuto, e iscriverlo.
+const LEAD_PREVISTO = `Lead Previsto ${suffisso}`;
+const LEAD_PROVATO = `Lead Provato ${suffisso}`;
 
 const PAGINE_STAFF = [
-	['/', null], ['/crm', null], ['/crm/abbonamenti', null], ['/crm/iscrizioni', null],
+	['/', LEAD_PREVISTO], ['/crm', null], ['/crm/lead', LEAD_PREVISTO], ['/crm/abbonamenti', null], ['/crm/iscrizioni', null],
 	['/allenamento', null], ['/allenamento/modelli', null], ['/allenamento/assegnate', null],
 	['/allenamento/svolti', null],
-	['/calendario', null], ['/calendario/prenotazioni', null], ['/calendario/corsi', null],
+	['/calendario', null], ['/calendario/prenotazioni', LEAD_PREVISTO], ['/calendario/corsi', null],
 	['/calendario/sale', null], ['/calendario/istruttori', null], ['/calendario/categorie', null],
 	['/admin', null], ['/log-audit', null],
 ];
@@ -119,8 +124,13 @@ let idLezione;
 let idEsercizio;
 let idScheda;
 let idAllenamento;
+const idLead = [];
+let idLezioneIeri;
+let contatoreIniziale;
+let idEnte;
 
 const oggi = new Date().toISOString().split('T')[0];
+const ieri = new Date(Date.now() - 86400000).toISOString().split('T')[0];
 const fraTreGiorni = new Date(Date.now() + 3 * 86400000).toISOString().split('T')[0];
 const fraUnAnno = new Date(Date.now() + 365 * 86400000).toISOString().split('T')[0];
 
@@ -182,6 +192,39 @@ try {
 		.returning();
 	idPrenotazioni.push(...prenotate.map((p) => p.id));
 
+	const [lezioneIeri] = await db
+		.insert(sessions)
+		.values({ eventId: evento.id, date: ieri, startTime: '18:30', endTime: '19:30', roomId: sala.id, capacity: 8, status: 'active' })
+		.returning();
+	idLezioneIeri = lezioneIeri.id;
+	const lead = await db
+		.insert(leads)
+		.values([
+			{ fullName: LEAD_PREVISTO, fonte: 'instagram', stato: 'prova_prenotata', corsoInteresseId: corso.id, consensoPrivacy: true },
+			{ fullName: LEAD_PROVATO, fonte: 'passaggio', stato: 'prova_prenotata', corsoInteresseId: corso.id, consensoPrivacy: true },
+		])
+		.returning();
+	idLead.push(...lead.map((l) => l.id));
+	const [previsto, provato] = lead;
+	const prove = await db
+		.insert(bookings)
+		.values([
+			{ sessionId: lezione.id, leadId: previsto.id, memberName: LEAD_PREVISTO, status: 'confirmed' },
+			{ sessionId: lezioneIeri.id, leadId: provato.id, memberName: LEAD_PROVATO, status: 'confirmed' },
+		])
+		.returning();
+	idPrenotazioni.push(...prove.map((p) => p.id));
+	PAGINE_STAFF.push([`/crm/lead/${provato.id}`, LEAD_PROVATO]);
+
+	// L'iscrizione consuma un codice socio: a fine giro il contatore torna dov'era.
+	const [ente] = await db.select().from(organizations).limit(1);
+	idEnte = ente?.id;
+	if (idEnte) {
+		const [c] = await db.select().from(numberingCounters)
+			.where(and(eq(numberingCounters.organizationId, idEnte), eq(numberingCounters.scope, 'codice_socio')));
+		contatoreIniziale = c?.value ?? null;
+	}
+
 	// Una scheda assegnata e un allenamento **aperto**: è la schermata che si usa mentre ci
 	// si allena, ed è quella che non si può provare senza avere un allenamento in corso.
 	const [esercizio] = await db
@@ -234,6 +277,50 @@ try {
 	await entra(pagStaff, BASE, '/', emailStaff);
 	for (const [percorso, atteso] of PAGINE_STAFF) await apri(pagStaff, percorso, atteso, BASE);
 
+	// Il lavoro al banco il giorno dopo una prova: segnare che la persona è venuta, e
+	// iscriverla. Ognuna scrive più righe insieme sul server — presenza, stato, cronologia, e
+	// poi un socio intero — e l'unico modo di sapere che funzionano è guardare il database
+	// dopo il clic.
+	console.log('\nLAVORARE UN LEAD (non solo aprirlo)');
+	const idProvato = idLead[1];
+	await pagStaff.goto(`${BASE}/crm/lead/${idProvato}`, { waitUntil: 'networkidle' });
+	await pagStaff.waitForTimeout(1200);
+	const presente = pagStaff.getByRole('button', { name: /^Presente$/ }).first();
+	if (await presente.count()) {
+		await presente.click();
+		await pagStaff.waitForTimeout(1800);
+		const [dopo] = await db.select().from(leads).where(eq(leads.id, idProvato));
+		const ok = dopo.stato === 'prova_svolta';
+		if (!ok) problemi.push({ percorso: 'segnare la presenza', errori: [`stato del lead: ${dopo.stato}`], testo: '' });
+		console.log(`  ${ok ? 'OK     ' : 'ROTTA  '} la presenza alla prova porta il lead a "prova svolta"`);
+	} else {
+		problemi.push({ percorso: 'segnare la presenza', errori: ['pulsante non trovato'], testo: '' });
+		console.log('  ROTTA   la presenza non si può segnare: pulsante non trovato');
+	}
+
+	const iscrivi = pagStaff.getByRole('button', { name: /Iscrivi come socio/ }).first();
+	if (await iscrivi.count()) {
+		await iscrivi.click();
+		await pagStaff.getByRole('button', { name: /^Iscrivi$/ }).click();
+		await pagStaff.waitForTimeout(2500);
+		const [dopo] = await db.select().from(leads).where(eq(leads.id, idProvato));
+		const [socio] = dopo.convertitoMemberId
+			? await db.select().from(members).where(eq(members.id, dopo.convertitoMemberId))
+			: [];
+		const ok = dopo.stato === 'iscritto' && socio?.fullName === LEAD_PROVATO && pagStaff.url().includes(`/crm/soci/${socio?.id}`);
+		if (!ok) {
+			problemi.push({
+				percorso: 'iscrivere il lead',
+				errori: [`stato ${dopo.stato}, socio ${socio?.fullName ?? 'assente'}, pagina ${pagStaff.url()}`],
+				testo: '',
+			});
+		}
+		console.log(`  ${ok ? 'OK     ' : 'ROTTA  '} l'iscrizione crea il socio e apre la sua scheda`);
+	} else {
+		problemi.push({ percorso: 'iscrivere il lead', errori: ['pulsante non trovato'], testo: '' });
+		console.log('  ROTTA   il lead non si può iscrivere: pulsante non trovato');
+	}
+
 	console.log('\nPORTALE SOCI  (con dati seminati: si pretende di rivederli)');
 	const pagSocio = await (await browser.newContext()).newPage();
 	await entra(pagSocio, BASE, '/member-portal', emailSocio);
@@ -281,6 +368,23 @@ try {
 	if (idScheda) await db.delete(exercisePlans).where(inArray(exercisePlans.id, [idScheda]));
 	if (idEsercizio) await db.delete(exercises).where(inArray(exercises.id, [idEsercizio]));
 	if (idPrenotazioni.length) await db.delete(bookings).where(inArray(bookings.id, idPrenotazioni));
+	if (idLead.length) {
+		const convertiti = (await db.select({ id: leads.convertitoMemberId }).from(leads).where(inArray(leads.id, idLead)))
+			.map((l) => l.id)
+			.filter(Boolean);
+		await db.delete(bookings).where(inArray(bookings.leadId, idLead));
+		await db.delete(leads).where(inArray(leads.id, idLead));
+		if (convertiti.length) {
+			await db.delete(auditLogs).where(inArray(auditLogs.entitaId, convertiti));
+			await db.delete(members).where(inArray(members.id, convertiti));
+		}
+	}
+	if (idEnte && contatoreIniziale !== undefined) {
+		const dove = and(eq(numberingCounters.organizationId, idEnte), eq(numberingCounters.scope, 'codice_socio'));
+		if (contatoreIniziale === null) await db.delete(numberingCounters).where(dove);
+		else await db.update(numberingCounters).set({ value: contatoreIniziale }).where(dove);
+	}
+	if (idLezioneIeri) await db.delete(sessions).where(inArray(sessions.id, [idLezioneIeri]));
 	if (idLezione) await db.delete(sessions).where(inArray(sessions.id, [idLezione]));
 	if (idEvento) await db.delete(events).where(inArray(events.id, [idEvento]));
 	if (idCorso) await db.delete(courses).where(inArray(courses.id, [idCorso]));
@@ -294,9 +398,9 @@ try {
 	await pool.end();
 }
 
-// I controlli sono le pagine più le due prove d'uso: contarli tutti, o un fallimento
+// I controlli sono le pagine più le quattro prove d'uso: contarli tutti, o un fallimento
 // nell'interazione si nasconderebbe dietro un "23/23 pagine" rassicurante.
-const totale = PAGINE_STAFF.length + PAGINE_SOCIO.length + 2;
+const totale = PAGINE_STAFF.length + PAGINE_SOCIO.length + 4;
 console.log(`\n${totale - problemi.length}/${totale} controlli superati`);
 if (problemi.length) {
 	console.log('\nDettaglio:');
