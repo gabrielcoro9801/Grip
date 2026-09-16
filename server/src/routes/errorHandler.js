@@ -8,9 +8,18 @@ const PG_ERROR_MESSAGES = {
 	23514: 'Valore non valido per un vincolo del campo (check constraint).',
 };
 
+// Per alcuni vincoli il messaggio generico non dice cosa fare. Il nome del vincolo arriva da
+// Postgres ed è nostro (lo decide lo schema): non rivela nulla dei dati, a differenza di
+// `error.detail`.
+const VINCOLI_CON_MESSAGGIO = {
+	members_codice_fiscale_univoco: 'Esiste già un socio con questo codice fiscale.',
+	canali_contatto_nome_unique: 'Esiste già un canale con questo nome.',
+	leads_canale_id_canali_contatto_id_fk: 'Il canale è usato da alcuni contatti: disattivalo invece di eliminarlo.',
+};
+
 export function registerPgErrorHandler(fastify) {
 	fastify.setErrorHandler((error, request, reply) => {
-		const message = PG_ERROR_MESSAGES[error.code];
+		const message = VINCOLI_CON_MESSAGGIO[error.constraint] ?? PG_ERROR_MESSAGES[error.code];
 		if (message) {
 			// `error.detail` di Postgres contiene il valore che ha violato il vincolo — cose
 			// come «Key (email)=(vittima@example.com) already exists». Rimandarlo al client

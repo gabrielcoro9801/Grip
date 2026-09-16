@@ -34,7 +34,7 @@ before(async () => {
 	const suffisso = Date.now();
 	const [socio] = await db
 		.insert(members)
-		.values({ fullName: 'Socio QR', email: `socio.qr.${suffisso}@test.local` })
+		.values({ nome: 'Socio', cognome: 'QR', email: `socio.qr.${suffisso}@test.local` })
 		.returning();
 	idSocio = socio.id;
 

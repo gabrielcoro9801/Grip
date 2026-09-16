@@ -10,14 +10,18 @@ import { Label } from "@/ui/primitivi/label";
 import { Input } from "@/ui/primitivi/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/ui/primitivi/select";
 import StatusBadge from "@/ui/StatusBadge";
-import { ArrowLeft, Plus, FileText, CreditCard, Dumbbell, Shield, Calendar, QrCode, KeyRound, RefreshCw, History } from "lucide-react";
+import { ArrowLeft, Plus, CreditCard, Dumbbell, Shield, Calendar, QrCode, KeyRound, RefreshCw, History, Pencil } from "lucide-react";
+import CampiAnagrafica, { anagraficaDi, motivoAnagraficaIncompleta } from "@/staff/components/soci/CampiAnagrafica";
+import DocumentiSocio from "@/staff/components/soci/DocumentiSocio";
+import { canEdit } from "@/staff/lib/permissions";
+import { etichettaSesso } from "@/core/domain/anagrafica";
 import { generateQRCode, generaPasswordTemporanea } from "@/staff/lib/qrUtils";
 import { qrDataUrl } from "@/ui/qr/qrImmagine";
 import { useQrDinamico } from "@/ui/hooks/useQrDinamico";
 import { logAction } from "@/staff/lib/auditLog";
 import { useToast } from "@/ui/primitivi/use-toast";
 import { LoadingState } from "@/ui/Spinner";
-import { formatData, formatDataOra, formatEuro, toIsoDate, aggiungiGiorni, giorniAllaData } from "@/core/domain/format";
+import { formatData, formatDataOra, formatEuro, toIsoDate, aggiungiGiorni } from "@/core/domain/format";
 import { totaleSerieScheda, totaleEsercizi, formatDurata, durataSessione } from "@/core/domain/scheda";
 
 export default function MemberDetail() {
@@ -33,11 +37,12 @@ export default function MemberDetail() {
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showSubForm, setShowSubForm] = useState(false);
-  const [showDocForm, setShowDocForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [subForm, setSubForm] = useState({ plan_id: "", start_date: new Date().toISOString().split("T")[0] });
   const [dateError, setDateError] = useState("");
-  const [docForm, setDocForm] = useState({ document_type: "Certificato Medico", file_name: "", expiry_date: "", notes: "", caricato_da: "" });
+  // L'anagrafica in modifica, o null quando la finestra è chiusa.
+  const [anagrafica, setAnagrafica] = useState(null);
+  const puoModificare = canEdit(staffUser?.ruolo, "crm_members");
   const [qrAccess, setQrAccess] = useState(null);
   const [portalAccount, setPortalAccount] = useState(null);
   const [showPasswordDialog, setShowPasswordDialog] = useState(false);
@@ -133,12 +138,24 @@ export default function MemberDetail() {
     }
   };
 
-  const handleNewDoc = async (e) => {
+  const salvaAnagrafica = async (e) => {
     e.preventDefault();
-    await api.entities.MemberDocument.create({ member_id: id, ...docForm, caricato_da: docForm.caricato_da || staffUser?.nome || "" });
-    setShowDocForm(false);
-    setDocForm({ document_type: "Certificato Medico", file_name: "", expiry_date: "", notes: "", caricato_da: "" });
-    loadData();
+    const dati = { ...anagrafica };
+    // La data del consenso si fissa quando il consenso arriva, non a ogni salvataggio.
+    if (dati.gdpr_consent && !member.gdpr_consent) dati.gdpr_consent_date = toIsoDate(new Date());
+    if (!dati.gdpr_consent) dati.gdpr_consent_date = null;
+    setSaving(true);
+    try {
+      await api.entities.Member.update(id, dati);
+      await logAction(staffUser, "update", "member", `${dati.nome} ${dati.cognome}`.trim(), id, "Anagrafica modificata");
+      toast({ title: "Anagrafica aggiornata" });
+      setAnagrafica(null);
+      loadData();
+    } catch (err) {
+      toast({ title: "Anagrafica non salvata", description: err.message, variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleRevokeQR = async () => {
@@ -265,6 +282,10 @@ export default function MemberDetail() {
             </span>
           )}
           <div className="flex flex-wrap gap-3 mt-1 text-sm text-muted-foreground">
+            {member.codice_fiscale
+              ? <span className="font-mono">{member.codice_fiscale}</span>
+              : <span className="text-destructive">Codice fiscale mancante</span>}
+            {member.sesso && <span>{etichettaSesso(member.sesso)}</span>}
             {member.email && <span>{member.email}</span>}
             {member.phone && <span>{member.phone}</span>}
           </div>
@@ -278,6 +299,11 @@ export default function MemberDetail() {
             )}
           </div>
         </div>
+        {puoModificare && (
+          <Button size="sm" variant="outline" onClick={() => setAnagrafica(anagraficaDi(member))}>
+            <Pencil className="w-3.5 h-3.5 mr-1" /> Modifica anagrafica
+          </Button>
+        )}
       </div>
 
       <div className="grid lg:grid-cols-2 gap-6">
@@ -310,37 +336,7 @@ export default function MemberDetail() {
           </CardContent>
         </Card>
 
-        {/* Documents */}
-        <Card className="border-0 shadow-sm">
-          <CardHeader className="pb-3 flex flex-row items-center justify-between">
-            <CardTitle className="text-sm font-heading flex items-center gap-2"><FileText className="w-4 h-4" /> Documenti</CardTitle>
-            <Button size="sm" variant="outline" onClick={() => setShowDocForm(true)}><Plus className="w-3 h-3 mr-1" /> Carica</Button>
-          </CardHeader>
-          <CardContent>
-            {documents.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-4 text-center">Nessun documento</p>
-            ) : (
-              <div className="space-y-3">
-                {documents.map(doc => {
-                  const daysLeft = giorniAllaData(doc.expiry_date);
-                  return (
-                    <div key={doc.id} className="p-3 rounded-lg bg-muted/50 flex items-center justify-between">
-                      <div>
-                        <p className="text-sm font-medium">{doc.document_type}</p>
-                        <p className="text-xs text-muted-foreground">{doc.file_name || "Nessun file"}</p>
-                      </div>
-                      {daysLeft !== null && (
-                        <Badge variant="outline" className={`text-xs ${daysLeft < 0 ? "bg-destructive/10 text-destructive border-destructive/30" : daysLeft < 30 ? "bg-warning/10 text-warning border-warning/30" : "bg-success/10 text-success border-success/30"}`}>
-                          {daysLeft < 0 ? "Scaduto" : `${daysLeft}g residui`}
-                        </Badge>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+        <DocumentiSocio socio={member} documenti={documents} puoModificare={puoModificare} staffUser={staffUser} onCambio={loadData} />
 
         {/* QR Accesso */}
         <Card className="border-0 shadow-sm">
@@ -553,26 +549,25 @@ export default function MemberDetail() {
         </DialogContent>
       </Dialog>
 
-      {/* New Document Dialog */}
-      <Dialog open={showDocForm} onOpenChange={setShowDocForm}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader><DialogTitle>Aggiungi documento</DialogTitle></DialogHeader>
-          <form onSubmit={handleNewDoc} className="space-y-3">
-            <div>
-              <Label>Tipo</Label>
-              <Select value={docForm.document_type} onValueChange={v => setDocForm({...docForm, document_type: v})}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {["Certificato Medico", "Contratto", "Modulo Privacy", "Documento Identità", "Altro"].map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div><Label>Nome file</Label><Input value={docForm.file_name} onChange={e => setDocForm({...docForm, file_name: e.target.value})} placeholder="es. certificato.pdf" /></div>
-            <div><Label>Data scadenza</Label><Input type="date" value={docForm.expiry_date} onChange={e => setDocForm({...docForm, expiry_date: e.target.value})} /></div>
-            <div><Label>Note</Label><Input value={docForm.notes} onChange={e => setDocForm({...docForm, notes: e.target.value})} /></div>
-            <div><Label>Caricato da</Label><Input value={docForm.caricato_da} onChange={e => setDocForm({...docForm, caricato_da: e.target.value})} placeholder="Nome operatore" /></div>
-            <Button type="submit" className="w-full">Aggiungi documento</Button>
-          </form>
+      <Dialog open={!!anagrafica} onOpenChange={(aperta) => !aperta && setAnagrafica(null)}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader><DialogTitle>Modifica anagrafica</DialogTitle></DialogHeader>
+          {anagrafica && (
+            <form onSubmit={salvaAnagrafica} className="space-y-4">
+              {!member.codice_fiscale && (
+                <p className="text-sm rounded-lg bg-warning/10 px-3 py-2">
+                  Questo socio è stato registrato senza codice fiscale: per salvare va completato.
+                </p>
+              )}
+              <CampiAnagrafica valori={anagrafica} onChange={setAnagrafica} />
+              {motivoAnagraficaIncompleta(anagrafica) && (
+                <p className="text-xs text-muted-foreground">{motivoAnagraficaIncompleta(anagrafica)}</p>
+              )}
+              <Button type="submit" className="w-full" disabled={Boolean(motivoAnagraficaIncompleta(anagrafica)) || saving}>
+                {saving ? "Salvataggio..." : "Salva"}
+              </Button>
+            </form>
+          )}
         </DialogContent>
       </Dialog>
 

@@ -28,7 +28,7 @@ import {
 	members, staffAccounts, subscriptions, memberDocuments, qrAccessi,
 	rooms, courses, categories, events, sessions, bookings,
 	exercises, exercisePlans, workoutSessions, workoutLogs,
-	leads, organizations, numberingCounters, auditLogs,
+	leads, canaliContatto, organizations, numberingCounters, auditLogs,
 } from '../src/db/schema/index.js';
 
 const PASSWORD = 'verifica-pagine-1234';
@@ -48,16 +48,18 @@ const NOME_SOCIO = 'Socio Giro Pagine';
 const CODICE_SOCIO = '009902';
 const SCHEDA = `Scheda Verifica ${suffisso}`;
 const ESERCIZIO = `Panca Verifica ${suffisso}`;
-// Due lead: uno viene a provare fra tre giorni e deve comparire in Dashboard; l'altro ha
-// provato ieri, e su di lui si fa il lavoro vero — segnare che è venuto, e iscriverlo.
-const LEAD_PREVISTO = `Lead Previsto ${suffisso}`;
-const LEAD_PROVATO = `Lead Provato ${suffisso}`;
+// Un contatto e il suo canale: si pretende di rivederli nelle tre pagine dei lead, e poi il
+// contatto si trasforma in socio dal browser.
+const CANALE = `Canale Verifica ${suffisso}`;
+const COGNOME_LEAD = `Contatto${suffisso}`;
+const CF_LEAD = 'RSSMRA85T10A562S';
 
 const PAGINE_STAFF = [
-	['/', LEAD_PREVISTO], ['/crm', null], ['/crm/lead', LEAD_PREVISTO], ['/crm/abbonamenti', null], ['/crm/iscrizioni', null],
+	['/', null], ['/crm', null], ['/crm/abbonamenti', null], ['/crm/iscrizioni', null],
+	['/lead', COGNOME_LEAD], ['/lead/andamento', CANALE], ['/lead/canali', CANALE],
 	['/allenamento', null], ['/allenamento/modelli', null], ['/allenamento/assegnate', null],
 	['/allenamento/svolti', null],
-	['/calendario', null], ['/calendario/prenotazioni', LEAD_PREVISTO], ['/calendario/corsi', null],
+	['/calendario', null], ['/calendario/prenotazioni', null], ['/calendario/corsi', null],
 	['/calendario/sale', null], ['/calendario/istruttori', null], ['/calendario/categorie', null],
 	['/admin', null], ['/log-audit', null],
 ];
@@ -124,20 +126,19 @@ let idLezione;
 let idEsercizio;
 let idScheda;
 let idAllenamento;
-const idLead = [];
-let idLezioneIeri;
+let idCanale;
+let idLead;
 let contatoreIniziale;
 let idEnte;
 
 const oggi = new Date().toISOString().split('T')[0];
-const ieri = new Date(Date.now() - 86400000).toISOString().split('T')[0];
 const fraTreGiorni = new Date(Date.now() + 3 * 86400000).toISOString().split('T')[0];
 const fraUnAnno = new Date(Date.now() + 365 * 86400000).toISOString().split('T')[0];
 
 try {
 	const [socio] = await db
 		.insert(members)
-		.values({ fullName: NOME_SOCIO, email: emailSocio, codiceSocio: CODICE_SOCIO, phone: '333 1234567' })
+		.values({ nome: 'Socio', cognome: 'Giro Pagine', email: emailSocio, codiceSocio: CODICE_SOCIO, phone: '333 1234567' })
 		.returning();
 	idSocio = socio.id;
 
@@ -159,7 +160,7 @@ try {
 
 	const documenti = await db
 		.insert(memberDocuments)
-		.values({ memberId: socio.id, documentType: DOCUMENTO, fileName: 'certificato.pdf', expiryDate: fraUnAnno })
+		.values({ memberId: socio.id, documentType: 'certificato_medico', fileName: 'certificato.pdf', expiryDate: fraUnAnno })
 		.returning();
 	idDocumenti.push(...documenti.map((d) => d.id));
 
@@ -192,31 +193,15 @@ try {
 		.returning();
 	idPrenotazioni.push(...prenotate.map((p) => p.id));
 
-	const [lezioneIeri] = await db
-		.insert(sessions)
-		.values({ eventId: evento.id, date: ieri, startTime: '18:30', endTime: '19:30', roomId: sala.id, capacity: 8, status: 'active' })
-		.returning();
-	idLezioneIeri = lezioneIeri.id;
-	const lead = await db
+	const [canale] = await db.insert(canaliContatto).values({ nome: CANALE }).returning();
+	idCanale = canale.id;
+	const [lead] = await db
 		.insert(leads)
-		.values([
-			{ fullName: LEAD_PREVISTO, fonte: 'instagram', stato: 'prova_prenotata', corsoInteresseId: corso.id, consensoPrivacy: true },
-			{ fullName: LEAD_PROVATO, fonte: 'passaggio', stato: 'prova_prenotata', corsoInteresseId: corso.id, consensoPrivacy: true },
-		])
+		.values({ nome: 'Lucia', cognome: COGNOME_LEAD, dataContatto: oggi, canaleId: canale.id, sesso: 'F', annoNascita: 1994 })
 		.returning();
-	idLead.push(...lead.map((l) => l.id));
-	const [previsto, provato] = lead;
-	const prove = await db
-		.insert(bookings)
-		.values([
-			{ sessionId: lezione.id, leadId: previsto.id, memberName: LEAD_PREVISTO, status: 'confirmed' },
-			{ sessionId: lezioneIeri.id, leadId: provato.id, memberName: LEAD_PROVATO, status: 'confirmed' },
-		])
-		.returning();
-	idPrenotazioni.push(...prove.map((p) => p.id));
-	PAGINE_STAFF.push([`/crm/lead/${provato.id}`, LEAD_PROVATO]);
+	idLead = lead.id;
 
-	// L'iscrizione consuma un codice socio: a fine giro il contatore torna dov'era.
+	// La trasformazione consuma un codice socio: a fine giro il contatore torna dov'era.
 	const [ente] = await db.select().from(organizations).limit(1);
 	idEnte = ente?.id;
 	if (idEnte) {
@@ -277,48 +262,44 @@ try {
 	await entra(pagStaff, BASE, '/', emailStaff);
 	for (const [percorso, atteso] of PAGINE_STAFF) await apri(pagStaff, percorso, atteso, BASE);
 
-	// Il lavoro al banco il giorno dopo una prova: segnare che la persona è venuta, e
-	// iscriverla. Ognuna scrive più righe insieme sul server — presenza, stato, cronologia, e
-	// poi un socio intero — e l'unico modo di sapere che funzionano è guardare il database
-	// dopo il clic.
-	console.log('\nLAVORARE UN LEAD (non solo aprirlo)');
-	const idProvato = idLead[1];
-	await pagStaff.goto(`${BASE}/crm/lead/${idProvato}`, { waitUntil: 'networkidle' });
-	await pagStaff.waitForTimeout(1200);
-	const presente = pagStaff.getByRole('button', { name: /^Presente$/ }).first();
-	if (await presente.count()) {
-		await presente.click();
-		await pagStaff.waitForTimeout(1800);
-		const [dopo] = await db.select().from(leads).where(eq(leads.id, idProvato));
-		const ok = dopo.stato === 'prova_svolta';
-		if (!ok) problemi.push({ percorso: 'segnare la presenza', errori: [`stato del lead: ${dopo.stato}`], testo: '' });
-		console.log(`  ${ok ? 'OK     ' : 'ROTTA  '} la presenza alla prova porta il lead a "prova svolta"`);
+	// Trasformare un contatto e correggere un'anagrafica: sono le due finestre in cui un
+	// errore di validazione — un codice fiscale, un nome completo che non si ricalcola — non
+	// si vede aprendo la pagina. Si fa il clic, e si guarda il database.
+	console.log('\nLAVORARE UN CONTATTO (non solo aprirlo)');
+	await pagStaff.goto(`${BASE}/lead`, { waitUntil: 'networkidle' });
+	await pagStaff.waitForTimeout(1000);
+	const riga = pagStaff.locator('tr', { hasText: COGNOME_LEAD });
+	const trasforma = riga.getByRole('button', { name: /Trasforma in socio/ });
+	let socioCreato = null;
+	if (await trasforma.count()) {
+		await trasforma.click();
+		await pagStaff.locator('#anag-cf').fill(CF_LEAD);
+		await pagStaff.getByRole('button', { name: /^Crea il socio$/ }).click();
+		await pagStaff.waitForTimeout(2500);
+		[socioCreato] = await db.select().from(members).where(eq(members.codiceFiscale, CF_LEAD));
+		const leadRimasto = await db.select().from(leads).where(eq(leads.id, idLead));
+		const ok = socioCreato?.fullName === `Lucia ${COGNOME_LEAD}` && leadRimasto.length === 0
+			&& pagStaff.url().includes(`/crm/soci/${socioCreato?.id}`);
+		if (!ok) problemi.push({ percorso: 'trasformare un contatto', errori: [`socio ${socioCreato?.fullName ?? 'assente'}, lead rimasti ${leadRimasto.length}, pagina ${pagStaff.url()}`], testo: '' });
+		console.log(`  ${ok ? 'OK     ' : 'ROTTA  '} la trasformazione crea il socio, toglie il contatto e apre la scheda`);
 	} else {
-		problemi.push({ percorso: 'segnare la presenza', errori: ['pulsante non trovato'], testo: '' });
-		console.log('  ROTTA   la presenza non si può segnare: pulsante non trovato');
+		problemi.push({ percorso: 'trasformare un contatto', errori: ['pulsante non trovato'], testo: '' });
+		console.log('  ROTTA   il contatto non si può trasformare: pulsante non trovato');
 	}
 
-	const iscrivi = pagStaff.getByRole('button', { name: /Iscrivi come socio/ }).first();
-	if (await iscrivi.count()) {
-		await iscrivi.click();
-		await pagStaff.getByRole('button', { name: /^Iscrivi$/ }).click();
-		await pagStaff.waitForTimeout(2500);
-		const [dopo] = await db.select().from(leads).where(eq(leads.id, idProvato));
-		const [socio] = dopo.convertitoMemberId
-			? await db.select().from(members).where(eq(members.id, dopo.convertitoMemberId))
-			: [];
-		const ok = dopo.stato === 'iscritto' && socio?.fullName === LEAD_PROVATO && pagStaff.url().includes(`/crm/soci/${socio?.id}`);
-		if (!ok) {
-			problemi.push({
-				percorso: 'iscrivere il lead',
-				errori: [`stato ${dopo.stato}, socio ${socio?.fullName ?? 'assente'}, pagina ${pagStaff.url()}`],
-				testo: '',
-			});
-		}
-		console.log(`  ${ok ? 'OK     ' : 'ROTTA  '} l'iscrizione crea il socio e apre la sua scheda`);
+	const modifica = pagStaff.getByRole('button', { name: /Modifica anagrafica/ });
+	if (socioCreato && await modifica.count()) {
+		await modifica.click();
+		await pagStaff.locator('#anag-cognome').fill(`${COGNOME_LEAD} Bis`);
+		await pagStaff.getByRole('button', { name: /^Salva$/ }).click();
+		await pagStaff.waitForTimeout(2000);
+		const [dopo] = await db.select().from(members).where(eq(members.id, socioCreato.id));
+		const ok = dopo?.fullName === `Lucia ${COGNOME_LEAD} Bis`;
+		if (!ok) problemi.push({ percorso: "modificare l'anagrafica", errori: [`nome completo: ${dopo?.fullName}`], testo: '' });
+		console.log(`  ${ok ? 'OK     ' : 'ROTTA  '} cambiando il cognome si ricalcola il nome completo`);
 	} else {
-		problemi.push({ percorso: 'iscrivere il lead', errori: ['pulsante non trovato'], testo: '' });
-		console.log('  ROTTA   il lead non si può iscrivere: pulsante non trovato');
+		problemi.push({ percorso: "modificare l'anagrafica", errori: ['pulsante non trovato'], testo: '' });
+		console.log("  ROTTA   l'anagrafica non si può modificare: pulsante non trovato");
 	}
 
 	console.log('\nPORTALE SOCI  (con dati seminati: si pretende di rivederli)');
@@ -368,23 +349,6 @@ try {
 	if (idScheda) await db.delete(exercisePlans).where(inArray(exercisePlans.id, [idScheda]));
 	if (idEsercizio) await db.delete(exercises).where(inArray(exercises.id, [idEsercizio]));
 	if (idPrenotazioni.length) await db.delete(bookings).where(inArray(bookings.id, idPrenotazioni));
-	if (idLead.length) {
-		const convertiti = (await db.select({ id: leads.convertitoMemberId }).from(leads).where(inArray(leads.id, idLead)))
-			.map((l) => l.id)
-			.filter(Boolean);
-		await db.delete(bookings).where(inArray(bookings.leadId, idLead));
-		await db.delete(leads).where(inArray(leads.id, idLead));
-		if (convertiti.length) {
-			await db.delete(auditLogs).where(inArray(auditLogs.entitaId, convertiti));
-			await db.delete(members).where(inArray(members.id, convertiti));
-		}
-	}
-	if (idEnte && contatoreIniziale !== undefined) {
-		const dove = and(eq(numberingCounters.organizationId, idEnte), eq(numberingCounters.scope, 'codice_socio'));
-		if (contatoreIniziale === null) await db.delete(numberingCounters).where(dove);
-		else await db.update(numberingCounters).set({ value: contatoreIniziale }).where(dove);
-	}
-	if (idLezioneIeri) await db.delete(sessions).where(inArray(sessions.id, [idLezioneIeri]));
 	if (idLezione) await db.delete(sessions).where(inArray(sessions.id, [idLezione]));
 	if (idEvento) await db.delete(events).where(inArray(events.id, [idEvento]));
 	if (idCorso) await db.delete(courses).where(inArray(courses.id, [idCorso]));
@@ -395,6 +359,19 @@ try {
 	if (idAbbonamenti.length) await db.delete(subscriptions).where(inArray(subscriptions.id, idAbbonamenti));
 	if (idAccount.length) await db.delete(staffAccounts).where(inArray(staffAccounts.id, idAccount));
 	if (idSocio) await db.delete(members).where(inArray(members.id, [idSocio]));
+	if (idLead) await db.delete(leads).where(eq(leads.id, idLead));
+	const creati = await db.select({ id: members.id }).from(members).where(eq(members.codiceFiscale, CF_LEAD));
+	if (creati.length) {
+		const ids = creati.map((c) => c.id);
+		await db.delete(auditLogs).where(inArray(auditLogs.entitaId, ids));
+		await db.delete(members).where(inArray(members.id, ids));
+	}
+	if (idCanale) await db.delete(canaliContatto).where(eq(canaliContatto.id, idCanale));
+	if (idEnte && contatoreIniziale !== undefined) {
+		const dove = and(eq(numberingCounters.organizationId, idEnte), eq(numberingCounters.scope, 'codice_socio'));
+		if (contatoreIniziale === null) await db.delete(numberingCounters).where(dove);
+		else await db.update(numberingCounters).set({ value: contatoreIniziale }).where(dove);
+	}
 	await pool.end();
 }
 

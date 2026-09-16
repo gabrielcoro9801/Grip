@@ -4,6 +4,9 @@ import bcrypt from 'bcryptjs';
 import { firmaUrl, togliFirma } from '../lib/urlFirmati.js';
 import { db } from '../db/client.js';
 import { assegnaCodiceSocio } from '../lib/codiceSocio.js';
+import {
+	sessoValido, normalizzaCodiceFiscale, codiceFiscaleValido, motivoDocumentoNonValido, tipoDocumentoValido,
+} from '../../../shared/anagrafica.js';
 
 // Campi rimossi da ogni risposta, per entità.
 const HIDDEN_FIELDS = {
@@ -12,18 +15,57 @@ const HIDDEN_FIELDS = {
 
 // Entità che non possono essere create, modificate o cancellate dall'endpoint generico,
 // con il motivo mostrato a chi ci prova.
-//
-// La cronologia di un lead si scrive da /api/lead/:id/attivita, che prende l'autore dal
-// token: qui l'autore arriverebbe dal corpo, cioè chiunque potrebbe firmare una nota a nome
-// di un collega. E non si riscrive né si cancella, come il registro delle azioni.
-const CRONOLOGIA_LEAD = 'La cronologia di un lead si aggiorna dalla sua scheda, e non si modifica.';
-export const CREATE_FORBIDDEN = { LeadAttivita: CRONOLOGIA_LEAD };
-export const UPDATE_FORBIDDEN = { LeadAttivita: CRONOLOGIA_LEAD };
-export const DELETE_FORBIDDEN = { LeadAttivita: CRONOLOGIA_LEAD };
+export const CREATE_FORBIDDEN = {};
+export const UPDATE_FORBIDDEN = {};
+export const DELETE_FORBIDDEN = {};
 
 /** Motivo per cui una singola riga non è modificabile, se ce n'è uno. */
 export async function mutationBlockedReason() {
 	return null;
+}
+
+/**
+ * Un rifiuto dalla trasformazione in scrittura.
+ *
+ * Porta il codice 400, che il gestore degli errori (routes/errorHandler.js) rimanda al client
+ * col messaggio: chi compila il modulo deve leggere cosa correggere, non "errore interno".
+ */
+export function rifiuta(messaggio) {
+	const errore = new Error(messaggio);
+	errore.statusCode = 400;
+	return errore;
+}
+
+const presente = (corpo, campo) => Object.prototype.hasOwnProperty.call(corpo, campo);
+const vuoto = (v) => v === undefined || v === null || String(v).trim() === '';
+
+/**
+ * Le regole dell'anagrafica di un socio, valide per ogni strada da cui ne nasce uno: il modulo
+ * dei soci e la trasformazione di un lead (routes/lead.js).
+ *
+ * In creazione tutto deve esserci. In modifica si controlla solo quello che arriva: un socio
+ * registrato prima che il codice fiscale fosse obbligatorio resta modificabile nel resto, ma
+ * il codice non si può svuotare né scrivere sbagliato.
+ */
+export function anagraficaSocio(corpo, { creazione }) {
+	const { full_name: _calcolato, ...rest } = corpo ?? {};
+
+	for (const campo of ['nome', 'cognome']) {
+		if (presente(rest, campo)) rest[campo] = String(rest[campo] ?? '').trim();
+		if ((creazione || presente(rest, campo)) && vuoto(rest[campo])) {
+			throw rifiuta(campo === 'nome' ? 'Il nome è obbligatorio.' : 'Il cognome è obbligatorio.');
+		}
+	}
+	if ((creazione || presente(rest, 'sesso')) && !sessoValido(rest.sesso)) {
+		throw rifiuta('Indica il sesso: M, F o Altro.');
+	}
+	if (creazione || presente(rest, 'codice_fiscale')) {
+		if (vuoto(rest.codice_fiscale)) throw rifiuta('Il codice fiscale è obbligatorio.');
+		rest.codice_fiscale = normalizzaCodiceFiscale(rest.codice_fiscale);
+		if (!codiceFiscaleValido(rest.codice_fiscale)) throw rifiuta('Il codice fiscale non è valido: controlla di averlo scritto bene.');
+	}
+	if (!creazione) rest.updated_date = new Date().toISOString();
+	return rest;
 }
 
 // Trasformazioni in scrittura: il frontend continua a inviare `password` in chiaro
@@ -41,33 +83,53 @@ const WRITE_TRANSFORMS = {
 	// Il codice socio veniva calcolato nel browser sul massimo fra i soci *già caricati*
 	// in pagina: bastavano due iscrizioni contemporanee, o una lista non aggiornata, per
 	// assegnare lo stesso codice a due persone. Ora arriva dal contatore.
-	async Member(body) {
-		const rest = { ...(body ?? {}) };
-		if (!rest.codice_socio && rest.organization_id) {
+	//
+	// `full_name` si scarta: è calcolato dal database da nome e cognome, e scriverlo farebbe
+	// fallire l'inserimento.
+	async Member(body, { creazione }) {
+		const rest = anagraficaSocio(body, { creazione });
+		if (creazione && !rest.codice_socio && rest.organization_id) {
 			rest.codice_socio = await assegnaCodiceSocio(db, rest.organization_id);
 		}
 		return rest;
 	},
 
-	// Lo stato di un lead racconta cose successe — una prova prenotata, una persona che si è
-	// presentata, un'iscrizione — e cambia solo passando dalle rotte che le fanno succedere
-	// (routes/lead.js), che scrivono anche la cronologia. Se passasse di qui, basterebbe un
-	// salvataggio del modulo anagrafico per segnare "iscritto" un lead senza nessun socio.
+	// Tipo fra i tre ammessi, titolo per gli "altri", scadenza per il certificato. In modifica
+	// si controlla solo il tipo, se cambia: oggi i documenti si caricano e non si correggono.
+	async MemberDocument(body, { creazione }) {
+		const rest = { ...(body ?? {}) };
+		if (creazione) {
+			const motivo = motivoDocumentoNonValido(rest);
+			if (motivo) throw rifiuta(motivo);
+		} else if (presente(rest, 'document_type') && !tipoDocumentoValido(rest.document_type)) {
+			throw rifiuta('Tipo di documento non valido.');
+		}
+		return rest;
+	},
+
+	// Un contatto: i campi obbligatori li difende già il database; qui si ripuliscono i vuoti
+	// che i moduli mandano come stringa, perché un'email "" non è un'email.
 	async Lead(body) {
-		const { stato: _s, convertito_member_id: _m, convertito_il: _i, ...rest } = body ?? {};
-		const oggi = new Date().toISOString().slice(0, 10);
-		if (rest.consenso_privacy === true && !rest.consenso_privacy_data) rest.consenso_privacy_data = oggi;
-		if (rest.consenso_marketing === true && !rest.consenso_marketing_data) rest.consenso_marketing_data = oggi;
-		if (rest.consenso_privacy === false) rest.consenso_privacy_data = null;
-		if (rest.consenso_marketing === false) rest.consenso_marketing_data = null;
+		const rest = { ...(body ?? {}) };
+		for (const campo of ['nome', 'cognome']) {
+			if (presente(rest, campo)) rest[campo] = String(rest[campo] ?? '').trim();
+		}
+		for (const campo of ['telefono', 'email']) {
+			if (presente(rest, campo) && vuoto(rest[campo])) rest[campo] = null;
+		}
+		if (presente(rest, 'sesso') && !sessoValido(rest.sesso)) throw rifiuta('Indica il sesso: M, F o Altro.');
+		if ((presente(rest, 'nome') && !rest.nome) || (presente(rest, 'cognome') && !rest.cognome)) {
+			throw rifiuta('Nome e cognome sono obbligatori.');
+		}
 		rest.updated_date = new Date().toISOString();
 		return rest;
 	},
 };
 
-export async function applyWriteTransform(entityName, body) {
+/** @param opzioni { creazione: boolean } — alcune regole valgono solo quando la riga nasce. */
+export async function applyWriteTransform(entityName, body, { creazione = true } = {}) {
 	const transform = WRITE_TRANSFORMS[entityName];
-	return transform ? transform(body) : body;
+	return transform ? transform(body, { creazione }) : body;
 }
 
 export function stripHiddenFields(entityName, row) {

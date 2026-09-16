@@ -202,7 +202,7 @@ export default async function entityRoutes(fastify) {
 		const bloccato = await mutationBlockedReason(entityName, table, request.params.id, 'update');
 		if (bloccato) return reply.code(400).send({ error: bloccato });
 		const { dbNameToColumn } = getColumnMaps(table);
-		let body = await applyWriteTransform(entityName, togliFirmaInScrittura(request.body));
+		let body = await applyWriteTransform(entityName, togliFirmaInScrittura(request.body), { creazione: false });
 		// Nemmeno con una modifica si cambia intestatario: senza, un socio potrebbe
 		// spostare a un altro una riga sua, o prendersi la riga di qualcun altro in due passi.
 		if (request.memberId) body = forzaProprietario(entityName, body, request.memberId);

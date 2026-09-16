@@ -65,7 +65,7 @@ let idSocio;
 try {
 	const [socio] = await db
 		.insert(members)
-		.values({ fullName: 'Socio Verifica', email: emailSocio })
+		.values({ nome: 'Socio', cognome: 'Verifica', email: emailSocio })
 		.returning();
 	idSocio = socio.id;
 
