@@ -59,8 +59,8 @@ before(async () => {
 	const [socio, estraneo] = await db
 		.insert(members)
 		.values([
-			{ fullName: 'Socio API', email: `socio.api.${suffisso}@test.local`, codiceSocio: '009901', phone: '333' },
-			{ fullName: 'Estraneo API', email: `estraneo.api.${suffisso}@test.local` },
+			{ nome: 'Socio', cognome: 'API', email: `socio.api.${suffisso}@test.local`, codiceSocio: '009901', phone: '333' },
+			{ nome: 'Estraneo', cognome: 'API', email: `estraneo.api.${suffisso}@test.local` },
 		])
 		.returning();
 	idSocio = socio.id;
@@ -90,8 +90,8 @@ before(async () => {
 	const documenti = await db
 		.insert(memberDocuments)
 		.values([
-			{ memberId: socio.id, documentType: 'Certificato medico', fileName: 'certificato.pdf', expiryDate: fraUnaSettimana },
-			{ memberId: estraneo.id, documentType: "Documento dell'estraneo", fileName: 'altro.pdf' },
+			{ memberId: socio.id, documentType: 'certificato_medico', fileName: 'certificato.pdf', expiryDate: fraUnaSettimana },
+			{ memberId: estraneo.id, documentType: 'altro', titolo: "Documento dell'estraneo", fileName: 'altro.pdf' },
 		])
 		.returning();
 	idDocumenti.push(...documenti.map((d) => d.id));
@@ -199,7 +199,8 @@ describe('il socio vede le proprie cose, e solo quelle', () => {
 		const { documenti } = (await come(tokenSocio, '/api/member/v1/documenti')).json();
 
 		assert.equal(documenti.length, 1);
-		assert.equal(documenti[0].tipo, 'Certificato medico');
+		assert.equal(documenti[0].tipo, 'certificato_medico');
+		assert.equal(documenti[0].nome, 'Certificato medico');
 		assert.equal(documenti[0].scaduto, false);
 		assert.equal(documenti[0].in_scadenza, true);
 	});

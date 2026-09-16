@@ -1,11 +1,21 @@
 // Dominio CRM/membership: Member, Subscription, Plan, MemberDocument, QRAccesso.
 // Campi dedotti dall'uso reale nel codice (il datastore precedente non aveva schema).
-import { pgTable, uuid, varchar, text, boolean, integer, numeric, date, timestamp } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
+import { pgTable, uuid, varchar, text, boolean, integer, numeric, date, timestamp, check, uniqueIndex } from 'drizzle-orm/pg-core';
 
 // Anagrafica "socio" applicativo (login member, prenotazioni, documenti, QR).
 export const members = pgTable('members', {
 	id: uuid('id').defaultRandom().primaryKey(),
-	fullName: varchar('full_name', { length: 255 }).notNull(),
+	nome: varchar('nome', { length: 120 }).notNull(),
+	cognome: varchar('cognome', { length: 120 }).notNull(),
+	// Calcolato dal database, non si scrive. Lo leggono una ventina di punti — portale, QR,
+	// schede, prenotazioni — e tenerlo come colonna vera avrebbe voluto dire aggiornarlo in
+	// ognuno di quei posti, o accettare che un giorno dica un nome diverso da nome e cognome.
+	fullName: varchar('full_name', { length: 255 }).generatedAlwaysAs(sql`trim(nome || ' ' || cognome)`),
+	// Nullable solo perché i soci registrati prima non lo avevano: l'obbligo lo impone il
+	// server su ogni creazione e modifica (entities/hooks.js).
+	codiceFiscale: varchar('codice_fiscale', { length: 16 }),
+	sesso: varchar('sesso', { length: 8 }), // M | F | altro — vedi shared/anagrafica.js
 	email: varchar('email', { length: 255 }),
 	phone: varchar('phone', { length: 64 }),
 	dateOfBirth: date('date_of_birth'),
@@ -14,8 +24,8 @@ export const members = pgTable('members', {
 	emergencyContactPhone: varchar('emergency_contact_phone', { length: 64 }),
 	gdprConsent: boolean('gdpr_consent').default(false),
 	gdprConsentDate: date('gdpr_consent_date'),
-	// Il consenso alle comunicazioni promozionali, distinto da quello al trattamento: arriva
-	// dal lead quando si iscrive, e oggi nessuno lo usa per mandare niente.
+	// Il consenso alle comunicazioni promozionali, distinto da quello al trattamento. Oggi non
+	// lo scrive nessuno: lo darà il socio dal portale, con una notifica al titolare.
 	consensoMarketing: boolean('consenso_marketing').notNull().default(false),
 	consensoMarketingData: date('consenso_marketing_data'),
 	// Progressivo a 6 cifre (es. "000007"), generato lato applicazione oggi — da
@@ -24,7 +34,10 @@ export const members = pgTable('members', {
 	notes: text('notes'),
 	createdDate: timestamp('created_date', { withTimezone: true }).notNull().defaultNow(),
 	updatedDate: timestamp('updated_date', { withTimezone: true }).notNull().defaultNow(),
-});
+}, (table) => ({
+	sessoValido: check('members_sesso_valido', sql`${table.sesso} IS NULL OR ${table.sesso} IN ('M', 'F', 'altro')`),
+	codiceFiscaleUnivoco: uniqueIndex('members_codice_fiscale_univoco').on(sql`upper(${table.codiceFiscale})`).where(sql`${table.codiceFiscale} IS NOT NULL`),
+}));
 
 export const plans = pgTable('plans', {
 	id: uuid('id').defaultRandom().primaryKey(),
@@ -55,16 +68,21 @@ export const subscriptions = pgTable('subscriptions', {
 export const memberDocuments = pgTable('member_documents', {
 	id: uuid('id').defaultRandom().primaryKey(),
 	memberId: uuid('member_id').notNull().references(() => members.id),
-	// ⚠️ valori osservati in italiano nel form corrente ma inglese in un filtro Dashboard
-	// ("Medical Certificate") — probabile incoerenza storica dei dati, non un vincolo DB.
-	documentType: varchar('document_type', { length: 64 }),
+	// Tre tipi, vincolati: prima era testo libero, e la Dashboard cercava "Medical Certificate"
+	// mentre il modulo scriveva "Certificato Medico" — l'avviso delle scadenze non è mai
+	// scattato. Le etichette sono in shared/anagrafica.js.
+	documentType: varchar('document_type', { length: 32 }).notNull(), // certificato_medico | documento_identita | altro
+	// Il nome di un documento "altro" (es. "Contratto"): per gli altri due il tipo basta.
+	titolo: varchar('titolo', { length: 255 }),
 	fileName: varchar('file_name', { length: 255 }),
 	fileUrl: text('file_url'),
 	expiryDate: date('expiry_date'),
 	notes: text('notes'),
 	caricatoDa: varchar('caricato_da', { length: 255 }),
 	createdDate: timestamp('created_date', { withTimezone: true }).notNull().defaultNow(),
-});
+}, (table) => ({
+	tipoValido: check('member_documents_tipo_valido', sql`${table.documentType} IN ('certificato_medico', 'documento_identita', 'altro')`),
+}));
 
 export const qrAccessi = pgTable('qr_accessi', {
 	id: uuid('id').defaultRandom().primaryKey(),

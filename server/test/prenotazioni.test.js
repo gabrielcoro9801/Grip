@@ -40,7 +40,7 @@ before(async () => {
 	// Quattro soci e due posti: serve a vedere cosa succede al terzo e al quarto.
 	const soci = await db
 		.insert(members)
-		.values([1, 2, 3, 4].map((n) => ({ fullName: `Socio ${n}`, email: `socio${n}.pren.${suffisso}@test.local` })))
+		.values([1, 2, 3, 4].map((n) => ({ nome: 'Socio', cognome: `${n}`, email: `socio${n}.pren.${suffisso}@test.local` })))
 		.returning();
 	idSoci.push(...soci.map((s) => s.id));
 

@@ -40,19 +40,6 @@ const STATI = {
   // Codici di accesso
   attivo: { label: "Attivo", tono: "positivo" },
   revocato: { label: "Revocato", tono: "negativo" },
-
-  // Lead: le etichette sono le stesse di shared/lead.js
-  nuovo: { label: "Nuovo", tono: "info" },
-  contattato: { label: "Contattato", tono: "neutro" },
-  prova_prenotata: { label: "Prova prenotata", tono: "attesa" },
-  prova_svolta: { label: "Prova svolta", tono: "info" },
-  proposta: { label: "Proposta fatta", tono: "attesa" },
-  iscritto: { label: "Iscritto", tono: "positivo" },
-  perso: { label: "Perso", tono: "negativo" },
-
-  // Presenza a una prova
-  presente: { label: "Presente", tono: "positivo" },
-  assente: { label: "Assente", tono: "negativo" },
 };
 
 /**

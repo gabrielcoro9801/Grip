@@ -6,7 +6,7 @@ import StaffLogin from "@/staff/pages/StaffLogin";
 import {
   LayoutDashboard, Users, Calendar,
   ChevronLeft, ChevronRight, LogOut, Menu, Dumbbell,
-  ShieldCheck, ScrollText
+  ShieldCheck, ScrollText, UserPlus
 } from "lucide-react";
 import { Button } from "@/ui/primitivi/button";
 import { Badge } from "@/ui/primitivi/badge";
@@ -20,6 +20,9 @@ import SelettoreTema from "@/ui/SelettoreTema";
 const navItems = [
   { label: "Dashboard", path: "/", icon: LayoutDashboard },
   { label: "Soci", path: "/crm", icon: Users },
+  // I lead sono contatti, non soci: non hanno scheda, abbonamento né accesso. Stanno in una
+  // sezione loro per non mescolarsi con chi è già iscritto.
+  { label: "Lead", path: "/lead", icon: UserPlus },
   // L'allenamento era una scheda dentro i Soci, ma non parla di un socio: il catalogo
   // degli esercizi e le schede modello non appartengono a nessuno, e ci si lavora per
   // conto proprio. Da qui in poi è una sezione sua.

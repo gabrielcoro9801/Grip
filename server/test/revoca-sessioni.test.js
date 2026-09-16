@@ -44,7 +44,7 @@ before(async () => {
 
 	const [socio] = await db
 		.insert(members)
-		.values({ fullName: 'Socio Revoca', email: emailSocio })
+		.values({ nome: 'Socio', cognome: 'Revoca', email: emailSocio })
 		.returning();
 	idSocio = socio.id;
 

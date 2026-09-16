@@ -5,14 +5,14 @@ import { Card, CardContent } from "@/ui/primitivi/card";
 import { Button } from "@/ui/primitivi/button";
 import { Input } from "@/ui/primitivi/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/ui/primitivi/dialog";
-import { Label } from "@/ui/primitivi/label";
-import { Checkbox } from "@/ui/primitivi/checkbox";
 import PageHeader from "@/staff/components/PageHeader";
 import StatusBadge from "@/ui/StatusBadge";
 import { useOrganization } from "@/staff/lib/useOrganization";
 import { Plus, Search, Mail, Users } from "lucide-react";
 import { LoadingState } from "@/ui/Spinner";
 import { EmptyState } from "@/ui/StateViews";
+import { useToast } from "@/ui/primitivi/use-toast";
+import CampiAnagrafica, { ANAGRAFICA_VUOTA, motivoAnagraficaIncompleta } from "@/staff/components/soci/CampiAnagrafica";
 
 export default function MembersList() {
   const { organization } = useOrganization();
@@ -21,7 +21,9 @@ export default function MembersList() {
   const [search, setSearch] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [form, setForm] = useState({ full_name: "", email: "", phone: "", date_of_birth: "", address: "", emergency_contact_name: "", emergency_contact_phone: "", gdpr_consent: false });
+  const [form, setForm] = useState(ANAGRAFICA_VUOTA);
+  const [salvando, setSalvando] = useState(false);
+  const { toast } = useToast();
 
   const loadData = () => {
     Promise.all([
@@ -44,18 +46,28 @@ export default function MembersList() {
     e.preventDefault();
     const data = { ...form };
     if (data.gdpr_consent) data.gdpr_consent_date = new Date().toISOString().split("T")[0];
-    // Il codice socio lo assegna il server: calcolarlo qui sul massimo fra i soci caricati
-    // in pagina assegnerebbe lo stesso codice a due iscrizioni contemporanee.
-    await api.entities.Member.create({ ...data, organization_id: organization?.id || undefined });
-    setShowForm(false);
-    setForm({ full_name: "", email: "", phone: "", date_of_birth: "", address: "", emergency_contact_name: "", emergency_contact_phone: "", gdpr_consent: false });
-    loadData();
+    setSalvando(true);
+    try {
+      // Il codice socio lo assegna il server: calcolarlo qui sul massimo fra i soci caricati
+      // in pagina assegnerebbe lo stesso codice a due iscrizioni contemporanee.
+      await api.entities.Member.create({ ...data, organization_id: organization?.id || undefined });
+      setShowForm(false);
+      setForm(ANAGRAFICA_VUOTA);
+      loadData();
+    } catch (err) {
+      // Il server rifiuta, con un messaggio da leggere, un codice fiscale già presente.
+      toast({ title: "Socio non creato", description: err.message, variant: "destructive" });
+    }
+    setSalvando(false);
   };
 
+  const cerca = search.toLowerCase();
   const filtered = members.filter(m =>
-    m.full_name.toLowerCase().includes(search.toLowerCase()) ||
-    (m.email && m.email.toLowerCase().includes(search.toLowerCase()))
+    m.full_name.toLowerCase().includes(cerca) ||
+    (m.email && m.email.toLowerCase().includes(cerca)) ||
+    (m.codice_fiscale && m.codice_fiscale.toLowerCase().includes(cerca))
   );
+  const incompleto = motivoAnagraficaIncompleta(form);
 
   if (loading) {
     return <LoadingState minHeight="h-64" />;
@@ -71,7 +83,7 @@ export default function MembersList() {
 
       <div className="relative mb-4 max-w-sm">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-        <Input placeholder="Cerca soci..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
+        <Input placeholder="Nome, email o codice fiscale..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
       </div>
 
       {filtered.length === 0 ? (
@@ -115,27 +127,14 @@ export default function MembersList() {
       )}
 
       <Dialog open={showForm} onOpenChange={setShowForm}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle>Aggiungi nuovo socio</DialogTitle></DialogHeader>
-          <form onSubmit={handleSubmit} className="space-y-3">
-            <div><Label>Nome completo *</Label><Input required value={form.full_name} onChange={e => setForm({...form, full_name: e.target.value})} /></div>
-            <div className="grid grid-cols-2 gap-3">
-              <div><Label>Email</Label><Input type="email" value={form.email} onChange={e => setForm({...form, email: e.target.value})} /></div>
-              <div><Label>Telefono</Label><Input value={form.phone} onChange={e => setForm({...form, phone: e.target.value})} /></div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div><Label>Data di nascita</Label><Input type="date" value={form.date_of_birth} onChange={e => setForm({...form, date_of_birth: e.target.value})} /></div>
-              <div><Label>Indirizzo</Label><Input value={form.address} onChange={e => setForm({...form, address: e.target.value})} /></div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div><Label>Contatto di emergenza</Label><Input value={form.emergency_contact_name} onChange={e => setForm({...form, emergency_contact_name: e.target.value})} /></div>
-              <div><Label>Telefono emergenza</Label><Input value={form.emergency_contact_phone} onChange={e => setForm({...form, emergency_contact_phone: e.target.value})} /></div>
-            </div>
-            <div className="flex items-center gap-2">
-              <Checkbox checked={form.gdpr_consent} onCheckedChange={v => setForm({...form, gdpr_consent: v})} />
-              <Label className="text-sm">Consenso GDPR dato</Label>
-            </div>
-            <Button type="submit" className="w-full">Crea socio</Button>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <CampiAnagrafica valori={form} onChange={setForm} />
+            {incompleto && <p className="text-xs text-muted-foreground">{incompleto}</p>}
+            <Button type="submit" className="w-full" disabled={Boolean(incompleto) || salvando}>
+              {salvando ? "Salvataggio..." : "Crea socio"}
+            </Button>
           </form>
         </DialogContent>
       </Dialog>

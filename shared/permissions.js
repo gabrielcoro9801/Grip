@@ -8,7 +8,7 @@ export const ROLES = {
 export const MODULES = {
   crm_members: { label: "CRM — Anagrafiche clienti" },
   crm_documents: { label: "CRM — Documenti/certificati" },
-  crm_leads: { label: "CRM — Lead e prove" },
+  crm_leads: { label: "Lead — Contatti e canali" },
   crm_plans: { label: "Allenamento — Esercizi e schede" },
   calendar: { label: "Calendario & Prenotazioni" },
   admin_users: { label: "Admin & Profili" },
@@ -45,7 +45,6 @@ export const PERMESSI_PREDEFINITI = {
   istruttore: {
     crm_members: ["view"],
     crm_documents: ["view"],
-    // Vede chi viene a provare il suo corso; il lavoro commerciale non è suo.
     crm_leads: ["view"],
     crm_plans: ["view", "edit"],
     calendar: ["view", "edit"],
@@ -189,6 +188,7 @@ export function canEdit(role, module) {
 export const SIDEBAR_PERMISSIONS = {
   "/": null,
   "/crm": "crm_members",
+  "/lead": "crm_leads",
   "/allenamento": "crm_plans",
   "/calendario": "calendar",
   "/admin": "admin_users",

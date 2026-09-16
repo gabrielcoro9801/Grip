@@ -12,6 +12,7 @@ import { codiceDinamico } from '../../lib/qrDinamico.js';
 import { prenota, disdici } from '../../lib/prenotazioni.js';
 import { firmaUrl } from '../../lib/urlFirmati.js';
 import { msResiduiFinestra } from '../../../../shared/qrDinamico.js';
+import { nomeDocumento } from '../../../../shared/anagrafica.js';
 
 /**
  * L'API del portale soci.
@@ -162,6 +163,9 @@ export default async function memberRoutes(fastify) {
 			documenti: righe.map((d) => ({
 				id: d.id,
 				tipo: d.documentType,
+				// Come lo si chiama: "Certificato medico", o il titolo di un documento "altro".
+				nome: nomeDocumento({ document_type: d.documentType, titolo: d.titolo }),
+				titolo: d.titolo,
 				nome_file: d.fileName,
 				// Firmato: senza firma /uploads/ non apre piu niente (lib/urlFirmati.js).
 				url: firmaUrl(d.fileUrl),

@@ -4,12 +4,8 @@
 // 1 Booking punta sempre a una Session, mai direttamente a Event/Course).
 // NB: escluso volutamente il modello legacy/orfano trovato in MemberSelfService.jsx
 // (Course.day_of_week/room_id, Booking.course_id/date) — codice morto non instradato.
-import { sql } from 'drizzle-orm';
-import { pgTable, uuid, varchar, text, boolean, integer, date, time, jsonb, timestamp, check } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, text, boolean, integer, date, time, jsonb, timestamp } from 'drizzle-orm/pg-core';
 import { members } from './crm.js';
-// Import circolare con lead.js (che punta a `courses`): regge perché entrambi i riferimenti
-// sono funzioni, lette solo dopo che i due moduli hanno finito di caricarsi.
-import { leads } from './lead.js';
 
 export const categories = pgTable('categories', {
 	id: uuid('id').defaultRandom().primaryKey(),
@@ -76,23 +72,12 @@ export const sessions = pgTable('sessions', {
 	modifiedManually: boolean('modified_manually').notNull().default(false),
 });
 
-// Una prenotazione è di un socio **oppure** di un lead che viene a provare. Stanno nella stessa
-// tabella perché si contendono gli stessi posti: con due tabelle, il conto della capienza
-// dovrebbe sommarle in ogni punto in cui si fa, e basterebbe dimenticarne uno per mettere
-// un iscritto di troppo in sala.
 export const bookings = pgTable('bookings', {
 	id: uuid('id').defaultRandom().primaryKey(),
 	sessionId: uuid('session_id').notNull().references(() => sessions.id),
-	memberId: uuid('member_id').references(() => members.id),
-	leadId: uuid('lead_id').references(() => leads.id),
-	memberName: varchar('member_name', { length: 255 }), // denormalizzato al momento della create (anche per i lead)
+	memberId: uuid('member_id').notNull().references(() => members.id),
+	memberName: varchar('member_name', { length: 255 }), // denormalizzato al momento della create
 	status: varchar('status', { length: 16 }).notNull().default('confirmed'), // confirmed | waitlisted | cancelled
 	waitlistPosition: integer('waitlist_position'),
-	// Se la persona si è presentata. Oggi la segna la reception solo per le prove, ed è ciò
-	// che separa "prova prenotata" da "prova svolta".
-	presenza: varchar('presenza', { length: 16 }), // NULL | presente | assente
 	createdDate: timestamp('created_date', { withTimezone: true }).notNull().defaultNow(),
-}, (table) => ({
-	unIntestatario: check('bookings_un_intestatario', sql`num_nonnulls(${table.memberId}, ${table.leadId}) = 1`),
-	presenzaValida: check('bookings_presenza_valida', sql`${table.presenza} IS NULL OR ${table.presenza} IN ('presente', 'assente')`),
-}));
+});

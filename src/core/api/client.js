@@ -100,7 +100,7 @@ function buildEntityClient(name) {
 }
 
 const ENTITY_NAMES = [
-	'Member', 'Subscription', 'Plan', 'MemberDocument', 'QRAccesso', 'Lead', 'LeadAttivita',
+	'Member', 'Subscription', 'Plan', 'MemberDocument', 'QRAccesso', 'Lead', 'CanaleContatto',
 	'Course', 'Category', 'Instructor', 'Event', 'Session', 'Room', 'Booking',
 	'Collaboratore', 'StaffAccount',
 	'Exercise', 'ExercisePlan', 'WorkoutSession', 'WorkoutLog',
@@ -142,33 +142,14 @@ export const api = {
 	},
 
 	/**
-	 * Le cose che succedono a un lead.
+	 * Un lead diventa socio.
 	 *
-	 * L'anagrafica passa da `entities.Lead`; queste no, perché ognuna fa più di una scrittura
-	 * — una prova occupa un posto e cambia lo stato, un'iscrizione crea un socio — e il server
-	 * le fa tutte insieme o nessuna.
+	 * Non passa da `entities` perché sono due scritture che vanno fatte insieme — nasce il socio,
+	 * sparisce il contatto — e il server le fa in una transazione.
 	 */
 	lead: {
-		annota(leadId, { tipo, testo }) {
-			return request(`/api/lead/${leadId}/attivita`, { method: 'POST', body: { tipo, testo } });
-		},
-		cambiaStato(leadId, { stato, motivoPerdita }) {
-			return request(`/api/lead/${leadId}/stato`, {
-				method: 'POST',
-				body: { stato, motivo_perdita: motivoPerdita ?? null },
-			});
-		},
-		prenotaProva(leadId, sessionId) {
-			return request(`/api/lead/${leadId}/prova`, { method: 'POST', body: { session_id: sessionId } });
-		},
-		disdiciProva(leadId, bookingId) {
-			return request(`/api/lead/${leadId}/prova/${bookingId}/disdici`, { method: 'POST' });
-		},
-		esitoProva(leadId, bookingId, presenza) {
-			return request(`/api/lead/${leadId}/prova/${bookingId}/esito`, { method: 'POST', body: { presenza } });
-		},
-		converti(leadId) {
-			return request(`/api/lead/${leadId}/converti`, { method: 'POST' });
+		trasforma(leadId, anagrafica) {
+			return request(`/api/lead/${leadId}/trasforma`, { method: 'POST', body: anagrafica });
 		},
 	},
 
