@@ -9,7 +9,8 @@ import bcrypt from 'bcryptjs';
 import { eq, and, inArray } from 'drizzle-orm';
 import { buildApp } from '../src/app.js';
 import { db, pool } from '../src/db/client.js';
-import { members, staffAccounts, leads, canaliContatto, organizations, numberingCounters, ruoli } from '../src/db/schema/index.js';
+import { enteDellaNumerazione } from '../src/lib/codiceSocio.js';
+import { members, staffAccounts, leads, canaliContatto, numberingCounters, ruoli } from '../src/db/schema/index.js';
 import { caricaMatrice, caricaMatriceIniziale } from '../src/lib/ruoli.js';
 
 const PASSWORD = 'prova-lead-1234';
@@ -43,7 +44,7 @@ before(async () => {
 	await app.ready();
 	const suffisso = Date.now();
 
-	const [socio] = await db.insert(members).values({ nome: 'Socio', cognome: 'Lead', email: `soc.lead.${suffisso}@test.local` }).returning();
+	const [socio] = await db.insert(members).values({ nome: 'Socio', cognome: 'Lead', codiceSocio: `LE${String(suffisso).replace(/\d/g, (c) => 'ABCDEFGHIJ'[c])}`, email: `soc.lead.${suffisso}@test.local` }).returning();
 	idSocio.push(socio.id);
 
 	const passwordHash = await bcrypt.hash(PASSWORD, 4);
@@ -71,8 +72,8 @@ before(async () => {
 	idCanali.push(c.id);
 
 	// La trasformazione consuma un codice socio: a fine prova il contatore torna dov'era.
-	const [ente] = await db.select().from(organizations).limit(1);
-	idEnte = ente?.id;
+	// Lo stesso ente che userà il server per numerare.
+	idEnte = await enteDellaNumerazione(db);
 	if (idEnte) {
 		const [riga] = await db.select().from(numberingCounters)
 			.where(and(eq(numberingCounters.organizationId, idEnte), eq(numberingCounters.scope, 'codice_socio')));

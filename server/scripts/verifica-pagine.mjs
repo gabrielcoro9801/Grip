@@ -24,11 +24,12 @@ import { eq, and, inArray } from 'drizzle-orm';
 import { chromium } from 'playwright';
 import { buildApp } from '../src/app.js';
 import { db, pool } from '../src/db/client.js';
+import { enteDellaNumerazione } from '../src/lib/codiceSocio.js';
 import {
 	members, staffAccounts, subscriptions, memberDocuments, qrAccessi,
 	rooms, courses, categories, events, sessions, bookings,
 	exercises, exercisePlans, workoutSessions, workoutLogs,
-	leads, canaliContatto, organizations, numberingCounters, auditLogs,
+	leads, canaliContatto, numberingCounters, auditLogs,
 } from '../src/db/schema/index.js';
 
 const PASSWORD = 'verifica-pagine-1234';
@@ -45,7 +46,9 @@ const CORSO = `Corso Verifica ${suffisso}`;
 // Quello che si pretende qui e' che i dati dell'agenda siano arrivati e disegnati.
 const CATEGORIA = `Categoria Verifica ${suffisso}`;
 const NOME_SOCIO = 'Socio Giro Pagine';
-const CODICE_SOCIO = '009902';
+// Senza cifre: il contatore dei codici veri prende il massimo delle cifre, e un codice di prova
+// numerico lo farebbe saltare in avanti.
+const CODICE_SOCIO = `GP${String(suffisso).replace(/\d/g, (c) => 'ABCDEFGHIJ'[c])}`;
 const SCHEDA = `Scheda Verifica ${suffisso}`;
 const ESERCIZIO = `Panca Verifica ${suffisso}`;
 // Un contatto e il suo canale: si pretende di rivederli nelle tre pagine dei lead, e poi il
@@ -154,7 +157,7 @@ try {
 
 	const abbonamenti = await db
 		.insert(subscriptions)
-		.values({ memberId: socio.id, planName: PIANO, startDate: oggi, endDate: fraUnAnno, status: 'active', sessionsRemaining: 12 })
+		.values({ memberId: socio.id, planName: PIANO, startDate: oggi, endDate: fraUnAnno, status: 'active' })
 		.returning();
 	idAbbonamenti.push(...abbonamenti.map((a) => a.id));
 
@@ -202,8 +205,8 @@ try {
 	idLead = lead.id;
 
 	// La trasformazione consuma un codice socio: a fine giro il contatore torna dov'era.
-	const [ente] = await db.select().from(organizations).limit(1);
-	idEnte = ente?.id;
+	// Lo stesso ente che userà il server per numerare.
+	idEnte = await enteDellaNumerazione(db);
 	if (idEnte) {
 		const [c] = await db.select().from(numberingCounters)
 			.where(and(eq(numberingCounters.organizationId, idEnte), eq(numberingCounters.scope, 'codice_socio')));

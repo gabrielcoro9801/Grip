@@ -74,7 +74,7 @@ dai diversi punti di vista.
 | Email | Password | Ruolo | A cosa serve |
 |---|---|---|---|
 | `admin@grip.local` | `admin1234` | Admin | Vede tutto |
-| `reception@grip.local` | `reception1234` | Reception | Soci e corsi, non il log audit né gli account |
+| `reception@grip.local` | `reception1234` | Reception | Gestione membri e corsi, non il log audit né gli account |
 | `giulia@grip.local` | `socio1234` | Socio | Portale soci, con abbonamento e scheda di allenamento |
 
 La *Reception* è utile per due prove: che il menu si riduca davvero secondo i permessi, e che

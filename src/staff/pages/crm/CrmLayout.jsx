@@ -4,8 +4,8 @@ import { Users, BookOpen, CreditCard } from "lucide-react";
 import SectionTabs from "@/staff/components/SectionTabs";
 import PageContainer from "@/staff/components/PageContainer";
 
-// "Elenco soci" e non "Soci": la sezione si chiama già Soci nel menu laterale, e
-// una voce che ripete il nome della sezione non dice dove porta.
+// "Elenco soci" e non "Gestione membri": la sezione si chiama già così nel menu laterale,
+// e una voce che ripete il nome della sezione non dice dove porta.
 //
 // I piani di allenamento non sono più qui: sono diventati la sezione "Allenamento", che
 // contiene anche il catalogo degli esercizi e le schede modello — roba che non appartiene
@@ -27,7 +27,7 @@ export default function CrmLayout() {
 
   return (
     <div className="flex flex-col h-full">
-      {!schedaSocio && <SectionTabs tabs={tabs} label="Sezioni dei soci" />}
+      {!schedaSocio && <SectionTabs tabs={tabs} label="Sezioni di Gestione membri" />}
       <div className="flex-1 overflow-y-auto">
         <PageContainer>
           <Outlet />

@@ -30,7 +30,7 @@ const emailStaff = `verifica.staff.${suffisso}@test.local`;
 const emailSocio = `verifica.socio.${suffisso}@test.local`;
 
 // Quello che si vede quando si è dentro, da una parte e dall'altra.
-const DENTRO_GESTIONALE = /Dashboard|Soci|Allenamento/i;
+const DENTRO_GESTIONALE = /Dashboard|Gestione membri|Allenamento/i;
 const DENTRO_PORTALE = /Abbonamento|QR accesso|Corsi/i;
 const SCHERMATA_ACCESSO = /Accedi|Password/i;
 
@@ -65,7 +65,7 @@ let idSocio;
 try {
 	const [socio] = await db
 		.insert(members)
-		.values({ nome: 'Socio', cognome: 'Verifica', email: emailSocio })
+		.values({ nome: 'Socio', cognome: 'Verifica', codiceSocio: `VB${String(suffisso).replace(/\d/g, (c) => 'ABCDEFGHIJ'[c])}`, email: emailSocio })
 		.returning();
 	idSocio = socio.id;
 

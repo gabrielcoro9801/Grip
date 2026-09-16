@@ -58,8 +58,8 @@ before(async () => {
 	const [socio, estraneo] = await db
 		.insert(members)
 		.values([
-			{ nome: 'Socio', cognome: 'Di Prova', email: `socio.prova.${suffisso}@test.local` },
-			{ nome: 'Socio', cognome: 'Estraneo', email: `estraneo.prova.${suffisso}@test.local` },
+			{ nome: 'Socio', cognome: 'Di Prova', codiceSocio: `PA${String(suffisso).replace(/\d/g, (c) => 'ABCDEFGHIJ'[c])}`, email: `socio.prova.${suffisso}@test.local` },
+			{ nome: 'Socio', cognome: 'Estraneo', codiceSocio: `PB${String(suffisso).replace(/\d/g, (c) => 'ABCDEFGHIJ'[c])}`, email: `estraneo.prova.${suffisso}@test.local` },
 		])
 		.returning();
 	idSocio = socio.id;

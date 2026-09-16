@@ -199,7 +199,7 @@ export default async function entityRoutes(fastify) {
 		if (await rigaNonSua(request, entityName, table)) {
 			return reply.code(404).send({ error: 'Non trovato' });
 		}
-		const bloccato = await mutationBlockedReason(entityName, table, request.params.id, 'update');
+		const bloccato = await mutationBlockedReason(entityName, table, request.params.id, 'update', request.body);
 		if (bloccato) return reply.code(400).send({ error: bloccato });
 		const { dbNameToColumn } = getColumnMaps(table);
 		let body = await applyWriteTransform(entityName, togliFirmaInScrittura(request.body), { creazione: false });

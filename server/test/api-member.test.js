@@ -59,8 +59,8 @@ before(async () => {
 	const [socio, estraneo] = await db
 		.insert(members)
 		.values([
-			{ nome: 'Socio', cognome: 'API', email: `socio.api.${suffisso}@test.local`, codiceSocio: '009901', phone: '333' },
-			{ nome: 'Estraneo', cognome: 'API', email: `estraneo.api.${suffisso}@test.local` },
+			{ nome: 'Socio', cognome: 'API', email: `socio.api.${suffisso}@test.local`, codiceSocio: `AS${String(suffisso).replace(/\d/g, (c) => 'ABCDEFGHIJ'[c])}`, phone: '333' },
+			{ nome: 'Estraneo', cognome: 'API', codiceSocio: `AP${String(suffisso).replace(/\d/g, (c) => 'ABCDEFGHIJ'[c])}`, email: `estraneo.api.${suffisso}@test.local` },
 		])
 		.returning();
 	idSocio = socio.id;
@@ -530,7 +530,7 @@ describe('il contratto resta quello promesso', () => {
 		);
 		assert.deepEqual(
 			Object.keys(dati.abbonamento).sort(),
-			['fine', 'giorni_alla_scadenza', 'id', 'in_scadenza', 'ingressi_residui', 'inizio', 'piano', 'stato']
+			['fine', 'giorni_alla_scadenza', 'id', 'in_scadenza', 'inizio', 'piano', 'stato']
 		);
 	});
 

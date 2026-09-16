@@ -73,9 +73,6 @@ export default function MemberDashboard() {
                   In scadenza tra {daysToExpiry} giorni
                 </div>
               )}
-              {activeSub.ingressi_residui != null && (
-                <p className="text-xs text-muted-foreground">Ingressi residui: {activeSub.ingressi_residui}</p>
-              )}
               <Link to="/member-portal/abbonamento">
                 <Button variant="ghost" size="sm" className="w-full mt-1">
                   Dettagli <ChevronRight className="w-4 h-4" />

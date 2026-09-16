@@ -33,7 +33,7 @@ export default function MemberProfile() {
     { icon: Mail, label: "Email", value: member?.email },
     { icon: Phone, label: "Telefono", value: member?.telefono },
     { icon: Calendar, label: "Data di nascita", value: member?.data_nascita ? formatData(member.data_nascita, "media") : null },
-    { icon: MapPin, label: "Indirizzo", value: member?.indirizzo },
+    { icon: MapPin, label: "Residenza", value: member?.indirizzo },
     {
       icon: Heart,
       label: "Contatto di emergenza",

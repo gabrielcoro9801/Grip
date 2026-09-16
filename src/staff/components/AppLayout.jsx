@@ -19,7 +19,7 @@ import SelettoreTema from "@/ui/SelettoreTema";
 // come lei — l'intestazione della pagina non deve mai smentire il menu.
 const navItems = [
   { label: "Dashboard", path: "/", icon: LayoutDashboard },
-  { label: "Soci", path: "/crm", icon: Users },
+  { label: "Gestione membri", path: "/crm", icon: Users },
   // I lead sono contatti, non soci: non hanno scheda, abbonamento né accesso. Stanno in una
   // sezione loro per non mescolarsi con chi è già iscritto.
   { label: "Lead", path: "/lead", icon: UserPlus },

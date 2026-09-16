@@ -39,6 +39,10 @@ const STATI = {
 
   // Codici di accesso
   attivo: { label: "Attivo", tono: "positivo" },
+
+  // Tipi di abbonamento del catalogo (attivo è già sopra)
+  sospeso: { label: "Sospeso", tono: "attesa" },
+  annullato: { label: "Annullato", tono: "negativo" },
   revocato: { label: "Revocato", tono: "negativo" },
 };
 
