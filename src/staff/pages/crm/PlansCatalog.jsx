@@ -13,6 +13,7 @@ import { Plus, Pencil, Clock, CalendarClock, BookOpen } from "lucide-react";
 import { LoadingState } from "@/ui/Spinner";
 import { EmptyState } from "@/ui/StateViews";
 import { useToast } from "@/ui/primitivi/use-toast";
+import { useConfirm } from "@/ui/ConfirmDialog";
 import { useStaffAuth } from "@/staff/lib/StaffAuthContext";
 import { canEdit } from "@/staff/lib/permissions";
 import { logAction } from "@/staff/lib/auditLog";
@@ -42,6 +43,7 @@ const ORDINE_STATO = { attivo: 0, sospeso: 1, annullato: 2 };
 export default function PlansCatalog() {
   const { staffUser } = useStaffAuth();
   const { toast } = useToast();
+  const [conferma, dialogoConferma] = useConfirm();
   const puoModificare = canEdit(staffUser?.ruolo, "crm_members");
   const [plans, setPlans] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -93,6 +95,28 @@ export default function PlansCatalog() {
   const salvaStato = async (e) => {
     e.preventDefault();
     const { tipo, stato } = cambioStato;
+
+    // Sospendere si disfa, annullare no: è l'unico cambio da cui non si torna indietro, e
+    // nella finestra dello stato basta un menu e un clic per arrivarci. La seconda domanda
+    // serve a rompere quel gesto automatico, e si fa solo qui — chiederla anche per
+    // "sospeso" la renderebbe una porta da attraversare sempre, che si impara a spingere
+    // senza leggere, e a quel punto non proteggerebbe più nemmeno l'annullamento.
+    //
+    // "Annulla" da solo qui vorrebbe dire due cose opposte, quindi i due pulsanti dicono
+    // per esteso cosa fanno.
+    if (stato === "annullato") {
+      const ok = await conferma({
+        title: `Annullare «${tipo.name}»?`,
+        description:
+          "Non si venderà più, e lo stato non si può riportare indietro: per rimetterlo in " +
+          "catalogo bisognerà creare un abbonamento nuovo. Le iscrizioni già vendute restano valide.",
+        confirmLabel: "Annulla definitivamente",
+        cancelLabel: "Non annullare",
+        destructive: true,
+      });
+      if (!ok) return;
+    }
+
     setSalvando(true);
     try {
       await api.entities.Plan.update(tipo.id, { stato });
@@ -112,6 +136,7 @@ export default function PlansCatalog() {
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
+      {dialogoConferma}
       <PageHeader title="Catalogo abbonamenti" description="I tipi di abbonamento da vendere ai soci">
         {puoModificare && (
           <Button size="sm" onClick={() => { setForm(MODULO_VUOTO); setShowForm(true); }}>
