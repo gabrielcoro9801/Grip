@@ -125,6 +125,28 @@ describe("lo stato dei documenti, e chi finisce in archivio", () => {
 		);
 	});
 
+	test('uno scaduto caricato dopo uno valido nasce già archiviato', () => {
+		// Succede quando si registra la copia di un certificato vecchio dopo aver inserito
+		// quello nuovo: l'ordine di caricamento non dice quale dei due vale.
+		assert.deepEqual(
+			stati([
+				{ id: 'buono', document_type: 'certificato_medico', created_date: '2026-01-01', expiry_date: 'lontano' },
+				{ id: 'vecchio', document_type: 'certificato_medico', created_date: '2026-06-01', expiry_date: 'scaduto' },
+			]),
+			{ buono: 'valido', vecchio: 'archiviato' }
+		);
+	});
+
+	test('vale anche per il documento di identità, e anche se il valido è solo "in scadenza"', () => {
+		assert.deepEqual(
+			stati([
+				{ id: 'buono', document_type: 'documento_identita', created_date: '2026-01-01', expiry_date: 'quasi' },
+				{ id: 'vecchio', document_type: 'documento_identita', created_date: '2026-06-01', expiry_date: 'vecchio' },
+			]),
+			{ buono: 'in_scadenza', vecchio: 'archiviato' }
+		);
+	});
+
 	test('anche se il sostituto è a sua volta scaduto, in vista resta solo l\'ultimo', () => {
 		assert.deepEqual(
 			stati([
