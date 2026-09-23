@@ -66,6 +66,11 @@ export default function MemberDetail() {
   const [anagrafica, setAnagrafica] = useState(null);
   const [foto, setFoto] = useState({ file: null, rimossa: false });
   const puoModificare = canEdit(staffUser?.ruolo, "crm_members");
+  // I documenti stanno sotto il loro modulo, non sotto le anagrafiche: è quello che il server
+  // controlla (auth/authorize.js). Nei ruoli di base i due permessi coincidono, ma un ruolo
+  // costruito a mano può avere l'uno e non l'altro — e allora carica ed elimina sarebbero
+  // pulsanti che chiamano l'API solo per prendersi un 403.
+  const puoModificareDocumenti = canEdit(staffUser?.ruolo, "crm_documents");
   const [qrAccess, setQrAccess] = useState(null);
   const [portalAccount, setPortalAccount] = useState(null);
   const [showPasswordDialog, setShowPasswordDialog] = useState(false);
@@ -360,7 +365,7 @@ export default function MemberDetail() {
         {/* I documenti occupano due righe: sono la tile più lunga, e affiancata ad abbonamenti
             e accesso non lascia buchi nella griglia. */}
         <div className="lg:row-span-2">
-          <DocumentiSocio socio={member} documenti={documents} puoModificare={puoModificare} staffUser={staffUser} onCambio={loadData} />
+          <DocumentiSocio socio={member} documenti={documents} puoModificare={puoModificareDocumenti} staffUser={staffUser} onCambio={loadData} />
         </div>
 
         {/* Accesso: il QR per entrare in palestra e la password per entrare nel portale.

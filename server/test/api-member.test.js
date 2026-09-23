@@ -13,7 +13,7 @@
 import test, { before, after, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import bcrypt from 'bcryptjs';
-import { inArray } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import { buildApp } from '../src/app.js';
 import { db, pool } from '../src/db/client.js';
 import {
@@ -203,7 +203,40 @@ describe('il socio vede le proprie cose, e solo quelle', () => {
 		assert.equal(documenti[0].nome, 'Certificato medico');
 		assert.equal(documenti[0].scaduto, false);
 		assert.equal(documenti[0].in_scadenza, true);
+		assert.equal(documenti[0].stato, 'in_scadenza');
 	});
+
+	// Il caso che fa la differenza fra "hai un problema" e "avevi un problema": il socio ha
+	// rinnovato, e il certificato vecchio non deve continuare a contare come scaduto.
+	//
+	// Il vecchio si inserisce e si cancella dentro il test, perché tutte le altre prove di
+	// questo file contano un documento solo.
+	test('un certificato scaduto e già sostituito va in archivio, e non conta come scaduto', async () => {
+		const [vecchio] = await db
+			.insert(memberDocuments)
+			.values({
+				memberId: idSocio,
+				documentType: 'certificato_medico',
+				fileName: 'certificato-2019.pdf',
+				expiryDate: '2019-06-30',
+				createdDate: new Date('2019-01-10T09:00:00Z'),
+			})
+			.returning();
+
+		try {
+			const { documenti } = (await come(tokenSocio, '/api/member/v1/documenti')).json();
+			assert.equal(documenti.length, 2, 'restano consultabili entrambi');
+			assert.equal(documenti.find((d) => d.id === vecchio.id).stato, 'archiviato');
+			assert.equal(documenti.find((d) => d.id !== vecchio.id).stato, 'in_scadenza');
+
+			const dati = (await come(tokenSocio, '/api/member/v1/profilo')).json();
+			assert.equal(dati.documenti.scaduti, 0, 'sostituito non è un avviso');
+			assert.equal(dati.documenti.in_scadenza, 1);
+		} finally {
+			await db.delete(memberDocuments).where(eq(memberDocuments.id, vecchio.id));
+		}
+	});
+
 
 	test('il codice di accesso arriva firmato dal server', async () => {
 		const dati = (await come(tokenSocio, '/api/member/v1/accesso')).json();

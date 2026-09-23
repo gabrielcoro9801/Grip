@@ -6,6 +6,7 @@ import { Users, UserCheck, Calendar, AlertTriangle, Clock, FileWarning } from "l
 import StatusBadge from "@/ui/StatusBadge";
 import { LoadingState } from "@/ui/Spinner";
 import { formatData, giorniAllaData, giorniTra, aggiungiGiorni, stessoGiornoOdopo } from "@/core/domain/format";
+import { conStatoDocumenti } from "@/core/domain/anagrafica";
 
 export default function Dashboard() {
   const [members, setMembers] = useState([]);
@@ -45,16 +46,31 @@ export default function Dashboard() {
   }
 
   // Certificate alerts
-  const certAlerts = documents
-    // Il tipo era testo libero, e qui si cercava "Medical Certificate" mentre il modulo
-    // scriveva "Certificato Medico": l'avviso non è mai scattato. Ora il tipo è vincolato.
-    .filter(d => d.document_type === "certificato_medico" && d.expiry_date)
+  //
+  // Il tipo era testo libero, e qui si cercava "Medical Certificate" mentre il modulo
+  // scriveva "Certificato Medico": l'avviso non è mai scattato. Ora il tipo è vincolato.
+  //
+  // Lo stato lo decide `conStatoDocumenti`, socio per socio: se è archiviato non è un avviso.
+  // Senza quel raggruppamento, un certificato scaduto e già sostituito restava qui per sempre,
+  // accanto a quello nuovo e valido — e un elenco di avvisi che non si svuota mai smette di
+  // essere letto.
+  const documentiPerSocio = new Map();
+  for (const d of documents) {
+    if (!documentiPerSocio.has(d.member_id)) documentiPerSocio.set(d.member_id, []);
+    documentiPerSocio.get(d.member_id).push(d);
+  }
+  const certAlerts = [...documentiPerSocio.values()]
+    .flatMap(documentiDelSocio => conStatoDocumenti(documentiDelSocio, giorniAllaData))
+    .filter(d => d.document_type === "certificato_medico" && (d.stato === "scaduto" || d.stato === "in_scadenza"))
     .map(d => {
       const member = members.find(m => m.id === d.member_id);
-      const daysLeft = giorniAllaData(d.expiry_date);
-      return { ...d, member_name: member?.full_name || "Sconosciuto", daysLeft, expired: daysLeft < 0 };
+      return {
+        ...d,
+        member_name: member?.full_name || "Sconosciuto",
+        daysLeft: d.giorni_alla_scadenza,
+        expired: d.stato === "scaduto",
+      };
     })
-    .filter(d => d.daysLeft < 30)
     .sort((a, b) => a.daysLeft - b.daysLeft);
 
   // Subscription alerts

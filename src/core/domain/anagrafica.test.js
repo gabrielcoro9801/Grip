@@ -11,6 +11,7 @@ import {
 	nomeCompleto,
 	nomeDocumento,
 	motivoDocumentoNonValido,
+	conStatoDocumenti,
 } from './anagrafica.js';
 
 describe('il codice fiscale', () => {
@@ -67,5 +68,90 @@ describe('i documenti', () => {
 		assert.equal(motivoDocumentoNonValido({ document_type: 'altro', titolo: 'Contratto' }), null);
 		assert.match(motivoDocumentoNonValido({ document_type: 'altro', titolo: '  ' }), /documento/);
 		assert.match(motivoDocumentoNonValido({ document_type: 'Certificato Medico' }), /non valido/);
+	});
+});
+
+describe("lo stato dei documenti, e chi finisce in archivio", () => {
+	// I giorni li passa chi chiama: nel test sono una tabella, così le prove non cambiano
+	// risposta col passare del tempo — che è esattamente il modo in cui un test sulle
+	// scadenze marcisce senza che nessuno lo tocchi.
+	const giorni = { scaduto: -10, vecchio: -400, quasi: 12, lontano: 200 };
+	const giorniAlla = (chiave) => (chiave === null || chiave === undefined ? null : giorni[chiave]);
+	const stati = (documenti) =>
+		Object.fromEntries(conStatoDocumenti(documenti, giorniAlla).map((d) => [d.id, d.stato]));
+
+	test('valido, in scadenza e scaduto li decidono i giorni che mancano', () => {
+		assert.deepEqual(
+			stati([
+				{ id: 'a', document_type: 'certificato_medico', created_date: '2026-01-01', expiry_date: 'lontano' },
+				{ id: 'b', document_type: 'documento_identita', created_date: '2026-01-01', expiry_date: 'quasi' },
+				{ id: 'c', document_type: 'altro', created_date: '2026-01-01', expiry_date: 'scaduto' },
+			]),
+			{ a: 'valido', b: 'in_scadenza', c: 'archiviato' }
+		);
+	});
+
+	test('trenta giorni esatti sono ancora "in scadenza", trentuno no', () => {
+		const alSoglio = (g) =>
+			conStatoDocumenti(
+				[{ id: 'x', document_type: 'certificato_medico', created_date: '2026-01-01', expiry_date: 'x' }],
+				() => g
+			)[0].stato;
+		assert.equal(alSoglio(30), 'in_scadenza');
+		assert.equal(alSoglio(31), 'valido');
+		assert.equal(alSoglio(0), 'in_scadenza', 'scade oggi: ancora valido, ma da rifare');
+	});
+
+	test('un certificato scaduto resta in vista finché non ne arriva un altro', () => {
+		const solo = [{ id: 'vecchio', document_type: 'certificato_medico', created_date: '2024-01-01', expiry_date: 'vecchio' }];
+		assert.deepEqual(stati(solo), { vecchio: 'scaduto' }, 'senza sostituto non si archivia');
+
+		const conSostituto = [
+			...solo,
+			{ id: 'nuovo', document_type: 'certificato_medico', created_date: '2026-01-01', expiry_date: 'lontano' },
+		];
+		assert.deepEqual(stati(conSostituto), { vecchio: 'archiviato', nuovo: 'valido' });
+	});
+
+	test('lo stesso vale per il documento di identità, e non per gli "altri"', () => {
+		assert.deepEqual(
+			stati([{ id: 'ci', document_type: 'documento_identita', created_date: '2024-01-01', expiry_date: 'vecchio' }]),
+			{ ci: 'scaduto' }
+		);
+		// Un "altro" scaduto non lascia la sezione vuota a segnalare qualcosa: può andare via.
+		assert.deepEqual(
+			stati([{ id: 'contratto', document_type: 'altro', created_date: '2024-01-01', expiry_date: 'vecchio' }]),
+			{ contratto: 'archiviato' }
+		);
+	});
+
+	test('anche se il sostituto è a sua volta scaduto, in vista resta solo l\'ultimo', () => {
+		assert.deepEqual(
+			stati([
+				{ id: 'primo', document_type: 'certificato_medico', created_date: '2023-01-01', expiry_date: 'vecchio' },
+				{ id: 'secondo', document_type: 'certificato_medico', created_date: '2025-01-01', expiry_date: 'scaduto' },
+			]),
+			{ primo: 'archiviato', secondo: 'scaduto' }
+		);
+	});
+
+	test('senza data di scadenza un documento non scade e non si archivia', () => {
+		assert.deepEqual(
+			stati([
+				{ id: 'senza', document_type: 'altro', created_date: '2024-01-01', expiry_date: null },
+				{ id: 'dopo', document_type: 'altro', created_date: '2026-01-01', expiry_date: null },
+			]),
+			{ senza: 'valido', dopo: 'valido' }
+		);
+	});
+
+	test('i documenti di tipi diversi non si sostituiscono a vicenda', () => {
+		assert.deepEqual(
+			stati([
+				{ id: 'cert', document_type: 'certificato_medico', created_date: '2024-01-01', expiry_date: 'vecchio' },
+				{ id: 'ci', document_type: 'documento_identita', created_date: '2026-01-01', expiry_date: 'lontano' },
+			]),
+			{ cert: 'scaduto', ci: 'valido' }
+		);
 	});
 });
