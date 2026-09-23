@@ -10,7 +10,7 @@ export default function Sale() {
     <>
       <PageHeader
         title="Sale"
-        description="Gli spazi in cui si tengono le lezioni, con quanta gente ci sta."
+        description="Gli spazi in cui si tengono le lezioni. Quante persone ci entrano lo decide l'evento, non la stanza."
       />
       <RoomsTab data={data} reload={reload} />
     </>

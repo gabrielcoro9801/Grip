@@ -1,11 +1,12 @@
 // Regole per-entità applicate dall'endpoint generico: campi che non devono mai
 // uscire dall'API, e trasformazioni da applicare in scrittura.
 import bcrypt from 'bcryptjs';
-import { eq } from 'drizzle-orm';
+import { and, asc, eq, gte, lte, ne } from 'drizzle-orm';
 import { firmaUrl, togliFirma } from '../lib/urlFirmati.js';
 import { db } from '../db/client.js';
 import { assegnaCodiceSocio } from '../lib/codiceSocio.js';
-import { plans } from '../db/schema/index.js';
+import { plans, rooms, sessions, events as eventsTable } from '../db/schema/index.js';
+import { translateToSnakeCase } from './columnMaps.js';
 import {
 	sessoValido, normalizzaCodiceFiscale, codiceFiscaleValido, motivoDocumentoNonValido, tipoDocumentoValido,
 } from '../../../shared/anagrafica.js';
@@ -13,6 +14,10 @@ import {
 	unitaDurataValida, statoTipoValido, motivoCambioStatoNonValido, motivoNonVendibile, dataFineAbbonamento,
 	oggiIso, NOTE_MASSIMO,
 } from '../../../shared/abbonamenti.js';
+import {
+	statoSalaValido, motivoSospensioneNonValida, sospensioneTocca, messaggioSospensioneBloccata,
+	messaggioSalaSospesa, NOTE_MASSIMO as NOTE_SALA_MASSIMO,
+} from '../../../shared/sale.js';
 
 // Campi rimossi da ogni risposta, per entità.
 const HIDDEN_FIELDS = {
@@ -39,7 +44,76 @@ export async function mutationBlockedReason(entityName, _table, id, operazione, 
 		const [tipo] = await db.select({ stato: plans.stato }).from(plans).where(eq(plans.id, id)).limit(1);
 		if (tipo) return motivoCambioStatoNonValido(tipo.stato, corpo.stato);
 	}
+	if (entityName === 'Room' && operazione === 'update' && corpo?.stato === 'sospeso') {
+		return salaNonSospendibile(id, corpo.sospesa_dal, corpo.sospesa_al);
+	}
+	// Una modifica sposta l'evento, o la singola lezione, in un'altra sala o in altre date: il
+	// controllo va rifatto su com'è la riga *dopo*, non su quello che arriva nel corpo.
+	if (entityName === 'Event' && operazione === 'update' && corpo && (presente(corpo, 'room_id') || presente(corpo, 'start_date'))) {
+		const [attuale] = await db.select().from(eventsTable).where(eq(eventsTable.id, id)).limit(1);
+		if (attuale) return motivoEventoInSalaSospesa({ ...translateToSnakeCase(eventsTable, attuale), ...corpo });
+	}
+	if (entityName === 'Session' && operazione === 'update' && corpo && (presente(corpo, 'room_id') || presente(corpo, 'date'))) {
+		const [attuale] = await db.select({ data: sessions.date, salaId: sessions.roomId }).from(sessions).where(eq(sessions.id, id)).limit(1);
+		if (attuale) {
+			const data = corpo.date ?? attuale.data;
+			return motivoSalaNonDisponibile(corpo.room_id ?? attuale.salaId, data, data);
+		}
+	}
 	return null;
+}
+
+/**
+ * Perché la sala non si può sospendere in quel periodo, o null.
+ *
+ * Comandano gli eventi: sotto le lezioni già fissate — su cui i soci sono già prenotati — la
+ * sala non si chiude. Chi la vuole sospendere elimina prima quegli eventi, e a quel punto la
+ * sospensione passa.
+ */
+async function salaNonSospendibile(id, dal, al) {
+	if (motivoSospensioneNonValida(dal, al)) return null; // lo dice già la trasformazione in scrittura
+	const [sala] = await db.select({ name: rooms.name }).from(rooms).where(eq(rooms.id, id)).limit(1);
+	if (!sala) return null;
+	const occupate = await db
+		.select({ data: sessions.date })
+		.from(sessions)
+		.where(and(eq(sessions.roomId, id), ne(sessions.status, 'cancelled'), gte(sessions.date, dal), lte(sessions.date, al)))
+		.orderBy(asc(sessions.date));
+	if (!occupate.length) return null;
+	return messaggioSospensioneBloccata(sala.name, dal, al, occupate.map((r) => r.data));
+}
+
+/** Perché quella sala non si può usare fra `inizio` e `fine`, o null. `fine` null = senza fine nota. */
+async function motivoSalaNonDisponibile(idSala, inizio, fine) {
+	if (!idSala || !inizio) return null;
+	const [sala] = await db.select().from(rooms).where(eq(rooms.id, idSala)).limit(1);
+	if (!sala) return null;
+	const snake = translateToSnakeCase(rooms, sala);
+	return sospensioneTocca(snake, inizio, fine) ? messaggioSalaSospesa(snake) : null;
+}
+
+/**
+ * Il periodo coperto da un evento: dalla prima all'ultima lezione.
+ *
+ * Un settimanale contato a occorrenze non sa in che giorno finisce finché non genera le
+ * sessioni: `null` dice "senza fine nota", e `sospensioneTocca` lo tratta come sovrapposto —
+ * meglio un rifiuto da spiegare che una lezione dentro una sala chiusa.
+ */
+function periodoEvento(evento) {
+	const inizio = evento.start_date;
+	if (evento.recurrence_type === 'custom') {
+		const date = Array.isArray(evento.custom_dates) ? [...evento.custom_dates].sort() : [];
+		return date.length ? [date[0], date[date.length - 1]] : [inizio, inizio];
+	}
+	if (evento.recurrence_type === 'weekly') {
+		return [inizio, evento.end_condition === 'by_date' ? evento.end_date : null];
+	}
+	return [inizio, inizio];
+}
+
+function motivoEventoInSalaSospesa(evento) {
+	const [inizio, fine] = periodoEvento(evento);
+	return motivoSalaNonDisponibile(evento.room_id, inizio, fine);
 }
 
 /**
@@ -165,6 +239,54 @@ const WRITE_TRANSFORMS = {
 			if (motivo) throw rifiuta(motivo);
 		} else if (presente(rest, 'document_type') && !tipoDocumentoValido(rest.document_type)) {
 			throw rifiuta('Tipo di documento non valido.');
+		}
+		return rest;
+	},
+
+	// Una sala: un nome, delle note corte, e uno stato che è o "attiva" o "sospesa". Sospesa è
+	// sempre un periodo, da data a data — senza una fine nessuno saprebbe quando la stanza torna
+	// libera. Se torna attiva il periodo si cancella: restava scritto un pezzo di storia che il
+	// resto del codice avrebbe continuato a leggere come una sospensione.
+	//
+	// La capienza non c'è più: quanta gente entra a lezione lo decide l'evento.
+	async Room(body, { creazione }) {
+		const rest = { ...(body ?? {}) };
+		if (creazione || presente(rest, 'name')) {
+			rest.name = String(rest.name ?? '').trim();
+			if (!rest.name) throw rifiuta('Il nome della sala è obbligatorio.');
+		}
+		if (presente(rest, 'description')) {
+			if (vuoto(rest.description)) rest.description = null;
+			else if (String(rest.description).length > NOTE_SALA_MASSIMO) throw rifiuta(`Le note stanno in ${NOTE_SALA_MASSIMO} caratteri.`);
+		}
+		if (creazione && !presente(rest, 'stato')) rest.stato = 'attivo';
+		if (presente(rest, 'stato')) {
+			if (!statoSalaValido(rest.stato)) throw rifiuta('Stato non valido: attiva o sospesa.');
+			if (rest.stato === 'sospeso') {
+				const motivo = motivoSospensioneNonValida(rest.sospesa_dal, rest.sospesa_al);
+				if (motivo) throw rifiuta(motivo);
+			} else {
+				rest.sospesa_dal = null;
+				rest.sospesa_al = null;
+			}
+		} else {
+			// Date senza stato non vogliono dire niente, e il vincolo del database le rifiuterebbe
+			// con un errore che non spiega nulla a chi ha compilato il modulo.
+			delete rest.sospesa_dal;
+			delete rest.sospesa_al;
+		}
+		return rest;
+	},
+
+	// Un evento non si programma in una sala sospesa. Il controllo sta sulla creazione: le
+	// sessioni nascono da qui (bulkCreate subito dopo), quindi coprire il periodo dell'evento
+	// copre anche le sue lezioni, senza una query per ognuna delle 104 possibili. Chi sposta poi
+	// una singola lezione passa da `mutationBlockedReason`.
+	async Event(body, { creazione }) {
+		const rest = { ...(body ?? {}) };
+		if (creazione) {
+			const motivo = await motivoEventoInSalaSospesa(rest);
+			if (motivo) throw rifiuta(motivo);
 		}
 		return rest;
 	},

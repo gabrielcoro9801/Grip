@@ -67,7 +67,7 @@ before(async () => {
 	tokenStaff = await accedi(account[0].email);
 	for (const a of account.slice(1)) tokenSocio.push(await accedi(a.email));
 
-	const [sala] = await db.insert(rooms).values({ name: `Sala pren ${suffisso}`, capacity: 50 }).returning();
+	const [sala] = await db.insert(rooms).values({ name: `Sala pren ${suffisso}` }).returning();
 	idSala = sala.id;
 	const [corso] = await db.insert(courses).values({ name: `Corso pren ${suffisso}` }).returning();
 	idCorso = corso.id;

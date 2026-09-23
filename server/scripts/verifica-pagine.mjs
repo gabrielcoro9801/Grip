@@ -173,7 +173,7 @@ try {
 		.returning();
 	idQr.push(...qr.map((q) => q.id));
 
-	const [sala] = await db.insert(rooms).values({ name: 'Sala Verifica', capacity: 10 }).returning();
+	const [sala] = await db.insert(rooms).values({ name: 'Sala Verifica' }).returning();
 	idSala = sala.id;
 	const [categoria] = await db.insert(categories).values({ name: CATEGORIA, color: '#10b981' }).returning();
 	idCategoria = categoria.id;

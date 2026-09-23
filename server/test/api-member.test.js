@@ -106,7 +106,7 @@ before(async () => {
 
 	// Una lezione con due prenotazioni: la mia e quella di un altro. Serve a verificare che
 	// dei posti escano numeri e non le righe altrui.
-	const [sala] = await db.insert(rooms).values({ name: 'Sala API', capacity: 10 }).returning();
+	const [sala] = await db.insert(rooms).values({ name: 'Sala API' }).returning();
 	idSala = sala.id;
 	const [corso] = await db.insert(courses).values({ name: 'Corso API' }).returning();
 	idCorso = corso.id;

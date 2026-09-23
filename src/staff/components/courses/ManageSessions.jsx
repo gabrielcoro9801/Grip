@@ -12,6 +12,7 @@ import { DAYS, DAYS_IT, getDayOfWeekFromDate } from "@/staff/lib/courseValidatio
 import { checkSessionConflict } from "@/staff/lib/eventUtils";
 import { validateSessionWrite } from "@/staff/lib/sessionValidation";
 import { formatData } from "@/core/domain/format";
+import { sospensioneCopre } from "@/core/domain/sale";
 
 const FILTER_OPTIONS = [
   { value: "single", label: "Solo questa sessione" },
@@ -113,6 +114,13 @@ export default function ManageSessions({ data, reload, initialSessionId }) {
   }, [matchedSessions, overrideModified]);
 
   const excludedCount = impact.sessionCount - targetSessions.length;
+
+  // Spostare le lezioni in una sala chiusa in una di quelle date non si può: il server le
+  // rifiuterebbe una alla volta, lasciando la modifica fatta a metà.
+  const saleSospese = useMemo(() => {
+    const date = targetSessions.map(s => s.date);
+    return new Set(rooms.filter(r => date.some(d => sospensioneCopre(r, d))).map(r => r.id));
+  }, [rooms, targetSessions]);
 
   const filterReady = useMemo(() => {
     if (filterType === "single") return !!filterSessionId;
@@ -451,7 +459,11 @@ export default function ManageSessions({ data, reload, initialSessionId }) {
               <Select value={editForm.room_id} onValueChange={v => setEditForm({ ...editForm, room_id: v })}>
                 <SelectTrigger><SelectValue placeholder="Mantieni attuale" /></SelectTrigger>
                 <SelectContent>
-                  {rooms.map(r => <SelectItem key={r.id} value={r.id}>{r.name} ({r.capacity} posti)</SelectItem>)}
+                  {rooms.map(r => (
+                    <SelectItem key={r.id} value={r.id} disabled={saleSospese.has(r.id)}>
+                      {r.name}{saleSospese.has(r.id) ? " — sospesa in queste date" : ""}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
