@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { caricaDocumenti } from "@/core/api/portale";
 import { Card, CardContent } from "@/ui/primitivi/card";
 import { Badge } from "@/ui/primitivi/badge";
-import { FileText, Download, AlertCircle, CheckCircle, Clock } from "lucide-react";
+import { FileText, Download, AlertCircle, Archive, CheckCircle, Clock } from "lucide-react";
 import { LoadingState } from "@/ui/Spinner";
 import { formatData } from "@/core/domain/format";
 
@@ -16,14 +16,18 @@ export default function MemberDocuments() {
       .finally(() => setLoading(false));
   }, []);
 
-  // Se un documento sia scaduto o in scadenza lo dice il server. Stava qui, con la soglia
-  // dei trenta giorni scritta dentro la pagina — e quella dei sette nella schermata
-  // iniziale: la stessa politica in due punti, dove nessuno la cerca. Alla pagina resta
-  // solo come mostrarla.
+  // Se un documento sia scaduto, in scadenza o archiviato lo dice il server, in `stato`.
+  // Stava qui, con la soglia dei trenta giorni scritta dentro la pagina — e quella dei sette
+  // nella schermata iniziale: la stessa politica in due punti, dove nessuno la cerca. Alla
+  // pagina resta solo come mostrarla.
+  //
+  // "Archiviato" è un certificato o un documento scaduto che è già stato sostituito: resta
+  // consultabile, ma non è più quello che vale, ed è la stessa parola che usa la segreteria.
   const statoScadenza = (doc) => {
+    if (doc.stato === "archiviato") return { label: "Archiviato", variant: "outline", icon: Archive };
     if (!doc.scadenza) return null;
-    if (doc.scaduto) return { label: "Scaduto", variant: "destructive", icon: AlertCircle };
-    if (doc.in_scadenza) return { label: `In scadenza (${doc.giorni_alla_scadenza}g)`, variant: "secondary", icon: Clock };
+    if (doc.stato === "scaduto") return { label: "Scaduto", variant: "destructive", icon: AlertCircle };
+    if (doc.stato === "in_scadenza") return { label: `In scadenza (${doc.giorni_alla_scadenza}g)`, variant: "secondary", icon: Clock };
     return { label: "Valido", variant: "default", icon: CheckCircle };
   };
 

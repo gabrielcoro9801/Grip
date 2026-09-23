@@ -12,7 +12,7 @@ import { codiceDinamico } from '../../lib/qrDinamico.js';
 import { prenota, disdici } from '../../lib/prenotazioni.js';
 import { firmaUrl } from '../../lib/urlFirmati.js';
 import { msResiduiFinestra } from '../../../../shared/qrDinamico.js';
-import { nomeDocumento } from '../../../../shared/anagrafica.js';
+import { nomeDocumento, conStatoDocumenti } from '../../../../shared/anagrafica.js';
 
 /**
  * L'API del portale soci.
@@ -92,10 +92,21 @@ export default async function memberRoutes(fastify) {
 			.where(eq(subscriptions.memberId, request.idSocio))
 			.orderBy(desc(subscriptions.startDate));
 
-		const documenti = await db
-			.select({ scadenza: memberDocuments.expiryDate })
-			.from(memberDocuments)
-			.where(eq(memberDocuments.memberId, request.idSocio));
+		// Servono anche tipo e data di caricamento, non solo la scadenza: un certificato
+		// scaduto e già sostituito è archiviato, e non va contato fra quelli scaduti —
+		// altrimenti il socio che ha rinnovato si vede un avviso rosso che non sa come
+		// togliere. La regola sta in shared/anagrafica.js, la stessa della segreteria.
+		const documenti = conStatoDocumenti(
+			await db
+				.select({
+					document_type: memberDocuments.documentType,
+					created_date: memberDocuments.createdDate,
+					expiry_date: memberDocuments.expiryDate,
+				})
+				.from(memberDocuments)
+				.where(eq(memberDocuments.memberId, request.idSocio)),
+			giorniDaOggi
+		);
 
 		const corrente = abbonamenti.find((a) => a.status === 'active') ?? abbonamenti[0] ?? null;
 
@@ -124,8 +135,8 @@ export default async function memberRoutes(fastify) {
 			},
 			documenti: {
 				totale: documenti.length,
-				in_scadenza: documenti.filter((d) => entroGiorni(d.scadenza, 30) && !scaduto(d.scadenza)).length,
-				scaduti: documenti.filter((d) => scaduto(d.scadenza)).length,
+				in_scadenza: documenti.filter((d) => d.stato === 'in_scadenza').length,
+				scaduti: documenti.filter((d) => d.stato === 'scaduto').length,
 			},
 		};
 	});
@@ -157,6 +168,21 @@ export default async function memberRoutes(fastify) {
 			.where(eq(memberDocuments.memberId, request.idSocio))
 			.orderBy(desc(memberDocuments.createdDate));
 
+		// Lo stato dipende da tutti i documenti del socio, non dal singolo: un certificato
+		// scaduto è "archiviato" se ne è arrivato uno nuovo, "scaduto" se è ancora l'ultimo.
+		// I nomi delle colonne qui sono in camelCase, quelli della regola condivisa no.
+		const stati = new Map(
+			conStatoDocumenti(
+				righe.map((d) => ({
+					id: d.id,
+					document_type: d.documentType,
+					created_date: d.createdDate,
+					expiry_date: d.expiryDate,
+				})),
+				giorniDaOggi
+			).map((d) => [d.id, d.stato])
+		);
+
 		return {
 			documenti: righe.map((d) => ({
 				id: d.id,
@@ -169,8 +195,12 @@ export default async function memberRoutes(fastify) {
 				url: firmaUrl(d.fileUrl),
 				scadenza: d.expiryDate,
 				giorni_alla_scadenza: giorniDaOggi(d.expiryDate),
+				// `scaduto` e `in_scadenza` restano quello che dicono: fatti sulla data, e
+				// c'erano prima. `stato` è la lettura completa — valido, in_scadenza,
+				// scaduto, archiviato — ed è quella che le schermate usano per il bollino.
 				scaduto: scaduto(d.expiryDate),
 				in_scadenza: entroGiorni(d.expiryDate, 30) && !scaduto(d.expiryDate),
+				stato: stati.get(d.id),
 				caricato_il: d.createdDate,
 				caricato_da: d.caricatoDa,
 				note: d.notes,
