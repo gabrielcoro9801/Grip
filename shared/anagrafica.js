@@ -78,11 +78,12 @@ export function codiceFiscaleValido(valoreGrezzo) {
  *
  * `atteso` dice che la scheda del socio segnala quando manca: il certificato medico serve per
  * allenarsi, il documento di identità per il tesseramento. Gli altri si caricano se servono.
- * `scadenza` dice se la data di scadenza è obbligatoria.
+ * `scadenza` dice se la data di scadenza è obbligatoria: certificato e documento di identità
+ * scadono entrambi, e senza la data la scheda non sa dire quando il socio va richiamato.
  */
 export const TIPI_DOCUMENTO = [
   { valore: "certificato_medico", etichetta: "Certificato medico", atteso: true, scadenza: true },
-  { valore: "documento_identita", etichetta: "Documento di identità", atteso: true, scadenza: false },
+  { valore: "documento_identita", etichetta: "Documento di identità", atteso: true, scadenza: true },
   { valore: "altro", etichetta: "Altri documenti", atteso: false, scadenza: false },
 ];
 
@@ -102,6 +103,6 @@ export function motivoDocumentoNonValido(doc) {
   const tipo = PER_TIPO[doc?.document_type];
   if (!tipo) return "Tipo di documento non valido.";
   if (doc.document_type === "altro" && !String(doc.titolo ?? "").trim()) return "Indica di che documento si tratta.";
-  if (tipo.scadenza && !doc.expiry_date) return "Il certificato medico ha bisogno della data di scadenza.";
+  if (tipo.scadenza && !doc.expiry_date) return `${tipo.etichetta}: indica la data di scadenza.`;
   return null;
 }

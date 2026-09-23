@@ -38,11 +38,11 @@ function eta(dataNascita) {
 }
 
 /** Un dato della tile anagrafica: un trattino quando manca, così ogni scheda ha le stesse righe. */
-function DatoAnagrafico({ etichetta, children, mono }) {
+function DatoAnagrafico({ etichetta, children }) {
   return (
     <div className="min-w-0">
       <dt className="text-xs text-muted-foreground">{etichetta}</dt>
-      <dd className={`text-sm font-medium break-words ${mono ? "font-mono" : ""}`}>
+      <dd className="text-sm font-medium break-words">
         {children || <span className="text-muted-foreground font-normal">—</span>}
       </dd>
     </div>
@@ -306,7 +306,7 @@ export default function MemberDetail() {
               <dl className="flex-1 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-4">
                 <DatoAnagrafico etichetta="Nome">{member.nome}</DatoAnagrafico>
                 <DatoAnagrafico etichetta="Cognome">{member.cognome}</DatoAnagrafico>
-                <DatoAnagrafico etichetta="Codice fiscale" mono>{member.codice_fiscale}</DatoAnagrafico>
+                <DatoAnagrafico etichetta="Codice fiscale">{member.codice_fiscale}</DatoAnagrafico>
                 <DatoAnagrafico etichetta="Data di nascita">
                   {member.date_of_birth && `${formatData(member.date_of_birth, "media")} (${eta(member.date_of_birth)} anni)`}
                 </DatoAnagrafico>

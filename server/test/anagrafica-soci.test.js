@@ -123,10 +123,11 @@ describe('i documenti', () => {
 	test('tre tipi, e ognuno con quello che gli serve', async () => {
 		assert.equal((await carica({ document_type: 'Certificato Medico', expiry_date: '2027-01-01' })).statusCode, 400, 'tipo non ammesso');
 		assert.equal((await carica({ document_type: 'certificato_medico' })).statusCode, 400, 'certificato senza scadenza');
+		assert.equal((await carica({ document_type: 'documento_identita' })).statusCode, 400, 'identità senza scadenza');
 		assert.equal((await carica({ document_type: 'altro' })).statusCode, 400, 'altro senza titolo');
 
 		assert.equal((await carica({ document_type: 'certificato_medico', expiry_date: '2027-01-01' })).statusCode, 201);
-		assert.equal((await carica({ document_type: 'documento_identita' })).statusCode, 201);
+		assert.equal((await carica({ document_type: 'documento_identita', expiry_date: '2030-05-20' })).statusCode, 201);
 		assert.equal((await carica({ document_type: 'altro', titolo: 'Contratto' })).statusCode, 201);
 
 		const righe = await db.select().from(memberDocuments).where(eq(memberDocuments.memberId, idSoci[0]));

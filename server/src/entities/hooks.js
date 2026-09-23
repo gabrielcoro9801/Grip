@@ -156,7 +156,7 @@ const WRITE_TRANSFORMS = {
 		return rest;
 	},
 
-	// Tipo fra i tre ammessi, titolo per gli "altri", scadenza per il certificato. In modifica
+	// Tipo fra i tre ammessi, titolo per gli "altri", scadenza per quelli che scadono. In modifica
 	// si controlla solo il tipo, se cambia: oggi i documenti si caricano e non si correggono.
 	async MemberDocument(body, { creazione }) {
 		const rest = { ...(body ?? {}) };
