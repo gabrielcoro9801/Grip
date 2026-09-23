@@ -239,6 +239,20 @@
       "when": 1790196636757,
       "tag": "0033_via_capienza_sale",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1790199244693,
+      "tag": "0034_nome_sala_piu_corto",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1790200562662,
+      "tag": "0035_sale_annullate",
+      "breakpoints": true
     }
   ]
 }

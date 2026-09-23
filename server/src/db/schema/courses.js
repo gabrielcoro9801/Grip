@@ -30,20 +30,20 @@ export const instructors = pgTable('instructors', {
 // libera, e la si riaprirebbe a mano. Le regole stanno in shared/sale.js.
 export const rooms = pgTable('rooms', {
 	id: uuid('id').defaultRandom().primaryKey(),
-	name: varchar('name', { length: 255 }).notNull(),
+	name: varchar('name', { length: 50 }).notNull(), // una riga della tile, accanto allo stato
 	description: varchar('description', { length: 140 }), // le note: due righe nella tile
-	stato: varchar('stato', { length: 12 }).notNull().default('attivo'), // attivo | sospeso
+	stato: varchar('stato', { length: 12 }).notNull().default('attivo'), // attivo | sospeso | annullato
 	sospesaDal: date('sospesa_dal'),
 	sospesaAl: date('sospesa_al'),
 }, (table) => ({
-	statoValido: check('rooms_stato_valido', sql`${table.stato} IN ('attivo', 'sospeso')`),
-	// Sospesa vuol dire "da questo giorno a quest'altro": una sospensione senza date, o delle
-	// date su una sala attiva, sarebbero due modi di dire una cosa che il resto del codice
-	// legge in un modo solo.
+	statoValido: check('rooms_stato_valido', sql`${table.stato} IN ('attivo', 'sospeso', 'annullato')`),
+	// Le date sono la sospensione: ci sono se e solo se la sala è sospesa. Una sospensione senza
+	// date, o delle date su una sala attiva o annullata, sarebbero due modi di dire una cosa che
+	// il resto del codice legge in un modo solo.
 	sospensioneCoerente: check(
 		'rooms_sospensione_coerente',
 		sql`(${table.stato} = 'sospeso' AND ${table.sospesaDal} IS NOT NULL AND ${table.sospesaAl} IS NOT NULL AND ${table.sospesaAl} >= ${table.sospesaDal})
-			OR (${table.stato} = 'attivo' AND ${table.sospesaDal} IS NULL AND ${table.sospesaAl} IS NULL)`,
+			OR (${table.stato} <> 'sospeso' AND ${table.sospesaDal} IS NULL AND ${table.sospesaAl} IS NULL)`,
 	),
 }));
 

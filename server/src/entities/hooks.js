@@ -1,7 +1,7 @@
 // Regole per-entità applicate dall'endpoint generico: campi che non devono mai
 // uscire dall'API, e trasformazioni da applicare in scrittura.
 import bcrypt from 'bcryptjs';
-import { and, asc, eq, gte, lte, ne } from 'drizzle-orm';
+import { and, asc, count, eq, gte, lte, ne } from 'drizzle-orm';
 import { firmaUrl, togliFirma } from '../lib/urlFirmati.js';
 import { db } from '../db/client.js';
 import { assegnaCodiceSocio } from '../lib/codiceSocio.js';
@@ -15,8 +15,10 @@ import {
 	oggiIso, NOTE_MASSIMO,
 } from '../../../shared/abbonamenti.js';
 import {
-	statoSalaValido, motivoSospensioneNonValida, sospensioneTocca, messaggioSospensioneBloccata,
-	messaggioSalaSospesa, NOTE_MASSIMO as NOTE_SALA_MASSIMO,
+	statoSalaValido, motivoSospensioneNonValida, messaggioSospensioneBloccata,
+	motivoSalaNonPrenotabile, messaggioAnnullaInveceDiEliminare, SALA_PRENOTATA,
+	motivoCambioStatoNonValido as motivoCambioStatoSalaNonValido,
+	NOME_MASSIMO as NOME_SALA_MASSIMO, NOTE_MASSIMO as NOTE_SALA_MASSIMO,
 } from '../../../shared/sale.js';
 
 // Campi rimossi da ogni risposta, per entità.
@@ -44,14 +46,23 @@ export async function mutationBlockedReason(entityName, _table, id, operazione, 
 		const [tipo] = await db.select({ stato: plans.stato }).from(plans).where(eq(plans.id, id)).limit(1);
 		if (tipo) return motivoCambioStatoNonValido(tipo.stato, corpo.stato);
 	}
-	if (entityName === 'Room' && operazione === 'update' && corpo?.stato === 'sospeso') {
-		return salaNonSospendibile(id, corpo.sospesa_dal, corpo.sospesa_al);
+	if (entityName === 'Room' && operazione === 'update' && corpo && presente(corpo, 'stato')) {
+		const [sala] = await db.select({ stato: rooms.stato }).from(rooms).where(eq(rooms.id, id)).limit(1);
+		const nonValido = sala && motivoCambioStatoSalaNonValido(sala.stato, corpo.stato);
+		if (nonValido) return nonValido;
+		if (corpo.stato === 'sospeso') return salaNonSospendibile(id, corpo.sospesa_dal, corpo.sospesa_al);
+		// Annullare è definitivo, quindi vale la stessa soglia dell'eliminazione: finché ci sono
+		// lezioni da qui in avanti, quella stanza serve a qualcuno.
+		if (corpo.stato === 'annullato' && (await salaOccupataDaQui(id))) return SALA_PRENOTATA;
+	}
+	if (entityName === 'Room' && operazione === 'delete') {
+		return salaNonEliminabile(id);
 	}
 	// Una modifica sposta l'evento, o la singola lezione, in un'altra sala o in altre date: il
 	// controllo va rifatto su com'è la riga *dopo*, non su quello che arriva nel corpo.
 	if (entityName === 'Event' && operazione === 'update' && corpo && (presente(corpo, 'room_id') || presente(corpo, 'start_date'))) {
 		const [attuale] = await db.select().from(eventsTable).where(eq(eventsTable.id, id)).limit(1);
-		if (attuale) return motivoEventoInSalaSospesa({ ...translateToSnakeCase(eventsTable, attuale), ...corpo });
+		if (attuale) return motivoEventoInSalaNonPrenotabile({ ...translateToSnakeCase(eventsTable, attuale), ...corpo });
 	}
 	if (entityName === 'Session' && operazione === 'update' && corpo && (presente(corpo, 'room_id') || presente(corpo, 'date'))) {
 		const [attuale] = await db.select({ data: sessions.date, salaId: sessions.roomId }).from(sessions).where(eq(sessions.id, id)).limit(1);
@@ -83,13 +94,68 @@ async function salaNonSospendibile(id, dal, al) {
 	return messaggioSospensioneBloccata(sala.name, dal, al, occupate.map((r) => r.data));
 }
 
+/**
+ * Se la sala è impegnata da oggi in avanti.
+ *
+ * "Da qui in avanti" e non "in assoluto": è la differenza fra una stanza che serve ancora a
+ * qualcuno e una che ha solo un passato.
+ *
+ * Le due domande non sono la stessa, e la differenza è fra una lezione e un evento. Una lezione
+ * disdetta non conta: è un appuntamento che non c'è più, nessuno si presenterà. Un evento che non
+ * è ancora cominciato conta comunque, anche a lezioni tutte disdette e anche se le sessioni non
+ * sono mai state generate: è una cosa viva in calendario, le sue lezioni possono tornare, e
+ * chiudere la stanza sotto di lui lo lascerebbe a puntare a un posto in cui non si entra più.
+ *
+ * Oggi sta col futuro: una lezione di stamattina deve ancora tenersi.
+ */
+async function salaOccupataDaQui(id, oggi = oggiIso()) {
+	const [{ lezioni }] = await db
+		.select({ lezioni: count() })
+		.from(sessions)
+		.where(and(eq(sessions.roomId, id), ne(sessions.status, 'cancelled'), gte(sessions.date, oggi)));
+	if (Number(lezioni)) return true;
+	const [{ eventi }] = await db
+		.select({ eventi: count() })
+		.from(eventsTable)
+		.where(and(eq(eventsTable.roomId, id), gte(eventsTable.startDate, oggi)));
+	return Boolean(Number(eventi));
+}
+
+/** Quante volte la sala compare nel calendario, in qualunque epoca e stato. */
+async function quantoUsata(id) {
+	const [{ eventi }] = await db.select({ eventi: count() }).from(eventsTable).where(eq(eventsTable.roomId, id));
+	const [{ lezioni }] = await db.select({ lezioni: count() }).from(sessions).where(eq(sessions.roomId, id));
+	return { eventi: Number(eventi), lezioni: Number(lezioni) };
+}
+
+/**
+ * Perché la sala non si può eliminare, o null.
+ *
+ * Si elimina una sala che non è mai stata niente per nessuno: creata per sbaglio, o con il nome
+ * scritto male e rifatta. Tutto il resto no, e per due ragioni diverse. Se ha ospitato lezioni
+ * già passate, cancellarla toglierebbe il "dove" a un pezzo di calendario accaduto davvero:
+ * quella si annulla. Se ha lezioni da qui in avanti non si tocca affatto — ci sono soci
+ * prenotati su appuntamenti che devono ancora arrivare.
+ *
+ * Il conto guarda anche le lezioni e non solo gli eventi: una lezione si sposta in un'altra
+ * sala una alla volta, e la sala d'arrivo si ritrova occupata da qualcosa il cui evento sta
+ * altrove.
+ */
+async function salaNonEliminabile(id) {
+	const [sala] = await db.select({ name: rooms.name }).from(rooms).where(eq(rooms.id, id)).limit(1);
+	if (!sala) return null;
+	const { eventi, lezioni } = await quantoUsata(id);
+	if (!eventi && !lezioni) return null;
+	if (await salaOccupataDaQui(id)) return SALA_PRENOTATA;
+	return messaggioAnnullaInveceDiEliminare(sala.name, eventi || lezioni);
+}
+
 /** Perché quella sala non si può usare fra `inizio` e `fine`, o null. `fine` null = senza fine nota. */
 async function motivoSalaNonDisponibile(idSala, inizio, fine) {
 	if (!idSala || !inizio) return null;
 	const [sala] = await db.select().from(rooms).where(eq(rooms.id, idSala)).limit(1);
 	if (!sala) return null;
-	const snake = translateToSnakeCase(rooms, sala);
-	return sospensioneTocca(snake, inizio, fine) ? messaggioSalaSospesa(snake) : null;
+	return motivoSalaNonPrenotabile(translateToSnakeCase(rooms, sala), inizio, fine);
 }
 
 /**
@@ -111,7 +177,7 @@ function periodoEvento(evento) {
 	return [inizio, inizio];
 }
 
-function motivoEventoInSalaSospesa(evento) {
+function motivoEventoInSalaNonPrenotabile(evento) {
 	const [inizio, fine] = periodoEvento(evento);
 	return motivoSalaNonDisponibile(evento.room_id, inizio, fine);
 }
@@ -243,10 +309,10 @@ const WRITE_TRANSFORMS = {
 		return rest;
 	},
 
-	// Una sala: un nome, delle note corte, e uno stato che è o "attiva" o "sospesa". Sospesa è
+	// Una sala: un nome, delle note corte, e uno stato fra attiva, sospesa e annullata. Sospesa è
 	// sempre un periodo, da data a data — senza una fine nessuno saprebbe quando la stanza torna
-	// libera. Se torna attiva il periodo si cancella: restava scritto un pezzo di storia che il
-	// resto del codice avrebbe continuato a leggere come una sospensione.
+	// libera. Negli altri due stati il periodo si cancella: restava scritto un pezzo di storia che
+	// il resto del codice avrebbe continuato a leggere come una sospensione.
 	//
 	// La capienza non c'è più: quanta gente entra a lezione lo decide l'evento.
 	async Room(body, { creazione }) {
@@ -254,6 +320,9 @@ const WRITE_TRANSFORMS = {
 		if (creazione || presente(rest, 'name')) {
 			rest.name = String(rest.name ?? '').trim();
 			if (!rest.name) throw rifiuta('Il nome della sala è obbligatorio.');
+			// Il limite è anche nella colonna, ma lì il rifiuto arriva come
+			// "value too long for type character varying(50)": vero, e illeggibile.
+			if (rest.name.length > NOME_SALA_MASSIMO) throw rifiuta(`Il nome della sala sta in ${NOME_SALA_MASSIMO} caratteri.`);
 		}
 		if (presente(rest, 'description')) {
 			if (vuoto(rest.description)) rest.description = null;
@@ -261,7 +330,7 @@ const WRITE_TRANSFORMS = {
 		}
 		if (creazione && !presente(rest, 'stato')) rest.stato = 'attivo';
 		if (presente(rest, 'stato')) {
-			if (!statoSalaValido(rest.stato)) throw rifiuta('Stato non valido: attiva o sospesa.');
+			if (!statoSalaValido(rest.stato)) throw rifiuta('Stato non valido: attiva, sospesa o annullata.');
 			if (rest.stato === 'sospeso') {
 				const motivo = motivoSospensioneNonValida(rest.sospesa_dal, rest.sospesa_al);
 				if (motivo) throw rifiuta(motivo);
@@ -278,14 +347,15 @@ const WRITE_TRANSFORMS = {
 		return rest;
 	},
 
-	// Un evento non si programma in una sala sospesa. Il controllo sta sulla creazione: le
-	// sessioni nascono da qui (bulkCreate subito dopo), quindi coprire il periodo dell'evento
-	// copre anche le sue lezioni, senza una query per ognuna delle 104 possibili. Chi sposta poi
-	// una singola lezione passa da `mutationBlockedReason`.
+	// Un evento non si programma in una sala annullata, né in una sospesa durante il suo periodo.
+	// Il controllo sta sulla creazione: le sessioni nascono da qui (bulkCreate subito dopo),
+	// quindi coprire il periodo dell'evento copre anche le sue lezioni, senza una query per
+	// ognuna delle 104 possibili. Chi sposta poi una singola lezione passa da
+	// `mutationBlockedReason`.
 	async Event(body, { creazione }) {
 		const rest = { ...(body ?? {}) };
 		if (creazione) {
-			const motivo = await motivoEventoInSalaSospesa(rest);
+			const motivo = await motivoEventoInSalaNonPrenotabile(rest);
 			if (motivo) throw rifiuta(motivo);
 		}
 		return rest;
