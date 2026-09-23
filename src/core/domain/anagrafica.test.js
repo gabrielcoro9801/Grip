@@ -61,7 +61,10 @@ describe('i documenti', () => {
 	test('cosa serve per salvarli', () => {
 		assert.equal(motivoDocumentoNonValido({ document_type: 'certificato_medico', expiry_date: '2027-01-01' }), null);
 		assert.match(motivoDocumentoNonValido({ document_type: 'certificato_medico' }), /scadenza/);
-		assert.equal(motivoDocumentoNonValido({ document_type: 'documento_identita' }), null);
+		// Anche il documento di identità scade: senza data non si sa quando richiamare il socio.
+		assert.equal(motivoDocumentoNonValido({ document_type: 'documento_identita', expiry_date: '2030-05-20' }), null);
+		assert.match(motivoDocumentoNonValido({ document_type: 'documento_identita' }), /scadenza/);
+		assert.equal(motivoDocumentoNonValido({ document_type: 'altro', titolo: 'Contratto' }), null);
 		assert.match(motivoDocumentoNonValido({ document_type: 'altro', titolo: '  ' }), /documento/);
 		assert.match(motivoDocumentoNonValido({ document_type: 'Certificato Medico' }), /non valido/);
 	});

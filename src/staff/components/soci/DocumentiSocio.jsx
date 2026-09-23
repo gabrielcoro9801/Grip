@@ -42,10 +42,10 @@ function BadgeScadenza({ scadenza }) {
  */
 export default function DocumentiSocio({ socio, documenti, puoModificare, staffUser, onCambio }) {
   const { toast } = useToast();
-  const [modulo, setModulo] = useState(null); // { document_type, titolo, expiry_date, notes, file }
+  const [modulo, setModulo] = useState(null); // { document_type, titolo, expiry_date, file }
   const [salvando, setSalvando] = useState(false);
 
-  const apri = (tipo) => setModulo({ document_type: tipo, titolo: "", expiry_date: "", notes: "", file: null });
+  const apri = (tipo) => setModulo({ document_type: tipo, titolo: "", expiry_date: "", file: null });
 
   const salva = async (e) => {
     e.preventDefault();
@@ -148,10 +148,6 @@ export default function DocumentiSocio({ socio, documenti, puoModificare, staffU
               <div>
                 <Label htmlFor="doc-scadenza">Data di scadenza{tipoInModulo?.scadenza ? " *" : ""}</Label>
                 <Input id="doc-scadenza" type="date" required={tipoInModulo?.scadenza} value={modulo.expiry_date} onChange={(e) => setModulo({ ...modulo, expiry_date: e.target.value })} />
-              </div>
-              <div>
-                <Label htmlFor="doc-note">Note</Label>
-                <Input id="doc-note" value={modulo.notes} onChange={(e) => setModulo({ ...modulo, notes: e.target.value })} />
               </div>
               {motivo && <p className="text-xs text-muted-foreground">{motivo}</p>}
               <Button type="submit" className="w-full" disabled={Boolean(motivo) || salvando}>
