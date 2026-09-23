@@ -124,27 +124,6 @@ const ETICHETTE_STATO = {
 export const etichettaStatoDocumento = (stato) => ETICHETTE_STATO[stato] ?? "";
 
 /**
- * Lo stato di ogni documento di un socio: `valido`, `in_scadenza`, `scaduto`, `archiviato`.
- *
- * L'archivio non è una colonna nel database: è una conseguenza delle date, e si ricalcola a
- * ogni lettura. Salvarlo vorrebbe dire avere un campo che diventa falso da solo alla
- * mezzanotte di una scadenza, e qualcosa che lo aggiorni — un lavoro periodico che prima o
- * poi non gira, lasciando documenti nello stato sbagliato senza che nessuno se ne accorga.
- *
- * **Perché certificato medico e documento di identità non si archiviano da soli.** Sono i
- * due tipi che la scheda segnala quando mancano (`atteso`). Se un certificato scaduto
- * sparisse in archivio senza che ne sia arrivato uno nuovo, la sezione direbbe "Mancante" —
- * che è un'altra cosa, e più rassicurante del vero: "manca" si risolve chiedendolo al socio,
- * "scaduto" vuol dire che quella persona si sta allenando senza copertura. Finché non arriva
- * il sostituto, quello scaduto resta dov'è, con il suo bollino rosso. Gli "altri" documenti
- * non segnalano niente quando mancano, quindi appena scadono possono andare via.
- *
- * `giorniAllaScadenza(data)` torna i giorni interi che mancano (negativi se è passata) e
- * `null` se la data non c'è. La passa chi chiama: il browser ce l'ha in `core/domain/format`,
- * il server nelle sue funzioni di rotta, e sono calcoli sul calendario che non vale la pena
- * riscrivere qui una terza volta.
- */
-/**
  * Quando un documento è stato caricato, come numero da confrontare.
  *
  * Si passa da `Date` e non dal confronto fra stringhe perché le due parti non ricevono la
@@ -158,23 +137,61 @@ function quandoCaricato(doc) {
   return Number.isNaN(istante) ? 0 : istante;
 }
 
+/**
+ * Lo stato di ogni documento di un socio: `valido`, `in_scadenza`, `scaduto`, `archiviato`.
+ *
+ * L'archivio non è una colonna nel database: è una conseguenza delle date, e si ricalcola a
+ * ogni lettura. Salvarlo vorrebbe dire avere un campo che diventa falso da solo alla
+ * mezzanotte di una scadenza, e qualcosa che lo aggiorni — un lavoro periodico che prima o
+ * poi non gira, lasciando documenti nello stato sbagliato senza che nessuno se ne accorga.
+ *
+ * **Perché certificato medico e documento di identità non si archiviano da soli.** Sono i
+ * due tipi che la scheda segnala quando mancano (`atteso`), e la sezione non deve mai
+ * restare vuota mentre un documento esiste: direbbe "Mancante", che è un'altra cosa e più
+ * rassicurante del vero — "manca" si risolve chiedendolo al socio, "scaduto" vuol dire che
+ * quella persona si sta allenando senza copertura. Per questi due tipi, quindi, uno scaduto
+ * va in archivio **solo quando c'è qualcos'altro che lo rimpiazza**, e cioè:
+ *
+ *   - esiste un documento dello stesso tipo ancora buono, caricato prima o dopo non importa.
+ *     Capita di registrare la copia di un certificato vecchio dopo aver già inserito quello
+ *     nuovo: è storia che nasce archiviata, e non deve tornare a occupare la sezione;
+ *   - oppure, se sono scaduti tutti, quello caricato per ultimo resta in vista e gli altri
+ *     vanno via: è l'unico che dica ancora qualcosa di utile.
+ *
+ * Gli "altri" documenti non segnalano niente quando mancano, quindi appena scadono possono
+ * andare in archivio senza tante condizioni.
+ *
+ * `giorniAllaScadenza(data)` torna i giorni interi che mancano (negativi se è passata) e
+ * `null` se la data non c'è. La passa chi chiama: il browser ce l'ha in `core/domain/format`,
+ * il server nelle sue funzioni di rotta, e sono calcoli sul calendario che non vale la pena
+ * riscrivere qui una terza volta.
+ */
 export function conStatoDocumenti(documenti, giorniAllaScadenza) {
-  // L'ultimo caricato per ogni tipo: è quello che resta in vista, gli altri sono storia.
-  const ultimoPerTipo = new Map();
-  for (const doc of documenti) {
-    const quando = quandoCaricato(doc);
-    const attuale = ultimoPerTipo.get(doc.document_type);
-    if (attuale === undefined || quando > attuale) ultimoPerTipo.set(doc.document_type, quando);
-  }
-
-  return documenti.map((doc) => {
+  // Se un documento sia scaduto si decide una volta sola: serve sia per il suo stato, sia
+  // per sapere se i suoi fratelli dello stesso tipo hanno qualcosa di meglio da mostrare.
+  const valutati = documenti.map((doc) => {
     const giorni = giorniAllaScadenza(doc.expiry_date);
     // Senza data di scadenza non scade: è il caso degli "altri" documenti, che restano
     // validi finché qualcuno non li elimina a mano.
-    const scaduto = giorni !== null && giorni < 0;
-    const sostituito = quandoCaricato(doc) < (ultimoPerTipo.get(doc.document_type) ?? 0);
+    return { doc, giorni, scaduto: giorni !== null && giorni < 0 };
+  });
+
+  // Per ogni tipo: quando è stato caricato il più recente, e se ne esiste uno ancora buono.
+  const ultimoPerTipo = new Map();
+  const tipiConDocumentoBuono = new Set();
+  for (const { doc, scaduto } of valutati) {
+    const quando = quandoCaricato(doc);
+    const attuale = ultimoPerTipo.get(doc.document_type);
+    if (attuale === undefined || quando > attuale) ultimoPerTipo.set(doc.document_type, quando);
+    if (!scaduto) tipiConDocumentoBuono.add(doc.document_type);
+  }
+
+  return valutati.map(({ doc, giorni, scaduto }) => {
+    const rimpiazzato =
+      tipiConDocumentoBuono.has(doc.document_type) ||
+      quandoCaricato(doc) < (ultimoPerTipo.get(doc.document_type) ?? 0);
     const atteso = Boolean(PER_TIPO[doc.document_type]?.atteso);
-    const archiviato = scaduto && (atteso ? sostituito : true);
+    const archiviato = scaduto && (atteso ? rimpiazzato : true);
 
     let stato = "valido";
     if (archiviato) stato = "archiviato";
