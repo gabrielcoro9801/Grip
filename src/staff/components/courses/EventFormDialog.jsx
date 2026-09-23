@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Plus, AlertTriangle, X } from "lucide-react";
 import { useToast } from "@/ui/primitivi/use-toast";
 import { DAYS, DAYS_IT } from "@/staff/lib/courseValidation";
+import { sospensioneTocca, descriviSospensione, messaggioSalaSospesa } from "@/core/domain/sale";
 import { generateSessionDates, checkEventConflicts } from "@/staff/lib/eventUtils";
 import { validateSessionsBulk } from "@/staff/lib/sessionValidation";
 
@@ -61,6 +62,31 @@ export default function EventFormDialog({ open, onClose, data, reload }) {
 
   const overLimit = previewCount > MAX_SESSIONS;
 
+  // Dal primo all'ultimo giorno che l'evento occuperà. Un settimanale contato a occorrenze non
+  // sa quando finisce finché non genera le sessioni: `null` vuol dire "senza fine nota", e una
+  // sala sospesa più avanti viene comunque considerata occupata.
+  const periodo = useMemo(() => {
+    if (form.recurrence_type === "custom") {
+      const date = [...form.custom_dates].sort();
+      return date.length ? [date[0], date[date.length - 1]] : [form.start_date, form.start_date];
+    }
+    if (form.recurrence_type === "weekly") {
+      return [form.start_date, form.end_condition === "by_date" ? (form.end_date || null) : null];
+    }
+    return [form.start_date, form.start_date];
+  }, [form.recurrence_type, form.custom_dates, form.start_date, form.end_condition, form.end_date]);
+
+  // Le sale chiuse in quel periodo non si possono scegliere. Il server rifiuterebbe comunque,
+  // ma dopo aver fatto compilare tutto il resto.
+  const saleSospese = useMemo(
+    () => new Set(rooms.filter(r => sospensioneTocca(r, periodo[0], periodo[1])).map(r => r.id)),
+    [rooms, periodo]
+  );
+  const salaScelta = rooms.find(r => r.id === form.room_id);
+  // Le date si cambiano dopo aver scelto la sala: una sala valida quando è stata scelta può
+  // finire dentro la sua sospensione mentre si compila il resto del modulo.
+  const salaOraSospesa = salaScelta && saleSospese.has(salaScelta.id);
+
   const toggleDay = (day) => {
     setForm(prev => ({
       ...prev,
@@ -83,6 +109,7 @@ export default function EventFormDialog({ open, onClose, data, reload }) {
     setError("");
     setGenerationResult(null);
     if (!form.course_id || !form.room_id || !form.start_time || !form.end_time) return;
+    if (salaOraSospesa) { setError(messaggioSalaSospesa(salaScelta)); return; }
     if (form.start_time >= form.end_time) { setError("L'orario di inizio deve precedere quello di fine."); return; }
     if (form.recurrence_type === "weekly") {
       if (form.days_of_week.length === 0) { setError("Seleziona almeno un giorno della settimana."); return; }
@@ -95,10 +122,9 @@ export default function EventFormDialog({ open, onClose, data, reload }) {
     setSaving(true);
     try {
       const course = courses.find(c => c.id === form.course_id);
-      const room = rooms.find(r => r.id === form.room_id);
       const eventData = {
         course_id: form.course_id, room_id: form.room_id,
-        capacity: form.capacity ? Number(form.capacity) : undefined,
+        capacity: Number(form.capacity),
         recurrence_type: form.recurrence_type,
         days_of_week: form.recurrence_type === "weekly" ? form.days_of_week : undefined,
         start_date: form.start_date,
@@ -122,8 +148,6 @@ export default function EventFormDialog({ open, onClose, data, reload }) {
         setSaving(false); return;
       }
 
-      const capacity = eventData.capacity || room?.capacity || 0;
-      eventData.capacity = capacity;
       const createdEvent = await api.entities.Event.create(eventData);
       const sessionRecords = cleanDates.map(date => ({
         event_id: createdEvent.id, date,
@@ -159,7 +183,13 @@ export default function EventFormDialog({ open, onClose, data, reload }) {
               <div><Label>Sala *</Label>
                 <Select value={form.room_id} onValueChange={v => setForm({ ...form, room_id: v })}>
                   <SelectTrigger><SelectValue placeholder="Seleziona" /></SelectTrigger>
-                  <SelectContent>{rooms.map(r => <SelectItem key={r.id} value={r.id}>{r.name} ({r.capacity})</SelectItem>)}</SelectContent>
+                  <SelectContent>
+                    {rooms.map(r => (
+                      <SelectItem key={r.id} value={r.id} disabled={saleSospese.has(r.id)}>
+                        {r.name}{saleSospese.has(r.id) ? ` — ${descriviSospensione(r).toLowerCase()}` : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
                 </Select>
               </div>
             </div>
@@ -167,7 +197,14 @@ export default function EventFormDialog({ open, onClose, data, reload }) {
               <div><Label>Inizio *</Label><Input type="time" required value={form.start_time} onChange={e => setForm({ ...form, start_time: e.target.value })} /></div>
               <div><Label>Fine *</Label><Input type="time" required value={form.end_time} onChange={e => setForm({ ...form, end_time: e.target.value })} /></div>
             </div>
-            <div><Label>Capienza (vuoto = eredita sala)</Label><Input type="number" min="0" placeholder={form.room_id ? `${rooms.find(r => r.id === form.room_id)?.capacity || ""} (sala)` : ""} value={form.capacity} onChange={e => setForm({ ...form, capacity: e.target.value })} /></div>
+            {salaOraSospesa && (
+              <div className="flex items-start gap-2 p-3 rounded-lg bg-warning/10 border border-warning/30 text-warning text-sm">
+                <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" /><span>{messaggioSalaSospesa(salaScelta)}</span>
+              </div>
+            )}
+            {/* La capienza si scrive qui e basta: la sala non ne ha più una da ereditare, perché
+                nella stessa stanza uno spinning e un pilates non tengono lo stesso numero di persone. */}
+            <div><Label>Capienza *</Label><Input type="number" min="1" required value={form.capacity} onChange={e => setForm({ ...form, capacity: e.target.value })} /></div>
             <div><Label>Ricorrenza *</Label>
               <Select value={form.recurrence_type} onValueChange={v => setForm({ ...form, recurrence_type: v, days_of_week: [], custom_dates: [], end_date: "", occurrence_count: "" })}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
@@ -235,7 +272,7 @@ export default function EventFormDialog({ open, onClose, data, reload }) {
                 <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" /><span>{error}</span>
               </div>
             )}
-            <Button type="submit" className="w-full" disabled={saving || !form.course_id || !form.room_id || overLimit}>
+            <Button type="submit" className="w-full" disabled={saving || !form.course_id || !form.room_id || overLimit || salaOraSospesa || !form.capacity}>
               {saving ? "Generazione..." : "Crea evento e genera sessioni"}
             </Button>
           </form>

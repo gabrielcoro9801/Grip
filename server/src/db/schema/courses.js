@@ -4,7 +4,8 @@
 // 1 Booking punta sempre a una Session, mai direttamente a Event/Course).
 // NB: escluso volutamente il modello legacy/orfano trovato in MemberSelfService.jsx
 // (Course.day_of_week/room_id, Booking.course_id/date) — codice morto non instradato.
-import { pgTable, uuid, varchar, text, boolean, integer, date, time, jsonb, timestamp } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, text, boolean, integer, date, time, jsonb, timestamp, check } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 import { members } from './crm.js';
 
 export const categories = pgTable('categories', {
@@ -23,12 +24,28 @@ export const instructors = pgTable('instructors', {
 	notes: text('notes'),
 });
 
+// La sala non ha una capienza: quanta gente entra a lezione lo decide l'evento, che nella
+// stessa stanza cambia da corso a corso. La sospensione è sempre un periodo, da data a data
+// (vincolo `rooms_sospensione_coerente`): senza una fine nessuno saprebbe quando la sala torna
+// libera, e la si riaprirebbe a mano. Le regole stanno in shared/sale.js.
 export const rooms = pgTable('rooms', {
 	id: uuid('id').defaultRandom().primaryKey(),
 	name: varchar('name', { length: 255 }).notNull(),
-	capacity: integer('capacity').notNull(),
-	description: text('description'),
-});
+	description: varchar('description', { length: 140 }), // le note: due righe nella tile
+	stato: varchar('stato', { length: 12 }).notNull().default('attivo'), // attivo | sospeso
+	sospesaDal: date('sospesa_dal'),
+	sospesaAl: date('sospesa_al'),
+}, (table) => ({
+	statoValido: check('rooms_stato_valido', sql`${table.stato} IN ('attivo', 'sospeso')`),
+	// Sospesa vuol dire "da questo giorno a quest'altro": una sospensione senza date, o delle
+	// date su una sala attiva, sarebbero due modi di dire una cosa che il resto del codice
+	// legge in un modo solo.
+	sospensioneCoerente: check(
+		'rooms_sospensione_coerente',
+		sql`(${table.stato} = 'sospeso' AND ${table.sospesaDal} IS NOT NULL AND ${table.sospesaAl} IS NOT NULL AND ${table.sospesaAl} >= ${table.sospesaDal})
+			OR (${table.stato} = 'attivo' AND ${table.sospesaDal} IS NULL AND ${table.sospesaAl} IS NULL)`,
+	),
+}));
 
 export const courses = pgTable('courses', {
 	id: uuid('id').defaultRandom().primaryKey(),

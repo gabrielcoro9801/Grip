@@ -108,7 +108,7 @@ before(async () => {
 
 	// Una lezione vera su cui prenotare: senza, non si può provare che il socio prenoti
 	// solo per sé, che è il punto.
-	const [sala] = await db.insert(rooms).values({ name: `Sala prova ${suffisso}`, capacity: 20 }).returning();
+	const [sala] = await db.insert(rooms).values({ name: `Sala prova ${suffisso}` }).returning();
 	idSala = sala.id;
 	const [corso] = await db.insert(courses).values({ name: `Corso prova ${suffisso}` }).returning();
 	idCorso = corso.id;

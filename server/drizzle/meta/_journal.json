@@ -225,6 +225,20 @@
       "when": 1789593759483,
       "tag": "0031_via_ingressi_e_vecchia_durata",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1790196613496,
+      "tag": "0032_sale_stati_e_sospensioni",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1790196636757,
+      "tag": "0033_via_capienza_sale",
+      "breakpoints": true
     }
   ]
 }
