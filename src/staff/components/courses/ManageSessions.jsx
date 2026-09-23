@@ -12,7 +12,7 @@ import { DAYS, DAYS_IT, getDayOfWeekFromDate } from "@/staff/lib/courseValidatio
 import { checkSessionConflict } from "@/staff/lib/eventUtils";
 import { validateSessionWrite } from "@/staff/lib/sessionValidation";
 import { formatData } from "@/core/domain/format";
-import { sospensioneCopre } from "@/core/domain/sale";
+import { motivoSalaNonPrenotabile } from "@/core/domain/sale";
 
 const FILTER_OPTIONS = [
   { value: "single", label: "Solo questa sessione" },
@@ -115,11 +115,11 @@ export default function ManageSessions({ data, reload, initialSessionId }) {
 
   const excludedCount = impact.sessionCount - targetSessions.length;
 
-  // Spostare le lezioni in una sala chiusa in una di quelle date non si può: il server le
-  // rifiuterebbe una alla volta, lasciando la modifica fatta a metà.
-  const saleSospese = useMemo(() => {
+  // Spostare le lezioni in una sala annullata, o chiusa in una di quelle date, non si può: il
+  // server le rifiuterebbe una alla volta, lasciando la modifica fatta a metà.
+  const saleNonPrenotabili = useMemo(() => {
     const date = targetSessions.map(s => s.date);
-    return new Set(rooms.filter(r => date.some(d => sospensioneCopre(r, d))).map(r => r.id));
+    return new Set(rooms.filter(r => date.some(d => motivoSalaNonPrenotabile(r, d, d))).map(r => r.id));
   }, [rooms, targetSessions]);
 
   const filterReady = useMemo(() => {
@@ -460,8 +460,8 @@ export default function ManageSessions({ data, reload, initialSessionId }) {
                 <SelectTrigger><SelectValue placeholder="Mantieni attuale" /></SelectTrigger>
                 <SelectContent>
                   {rooms.map(r => (
-                    <SelectItem key={r.id} value={r.id} disabled={saleSospese.has(r.id)}>
-                      {r.name}{saleSospese.has(r.id) ? " — sospesa in queste date" : ""}
+                    <SelectItem key={r.id} value={r.id} disabled={saleNonPrenotabili.has(r.id)}>
+                      {r.name}{saleNonPrenotabili.has(r.id) ? (r.stato === "annullato" ? " — annullata" : " — sospesa in queste date") : ""}
                     </SelectItem>
                   ))}
                 </SelectContent>

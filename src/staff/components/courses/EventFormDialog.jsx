@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Plus, AlertTriangle, X } from "lucide-react";
 import { useToast } from "@/ui/primitivi/use-toast";
 import { DAYS, DAYS_IT } from "@/staff/lib/courseValidation";
-import { sospensioneTocca, descriviSospensione, messaggioSalaSospesa } from "@/core/domain/sale";
+import { motivoSalaNonPrenotabile, statoSala, ETICHETTA_STATO_SALA } from "@/core/domain/sale";
 import { generateSessionDates, checkEventConflicts } from "@/staff/lib/eventUtils";
 import { validateSessionsBulk } from "@/staff/lib/sessionValidation";
 
@@ -76,16 +76,21 @@ export default function EventFormDialog({ open, onClose, data, reload }) {
     return [form.start_date, form.start_date];
   }, [form.recurrence_type, form.custom_dates, form.start_date, form.end_condition, form.end_date]);
 
-  // Le sale chiuse in quel periodo non si possono scegliere. Il server rifiuterebbe comunque,
-  // ma dopo aver fatto compilare tutto il resto.
-  const saleSospese = useMemo(
-    () => new Set(rooms.filter(r => sospensioneTocca(r, periodo[0], periodo[1])).map(r => r.id)),
-    [rooms, periodo]
-  );
+  // Le sale che in quel periodo non si possono prenotare — annullate per sempre, o sospese
+  // proprio allora — con il motivo accanto al nome. Il server rifiuterebbe comunque, ma dopo
+  // aver fatto compilare tutto il resto.
+  const saleNonPrenotabili = useMemo(() => {
+    const per = new Map();
+    for (const r of rooms) {
+      const motivo = motivoSalaNonPrenotabile(r, periodo[0], periodo[1]);
+      if (motivo) per.set(r.id, motivo);
+    }
+    return per;
+  }, [rooms, periodo]);
   const salaScelta = rooms.find(r => r.id === form.room_id);
   // Le date si cambiano dopo aver scelto la sala: una sala valida quando è stata scelta può
   // finire dentro la sua sospensione mentre si compila il resto del modulo.
-  const salaOraSospesa = salaScelta && saleSospese.has(salaScelta.id);
+  const motivoSalaScelta = salaScelta ? saleNonPrenotabili.get(salaScelta.id) : undefined;
 
   const toggleDay = (day) => {
     setForm(prev => ({
@@ -109,7 +114,7 @@ export default function EventFormDialog({ open, onClose, data, reload }) {
     setError("");
     setGenerationResult(null);
     if (!form.course_id || !form.room_id || !form.start_time || !form.end_time) return;
-    if (salaOraSospesa) { setError(messaggioSalaSospesa(salaScelta)); return; }
+    if (motivoSalaScelta) { setError(motivoSalaScelta); return; }
     if (form.start_time >= form.end_time) { setError("L'orario di inizio deve precedere quello di fine."); return; }
     if (form.recurrence_type === "weekly") {
       if (form.days_of_week.length === 0) { setError("Seleziona almeno un giorno della settimana."); return; }
@@ -185,8 +190,9 @@ export default function EventFormDialog({ open, onClose, data, reload }) {
                   <SelectTrigger><SelectValue placeholder="Seleziona" /></SelectTrigger>
                   <SelectContent>
                     {rooms.map(r => (
-                      <SelectItem key={r.id} value={r.id} disabled={saleSospese.has(r.id)}>
-                        {r.name}{saleSospese.has(r.id) ? ` — ${descriviSospensione(r).toLowerCase()}` : ""}
+                      <SelectItem key={r.id} value={r.id} disabled={saleNonPrenotabili.has(r.id)}>
+                        {r.name}
+                        {saleNonPrenotabili.has(r.id) ? ` — ${ETICHETTA_STATO_SALA[statoSala(r)].etichetta.toLowerCase()}` : ""}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -197,9 +203,9 @@ export default function EventFormDialog({ open, onClose, data, reload }) {
               <div><Label>Inizio *</Label><Input type="time" required value={form.start_time} onChange={e => setForm({ ...form, start_time: e.target.value })} /></div>
               <div><Label>Fine *</Label><Input type="time" required value={form.end_time} onChange={e => setForm({ ...form, end_time: e.target.value })} /></div>
             </div>
-            {salaOraSospesa && (
+            {motivoSalaScelta && (
               <div className="flex items-start gap-2 p-3 rounded-lg bg-warning/10 border border-warning/30 text-warning text-sm">
-                <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" /><span>{messaggioSalaSospesa(salaScelta)}</span>
+                <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" /><span>{motivoSalaScelta}</span>
               </div>
             )}
             {/* La capienza si scrive qui e basta: la sala non ne ha più una da ereditare, perché
@@ -272,7 +278,7 @@ export default function EventFormDialog({ open, onClose, data, reload }) {
                 <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" /><span>{error}</span>
               </div>
             )}
-            <Button type="submit" className="w-full" disabled={saving || !form.course_id || !form.room_id || overLimit || salaOraSospesa || !form.capacity}>
+            <Button type="submit" className="w-full" disabled={saving || !form.course_id || !form.room_id || overLimit || !!motivoSalaScelta || !form.capacity}>
               {saving ? "Generazione..." : "Crea evento e genera sessioni"}
             </Button>
           </form>
