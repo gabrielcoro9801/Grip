@@ -302,6 +302,13 @@
       "when": 1790795771589,
       "tag": "0042_via_tax_id_istruttori",
       "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1790801539314,
+      "tag": "0043_via_collaboratori",
+      "breakpoints": true
     }
   ]
 }

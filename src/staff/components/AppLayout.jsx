@@ -91,9 +91,18 @@ export default function AppLayout() {
             <Dumbbell className="w-4 h-4 text-sidebar-primary-foreground" />
           </div>
           {!collapsed && (
-            <span className="font-heading font-bold text-lg text-white tracking-tight">Grip</span>
+            <>
+              <span className="font-heading font-bold text-lg text-white tracking-tight">Grip</span>
+              <SelettoreTema className="ml-auto bg-sidebar-accent text-sidebar-foreground" />
+            </>
           )}
         </div>
+        {/* Con la barra ridotta accanto al logo non c'è posto: l'interruttore scende di una riga. */}
+        {collapsed && (
+          <div className="flex justify-center pt-3">
+            <SelettoreTema className="bg-sidebar-accent text-sidebar-foreground" />
+          </div>
+        )}
 
         {/* Nav */}
         <nav aria-label="Navigazione principale" className="flex-1 py-4 px-2 space-y-1 overflow-y-auto">
@@ -123,7 +132,6 @@ export default function AppLayout() {
 
         {/* Staff user info + logout */}
         <div className="p-2 border-t border-sidebar-border space-y-2">
-          <SelettoreTema compatto={collapsed} />
           {!collapsed && (
             <div className="px-3 py-2 rounded-lg bg-sidebar-accent/50">
               <p className="text-sm font-medium text-white truncate">{staffUser.nome}</p>

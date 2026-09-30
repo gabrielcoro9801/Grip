@@ -7,7 +7,6 @@ import PageHeader from "@/staff/components/PageHeader";
 import GestioneRuoli from "@/staff/components/admin/GestioneRuoli";
 import UtentiInterni from "@/staff/components/admin/UtentiInterni";
 import AccountSoci from "@/staff/components/admin/AccountSoci";
-import Collaboratori from "@/staff/components/admin/Collaboratori";
 import { LoadingState } from "@/ui/Spinner";
 import { ErrorState } from "@/ui/StateViews";
 
@@ -19,7 +18,6 @@ const eRuoloSocio = (nome) => RUOLI_NON_CONFIGURABILI.has(nome);
 export default function Admin() {
   const { organization } = useOrganization();
   const [accounts, setAccounts] = useState([]);
-  const [collaboratori, setCollaboratori] = useState([]);
   const [members, setMembers] = useState([]);
   const [ruoli, setRuoli] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -28,11 +26,8 @@ export default function Admin() {
   const carica = useCallback(async () => {
     setErrore(null);
     try {
-      const [acc, coll, mem] = await Promise.all([
+      const [acc, mem] = await Promise.all([
         api.entities.StaffAccount.list(),
-        organization?.id
-          ? api.entities.Collaboratore.filter({ organization_id: organization.id })
-          : api.entities.Collaboratore.list(),
         api.entities.Member.list(),
       ]);
 
@@ -52,7 +47,6 @@ export default function Admin() {
       }
 
       setAccounts(acc);
-      setCollaboratori(coll);
       setMembers(mem);
       setRuoli(elenco);
     } catch (err) {
@@ -90,14 +84,12 @@ export default function Admin() {
         <TabsList>
           <TabsTrigger value="interni">Utenti interni ({interni.length})</TabsTrigger>
           <TabsTrigger value="soci">Account soci ({soci.length})</TabsTrigger>
-          <TabsTrigger value="collaboratori">Collaboratori ({collaboratori.length})</TabsTrigger>
           <TabsTrigger value="ruoli">Ruoli e permessi</TabsTrigger>
         </TabsList>
 
         <TabsContent value="interni" className="mt-4">
           <UtentiInterni
             accounts={interni}
-            collaboratori={collaboratori}
             ruoli={ruoliAssegnabili}
             reload={carica}
           />
@@ -105,15 +97,6 @@ export default function Admin() {
 
         <TabsContent value="soci" className="mt-4">
           <AccountSoci accounts={soci} members={members} reload={carica} />
-        </TabsContent>
-
-        <TabsContent value="collaboratori" className="mt-4">
-          <Collaboratori
-            collaboratori={collaboratori}
-            accounts={interni}
-            organizationId={organization?.id}
-            reload={carica}
-          />
         </TabsContent>
 
         <TabsContent value="ruoli" className="mt-4">

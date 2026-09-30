@@ -105,7 +105,7 @@ function buildEntityClient(name) {
 const ENTITY_NAMES = [
 	'Member', 'Subscription', 'Plan', 'MemberDocument', 'QRAccesso', 'Lead', 'CanaleContatto',
 	'Course', 'Category', 'Instructor', 'Event', 'Session', 'Room', 'Booking',
-	'Collaboratore', 'StaffAccount',
+	'StaffAccount',
 	'Exercise', 'ExercisePlan', 'WorkoutSession', 'WorkoutLog',
 	'Organization', 'AuditLog',
 ];

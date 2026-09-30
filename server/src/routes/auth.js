@@ -35,7 +35,6 @@ function toPublicUser(account) {
 		email: account.email,
 		ruolo: account.ruolo,
 		attivo: account.attivo,
-		linked_collaboratore_id: account.linkedCollaboratoreId,
 		linked_member_id: account.linkedMemberId,
 		// Vera se la password l'ha scelta qualcun altro: le schermate mostrano solo il cambio
 		// password, e il server rifiuta il resto finché non è fatto.

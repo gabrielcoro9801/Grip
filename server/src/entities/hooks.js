@@ -210,8 +210,6 @@ function rifiutoSala(messaggio, codice) {
 	return { error: messaggio, code: codice };
 }
 
-const TIPI_RAPPORTO = ['dipendente', 'collaboratore_sportivo'];
-
 /** Il rifiuto per chi prova a vendere o prenotare qualcosa a un socio archiviato. */
 export const SOCIO_ARCHIVIATO = 'Il socio è archiviato: riattivalo dalla sua scheda per vendergli abbonamenti o prenotare.';
 
@@ -446,25 +444,6 @@ const WRITE_TRANSFORMS = {
 		if ((creazione || presente(rest, 'course_id')) && !vuoto(rest.course_id)) {
 			const [corso] = await db.select({ nome: courses.name, attivo: courses.attivo }).from(courses).where(eq(courses.id, rest.course_id)).limit(1);
 			if (corso && !corso.attivo) throw rifiuta(`Il corso «${corso.nome}» è disattivato: riattivalo per programmarlo.`);
-		}
-		return rest;
-	},
-
-	// Chi lavora nella struttura: nome, cognome e il tipo di rapporto, che la colonna pretende.
-	// I vuoti dei moduli diventano null, perché un'email "" non è un'email.
-	async Collaboratore(body, { creazione }) {
-		const rest = { ...(body ?? {}) };
-		for (const campo of ['nome', 'cognome']) {
-			if (presente(rest, campo)) rest[campo] = String(rest[campo] ?? '').trim();
-			if ((creazione || presente(rest, campo)) && vuoto(rest[campo])) {
-				throw rifiuta(campo === 'nome' ? 'Il nome è obbligatorio.' : 'Il cognome è obbligatorio.');
-			}
-		}
-		if ((creazione || presente(rest, 'tipo_rapporto')) && !TIPI_RAPPORTO.includes(rest.tipo_rapporto)) {
-			throw rifiuta('Il tipo di rapporto va scelto: dipendente o collaboratore sportivo.');
-		}
-		for (const campo of ['ruolo', 'email', 'phone', 'hire_date', 'notes']) {
-			if (presente(rest, campo) && vuoto(rest[campo])) rest[campo] = null;
 		}
 		return rest;
 	},

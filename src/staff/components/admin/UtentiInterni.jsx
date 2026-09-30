@@ -12,11 +12,8 @@ import { useToast } from "@/ui/primitivi/use-toast";
 import { formatDataOra } from "@/core/domain/format";
 import { LUNGHEZZA_MINIMA_PASSWORD } from "@/core/domain/password";
 import DialogResetPassword from "@/staff/components/admin/DialogResetPassword";
-import { TIPO_RAPPORTO } from "@/staff/components/admin/Collaboratori";
 
-const NESSUNO = "none";
-
-const formVuoto = { nome: "", email: "", ruolo: "", password: "", linked_collaboratore_id: "" };
+const formVuoto = { nome: "", email: "", ruolo: "", password: "" };
 
 /**
  * Gli account di chi lavora nella struttura.
@@ -28,7 +25,7 @@ const formVuoto = { nome: "", email: "", ruolo: "", password: "", linked_collabo
  * Qui non compare il ruolo "socio" e non c'è il campo "socio collegato": un account del
  * portale non si crea da questa schermata, si crea dalla scheda della persona.
  */
-export default function UtentiInterni({ accounts, collaboratori, ruoli, reload }) {
+export default function UtentiInterni({ accounts, ruoli, reload }) {
 	const { staffUser } = useStaffAuth();
 	const { toast } = useToast();
 	const [cerca, setCerca] = useState("");
@@ -39,12 +36,6 @@ export default function UtentiInterni({ accounts, collaboratori, ruoli, reload }
 	const [saving, setSaving] = useState(false);
 
 	const etichettaRuolo = (nome) => ruoli.find((r) => r.nome === nome)?.label || nome;
-	// Il collegato di adesso resta fra le scelte anche se nel frattempo è stato disattivato.
-	const collabAttivi = collaboratori.filter((c) => c.attivo !== false || c.id === form.linked_collaboratore_id);
-	const collabById = useMemo(
-		() => new Map(collaboratori.map((c) => [c.id, c])),
-		[collaboratori],
-	);
 
 	const filtrati = useMemo(() => {
 		const q = cerca.trim().toLowerCase();
@@ -69,7 +60,6 @@ export default function UtentiInterni({ accounts, collaboratori, ruoli, reload }
 			email: acc.email,
 			ruolo: acc.ruolo,
 			password: "",
-			linked_collaboratore_id: acc.linked_collaboratore_id || "",
 		});
 		setMostraForm(true);
 	};
@@ -82,7 +72,6 @@ export default function UtentiInterni({ accounts, collaboratori, ruoli, reload }
 				nome: form.nome,
 				email: form.email,
 				ruolo: form.ruolo,
-				linked_collaboratore_id: form.linked_collaboratore_id || null,
 			};
 			if (inModifica) {
 				await api.entities.StaffAccount.update(inModifica.id, {
@@ -142,7 +131,6 @@ export default function UtentiInterni({ accounts, collaboratori, ruoli, reload }
 							<th className="py-3 px-4 font-medium text-muted-foreground">Nome</th>
 							<th className="py-3 px-4 font-medium text-muted-foreground">Email</th>
 							<th className="py-3 px-4 font-medium text-muted-foreground">Ruolo</th>
-							<th className="py-3 px-4 font-medium text-muted-foreground">Collaboratore</th>
 							<th className="py-3 px-4 font-medium text-muted-foreground">Stato</th>
 							<th className="py-3 px-4 font-medium text-muted-foreground">Ultima attività</th>
 							<th className="py-3 px-4 font-medium text-muted-foreground text-right">Azioni</th>
@@ -151,20 +139,16 @@ export default function UtentiInterni({ accounts, collaboratori, ruoli, reload }
 					<tbody>
 						{filtrati.length === 0 ? (
 							<tr>
-								<td colSpan={7} className="text-center py-8 text-muted-foreground">
+								<td colSpan={6} className="text-center py-8 text-muted-foreground">
 									{cerca ? "Nessun utente corrisponde alla ricerca" : "Nessun utente interno"}
 								</td>
 							</tr>
 						) : filtrati.map((acc) => {
-							const collab = acc.linked_collaboratore_id ? collabById.get(acc.linked_collaboratore_id) : null;
 							return (
 								<tr key={acc.id} className="border-b border-border/50 hover:bg-muted/30">
 									<td className="py-3 px-4 font-medium">{acc.nome}</td>
 									<td className="py-3 px-4 text-muted-foreground">{acc.email}</td>
 									<td className="py-3 px-4"><Badge variant="outline">{etichettaRuolo(acc.ruolo)}</Badge></td>
-									<td className="py-3 px-4 text-muted-foreground text-xs">
-										{collab ? `${collab.nome} ${collab.cognome}` : "—"}
-									</td>
 									<td className="py-3 px-4">
 										{acc.attivo ? (
 											<Badge className="bg-success/10 text-success border-success/30">Attivo</Badge>
@@ -237,26 +221,6 @@ export default function UtentiInterni({ accounts, collaboratori, ruoli, reload }
 							/>
 							<p className="text-xs text-muted-foreground mt-1">
 								Al primo accesso la persona dovrà sceglierne una sua.
-							</p>
-						</div>
-						<div>
-							<Label>Collaboratore collegato</Label>
-							<Select
-								value={form.linked_collaboratore_id || NESSUNO}
-								onValueChange={(v) => setForm({ ...form, linked_collaboratore_id: v === NESSUNO ? "" : v })}
-							>
-								<SelectTrigger><SelectValue placeholder="Nessuno" /></SelectTrigger>
-								<SelectContent>
-									<SelectItem value={NESSUNO}>— Nessuno —</SelectItem>
-									{collabAttivi.map((c) => (
-										<SelectItem key={c.id} value={c.id}>
-											{c.nome} {c.cognome} · {TIPO_RAPPORTO[c.tipo_rapporto] || c.tipo_rapporto}
-										</SelectItem>
-									))}
-								</SelectContent>
-							</Select>
-							<p className="text-xs text-muted-foreground mt-1">
-								Facoltativo: lega l'account all'anagrafica di chi lavora nella struttura. I collaboratori si aggiungono nella scheda «Collaboratori».
 							</p>
 						</div>
 						<Button type="submit" className="w-full" disabled={saving || !form.ruolo}>

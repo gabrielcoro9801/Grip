@@ -1,56 +1,46 @@
 import React from "react";
-import { Sun, Moon, Monitor } from "lucide-react";
+import { Sun, Moon } from "lucide-react";
 import { useTema } from "@/ui/tema";
 import { cn } from "@/ui/utils";
 
-const SCELTE = [
-  { valore: "chiaro", etichetta: "Chiaro", icona: Sun },
-  { valore: "scuro", etichetta: "Scuro", icona: Moon },
-  { valore: "sistema", etichetta: "Come il sistema", icona: Monitor },
-];
-
 /**
- * Le tre scelte del tema, in fila.
+ * L'interruttore del tema: sole a sinistra, luna a destra, e il pomello che scorre.
  *
- * Un gruppo di tre e non un interruttore acceso/spento: con due stati "come il sistema"
- * non si può esprimere, e chi ha il telefono che passa allo scuro la sera se lo ritrova
- * chiaro senza capire perché.
+ * Sta in alto, accanto al nome dell'applicazione, e non dice niente a parole: le due icone
+ * bastano, e il nome per chi usa uno screen reader c'è comunque.
  *
- * @param compatto solo le icone, per la barra laterale ridotta.
+ * @param className per adattare il binario allo sfondo su cui sta (la barra laterale è scura
+ *                  anche con il tema chiaro).
  */
-export default function SelettoreTema({ compatto = false, className }) {
+export default function SelettoreTema({ className }) {
   const { tema, imposta } = useTema();
+  const scuro = tema === "scuro";
 
   return (
-    <div
-      role="radiogroup"
-      aria-label="Aspetto dell'applicazione"
-      className={cn("flex items-center gap-1 rounded-lg bg-muted/50 p-1", className)}
+    <button
+      type="button"
+      role="switch"
+      aria-checked={scuro}
+      aria-label="Tema scuro"
+      title={scuro ? "Passa al tema chiaro" : "Passa al tema scuro"}
+      onClick={() => imposta(scuro ? "chiaro" : "scuro")}
+      className={cn(
+        "relative inline-flex items-center shrink-0 h-6 w-11 rounded-full bg-muted text-muted-foreground transition-colors",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        className
+      )}
     >
-      {SCELTE.map(({ valore, etichetta, icona: Icona }) => {
-        const attivo = tema === valore;
-        return (
-          <button
-            key={valore}
-            type="button"
-            role="radio"
-            aria-checked={attivo}
-            aria-label={etichetta}
-            title={etichetta}
-            onClick={() => imposta(valore)}
-            className={cn(
-              "flex items-center justify-center gap-1.5 rounded-md h-9 px-2 text-xs font-medium transition-colors",
-              compatto ? "flex-1" : "flex-1",
-              attivo
-                ? "bg-background text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
-            )}
-          >
-            <Icona className="w-4 h-4 shrink-0" aria-hidden="true" />
-            {!compatto && <span>{etichetta === "Come il sistema" ? "Auto" : etichetta}</span>}
-          </button>
-        );
-      })}
-    </div>
+      <Sun className="absolute left-1 w-3.5 h-3.5 opacity-60" aria-hidden="true" />
+      <Moon className="absolute right-1 w-3.5 h-3.5 opacity-60" aria-hidden="true" />
+      <span
+        aria-hidden="true"
+        className={cn(
+          "absolute top-0.5 left-0.5 flex items-center justify-center h-5 w-5 rounded-full bg-background text-foreground shadow transition-transform duration-200",
+          scuro && "translate-x-5"
+        )}
+      >
+        {scuro ? <Moon className="w-3 h-3" /> : <Sun className="w-3 h-3" />}
+      </span>
+    </button>
   );
 }

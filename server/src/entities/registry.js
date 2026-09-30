@@ -18,7 +18,6 @@ export const entityRegistry = {
 	Session: schema.sessions,
 	Room: schema.rooms,
 	Booking: schema.bookings,
-	Collaboratore: schema.collaboratori,
 	StaffAccount: schema.staffAccounts,
 	Exercise: schema.exercises,
 	ExercisePlan: schema.exercisePlans,
