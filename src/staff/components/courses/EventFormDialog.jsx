@@ -183,7 +183,8 @@ export default function EventFormDialog({ open, onClose, data, reload }) {
               <div><Label>Corso *</Label>
                 <Select value={form.course_id} onValueChange={v => setForm({ ...form, course_id: v })}>
                   <SelectTrigger><SelectValue placeholder="Seleziona" /></SelectTrigger>
-                  <SelectContent>{courses.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
+                  {/* Un corso disattivato non si programma più: non si propone. */}
+                  <SelectContent>{courses.filter(c => c.attivo !== false).map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
               <div><Label>Sala *</Label>

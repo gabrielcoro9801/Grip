@@ -5,7 +5,9 @@ import { and, asc, count, eq, gte, lte, ne, sql } from 'drizzle-orm';
 import { firmaUrl, togliFirma } from '../lib/urlFirmati.js';
 import { db } from '../db/client.js';
 import { assegnaCodiceSocio } from '../lib/codiceSocio.js';
-import { plans, rooms, sessions, events as eventsTable, staffAccounts } from '../db/schema/index.js';
+import {
+	plans, rooms, sessions, subscriptions, members, courses, instructors, events as eventsTable, staffAccounts,
+} from '../db/schema/index.js';
 import { motivoPasswordNonValida } from '../../../shared/password.js';
 import { usoDellaSala } from '../lib/sale.js';
 import { translateToSnakeCase } from './columnMaps.js';
@@ -206,6 +208,11 @@ function rifiutoSala(messaggio, codice) {
 	return { error: messaggio, code: codice };
 }
 
+const TIPI_RAPPORTO = ['dipendente', 'collaboratore_sportivo'];
+
+/** Il rifiuto per chi prova a vendere o prenotare qualcosa a un socio archiviato. */
+export const SOCIO_ARCHIVIATO = 'Il socio è archiviato: riattivalo dalla sua scheda per vendergli abbonamenti o prenotare.';
+
 export function rifiuta(messaggio) {
 	const errore = new Error(messaggio);
 	errore.statusCode = 400;
@@ -280,7 +287,10 @@ const WRITE_TRANSFORMS = {
 	// `full_name` si scarta: è calcolato dal database da nome e cognome, e scriverlo farebbe
 	// fallire l'inserimento.
 	async Member(body, { creazione }) {
-		const rest = anagraficaSocio(body, { creazione });
+		const { archiviato_il: _archivio, ...corpo } = body ?? {};
+		// L'archiviazione passa dalle sue rotte (routes/soci.js), che fanno anche il resto:
+		// disdire le prenotazioni future, lasciarne traccia nel registro.
+		const rest = anagraficaSocio(corpo, { creazione });
 		// Il codice è la chiave del socio: lo decide sempre il contatore, anche se il modulo ne
 		// manda uno, e non si riscrive in modifica.
 		if (creazione) rest.codice_socio = await assegnaCodiceSocio(db);
@@ -317,9 +327,41 @@ const WRITE_TRANSFORMS = {
 
 	// Un'iscrizione si vende solo da un tipo vendibile, e la scadenza la calcola il server dalla
 	// durata del tipo: mesi di calendario, non giorni contati nel browser.
-	async Subscription(body, { creazione }) {
-		const rest = { ...(body ?? {}) };
-		if (!creazione || !rest.plan_id) return rest;
+	//
+	// Prima valeva solo per le iscrizioni create con un tipo: senza `plan_id` passava qualunque
+	// cosa, e in modifica non si controllava niente — si potevano spostare scadenza, socio e tipo
+	// di un'iscrizione già venduta. Ora un'iscrizione nasce sempre da un tipo, e dopo si correggono
+	// solo la data d'inizio (la scadenza segue, ricalcolata dal tipo) e l'importo pagato.
+	// Lo stato non si scrive: si calcola dalle date a ogni lettura.
+	async Subscription(body, { creazione, id }) {
+		const { status: _calcolato, ...rest } = body ?? {};
+		if (presente(rest, 'price_paid') && !vuoto(rest.price_paid)) {
+			const importo = Number(rest.price_paid);
+			if (!Number.isFinite(importo) || importo < 0) throw rifiuta("L'importo pagato non è valido.");
+		}
+		if (!creazione) {
+			const campi = Object.keys(rest).filter((k) => !['start_date', 'price_paid', 'updated_date'].includes(k));
+			if (campi.length) {
+				throw rifiuta("Di un'iscrizione venduta si correggono solo la data d'inizio e l'importo pagato: per un altro tipo se ne vende una nuova.");
+			}
+			if (presente(rest, 'start_date')) {
+				const [attuale] = await db
+					.select({ durataValore: plans.durataValore, durataUnita: plans.durataUnita })
+					.from(subscriptions)
+					.innerJoin(plans, eq(subscriptions.planId, plans.id))
+					.where(eq(subscriptions.id, id))
+					.limit(1);
+				if (!attuale) throw rifiuta("Quest'iscrizione non ha un tipo da cui ricalcolare la scadenza.");
+				rest.end_date = dataFineAbbonamento(rest.start_date, attuale.durataValore, attuale.durataUnita);
+				if (!rest.end_date) throw rifiuta("La data di inizio non è valida.");
+			}
+			rest.updated_date = new Date().toISOString();
+			return rest;
+		}
+		if (vuoto(rest.member_id)) throw rifiuta('Manca il socio.');
+		if (vuoto(rest.plan_id)) throw rifiuta("Scegli il tipo di abbonamento.");
+		const [socio] = await db.select({ archiviatoIl: members.archiviatoIl }).from(members).where(eq(members.id, rest.member_id)).limit(1);
+		if (socio?.archiviatoIl) throw rifiuta(SOCIO_ARCHIVIATO);
 		const [tipo] = await db.select().from(plans).where(eq(plans.id, rest.plan_id)).limit(1);
 		const motivo = motivoNonVendibile(tipo && { name: tipo.name, stato: tipo.stato, vendibile_fino_al: tipo.vendibileFinoAl });
 		if (motivo) throw rifiuta(motivo);
@@ -392,6 +434,45 @@ const WRITE_TRANSFORMS = {
 		if (creazione) {
 			const motivo = await motivoEventoInSalaNonPrenotabile(rest);
 			if (motivo) throw rifiuta(motivo);
+		}
+		// Un corso disattivato non si programma più: né un evento nuovo, né uno spostato su di lui.
+		if ((creazione || presente(rest, 'course_id')) && !vuoto(rest.course_id)) {
+			const [corso] = await db.select({ nome: courses.name, attivo: courses.attivo }).from(courses).where(eq(courses.id, rest.course_id)).limit(1);
+			if (corso && !corso.attivo) throw rifiuta(`Il corso «${corso.nome}» è disattivato: riattivalo per programmarlo.`);
+		}
+		return rest;
+	},
+
+	// Chi lavora nella struttura: nome, cognome e il tipo di rapporto, che la colonna pretende.
+	// I vuoti dei moduli diventano null, perché un'email "" non è un'email.
+	async Collaboratore(body, { creazione }) {
+		const rest = { ...(body ?? {}) };
+		for (const campo of ['nome', 'cognome']) {
+			if (presente(rest, campo)) rest[campo] = String(rest[campo] ?? '').trim();
+			if ((creazione || presente(rest, campo)) && vuoto(rest[campo])) {
+				throw rifiuta(campo === 'nome' ? 'Il nome è obbligatorio.' : 'Il cognome è obbligatorio.');
+			}
+		}
+		if ((creazione || presente(rest, 'tipo_rapporto')) && !TIPI_RAPPORTO.includes(rest.tipo_rapporto)) {
+			throw rifiuta('Il tipo di rapporto va scelto: dipendente o collaboratore sportivo.');
+		}
+		for (const campo of ['ruolo', 'email', 'phone', 'hire_date', 'notes']) {
+			if (presente(rest, campo) && vuoto(rest[campo])) rest[campo] = null;
+		}
+		return rest;
+	},
+
+	// Un corso si assegna solo a un istruttore attivo. Disattivare il corso, o cambiargli nome e
+	// descrizione, non guarda l'istruttore: quello che conta è a chi lo si sta affidando adesso.
+	async Course(body, { creazione }) {
+		const rest = { ...(body ?? {}) };
+		if ((creazione || presente(rest, 'instructor_id')) && !vuoto(rest.instructor_id)) {
+			const [istruttore] = await db
+				.select({ nome: instructors.fullName, attivo: instructors.attivo })
+				.from(instructors)
+				.where(eq(instructors.id, rest.instructor_id))
+				.limit(1);
+			if (istruttore && !istruttore.attivo) throw rifiuta(`«${istruttore.nome}» è disattivato: scegli un altro istruttore, o riattivalo.`);
 		}
 		return rest;
 	},

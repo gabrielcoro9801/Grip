@@ -10,11 +10,11 @@ import { buildApp } from '../src/app.js';
 import { db, pool } from '../src/db/client.js';
 import { memberDocuments, members, staffAccounts, subscriptions } from '../src/db/schema/index.js';
 import { impostaMatrice, ripristinaMatricePredefinita, PERMESSI_PREDEFINITI } from '../../shared/permissions.js';
-import { oggiIso } from '../../shared/abbonamenti.js';
+import { oggiIso, spostaGiorni } from '../../shared/giorni.js';
 
 const suffisso = Date.now();
 const lettere = String(suffisso).replace(/\d/g, (c) => 'ABCDEFGHIJ'[c]);
-const fra = (giorni) => new Date(Date.parse(`${oggiIso()}T00:00:00Z`) + giorni * 86_400_000).toISOString().slice(0, 10);
+const fra = (giorni) => spostaGiorni(oggiIso(), giorni);
 let app;
 const token = {};
 const idAccount = [];

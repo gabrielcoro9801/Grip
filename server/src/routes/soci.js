@@ -6,14 +6,19 @@
 // o reimpostare: è il suo lavoro allo sportello. Queste rotte fanno quello e nient'altro — un
 // account con ruolo `member`, collegato a quel socio — con il permesso della scheda, senza
 // aprire la tabella degli account a chi gestisce i soci.
+//
+// Qui stanno anche archiviazione e riattivazione di un socio: toccano il suo accesso, le sue
+// prenotazioni e il registro, e non sono una modifica dell'anagrafica come le altre.
 import bcrypt from 'bcryptjs';
-import { eq, and, sql } from 'drizzle-orm';
+import { eq, and, ne, gte, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { members, staffAccounts } from '../db/schema/index.js';
+import { bookings, members, sessions, staffAccounts } from '../db/schema/index.js';
 import { getUserFromRequest } from '../auth/tokens.js';
 import { canAccess } from '../../../shared/permissions.js';
 import { motivoPasswordNonValida } from '../../../shared/password.js';
 import { registra } from '../lib/registro.js';
+import { disdici } from '../lib/prenotazioni.js';
+import { oggiIso, lezioneFinita } from '../../../shared/giorni.js';
 
 const CAMPI_PUBBLICI = {
 	id: staffAccounts.id,
@@ -113,4 +118,70 @@ export default async function sociRoutes(fastify) {
 		reply.code(201);
 		return { account, creato: true };
 	});
+
+	/**
+	 * POST /api/soci/:id/archivia → { socio, prenotazioni_disdette }
+	 *
+	 * Un socio che lascia la palestra. Non si cancella niente: scheda, abbonamenti e storico
+	 * restano, e lo si riattiva quando torna. Da archiviato non compare negli elenchi, non compra
+	 * abbonamenti, non prenota, e portale e QR non lo fanno entrare (auth/revoca.js, routes/qr.js).
+	 *
+	 * Le prenotazioni alle lezioni che devono ancora finire si disdicono: tenere il posto a chi
+	 * non verrà più lo toglierebbe a chi è in lista d'attesa, che così viene promosso.
+	 */
+	fastify.post('/api/soci/:id/archivia', async (request, reply) => {
+		const [socio] = await db
+			.select({ id: members.id, nome: members.fullName, archiviatoIl: members.archiviatoIl })
+			.from(members)
+			.where(eq(members.id, request.params.id))
+			.limit(1);
+		if (!socio) return reply.code(404).send({ error: 'Socio non trovato.' });
+		if (socio.archiviatoIl) return { socio: await socioPubblico(socio.id), prenotazioni_disdette: 0 };
+
+		const oggi = oggiIso();
+		await db.update(members).set({ archiviatoIl: oggi, updatedDate: new Date() }).where(eq(members.id, socio.id));
+
+		const future = await db
+			.select({ id: bookings.id, date: sessions.date, endTime: sessions.endTime })
+			.from(bookings)
+			.innerJoin(sessions, eq(bookings.sessionId, sessions.id))
+			.where(and(eq(bookings.memberId, socio.id), ne(bookings.status, 'cancelled'), gte(sessions.date, oggi)));
+		let disdette = 0;
+		for (const p of future.filter((f) => !lezioneFinita(f))) {
+			const esito = await disdici({ bookingId: p.id });
+			if (!esito.errore) disdette += 1;
+		}
+
+		await registra(request.utente, {
+			tipoAzione: 'deactivate', entitaTipo: 'member', entitaNome: socio.nome, entitaId: socio.id,
+			dettagli: disdette ? `Archiviato; prenotazioni future disdette: ${disdette}` : 'Archiviato',
+		}, request.log);
+		return { socio: await socioPubblico(socio.id), prenotazioni_disdette: disdette };
+	});
+
+	/** POST /api/soci/:id/riattiva → { socio }. Torna com'era: portale e QR ripartono da soli. */
+	fastify.post('/api/soci/:id/riattiva', async (request, reply) => {
+		const [socio] = await db
+			.select({ id: members.id, nome: members.fullName, archiviatoIl: members.archiviatoIl })
+			.from(members)
+			.where(eq(members.id, request.params.id))
+			.limit(1);
+		if (!socio) return reply.code(404).send({ error: 'Socio non trovato.' });
+		if (socio.archiviatoIl) {
+			await db.update(members).set({ archiviatoIl: null, updatedDate: new Date() }).where(eq(members.id, socio.id));
+			await registra(request.utente, {
+				tipoAzione: 'activate', entitaTipo: 'member', entitaNome: socio.nome, entitaId: socio.id, dettagli: 'Riattivato',
+			}, request.log);
+		}
+		return { socio: await socioPubblico(socio.id) };
+	});
+}
+
+async function socioPubblico(id) {
+	const [socio] = await db
+		.select({ id: members.id, full_name: members.fullName, archiviato_il: members.archiviatoIl })
+		.from(members)
+		.where(eq(members.id, id))
+		.limit(1);
+	return socio ?? null;
 }

@@ -4,7 +4,7 @@
 import bcrypt from 'bcryptjs';
 import { eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { staffAccounts } from '../db/schema/index.js';
+import { members, staffAccounts } from '../db/schema/index.js';
 import { signToken, getUserFromRequest } from '../auth/tokens.js';
 import { matriceCorrente } from '../../../shared/permissions.js';
 import { motivoPasswordNonValida } from '../../../shared/password.js';
@@ -79,6 +79,12 @@ export default async function authRoutes(fastify) {
 		if (!account || !account.attivo || !passwordOk) {
 			registraFallimento(email, ip);
 			return reply.code(401).send(invalid);
+		}
+		// Un socio archiviato non entra nel portale. Stesso messaggio di una password sbagliata:
+		// chi prova non deve sapere se l'account c'è.
+		if (account.ruolo === 'member' && account.linkedMemberId) {
+			const [socio] = await db.select({ archiviatoIl: members.archiviatoIl }).from(members).where(eq(members.id, account.linkedMemberId)).limit(1);
+			if (socio?.archiviatoIl) return reply.code(401).send(invalid);
 		}
 		registraSuccesso(email);
 

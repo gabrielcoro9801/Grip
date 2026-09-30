@@ -17,7 +17,7 @@ import { cn } from "@/ui/utils";
  *
  * Cinque punti dell'app chiedevano conferma con `window.confirm()`: finestra
  * di sistema, testo non traducibile, nessuno stile, e in alcuni browser
- * silenziabile dall'utente — su un'eliminazione contabile è un rischio.
+ * silenziabile dall'utente — su un'eliminazione che non si può disfare è un rischio.
  *
  * Si usa come `window.confirm`, ma restituisce una Promise:
  *

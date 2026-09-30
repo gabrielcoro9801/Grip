@@ -12,9 +12,9 @@ import { useToast } from "@/ui/primitivi/use-toast";
 import { formatDataOra } from "@/core/domain/format";
 import { LUNGHEZZA_MINIMA_PASSWORD } from "@/core/domain/password";
 import DialogResetPassword from "@/staff/components/admin/DialogResetPassword";
+import { TIPO_RAPPORTO } from "@/staff/components/admin/Collaboratori";
 
 const NESSUNO = "none";
-const TIPO_RAPPORTO = { dipendente: "Dipendente", collaboratore_sportivo: "Coll. sportivo" };
 
 const formVuoto = { nome: "", email: "", ruolo: "", password: "", linked_collaboratore_id: "" };
 
@@ -39,7 +39,8 @@ export default function UtentiInterni({ accounts, collaboratori, ruoli, reload }
 	const [saving, setSaving] = useState(false);
 
 	const etichettaRuolo = (nome) => ruoli.find((r) => r.nome === nome)?.label || nome;
-	const collabAttivi = collaboratori.filter((c) => c.attivo !== false);
+	// Il collegato di adesso resta fra le scelte anche se nel frattempo è stato disattivato.
+	const collabAttivi = collaboratori.filter((c) => c.attivo !== false || c.id === form.linked_collaboratore_id);
 	const collabById = useMemo(
 		() => new Map(collaboratori.map((c) => [c.id, c])),
 		[collaboratori],
@@ -255,7 +256,7 @@ export default function UtentiInterni({ accounts, collaboratori, ruoli, reload }
 								</SelectContent>
 							</Select>
 							<p className="text-xs text-muted-foreground mt-1">
-								Facoltativo: lega l'account all'anagrafica di chi lavora nella struttura.
+								Facoltativo: lega l'account all'anagrafica di chi lavora nella struttura. I collaboratori si aggiungono nella scheda «Collaboratori».
 							</p>
 						</div>
 						<Button type="submit" className="w-full" disabled={saving || !form.ruolo}>

@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  statoSala, sospensioneCopre, sospensioneTocca, motivoSospensioneNonValida,
+  statoSala, sospensioneTocca, motivoSospensioneNonValida,
   descriviSospensione, messaggioSospensioneBloccata, messaggioAnnullaInveceDiEliminare,
   azioneSullaSala, motivoSalaNonPrenotabile, motivoCambioStatoNonValido,
   saleProgrammabili, etichettaSalaNelPeriodo,
@@ -21,11 +21,13 @@ test("una sospensione ha un prima, un durante e un dopo", () => {
 });
 
 test("la sospensione copre i suoi estremi, e nient'altro", () => {
-  assert.equal(sospensioneCopre(SOSPESA, "2026-09-30"), false);
-  assert.equal(sospensioneCopre(SOSPESA, "2026-10-01"), true);
-  assert.equal(sospensioneCopre(SOSPESA, "2026-10-15"), true);
-  assert.equal(sospensioneCopre(SOSPESA, "2026-10-16"), false);
-  assert.equal(sospensioneCopre(ATTIVA, "2026-10-05"), false);
+  // Una lezione è un periodo di un giorno solo.
+  const tocca = (sala, giorno) => sospensioneTocca(sala, giorno, giorno);
+  assert.equal(tocca(SOSPESA, "2026-09-30"), false);
+  assert.equal(tocca(SOSPESA, "2026-10-01"), true);
+  assert.equal(tocca(SOSPESA, "2026-10-15"), true);
+  assert.equal(tocca(SOSPESA, "2026-10-16"), false);
+  assert.equal(tocca(ATTIVA, "2026-10-05"), false);
 });
 
 test("un evento tocca la sospensione se i due periodi si sfiorano", () => {

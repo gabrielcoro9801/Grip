@@ -1,4 +1,4 @@
-// Punto unico per scrivere importi, numeri e date nell'interfaccia.
+// Punto unico per scrivere importi e date nell'interfaccia.
 //
 // Prima di questo modulo la stessa cifra si leggeva "1234.50" in una pagina e
 // "1.234,50" in quella accanto, e la stessa data usava dodici formati moment
@@ -6,9 +6,9 @@
 // Qui la convenzione è una sola: italiano, fuso Europe/Rome, euro con il
 // separatore delle migliaia e la virgola decimale.
 //
-// I calcoli restano fuori: formatta, non somma. Per sommare denaro usare
-// `arrotonda`/`sommaImporti`, che passano dai centesimi interi ed evitano che
-// 0.1 + 0.2 diventi 0.30000000000000004 in una prima nota.
+// I calcoli restano fuori: formatta, non somma. Le funzioni per sommare e
+// rileggere importi servivano alla contabilità, che non c'è più, e sono state
+// tolte con lei: oggi a schermo ci sono solo prezzi e importi pagati.
 
 // Le date le scrive `Intl`, che è nel linguaggio: niente libreria.
 //
@@ -36,11 +36,6 @@ const euroFormatter = new Intl.NumberFormat(LOCALE, {
   maximumFractionDigits: 2,
 });
 
-const numeroFormatter = new Intl.NumberFormat(LOCALE, {
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
-});
-
 /** Numero utilizzabile, oppure null se il valore non è interpretabile. */
 function toNumber(value) {
   if (value === null || value === undefined || value === "") return null;
@@ -53,109 +48,21 @@ function toNumber(value) {
 /**
  * Arrotonda a due decimali passando per i centesimi interi.
  * `Math.round(v * 100)` da solo sbaglia su valori come 1.005 (che in binario è
- * poco sotto), quindi si corregge con un epsilon proporzionale.
+ * poco sotto), quindi si corregge con un epsilon proporzionale. Intl da solo non
+ * basta: arrotonda il valore binario esatto, e 1.005 diventerebbe "1,00 €".
  */
-export function arrotonda(value) {
-  const n = toNumber(value);
-  if (n === null) return 0;
-  return centesimi(n) / 100;
-}
-
-/** Importo in euro → centesimi interi, l'unità in cui il denaro si somma. */
-export function centesimi(value) {
-  const n = toNumber(value);
-  if (n === null) return 0;
-  return Math.round(n * 100 + (n >= 0 ? Number.EPSILON : -Number.EPSILON) * 100);
-}
-
-/** Centesimi interi → euro. */
-export function daCentesimi(cents) {
-  const n = toNumber(cents);
-  if (n === null) return 0;
-  return Math.round(n) / 100;
-}
-
-/** Somma di importi senza deriva binaria: si somma in centesimi e si torna in euro. */
-export function sommaImporti(values) {
-  const totale = (values || []).reduce((acc, v) => acc + centesimi(v), 0);
-  return daCentesimi(totale);
-}
-
-/** true se due importi sono lo stesso denaro (confronto al centesimo). */
-export function stessoImporto(a, b) {
-  return centesimi(a) === centesimi(b);
+function arrotonda(n) {
+  return Math.round(n * 100 + (n >= 0 ? Number.EPSILON : -Number.EPSILON) * 100) / 100;
 }
 
 /**
  * Importo in euro come lo scrive un'app italiana: 1.234,50 €.
  * - `vuoto`: cosa rendere quando il valore manca (default "—").
- * - `segno`: antepone "+" agli importi positivi (utile in prima nota).
  */
-export function formatEuro(value, { vuoto = PLACEHOLDER, segno = false } = {}) {
+export function formatEuro(value, { vuoto = PLACEHOLDER } = {}) {
   const n = toNumber(value);
   if (n === null) return vuoto;
-  const testo = euroFormatter.format(arrotonda(n));
-  return segno && n > 0 ? `+${testo}` : testo;
-}
-
-/** Come formatEuro ma con "+"/"−" espliciti: per entrate e uscite affiancate. */
-export function formatEuroSegnato(value, opzioni = {}) {
-  const n = toNumber(value);
-  if (n === null) return opzioni.vuoto ?? PLACEHOLDER;
-  if (n < 0) return `−${euroFormatter.format(Math.abs(arrotonda(n)))}`;
-  return formatEuro(n, { ...opzioni, segno: true });
-}
-
-/** Numero decimale localizzato, senza simbolo di valuta. */
-export function formatNumero(value, { vuoto = PLACEHOLDER, decimali = 2 } = {}) {
-  const n = toNumber(value);
-  if (n === null) return vuoto;
-  if (decimali === 2) return numeroFormatter.format(n);
-  return new Intl.NumberFormat(LOCALE, {
-    minimumFractionDigits: decimali,
-    maximumFractionDigits: decimali,
-  }).format(n);
-}
-
-/** Percentuale localizzata: 4.5 → "4,5%". */
-export function formatPercentuale(value, { vuoto = PLACEHOLDER, decimali = 2 } = {}) {
-  const n = toNumber(value);
-  if (n === null) return vuoto;
-  return `${new Intl.NumberFormat(LOCALE, { maximumFractionDigits: decimali }).format(n)}%`;
-}
-
-/**
- * Testo digitato dall'utente → numero. Accetta sia "1.234,50" (italiano) sia
- * "1234.50" (quello che arrivano dai campi <input type="number">).
- */
-export function parseImporto(input) {
-  if (typeof input === "number") return Number.isFinite(input) ? input : null;
-  if (!input) return null;
-  const pulito = String(input).replace(/[^\d,.-]/g, "");
-  // Senza una cifra non è un importo, è un'altra cosa. Prima si arrivava a `Number("")`,
-  // che fa **zero**: scrivere "ciao" in un campo importo dava zero euro invece di un
-  // errore, e zero è un valore plausibile che nessuno va a ricontrollare.
-  if (!/\d/.test(pulito)) return null;
-  // Se ci sono entrambi, l'ultimo separatore è quello decimale.
-  const ultimaVirgola = pulito.lastIndexOf(",");
-  const ultimoPunto = pulito.lastIndexOf(".");
-  let normalizzato = pulito;
-  if (ultimaVirgola > -1 && ultimaVirgola > ultimoPunto) {
-    normalizzato = pulito.replace(/\./g, "").replace(",", ".");
-  } else if (ultimaVirgola > -1) {
-    normalizzato = pulito.replace(/,/g, "");
-  }
-  const n = Number(normalizzato);
-  return Number.isFinite(n) ? n : null;
-}
-
-/**
- * Numero per un file destinato a una macchina (CSV, tracciati, API): punto
- * decimale e nessun separatore di migliaia. Non usarlo a schermo.
- */
-export function toCsvNumber(value) {
-  const n = toNumber(value);
-  return (n === null ? 0 : arrotonda(n)).toFixed(2);
+  return euroFormatter.format(arrotonda(n));
 }
 
 // ------------------------------------------------------------------ date ---
@@ -303,75 +210,12 @@ export function formatDataOra(value, { vuoto = PLACEHOLDER, secondi = false } = 
   return `${COSTRUTTORI.breve(d)} ${oraDi(d, { secondi })}`;
 }
 
-/** Solo l'ora: 14:30. */
-export function formatOra(value, { vuoto = PLACEHOLDER } = {}) {
-  const d = aData(value);
-  return d ? oraDi(d) : vuoto;
-}
-
-/** Mese e anno per intero: "gennaio 2026". */
-export function formatMeseAnno(value, { vuoto = PLACEHOLDER } = {}) {
-  const d = aData(value);
-  return d ? COSTRUTTORI.mese(d) : vuoto;
-}
-
 /** Data in forma ISO YYYY-MM-DD, quella che il backend si aspetta. */
 export function toIsoDate(value) {
   const d = aData(value);
   return d ? COSTRUTTORI.iso(d) : "";
 }
 
-/** Valore per un <input type="datetime-local">. */
-export function toInputDateTime(value) {
-  const d = aData(value);
-  return d ? `${COSTRUTTORI.iso(d)}T${oraDi(d)}` : "";
-}
-
-// ------------------------------------------------- aritmetica dei giorni ---
-//
-// Quattro funzioni che prima venivano da moment (`diff`, `add`, `isSameOrAfter`) e che le
-// schermate usavano per rispondere sempre alla stessa domanda: quanti giorni mancano.
-//
-// Si ragiona in **giorni interi sul calendario**, non in millisecondi: una scadenza è un
-// giorno, e "mancano 0 giorni" a un abbonamento che scade stasera dev'essere la stessa
-// risposta che si darebbe alle otto di mattina. Contare gli istanti direbbe "manca mezza
-// giornata" e arrotonderebbe a zero o a uno a seconda dell'ora in cui si guarda.
-
-const GIORNO_MS = 24 * 60 * 60 * 1000;
-
-function aMezzanotte(value) {
-  const d = aData(value);
-  if (!d) return null;
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
-}
-
-/**
- * Giorni fra due date, contati sul calendario. Positivo se `a` viene dopo `b`.
- * Senza il secondo argomento si conta da oggi.
- */
-export function giorniTra(a, b = new Date()) {
-  const primo = aMezzanotte(a);
-  const secondo = aMezzanotte(b);
-  if (!primo || !secondo) return null;
-  // L'ora legale sposta un giorno di un'ora: senza arrotondare, due date a 24 giorni di
-  // distanza che attraversano il cambio darebbero 23,96 e quindi 23.
-  return Math.round((primo - secondo) / GIORNO_MS);
-}
-
-/** Quanti giorni mancano a una data. Negativo se è passata. */
-export function giorniAllaData(value) {
-  return giorniTra(value);
-}
-
-/** La stessa data spostata di N giorni (negativi per andare indietro). */
-export function aggiungiGiorni(value, giorni) {
-  const d = aMezzanotte(value);
-  if (!d) return null;
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate() + giorni);
-}
-
-/** Vera se `a` cade nello stesso giorno di `b` o dopo. */
-export function stessoGiornoOdopo(a, b = new Date()) {
-  const giorni = giorniTra(a, b);
-  return giorni !== null && giorni >= 0;
-}
+// Il conto dei giorni (quanti ne mancano, spostarsi di N) non sta qui: sta in
+// `shared/giorni.js`, perché lo fa anche il server, e "oggi" dev'essere lo stesso giorno per
+// tutti e due. Ce n'erano quattro copie.

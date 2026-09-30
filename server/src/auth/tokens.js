@@ -5,6 +5,11 @@ import { config } from '../config.js';
 // partire se il segreto non è stato impostato: un default noto significa che chiunque può
 // firmarsi un token da amministratore.
 
+// L'algoritmo è uno solo, e lo decide il server: senza l'elenco in `verify`, è l'intestazione
+// del token — scritta da chi lo presenta — a dire come verificarlo. Oggi la libreria rifiuta già
+// `none`, ma è una garanzia che non deve dipendere dalla versione installata.
+const ALGORITMO = 'HS256';
+
 /**
  * Firma un token.
  *
@@ -18,11 +23,11 @@ import { config } from '../config.js';
  */
 export function signToken(payload) {
 	const scadenza = payload.ruolo === 'member' ? config.jwtScadenzaSocio : config.jwtScadenza;
-	return jwt.sign(payload, config.jwtSecret, { expiresIn: scadenza });
+	return jwt.sign(payload, config.jwtSecret, { algorithm: ALGORITMO, expiresIn: scadenza });
 }
 
 export function verifyToken(token) {
-	return jwt.verify(token, config.jwtSecret);
+	return jwt.verify(token, config.jwtSecret, { algorithms: [ALGORITMO] });
 }
 
 // Estrae e verifica il bearer token; ritorna null se assente/non valido.

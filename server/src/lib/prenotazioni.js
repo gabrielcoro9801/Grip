@@ -1,7 +1,8 @@
 import { eq, and, ne, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { bookings, sessions, members, subscriptions } from '../db/schema/index.js';
-import { abbonamentoCopre, MESSAGGIO_SENZA_ABBONAMENTO, oggiIso } from '../../../shared/abbonamenti.js';
+import { abbonamentoCopre, MESSAGGIO_SENZA_ABBONAMENTO } from '../../../shared/abbonamenti.js';
+import { lezioneFinita } from '../../../shared/giorni.js';
 
 /**
  * Prenotare e disdire: le due regole, in un posto solo.
@@ -36,11 +37,20 @@ export async function prenota({ sessionId, memberId }) {
 		if (!lezione) return { errore: 404, messaggio: 'Lezione inesistente.' };
 		if (lezione.status !== 'active') return { errore: 400, messaggio: 'La lezione è stata annullata.' };
 
-		// Oggi a Roma, non in UTC: fra mezzanotte e le due la data UTC è ancora ieri.
-		const oggi = oggiIso();
-		if (String(lezione.date) < oggi) {
+		// Oggi a Roma, non in UTC: fra mezzanotte e le due la data UTC è ancora ieri. E non solo
+		// la data: una lezione di stamattina, finita, si prenotava fino a mezzanotte.
+		if (lezioneFinita(lezione)) {
 			return { errore: 400, messaggio: 'La lezione è già passata.' };
 		}
+
+		const [socio] = await tx
+			.select({ nome: members.fullName, archiviatoIl: members.archiviatoIl })
+			.from(members)
+			.where(eq(members.id, memberId))
+			.limit(1);
+		if (!socio) return { errore: 404, messaggio: 'Socio inesistente.' };
+		// Chi ha lasciato la palestra non prenota, da nessuna delle due rotte.
+		if (socio.archiviatoIl) return { errore: 400, messaggio: 'Il socio è archiviato: riattivalo dalla sua scheda per prenotare.' };
 
 		// Senza un abbonamento che copra il giorno della lezione non si prenota: dal portale come
 		// dalla reception, perché la regola sta qui e non nei pulsanti.
@@ -70,13 +80,6 @@ export async function prenota({ sessionId, memberId }) {
 			})
 			.from(bookings)
 			.where(eq(bookings.sessionId, sessionId));
-
-		const [socio] = await tx
-			.select({ nome: members.fullName })
-			.from(members)
-			.where(eq(members.id, memberId))
-			.limit(1);
-		if (!socio) return { errore: 404, messaggio: 'Socio inesistente.' };
 
 		const pieno = confermate >= (lezione.capacity ?? 0);
 		const [creata] = await tx
@@ -119,6 +122,13 @@ export async function disdici({ bookingId, soloDelSocio = null }) {
 			return { errore: 404, messaggio: 'Prenotazione inesistente.' };
 		}
 		if (prenotazione.status === 'cancelled') return { promossa: null };
+
+		// Una lezione finita non si disdice: la prenotazione è storia, e disdirla avrebbe anche
+		// promosso qualcuno dalla lista d'attesa a una lezione che non c'è più.
+		const [lezione] = await tx.select().from(sessions).where(eq(sessions.id, prenotazione.sessionId)).limit(1);
+		if (lezione && lezioneFinita(lezione)) {
+			return { errore: 400, messaggio: 'La lezione è già finita: la prenotazione non si disdice più.' };
+		}
 
 		await tx
 			.update(bookings)

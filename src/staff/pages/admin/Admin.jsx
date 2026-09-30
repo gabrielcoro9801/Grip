@@ -7,6 +7,7 @@ import PageHeader from "@/staff/components/PageHeader";
 import GestioneRuoli from "@/staff/components/admin/GestioneRuoli";
 import UtentiInterni from "@/staff/components/admin/UtentiInterni";
 import AccountSoci from "@/staff/components/admin/AccountSoci";
+import Collaboratori from "@/staff/components/admin/Collaboratori";
 import { LoadingState } from "@/ui/Spinner";
 import { ErrorState } from "@/ui/StateViews";
 
@@ -89,6 +90,7 @@ export default function Admin() {
         <TabsList>
           <TabsTrigger value="interni">Utenti interni ({interni.length})</TabsTrigger>
           <TabsTrigger value="soci">Account soci ({soci.length})</TabsTrigger>
+          <TabsTrigger value="collaboratori">Collaboratori ({collaboratori.length})</TabsTrigger>
           <TabsTrigger value="ruoli">Ruoli e permessi</TabsTrigger>
         </TabsList>
 
@@ -103,6 +105,15 @@ export default function Admin() {
 
         <TabsContent value="soci" className="mt-4">
           <AccountSoci accounts={soci} members={members} reload={carica} />
+        </TabsContent>
+
+        <TabsContent value="collaboratori" className="mt-4">
+          <Collaboratori
+            collaboratori={collaboratori}
+            accounts={interni}
+            organizationId={organization?.id}
+            reload={carica}
+          />
         </TabsContent>
 
         <TabsContent value="ruoli" className="mt-4">

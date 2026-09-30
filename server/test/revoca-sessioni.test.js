@@ -149,12 +149,28 @@ describe('le scadenze', () => {
 		assert.ok(giorni > 7, `la sessione del socio dura ${giorni} giorni: troppo poco per un telefono`);
 	});
 
-	test('i token emessi prima di questa colonna continuano a valere', async () => {
-		// Il rilascio non deve buttare fuori chi è già connesso: un token senza `tv` è
-		// accettato, e dal prossimo accesso il controllo è pieno.
+	test('un token senza numero di versione non vale più', async () => {
+		// Erano accettati per non buttare fuori chi era connesso al rilascio della revoca; quei
+		// token duravano dodici ore, e un token senza `tv` sfuggirebbe a qualunque revoca.
 		const [account] = await db.select().from(staffAccounts).where(inArray(staffAccounts.email, [emailSocio]));
 		const vecchioStile = jwt.sign({ sub: account.id, ruolo: 'member' }, config.jwtSecret, { expiresIn: '1h' });
 
-		assert.equal((await chiSono(vecchioStile)).statusCode, 200);
+		assert.equal((await chiSono(vecchioStile)).statusCode, 401);
+	});
+});
+
+describe("l'algoritmo lo decide il server", () => {
+	test('un token firmato con un altro algoritmo non vale, anche con il segreto giusto', async () => {
+		const [account] = await db.select().from(staffAccounts).where(inArray(staffAccounts.email, [emailSocio]));
+		const token = jwt.sign({ sub: account.id, ruolo: 'member', tv: account.tokenVersion }, config.jwtSecret, { algorithm: 'HS512', expiresIn: '1h' });
+
+		assert.equal((await chiSono(token)).statusCode, 401);
+	});
+
+	test('un token senza firma non vale', async () => {
+		const [account] = await db.select().from(staffAccounts).where(inArray(staffAccounts.email, [emailSocio]));
+		const token = jwt.sign({ sub: account.id, ruolo: 'member', tv: account.tokenVersion }, null, { algorithm: 'none', expiresIn: '1h' });
+
+		assert.equal((await chiSono(token)).statusCode, 401);
 	});
 });

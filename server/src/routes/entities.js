@@ -29,7 +29,7 @@ export default async function entityRoutes(fastify) {
 	registerPgErrorHandler(fastify);
 
 	// Tutti i dati applicativi richiedono un utente autenticato: senza questo controllo
-	// l'intero database (anagrafiche soci, contabilità, account) sarebbe leggibile e
+	// l'intero database (anagrafiche soci, certificati, account) sarebbe leggibile e
 	// scrivibile da chiunque raggiunga la porta del server.
 	fastify.addHook('preHandler', async (request, reply) => {
 		const user = getUserFromRequest(request);
@@ -57,7 +57,7 @@ export default async function entityRoutes(fastify) {
 		}
 
 		// Un socio entra in un'area che deve mostrargli i propri dati: tutto il resto —
-		// contabilità, account, cedolini, anagrafiche degli altri — non lo riguarda.
+		// account dello staff, registro, anagrafiche degli altri — non lo riguarda.
 		if (user.ruolo === 'member' && name) {
 			if (!memberPuoLeggere(name)) {
 				return reply.code(403).send({ error: 'Non consentito.' });

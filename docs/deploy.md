@@ -104,7 +104,7 @@ Sempre sotto **Variables** del servizio backend:
 | `JWT_SECRET` | una stringa lunga e casuale | firma i token: con un segreto noto chiunque può firmarsi un accesso da amministratore |
 | `QR_SECRET` | un'altra stringa lunga e casuale | firma il codice d'accesso che cambia ogni minuto: è ciò che impedisce di ricavare i codici futuri da uno screenshot. Se manca si usa `JWT_SECRET`, quindi l'applicazione parte lo stesso — ma due usi per una chiave sola è una scorciatoia, non una scelta |
 | `CORS_ORIGIN` | `https://gripcore.it` | con un servizio solo non serve davvero, ma il server la pretende |
-| `PUBLIC_BASE_URL` | `https://gripcore.it` | entra negli URL delle ricevute PDF |
+| `PUBLIC_BASE_URL` | `https://gripcore.it` | entra negli indirizzi dei file caricati (documenti, foto) |
 | `UPLOAD_DIR` | `/data/uploads` | vedi 2.4 |
 
 Il segreto lo generi così:
@@ -133,7 +133,8 @@ dipende da un builder che può cambiare o essere dichiarato deprecato, come è s
 Nixpacks.
 
 `railway.json` contiene anche `healthcheckPath: /health`, che è servita da Fastify: Railway
-considera riuscito un rilascio solo se quella rotta risponde. Se il server tornasse a non
+considera riuscito un rilascio solo se quella rotta risponde, e risponde solo se il database
+risponde a sua volta (altrimenti 503). Se il server tornasse a non
 avviarsi, il deploy **fallirebbe** invece di andare a buon fine servendo la cosa sbagliata.
 
 Nel pannello, sotto **Settings → Build**, il builder deve risultare **Dockerfile**. Se è
@@ -150,8 +151,8 @@ uno schema incompleto che risponderebbe con errori incomprensibili.
 ### 2.4 Il disco dei file caricati
 
 **Questo è il punto che si sbaglia più spesso.** Su Railway il filesystem del container si
-azzera a ogni deploy: le ricevute e le fatture in PDF già emesse sparirebbero, e nessuno se ne
-accorgerebbe finché qualcuno non prova ad aprirne una vecchia.
+azzera a ogni deploy: certificati medici, documenti e foto dei soci già caricati sparirebbero, e nessuno se ne
+accorgerebbe finché qualcuno non prova ad aprirne uno vecchio.
 
 Nel servizio backend: **Settings → Volumes → New Volume**, montato su `/data`. Poi la variabile
 `UPLOAD_DIR=/data/uploads`.
@@ -275,13 +276,13 @@ Le dipendenze contano: fare i passi in ordine sbagliato produce errori che sembr
 1. **Push del codice su GitHub** — Railway costruisce da lì, non dal tuo PC
 2. **Database su Railway** e variabile collegata con un riferimento
 3. **Variabili del backend** (`NODE_ENV`, `JWT_SECRET`, `CORS_ORIGIN`, `PUBLIC_BASE_URL`)
-4. **Volume** su `/data` e `UPLOAD_DIR` — prima di emettere qualunque ricevuta
-5. **Deploy** — verifica che `/health` risponda `{"ok":true,"entities":45}`
+4. **Volume** su `/data` e `UPLOAD_DIR` — prima di caricare qualunque documento
+5. **Deploy** — verifica che `/health` risponda `{"ok":true,"database":true,...}`
 6. **Seed**, una volta sola, per creare il primo amministratore
 7. **Dominio** `gripcore.it` su Railway + record su Cloudflare + SSL su Full (strict)
 
-Il punto 4 prima del 6 non è un dettaglio: se emetti ricevute senza volume, il primo deploy
-successivo cancella i PDF.
+Il punto 4 prima del 6 non è un dettaglio: se carichi documenti senza volume, il primo deploy
+successivo li cancella.
 
 ---
 
@@ -323,8 +324,8 @@ risulti **Dockerfile** e non sia forzato ad altro.
 `index.html` su tutte le rotte che non sono API o file. Se succede, `dist/` non c'è (vedi
 sopra).
 
-**Le ricevute vecchie non si scaricano più.** È il volume mancante (2.4): i file sono stati
-cancellati da un deploy. Da lì in avanti si evita, ma quelli persi vanno rigenerati.
+**I documenti vecchi non si aprono più.** È il volume mancante (2.4): i file sono stati
+cancellati da un deploy. Da lì in avanti si evita, ma quelli persi vanno ricaricati.
 
 **Il deploy fallisce con un file non trovato, in maiuscolo o minuscolo.** Windows non distingue
 `app.jsx` da `App.jsx`, Linux sì: un import che funziona sul tuo PC può fallire in build. Se

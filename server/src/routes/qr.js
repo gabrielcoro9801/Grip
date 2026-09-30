@@ -51,10 +51,15 @@ export default async function qrRoutes(fastify) {
 		}
 
 		const [qr] = await db
-			.select()
+			.select({ codice: qrAccessi.codice, archiviatoIl: members.archiviatoIl })
 			.from(qrAccessi)
+			.innerJoin(members, eq(qrAccessi.clienteId, members.id))
 			.where(and(eq(qrAccessi.clienteId, clienteId), eq(qrAccessi.stato, 'attivo')))
 			.limit(1);
+
+		// Il socio archiviato non entra: la credenziale resta (torna buona se lo si riattiva), ma
+		// il codice del minuto non si calcola.
+		if (qr?.archiviatoIl) return { codice: null, stato: 'archiviato', ms_residui: msResiduiFinestra() };
 
 		// Nessun codice attivo non è un errore: è la risposta giusta per chi è stato
 		// revocato o non ne ha mai avuto uno, e l'interfaccia deve poterlo dire.
@@ -90,10 +95,11 @@ export default async function qrRoutes(fastify) {
 		}
 
 		const [socio] = await db
-			.select({ id: members.id, nome: members.fullName })
+			.select({ id: members.id, nome: members.fullName, archiviatoIl: members.archiviatoIl })
 			.from(members)
 			.where(eq(members.id, qr.clienteId))
 			.limit(1);
+		if (socio?.archiviatoIl) return { valido: false, motivo: 'Il socio è archiviato: non ha più accesso.' };
 
 		return { valido: true, member_id: qr.clienteId, member_name: socio?.nome ?? qr.clienteName ?? '' };
 	});

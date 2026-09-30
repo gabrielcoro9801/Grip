@@ -13,7 +13,8 @@ import { prenota, disdici } from '../../lib/prenotazioni.js';
 import { firmaUrl } from '../../lib/urlFirmati.js';
 import { msResiduiFinestra } from '../../../../shared/qrDinamico.js';
 import { nomeDocumento, conStatoDocumenti } from '../../../../shared/anagrafica.js';
-import { statoIscrizione, abbonamentoCopre, MESSAGGIO_SENZA_ABBONAMENTO, oggiIso } from '../../../../shared/abbonamenti.js';
+import { statoIscrizione, abbonamentoCopre, MESSAGGIO_SENZA_ABBONAMENTO } from '../../../../shared/abbonamenti.js';
+import { oggiIso, eUnGiorno, giorniFra, giorniDaOggi, spostaGiorni, lezioneFinita } from '../../../../shared/giorni.js';
 
 /**
  * L'API del portale soci.
@@ -127,7 +128,10 @@ export default async function memberRoutes(fastify) {
 				contatto_emergenza: socio.emergencyContactName
 					? { nome: socio.emergencyContactName, telefono: socio.emergencyContactPhone }
 					: null,
-				note: socio.notes,
+				// Le note della scheda sono della segreteria, e al socio non si mostrano: prima
+				// arrivavano qui così com'erano. Il campo resta nel contratto, vuoto, perché un
+				// campo che sparisce rompe un'app installata che non ha aggiornato.
+				note: null,
 			},
 			abbonamento: corrente && {
 				id: corrente.id,
@@ -255,7 +259,7 @@ export default async function memberRoutes(fastify) {
 	fastify.get('/corsi/agenda', async (request, reply) => {
 		const oggi = oggiIso();
 		const dal = request.query.dal ?? oggi;
-		const al = request.query.al ?? fraGiorni(dal, 30);
+		const al = request.query.al ?? spostaGiorni(eUnGiorno(dal) ? dal : oggi, 30);
 
 		// Le date arrivano dalla query così come sono: una malformata finiva al database e
 		// tornava come errore 500, e `?dal=2000-01-01&al=2100-01-01` faceva leggere al server
@@ -337,7 +341,9 @@ export default async function memberRoutes(fastify) {
 					al_completo: c.confermati >= capienza,
 				},
 				// null se si può prenotare; altrimenti il perché, da mostrare al posto del pulsante.
-				motivo_non_prenotabile: coperta ? null : MESSAGGIO_SENZA_ABBONAMENTO,
+				// Una lezione di oggi già finita resta in agenda, ma non si prenota né si disdice.
+				motivo_non_prenotabile: lezioneFinita(s) ? 'La lezione è già finita.' : (coperta ? null : MESSAGGIO_SENZA_ABBONAMENTO),
+				finita: lezioneFinita(s),
 				mia_prenotazione: miaPrenotazione
 					? {
 						id: miaPrenotazione.id,
@@ -646,6 +652,13 @@ export default async function memberRoutes(fastify) {
 			.limit(1);
 		if (!riga) return reply.code(404).send({ error: 'Serie inesistente.' });
 
+		// Stessa regola della registrazione: dentro un allenamento chiuso non si aggiunge niente,
+		// e non si riscrive nemmeno. Prima la POST lo vietava e la PATCH no.
+		if (riga.sessionId) {
+			const sessione = await sessioneDelSocio(riga.sessionId, request.idSocio);
+			if (sessione?.terminataAlle) return reply.code(409).send({ error: 'Questo allenamento è già chiuso.' });
+		}
+
 		const c = request.body ?? {};
 		const cambi = {};
 		if ('peso_usato' in c) cambi.pesoUsato = c.peso_usato;
@@ -767,28 +780,12 @@ function serieVersoApi(r) {
 	};
 }
 
-// --- Le date, contate una volta sola -------------------------------------------------
+// --- Le date ------------------------------------------------------------------------
 //
 // Tutto in giorni interi sul calendario, senza ore: una scadenza è un giorno, non un
 // istante, e confrontare istanti farebbe dire "scade fra 0 giorni" a un abbonamento che
-// scade stasera e "fra 1" a uno che scade domani mattina presto.
-
-const GIORNO_MS = 24 * 60 * 60 * 1000;
-
-function aMezzanotte(data) {
-	if (!data) return null;
-	const d = new Date(`${String(data).split('T')[0]}T00:00:00Z`);
-	return Number.isNaN(d.getTime()) ? null : d;
-}
-
-function giorniDaOggi(data) {
-	const quando = aMezzanotte(data);
-	if (!quando) return null;
-	// Oggi a Roma: la data UTC fra mezzanotte e le due è ancora ieri, e i giorni alla
-	// scadenza uscivano sbagliati di uno.
-	const oggi = aMezzanotte(oggiIso());
-	return Math.round((quando - oggi) / GIORNO_MS);
-}
+// scade stasera e "fra 1" a uno che scade domani mattina presto. Il conto sta in
+// `shared/giorni.js`, e "oggi" è quello di Roma.
 
 function scaduto(data) {
 	const giorni = giorniDaOggi(data);
@@ -806,16 +803,11 @@ const E_UNA_DATA = /^\d{4}-\d{2}-\d{2}$/;
 
 /** Perché l'intervallo chiesto all'agenda non va bene, o null. */
 function motivoIntervalloNonValido(dal, al) {
-	if (!E_UNA_DATA.test(String(dal)) || !aMezzanotte(dal)) return 'La data di inizio non è valida (AAAA-MM-GG).';
-	if (!E_UNA_DATA.test(String(al)) || !aMezzanotte(al)) return 'La data di fine non è valida (AAAA-MM-GG).';
+	if (!E_UNA_DATA.test(String(dal)) || !eUnGiorno(dal)) return 'La data di inizio non è valida (AAAA-MM-GG).';
+	if (!E_UNA_DATA.test(String(al)) || !eUnGiorno(al)) return 'La data di fine non è valida (AAAA-MM-GG).';
 	if (al < dal) return 'La data di fine non può precedere quella di inizio.';
-	if ((aMezzanotte(al) - aMezzanotte(dal)) / GIORNO_MS > GIORNI_MASSIMI_AGENDA) {
+	if (giorniFra(dal, al) > GIORNI_MASSIMI_AGENDA) {
 		return `L'agenda si chiede per al massimo ${GIORNI_MASSIMI_AGENDA} giorni alla volta.`;
 	}
 	return null;
-}
-
-function fraGiorni(dal, quanti) {
-	const partenza = aMezzanotte(dal) ?? aMezzanotte(oggiIso());
-	return new Date(partenza.getTime() + quanti * GIORNO_MS).toISOString().split('T')[0];
 }

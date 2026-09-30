@@ -109,6 +109,28 @@ describe('vendere un abbonamento', () => {
 		assert.equal(res.statusCode, 400);
 		assert.match(res.json().error, /fino al/);
 	});
+
+	test('senza un tipo non si vende', async () => {
+		const res = await vendi({ start_date: '2026-09-16', end_date: '2099-01-01', plan_name: 'Inventato' });
+		assert.equal(res.statusCode, 400);
+		assert.match(res.json().error, /tipo di abbonamento/);
+	});
+
+	test('dopo la vendita si correggono solo inizio e importo, e la scadenza segue', async () => {
+		const [venduta] = await db.select().from(subscriptions).where(eq(subscriptions.memberId, idSocio)).limit(1);
+		const modifica = (payload) => come({ method: 'PUT', url: `/api/entities/Subscription/${venduta.id}`, payload });
+
+		for (const campo of [{ end_date: '2099-01-01' }, { plan_id: idTipi[1] }, { member_id: idSocio }]) {
+			const res = await modifica(campo);
+			assert.equal(res.statusCode, 400, `${Object.keys(campo)[0]} non si deve poter cambiare`);
+		}
+		assert.equal((await modifica({ price_paid: -5 })).statusCode, 400);
+
+		const res = await modifica({ start_date: '2026-10-01', price_paid: 35, status: 'expired' });
+		assert.equal(res.statusCode, 200, res.body);
+		assert.equal(res.json().end_date, '2026-10-31');
+		assert.equal(Number(res.json().price_paid), 35);
+	});
 });
 
 // Nessun processo aggiornava la colonna `status`: un'iscrizione nasceva "active" e restava

@@ -4,7 +4,7 @@
 // 1 Booking punta sempre a una Session, mai direttamente a Event/Course).
 // NB: escluso volutamente il modello legacy/orfano trovato in MemberSelfService.jsx
 // (Course.day_of_week/room_id, Booking.course_id/date) — codice morto non instradato.
-import { pgTable, uuid, varchar, text, boolean, integer, date, time, jsonb, timestamp, check, index } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, text, boolean, integer, date, time, jsonb, timestamp, check, index, uniqueIndex } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { members } from './crm.js';
 
@@ -22,6 +22,9 @@ export const instructors = pgTable('instructors', {
 	contactEmail: varchar('contact_email', { length: 255 }),
 	contactPhone: varchar('contact_phone', { length: 64 }),
 	notes: text('notes'),
+	// Chi ha tenuto dei corsi non si elimina — il calendario passato perderebbe il suo nome — ma
+	// smette di comparire fra quelli a cui si assegna un corso.
+	attivo: boolean('attivo').notNull().default(true),
 });
 
 // La sala non ha una capienza: quanta gente entra a lezione lo decide l'evento, che nella
@@ -53,6 +56,9 @@ export const courses = pgTable('courses', {
 	categoryId: uuid('category_id').references(() => categories.id),
 	instructorId: uuid('instructor_id').references(() => instructors.id),
 	description: text('description'),
+	// Un corso andato in calendario non si elimina; disattivato non si programma più, e le
+	// lezioni già fissate restano com'erano.
+	attivo: boolean('attivo').notNull().default(true),
 	createdDate: timestamp('created_date', { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -85,7 +91,7 @@ export const sessions = pgTable('sessions', {
 	eventId: uuid('event_id').notNull().references(() => events.id),
 	date: date('date').notNull(),
 	// Ereditati dall'Event alla generazione; possono divergere solo se modifiedManually=true
-	// (vincolo applicativo, vedi src/lib/sessionValidation.js — non imposto come CHECK qui).
+	// (vincolo applicativo, vedi src/staff/lib/sessionValidation.js — non imposto come CHECK qui).
 	startTime: time('start_time').notNull(),
 	endTime: time('end_time').notNull(),
 	roomId: uuid('room_id').notNull().references(() => rooms.id),
@@ -111,4 +117,7 @@ export const bookings = pgTable('bookings', {
 	// Ogni prenotazione conta i posti della sua lezione; il portale cerca quelle del socio.
 	lezione: index('bookings_session_id_idx').on(table.sessionId),
 	socio: index('bookings_member_id_idx').on(table.memberId),
+	// Una prenotazione viva per socio e lezione. Il lock in transazione di `lib/prenotazioni.js`
+	// lo garantisce già per le rotte dedicate; il vincolo lo garantisce per tutto il resto.
+	unaPerLezione: uniqueIndex('bookings_attiva_unica_idx').on(table.sessionId, table.memberId).where(sql`${table.status} <> 'cancelled'`),
 }));

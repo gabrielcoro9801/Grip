@@ -65,6 +65,8 @@ export default function MembersList() {
   const [subscriptions, setSubscriptions] = useState([]);
   const [search, setSearch] = useState("");
   const [ordine, setOrdine] = useState("cognome");
+  // Gli archiviati hanno lasciato la palestra: non stanno fra chi frequenta, ma si ritrovano.
+  const [vista, setVista] = useState("frequentano");
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState(ANAGRAFICA_VUOTA);
@@ -121,11 +123,14 @@ export default function MembersList() {
     }
     const criterio = ORDINAMENTI.find((o) => o.valore === ordine) ?? ORDINAMENTI[0];
     return members
+      .filter((m) => (vista === "archiviati") === Boolean(m.archiviato_il))
       .map((m) => ({ ...m, _abbonamento: abbonamentoRilevante(perSocio.get(m.id) ?? []) }))
       .filter((m) => !cerca || [m.full_name, m.email, m.codice_fiscale, m.codice_socio, m.phone]
         .some((v) => v && v.toLowerCase().includes(cerca)))
       .sort(criterio.confronta);
-  }, [members, subscriptions, search, ordine]);
+  }, [members, subscriptions, search, ordine, vista]);
+
+  const archiviati = members.filter((m) => m.archiviato_il).length;
 
   const incompleto = motivoAnagraficaIncompleta(form);
 
@@ -136,7 +141,10 @@ export default function MembersList() {
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
-      <PageHeader title="Gestione membri" description={`${members.length} soci registrati`}>
+      <PageHeader
+        title="Gestione membri"
+        description={`${members.length - archiviati} soci registrati${archiviati ? ` · ${archiviati} archiviati` : ""}`}
+      >
         <Button onClick={() => setShowForm(true)} size="sm">
           <Plus className="w-4 h-4 mr-1" /> Aggiungi socio
         </Button>
@@ -154,6 +162,16 @@ export default function MembersList() {
           />
         </div>
         <div className="flex items-center gap-2 sm:ml-auto">
+          <Label htmlFor="vista-soci" className="sr-only">Quali soci</Label>
+          <Select value={vista} onValueChange={setVista}>
+            <SelectTrigger id="vista-soci" className="w-[160px]"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="frequentano">Frequentano</SelectItem>
+              <SelectItem value="archiviati">Archiviati ({archiviati})</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex items-center gap-2">
           <Label htmlFor="ordina-soci" className="text-sm text-muted-foreground whitespace-nowrap">Ordina per</Label>
           <Select value={ordine} onValueChange={setOrdine}>
             <SelectTrigger id="ordina-soci" className="w-[210px]"><SelectValue /></SelectTrigger>
@@ -169,11 +187,13 @@ export default function MembersList() {
         // caricamento che non finisce, e senza dire che fare.
         <EmptyState
           icon={Users}
-          title={members.length === 0 ? "Nessun socio registrato" : "Nessun socio corrisponde"}
+          title={members.length === 0 ? "Nessun socio registrato" : vista === "archiviati" && !search ? "Nessun socio archiviato" : "Nessun socio corrisponde"}
           description={
             members.length === 0
               ? "Da qui si tesserano le persone che frequentano la palestra."
-              : `Nessun risultato per «${search}». Prova con un altro nome, il codice o il telefono.`
+              : vista === "archiviati" && !search
+                ? "Un socio che lascia la palestra si archivia dalla sua scheda, e lo si ritrova qui."
+                : `Nessun risultato per «${search}». Prova con un altro nome, il codice o il telefono.`
           }
         />
       ) : (
@@ -195,9 +215,11 @@ export default function MembersList() {
                   </div>
                   <dl className="mt-auto space-y-1.5">
                     <RigaTile etichetta="Stato">
-                      {sub
-                        ? <StatusBadge status={sub.status} className="py-0" />
-                        : <StatusBadge status="nessuno" label="Senza abbonamento" tone="neutro" className="py-0" />}
+                      {member.archiviato_il
+                        ? <StatusBadge status="archiviato" label={`Archiviato il ${formatData(member.archiviato_il, "breve")}`} tone="neutro" className="py-0" />
+                        : sub
+                          ? <StatusBadge status={sub.status} className="py-0" />
+                          : <StatusBadge status="nessuno" label="Senza abbonamento" tone="neutro" className="py-0" />}
                     </RigaTile>
                     <RigaTile etichetta="Abbonamento">{sub?.plan_name || "—"}</RigaTile>
                     <RigaTile etichetta="Scadenza">{sub?.end_date ? formatData(sub.end_date, "media") : "—"}</RigaTile>

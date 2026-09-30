@@ -3,10 +3,10 @@ import { Link, useLocation } from "react-router-dom";
 import { cn } from "@/ui/utils";
 
 /**
- * La barra di navigazione interna a una sezione (Contabilità, CRM, Team…).
+ * La barra di navigazione interna a una sezione (Gestione membri, Corsi, Lead…).
  *
  * Esisteva in cinque copie leggermente diverse — padding, hover e posizione
- * cambiavano passando da Contabilità a Personale, e chi navigava se ne
+ * cambiavano passando da una sezione all'altra, e chi navigava se ne
  * accorgeva. Questa è l'unica versione: barra a tutta larghezza sotto
  * l'header, sottolineatura sull'elemento attivo, scorrimento orizzontale
  * quando le voci non ci stanno.

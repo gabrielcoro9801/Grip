@@ -583,9 +583,9 @@ describe('il contratto resta quello promesso', () => {
 
 		assert.deepEqual(
 			Object.keys(mia).sort(),
-			// `motivo_non_prenotabile` è un'aggiunta (null quando si può prenotare): un client che
-			// non lo conosce lo ignora, e il contratto non si rompe.
-			['categoria', 'corso', 'data', 'fine', 'id', 'inizio', 'istruttore', 'mia_prenotazione', 'motivo_non_prenotabile', 'posti', 'sala']
+			// `motivo_non_prenotabile` e `finita` sono aggiunte (null / false quando si può
+			// prenotare): un client che non le conosce le ignora, e il contratto non si rompe.
+			['categoria', 'corso', 'data', 'fine', 'finita', 'id', 'inizio', 'istruttore', 'mia_prenotazione', 'motivo_non_prenotabile', 'posti', 'sala']
 		);
 		assert.deepEqual(
 			Object.keys(mia.posti).sort(),

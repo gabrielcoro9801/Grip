@@ -274,6 +274,20 @@
       "when": 1790787373716,
       "tag": "0038_email_account_senza_maiuscole",
       "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1790791933172,
+      "tag": "0039_vincoli_minori",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1790792766130,
+      "tag": "0040_archivio_e_disattivazione",
+      "breakpoints": true
     }
   ]
 }
