@@ -9,6 +9,9 @@ function formatDate(dateStr) {
   return new Date(dateStr + "T00:00:00").toLocaleDateString("it-IT", { day: "2-digit", month: "2-digit" });
 }
 
+// "09:00–10:00": il database restituisce anche i secondi, che nei messaggi sono solo rumore.
+const orario = (lezione) => `${String(lezione.start_time).slice(0, 5)}–${String(lezione.end_time).slice(0, 5)}`;
+
 /**
  * Calcola tutte le date delle sessioni generate da un Event.
  * - single: una sola data (start_date)
@@ -106,7 +109,7 @@ export function checkEventConflicts(dates, newEvent, course, existingSessions, e
         conflictFound = {
           date,
           type: "sala",
-          message: `${formatDate(date)}: conflitto sala con "${conflictCourse?.name || "N/D"}" ${session.start_time}–${session.end_time}`,
+          message: `${formatDate(date)}: sala occupata da «${conflictCourse?.name || "un altro corso"}» ${orario(session)}`,
         };
         break;
       }
@@ -117,7 +120,7 @@ export function checkEventConflicts(dates, newEvent, course, existingSessions, e
         conflictFound = {
           date,
           type: "istruttore",
-          message: `${formatDate(date)}: conflitto istruttore con "${sessionCourse.name}" ${session.start_time}–${session.end_time}`,
+          message: `${formatDate(date)}: istruttore già impegnato con «${sessionCourse.name}» ${orario(session)}`,
         };
         break;
       }
@@ -156,7 +159,7 @@ export function checkSessionConflict(session, newValues, course, allSessions, al
       return {
         conflict: true,
         type: "sala",
-        message: `${formatDate(date)}: conflitto sala con "${conflictCourse?.name || "N/D"}" ${otherSession.start_time}–${otherSession.end_time}`,
+        message: `${formatDate(date)}: sala occupata da «${conflictCourse?.name || "un altro corso"}» ${orario(otherSession)}`,
       };
     }
 
@@ -166,7 +169,7 @@ export function checkSessionConflict(session, newValues, course, allSessions, al
       return {
         conflict: true,
         type: "istruttore",
-        message: `${formatDate(date)}: conflitto istruttore con "${otherCourse.name}" ${otherSession.start_time}–${otherSession.end_time}`,
+        message: `${formatDate(date)}: istruttore già impegnato con «${otherCourse.name}» ${orario(otherSession)}`,
       };
     }
   }
