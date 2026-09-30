@@ -152,7 +152,7 @@ export default async function ruoliRoutes(fastify) {
 		const [ruolo] = await db.select().from(ruoli).where(eq(ruoli.id, request.params.id)).limit(1);
 		if (!ruolo) return reply.code(404).send({ error: 'Ruolo non trovato.' });
 
-		// I sei ruoli con cui l'applicazione nasce restano: il codice vi fa riferimento come
+		// I quattro ruoli con cui l'applicazione nasce restano: il codice vi fa riferimento come
 		// valori predefiniti, e toglierli lascerebbe l'installazione in uno stato che nessuna
 		// schermata sa più ricostruire.
 		if (ruolo.sistema) {

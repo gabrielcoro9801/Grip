@@ -1,18 +1,24 @@
 import React, { useState } from "react";
 import { api } from "@/core/api/client";
+import { useStaffAuth } from "@/staff/lib/StaffAuthContext";
+import { canEdit } from "@/staff/lib/permissions";
+import { useConfirm } from "@/ui/ConfirmDialog";
 import { Card, CardContent } from "@/ui/primitivi/card";
 import { Button } from "@/ui/primitivi/button";
 import { Label } from "@/ui/primitivi/label";
 import { Input } from "@/ui/primitivi/input";
 import { Textarea } from "@/ui/primitivi/textarea";
-import { Plus, Mail, Phone, Pencil, X } from "lucide-react";
+import { Plus, Mail, Phone, Pencil, Trash2, X, Power, PowerOff } from "lucide-react";
 import { useToast } from "@/ui/primitivi/use-toast";
 
 const emptyForm = { full_name: "", tax_id: "", contact_email: "", contact_phone: "", notes: "" };
 
 export default function InstructorsTab({ data, reload }) {
-  const { instructors } = data;
+  const { instructors, courses } = data;
+  const { staffUser } = useStaffAuth();
+  const puoModificare = canEdit(staffUser?.ruolo, "calendar");
   const { toast } = useToast();
+  const [conferma, dialogoConferma] = useConfirm();
   const [form, setForm] = useState(emptyForm);
   const [editing, setEditing] = useState(null);
 
@@ -28,6 +34,30 @@ export default function InstructorsTab({ data, reload }) {
   };
 
   const cancelEdit = () => { setEditing(null); setForm(emptyForm); };
+
+  // Un istruttore si elimina finché nessun corso lo cita: dopo, il corso resterebbe senza chi
+  // lo tiene, e il calendario passato senza il nome di chi c'era.
+  const elimina = async (istruttore) => {
+    const suoi = courses.filter((c) => c.instructor_id === istruttore.id).length;
+    if (suoi) {
+      toast({
+        title: "Questo istruttore non si può eliminare",
+        description: `Tiene ${suoi} ${suoi === 1 ? "corso" : "corsi"}: assegnali a un altro istruttore, oppure disattivalo — resta nello storico e non si propone più.`,
+        variant: "destructive",
+      });
+      return;
+    }
+    const ok = await conferma({ title: `Eliminare «${istruttore.full_name}»?`, confirmLabel: "Elimina", destructive: true });
+    if (!ok) return;
+    try {
+      await api.entities.Instructor.delete(istruttore.id);
+      if (editing?.id === istruttore.id) cancelEdit();
+      toast({ title: "Istruttore eliminato" });
+      reload();
+    } catch (err) {
+      toast({ title: "Non è stato possibile eliminare", description: err.message, variant: "destructive" });
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -46,6 +76,21 @@ export default function InstructorsTab({ data, reload }) {
       toast({ title: "Errore", description: err.message, variant: "destructive" });
     }
   };
+
+
+  // Chi ha uno storico non si elimina: si disattiva, e sparisce dalle scelte per il futuro.
+  const cambiaAttivo = async (riga, attivo) => {
+    try {
+      await api.entities.Instructor.update(riga.id, { attivo });
+      toast({ title: attivo ? "Istruttore riattivato" : "Istruttore disattivato" });
+      reload();
+    } catch (err) {
+      toast({ title: "Errore", description: err.message, variant: "destructive" });
+    }
+  };
+
+  // I disattivati in fondo: si consultano, ma non sono quelli con cui si lavora.
+  const elenco = [...instructors].sort((a, b) => Number(b.attivo !== false) - Number(a.attivo !== false));
 
   return (
     <div className="space-y-4">
@@ -75,14 +120,32 @@ export default function InstructorsTab({ data, reload }) {
       </Card>
 
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {instructors.map(i => (
-          <Card key={i.id} className="border-0 shadow-sm">
+        {elenco.map(i => (
+          <Card key={i.id} className={`border-0 shadow-sm ${i.attivo === false ? "opacity-70" : ""}`}>
             <CardContent className="p-4">
               <div className="flex items-start justify-between gap-2">
-                <h4 className="font-medium">{i.full_name}</h4>
-                <Button variant="ghost" size="icon" className="h-9 w-9 shrink-0" title="Modifica" onClick={() => startEdit(i)}>
-                  <Pencil className="w-3.5 h-3.5" />
-                </Button>
+                <div className="min-w-0">
+                  <h4 className="font-medium">{i.full_name}</h4>
+                  {i.attivo === false && <p className="text-xs text-muted-foreground">Disattivato</p>}
+                </div>
+                {puoModificare && (
+                  <div className="flex shrink-0">
+                    <Button variant="ghost" size="icon" className="h-9 w-9" title="Modifica" aria-label={`Modifica ${i.full_name}`} onClick={() => startEdit(i)}>
+                      <Pencil className="w-3.5 h-3.5" />
+                    </Button>
+                    <Button
+                      variant="ghost" size="icon" className="h-9 w-9"
+                      title={i.attivo === false ? "Riattiva" : "Disattiva"}
+                      aria-label={`${i.attivo === false ? "Riattiva" : "Disattiva"} ${i.full_name}`}
+                      onClick={() => cambiaAttivo(i, i.attivo === false)}
+                    >
+                      {i.attivo === false ? <Power className="w-3.5 h-3.5" /> : <PowerOff className="w-3.5 h-3.5" />}
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-9 w-9 text-destructive" title="Elimina" aria-label={`Elimina ${i.full_name}`} onClick={() => elimina(i)}>
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </Button>
+                  </div>
+                )}
               </div>
               {i.tax_id && <p className="text-xs text-muted-foreground mt-1.5">{i.tax_id}</p>}
               {i.contact_email && <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1"><Mail className="w-3 h-3" /> {i.contact_email}</p>}
@@ -93,6 +156,7 @@ export default function InstructorsTab({ data, reload }) {
         ))}
         {instructors.length === 0 && <p className="text-sm text-muted-foreground text-center py-8">Nessun istruttore</p>}
       </div>
+      {dialogoConferma}
     </div>
   );
 }

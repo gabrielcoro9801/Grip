@@ -13,7 +13,8 @@ import { inArray } from 'drizzle-orm';
 import { buildApp } from '../src/app.js';
 import { db, pool } from '../src/db/client.js';
 import { staffAccounts, rooms, courses, events, sessions } from '../src/db/schema/index.js';
-import { oggiIso, SALA_PRENOTATA } from '../../shared/sale.js';
+import { SALA_PRENOTATA } from '../../shared/sale.js';
+import { oggiIso, spostaGiorni } from '../../shared/giorni.js';
 
 const PASSWORD = 'prova-sale-1234';
 
@@ -54,11 +55,7 @@ async function fissaLezione(data, idStanza = idSala, stato = 'active') {
  * nel passato fra due mesi, e un test che cambia risposta da solo col passare del tempo è peggio
  * di un test che non c'è — fallisce quando nessuno ha toccato niente.
  */
-function giornoRelativo(delta) {
-	const d = new Date(`${oggiIso()}T00:00:00Z`);
-	d.setUTCDate(d.getUTCDate() + delta);
-	return d.toISOString().slice(0, 10);
-}
+const giornoRelativo = (delta) => spostaGiorni(oggiIso(), delta);
 const IERI = giornoRelativo(-1);
 const UN_ANNO_FA = giornoRelativo(-365);
 const DOMANI = giornoRelativo(1);

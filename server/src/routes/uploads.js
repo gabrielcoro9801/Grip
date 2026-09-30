@@ -1,13 +1,12 @@
-// Archiviazione file: riceve un file, lo salva e
-// restituisce { file_url }, la stessa forma di risposta che i 4 call site esistenti
-// (receiptEngine.js, ReceiptTemplatePage.jsx) già si aspettano.
+// Archiviazione file: riceve un file, lo salva e restituisce { file_url }. Lo chiama
+// `caricaFile` (src/staff/lib/uploads.js): documenti e foto dei soci, immagini degli esercizi.
 //
 // In sviluppo i file finiscono su disco in server/uploads/ e vengono serviti da
 // /uploads/*. Per la produzione qui andrà uno storage S3-compatible (R2/MinIO):
 // cambia solo l'implementazione di questo handler, non i chiamanti.
 import { randomUUID } from 'node:crypto';
 import { createWriteStream } from 'node:fs';
-import { mkdir } from 'node:fs/promises';
+import { mkdir, open } from 'node:fs/promises';
 import { pipeline } from 'node:stream/promises';
 import path from 'node:path';
 import { getUserFromRequest } from '../auth/tokens.js';
@@ -33,12 +32,37 @@ const ESTENSIONE_PER_TIPO = {
 	'image/webp': '.webp',
 };
 
+// Il tipo lo dichiara il client, e dichiarare non costa niente: un file HTML mandato come
+// `application/pdf` veniva salvato come .pdf. `nosniff` e la CSP del sandbox gli impediscono
+// già di comportarsi da pagina, ma resta un file che dice di essere un'altra cosa — e chi lo
+// apre dalla scheda del socio si aspetta un certificato. I primi byte di ogni formato sono
+// fissi: se non tornano, il file non è quello che dice di essere.
+const FIRME = {
+	'application/pdf': (b) => b.subarray(0, 5).toString('latin1') === '%PDF-',
+	'image/png': (b) => b.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])),
+	'image/jpeg': (b) => b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff,
+	'image/gif': (b) => ['GIF87a', 'GIF89a'].includes(b.subarray(0, 6).toString('latin1')),
+	'image/webp': (b) => b.subarray(0, 4).toString('latin1') === 'RIFF' && b.subarray(8, 12).toString('latin1') === 'WEBP',
+};
+
+/** Vera se i primi byte del file sul disco corrispondono al tipo dichiarato. */
+async function contenutoDelTipo(percorso, tipo) {
+	const file = await open(percorso, 'r');
+	try {
+		const inizio = Buffer.alloc(12);
+		const { bytesRead } = await file.read(inizio, 0, inizio.length, 0);
+		return FIRME[tipo](inizio.subarray(0, bytesRead));
+	} finally {
+		await file.close();
+	}
+}
+
 export default async function uploadRoutes(fastify, options) {
 	const { uploadDir, publicBaseUrl } = options;
 
 	// L'endpoint scrive file sul disco del server: senza autenticazione chiunque
 	// raggiunga la porta può riempirlo, e i file caricati sono poi serviti pubblicamente
-	// da /uploads/*. Caricano solo ricevute, fatture, allegati e logo: tutte cose dello
+	// da /uploads/*. Caricano documenti e foto dei soci e immagini degli esercizi: tutte cose dello
 	// staff, quindi il portale soci non ha ragione di passare di qui.
 	fastify.addHook('preHandler', async (request, reply) => {
 		const user = getUserFromRequest(request);
@@ -79,6 +103,11 @@ export default async function uploadRoutes(fastify, options) {
 		if (data.file.truncated) {
 			await cancellaFile(destination);
 			return reply.code(413).send({ error: 'File troppo grande.' });
+		}
+
+		if (!(await contenutoDelTipo(destination, data.mimetype))) {
+			await cancellaFile(destination);
+			return reply.code(400).send({ error: 'Il contenuto del file non corrisponde al suo tipo (PDF, PNG, JPEG, GIF o WebP).' });
 		}
 
 		return { file_url: `${publicBaseUrl}/uploads/${storedName}`, file_name: data.filename };

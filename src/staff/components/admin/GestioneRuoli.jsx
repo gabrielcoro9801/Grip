@@ -11,13 +11,14 @@ import { Input } from "@/ui/primitivi/input";
 import { Label } from "@/ui/primitivi/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/ui/primitivi/select";
 import { useToast } from "@/ui/primitivi/use-toast";
+import { useConfirm } from "@/ui/ConfirmDialog";
 import { impostaMatrice, RUOLI_NON_CONFIGURABILI, PRESIDIO_AMMINISTRATORE } from "@/staff/lib/permissions";
 import { useStaffAuth } from "@/staff/lib/StaffAuthContext";
 
 /**
  * Chi può fare cosa.
  *
- * La matrice viveva nel codice: sei ruoli uguali per ogni installazione. Ora è dell'ente,
+ * La matrice viveva nel codice: gli stessi ruoli per ogni installazione. Ora è dell'ente,
  * perché organigrammi diversi hanno bisogno di ruoli diversi — una ASD grande vuole un
  * tesoriere in sola lettura, una piccola non ha nemmeno il PT.
  *
@@ -30,6 +31,7 @@ export default function GestioneRuoli() {
   const { organization } = useOrganization();
   const { staffUser } = useStaffAuth();
   const { toast } = useToast();
+  const [conferma, dialogoConferma] = useConfirm();
   // Chi amministra gli utenti vede la matrice — deve sapere cosa comporta un ruolo prima
   // di assegnarlo — ma solo l'amministratore la riscrive. Il server applica lo stesso
   // limite: qui si nascondono i comandi, là si rifiutano le richieste.
@@ -90,7 +92,15 @@ export default function GestioneRuoli() {
   };
 
   const eliminaRuolo = async (ruolo) => {
-    if (!confirm(`Eliminare il ruolo «${ruolo.label}»?`)) return;
+    // La conferma dell'applicazione, come nel resto delle schermate: `confirm()` del browser è
+    // una finestra di sistema senza stile, che alcuni browser lasciano silenziare.
+    const ok = await conferma({
+      title: `Eliminare il ruolo «${ruolo.label}»?`,
+      description: "Si può eliminare solo se nessun account lo usa.",
+      confirmLabel: "Elimina",
+      destructive: true,
+    });
+    if (!ok) return;
     try {
       await api.ruoli.elimina(ruolo.id);
       toast({ title: `Ruolo «${ruolo.label}» eliminato` });
@@ -351,7 +361,7 @@ export default function GestioneRuoli() {
                   <Button onClick={salva} disabled={saving} className="flex-1">
                     {saving ? "Salvataggio…" : "Salva permessi"}
                   </Button>
-                  {/* I sei ruoli di base non si eliminano: il codice vi fa riferimento come
+                  {/* I quattro ruoli di base non si eliminano: il codice vi fa riferimento come
                       valori predefiniti. Per gli altri il server rifiuta comunque se ci sono
                       account collegati, e dice quanti. */}
                   {!inModifica.sistema && (
@@ -364,6 +374,7 @@ export default function GestioneRuoli() {
             )}
           </DialogContent>
         </Dialog>
+        {dialogoConferma}
       </CardContent>
     </Card>
   );

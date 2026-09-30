@@ -541,3 +541,14 @@ describe('cosa vede il personal trainer', () => {
 		assert.equal(cancellazione.statusCode, 200, 'e cancellabile');
 	});
 });
+
+describe('eliminare una scheda già usata', () => {
+	test('il rifiuto dice cosa fare, non parla di foreign key', async () => {
+		// La schermata controlla prima, ma solo sugli allenamenti che ha caricato: una scheda
+		// usata soltanto in allenamenti più vecchi arriva fino al database.
+		const res = await come(tokenPt, { method: 'DELETE', url: `/api/entities/ExercisePlan/${idScheda}` });
+		assert.equal(res.statusCode, 400, res.body);
+		assert.match(res.json().error, /registrato allenamenti con questa scheda/);
+		assert.doesNotMatch(res.json().error, /foreign key/i);
+	});
+});

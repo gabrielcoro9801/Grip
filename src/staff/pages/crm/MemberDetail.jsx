@@ -10,7 +10,7 @@ import { Label } from "@/ui/primitivi/label";
 import { Input } from "@/ui/primitivi/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/ui/primitivi/select";
 import StatusBadge from "@/ui/StatusBadge";
-import { ArrowLeft, Plus, CreditCard, QrCode, KeyRound, RefreshCw, Pencil, UserRound } from "lucide-react";
+import { ArrowLeft, Plus, CreditCard, QrCode, KeyRound, RefreshCw, Pencil, UserRound, Archive, ArchiveRestore } from "lucide-react";
 import CampiAnagrafica, { anagraficaDi, motivoAnagraficaIncompleta } from "@/staff/components/soci/CampiAnagrafica";
 import DocumentiSocio from "@/staff/components/soci/DocumentiSocio";
 import { AvatarSocio, SceltaFoto } from "@/staff/components/soci/FotoSocio";
@@ -23,6 +23,8 @@ import { qrDataUrl } from "@/ui/qr/qrImmagine";
 import { useQrDinamico } from "@/ui/hooks/useQrDinamico";
 import { useToast } from "@/ui/primitivi/use-toast";
 import { LoadingState } from "@/ui/Spinner";
+import { ErrorState } from "@/ui/StateViews";
+import { useConfirm } from "@/ui/ConfirmDialog";
 import { formatData, formatDataOra, formatEuro } from "@/core/domain/format";
 import { dataFineAbbonamento, descriviDurata, motivoNonVendibile, oggiIso } from "@/core/domain/abbonamenti";
 
@@ -53,6 +55,7 @@ export default function MemberDetail() {
   const { id } = useParams();
   const { staffUser } = useStaffAuth();
   const { toast } = useToast();
+  const [conferma, dialogoConferma] = useConfirm();
   const [member, setMember] = useState(null);
   const [subscriptions, setSubscriptions] = useState([]);
   const [documents, setDocuments] = useState([]);
@@ -80,11 +83,11 @@ export default function MemberDetail() {
   const [passwordForm, setPasswordForm] = useState({ password: "", confirm: "" });
   const [generatedPassword, setGeneratedPassword] = useState("");
 
-  const [loadError, setLoadError] = useState(false);
+  const [loadError, setLoadError] = useState(null);
 
   const loadData = async () => {
     setLoading(true);
-    setLoadError(false);
+    setLoadError(null);
     try {
       // Schede, allenamenti e prenotazioni non stanno più nella scheda: se ne occupano le
       // sezioni Allenamento e Gestione corsi. Con loro se ne vanno le letture di tutte le
@@ -110,7 +113,7 @@ export default function MemberDetail() {
       setPortalAccount(sa);
       setLoading(false);
     } catch (err) {
-      setLoadError(true);
+      setLoadError(err);
       setLoading(false);
     }
   };
@@ -182,28 +185,99 @@ export default function MemberDetail() {
     setFoto({ file: null, rimossa: false });
   };
 
+  // Revocare e rigenerare cambiano la credenziale con cui il socio entra: si chiede conferma,
+  // e un errore si dice invece di lasciare il pulsante senza risposta.
   const handleRevokeQR = async () => {
     if (!qrAccess) return;
-    await api.entities.QRAccesso.update(qrAccess.id, { stato: "revocato" });
-    toast({ title: "QR revocato" });
-    loadData();
+    const ok = await conferma({
+      title: "Revocare il QR?",
+      description: `${member.full_name} non potrà più entrare con il codice attuale finché non ne generi uno nuovo.`,
+      confirmLabel: "Revoca",
+      destructive: true,
+    });
+    if (!ok) return;
+    setSaving(true);
+    try {
+      await api.entities.QRAccesso.update(qrAccess.id, { stato: "revocato" });
+      toast({ title: "QR revocato" });
+      loadData();
+    } catch (err) {
+      toast({ title: "QR non revocato", description: err.message, variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleRegenerateQR = async () => {
-    const newCode = generateQRCode();
     if (qrAccess) {
-      await api.entities.QRAccesso.update(qrAccess.id, { codice: newCode, stato: "attivo", data_generazione: new Date().toISOString() });
-    } else {
-      await api.entities.QRAccesso.create({
-        cliente_id: id,
-        cliente_name: member?.full_name || "",
-        codice: newCode,
-        data_generazione: new Date().toISOString(),
-        stato: "attivo",
+      const ok = await conferma({
+        title: "Rigenerare il QR?",
+        description: "Il codice attuale smette di funzionare subito: il socio vedrà quello nuovo alla prossima apertura del portale.",
+        confirmLabel: "Rigenera",
       });
+      if (!ok) return;
     }
-    toast({ title: "QR rigenerato" });
-    loadData();
+    const newCode = generateQRCode();
+    setSaving(true);
+    try {
+      if (qrAccess) {
+        await api.entities.QRAccesso.update(qrAccess.id, { codice: newCode, stato: "attivo", data_generazione: new Date().toISOString() });
+      } else {
+        await api.entities.QRAccesso.create({
+          cliente_id: id,
+          cliente_name: member?.full_name || "",
+          codice: newCode,
+          data_generazione: new Date().toISOString(),
+          stato: "attivo",
+        });
+      }
+      toast({ title: qrAccess ? "QR rigenerato" : "QR generato" });
+      loadData();
+    } catch (err) {
+      toast({ title: "QR non generato", description: err.message, variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Un socio che lascia la palestra si archivia: niente si cancella, e lo si riattiva quando
+  // torna. Lo fa il server, che disdice anche le prenotazioni future e spegne portale e QR.
+  const archivia = async () => {
+    const ok = await conferma({
+      title: `Archiviare ${member.full_name}?`,
+      description:
+        "Scheda, abbonamenti e storico restano. Non comparirà più fra i soci che frequentano, non potrà prenotare né comprare abbonamenti, " +
+        "e portale e QR non lo faranno entrare. Le sue prenotazioni future vengono disdette. Potrai riattivarlo in qualunque momento.",
+      confirmLabel: "Archivia",
+      destructive: true,
+    });
+    if (!ok) return;
+    setSaving(true);
+    try {
+      const { prenotazioni_disdette: disdette } = await api.soci.archivia(id);
+      toast({
+        title: "Socio archiviato",
+        description: disdette ? `Disdette ${disdette} ${disdette === 1 ? "prenotazione futura" : "prenotazioni future"}.` : undefined,
+      });
+      loadData();
+    } catch (err) {
+      toast({ title: "Socio non archiviato", description: err.message, variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const riattiva = async () => {
+    setSaving(true);
+    try {
+      await api.soci.riattiva(id);
+      toast({ title: "Socio riattivato", description: "Portale e QR tornano a funzionare con le credenziali di prima." });
+      loadData();
+    } catch (err) {
+      toast({ title: "Socio non riattivato", description: err.message, variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
   };
 
   // L'accesso al portale passa da una rotta sua, con il permesso della scheda: prima si
@@ -249,14 +323,8 @@ export default function MemberDetail() {
     setSaving(false);
   };
 
-  if (loadError) {
-    return (
-      <div className="flex flex-col items-center justify-center h-64 gap-3">
-        <p className="text-sm text-muted-foreground">Errore nel caricamento dei dati (troppe richieste).</p>
-        <Button variant="outline" size="sm" onClick={loadData}>Riprova</Button>
-      </div>
-    );
-  }
+  // L'errore vero, non un "troppe richieste" scritto per tutti i casi.
+  if (loadError) return <ErrorState error={loadError} onRetry={loadData} />;
 
   if (loading) {
     return <LoadingState minHeight="h-64" />;
@@ -274,9 +342,14 @@ export default function MemberDetail() {
           sotto; ripeterli qui voleva dire leggerli due volte. */}
       <div>
         <h1 className="text-xl font-heading font-bold">{member.full_name}</h1>
-        <span className="inline-block mt-1 text-xs font-mono font-medium text-muted-foreground bg-muted px-2 py-0.5 rounded">
-          Codice socio: {member.codice_socio}
-        </span>
+        <div className="flex flex-wrap items-center gap-2 mt-1">
+          <span className="inline-block text-xs font-mono font-medium text-muted-foreground bg-muted px-2 py-0.5 rounded">
+            Codice socio: {member.codice_socio}
+          </span>
+          {member.archiviato_il && (
+            <StatusBadge status="archiviato" label={`Archiviato il ${formatData(member.archiviato_il, "breve")}`} tone="neutro" />
+          )}
+        </div>
       </div>
 
       <div className="grid lg:grid-cols-2 gap-6">
@@ -306,7 +379,16 @@ export default function MemberDetail() {
               </dl>
             </div>
             {puoModificare && (
-              <div className="flex justify-end mt-4">
+              <div className="flex flex-wrap justify-end gap-2 mt-4">
+                {member.archiviato_il ? (
+                  <Button size="sm" variant="outline" onClick={riattiva} disabled={saving}>
+                    <ArchiveRestore className="w-3.5 h-3.5 mr-1" /> Riattiva socio
+                  </Button>
+                ) : (
+                  <Button size="sm" variant="outline" onClick={archivia} disabled={saving}>
+                    <Archive className="w-3.5 h-3.5 mr-1" /> Archivia socio
+                  </Button>
+                )}
                 <Button size="sm" variant="outline" onClick={apriAnagrafica}>
                   <Pencil className="w-3.5 h-3.5 mr-1" /> Modifica anagrafica
                 </Button>
@@ -319,7 +401,10 @@ export default function MemberDetail() {
         <Card className="border-0 shadow-sm">
           <CardHeader className="pb-3 flex flex-row items-center justify-between">
             <CardTitle className="text-sm font-heading flex items-center gap-2"><CreditCard className="w-4 h-4" /> Abbonamenti</CardTitle>
-            <Button size="sm" variant="outline" onClick={() => setShowSubForm(true)}><Plus className="w-3 h-3 mr-1" /> Nuovo</Button>
+            {/* Un socio archiviato non compra abbonamenti: prima lo si riattiva. */}
+            {puoModificare && !member.archiviato_il && (
+              <Button size="sm" variant="outline" onClick={() => setShowSubForm(true)}><Plus className="w-3 h-3 mr-1" /> Nuovo</Button>
+            )}
           </CardHeader>
           <CardContent>
             {subscriptions.length === 0 ? (
@@ -385,16 +470,20 @@ export default function MemberDetail() {
               ) : (
                 <p className="text-sm text-muted-foreground py-2 text-center">Nessun QR generato</p>
               )}
-              <div className="flex gap-2 mt-3">
-                {qrAccess?.stato === "attivo" && (
-                  <Button size="sm" variant="outline" onClick={handleRevokeQR} disabled={saving}>
-                    Revoca
+              {/* Il QR è una scrittura sulla scheda: chi la vede soltanto non lo tocca, e il
+                  server rifiuterebbe comunque. */}
+              {puoModificare && (
+                <div className="flex gap-2 mt-3">
+                  {qrAccess?.stato === "attivo" && (
+                    <Button size="sm" variant="outline" onClick={handleRevokeQR} disabled={saving}>
+                      Revoca
+                    </Button>
+                  )}
+                  <Button size="sm" variant="outline" onClick={handleRegenerateQR} disabled={saving}>
+                    <RefreshCw className="w-3 h-3 mr-1" /> {qrAccess ? "Rigenera" : "Genera"}
                   </Button>
-                )}
-                <Button size="sm" variant="outline" onClick={handleRegenerateQR} disabled={saving}>
-                  <RefreshCw className="w-3 h-3 mr-1" /> {qrAccess ? "Rigenera" : "Genera"}
-                </Button>
-              </div>
+                </div>
+              )}
             </section>
 
             <section aria-labelledby="portale-socio" className="border-t border-border pt-4">
@@ -476,6 +565,8 @@ export default function MemberDetail() {
           )}
         </DialogContent>
       </Dialog>
+
+      {dialogoConferma}
 
       {/* Password Dialog */}
       <Dialog open={showPasswordDialog} onOpenChange={(v) => { setShowPasswordDialog(v); if (!v) { setPasswordForm({ password: "", confirm: "" }); setGeneratedPassword(""); } }}>

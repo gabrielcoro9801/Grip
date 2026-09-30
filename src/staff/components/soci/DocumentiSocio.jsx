@@ -9,7 +9,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/ui/primitivi
 import { useToast } from "@/ui/primitivi/use-toast";
 import { useConfirm } from "@/ui/ConfirmDialog";
 import { caricaFile } from "@/staff/lib/uploads";
-import { formatData, giorniAllaData } from "@/core/domain/format";
+import { formatData } from "@/core/domain/format";
+import { giorniDaOggi } from "@/core/domain/giorni";
 import { hrefSicuro } from "@/ui/utils";
 import {
   TIPI_DOCUMENTO,
@@ -136,7 +137,7 @@ export default function DocumentiSocio({ socio, documenti, puoModificare, staffU
   const [archivioAperto, setArchivioAperto] = useState(false);
   const [ordine, setOrdine] = useState({ campo: "caricamento", verso: "desc" });
 
-  const conStato = useMemo(() => conStatoDocumenti(documenti, giorniAllaData), [documenti]);
+  const conStato = useMemo(() => conStatoDocumenti(documenti, giorniDaOggi), [documenti]);
   const inVista = conStato.filter((d) => d.stato !== "archiviato");
   const archiviati = useMemo(() => {
     const { confronta } = ORDINAMENTI[ordine.campo];

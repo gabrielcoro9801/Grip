@@ -1,6 +1,6 @@
 import { eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { staffAccounts } from '../db/schema/index.js';
+import { members, staffAccounts } from '../db/schema/index.js';
 
 /**
  * Come si butta fuori qualcuno che è già dentro.
@@ -35,23 +35,30 @@ export async function statoSessione(claims) {
 			attivo: staffAccounts.attivo,
 			ruolo: staffAccounts.ruolo,
 			passwordDaCambiare: staffAccounts.passwordDaCambiare,
+			socioArchiviatoIl: members.archiviatoIl,
 		})
 		.from(staffAccounts)
+		.leftJoin(members, eq(staffAccounts.linkedMemberId, members.id))
 		.where(eq(staffAccounts.id, claims.sub))
 		.limit(1);
 
 	// Account sparito o disattivato: la sessione non vale più, senza aspettare la scadenza.
 	if (!account || !account.attivo) return { revocata: true, passwordDaCambiare: false };
 
+	// Un socio archiviato ha lasciato la palestra: il portale non lo fa più entrare, anche con una
+	// sessione aperta da trenta giorni. Riattivato, rientra con la sua password.
+	if (account.ruolo === 'member' && account.socioArchiviatoIl) return { revocata: true, passwordDaCambiare: false };
+
 	// Il ruolo sta nel token e le rotte lo leggono da lì: un utente declassato da
 	// amministratore a reception conservava i poteri di prima fino alla scadenza, dodici ore.
 	// Se il ruolo è cambiato, la sessione non vale più e si rientra con quello nuovo.
 	if (claims.ruolo !== account.ruolo) return { revocata: true, passwordDaCambiare: false };
 
-	// I token emessi prima che questa colonna esistesse non hanno `tv`. Trattarli come
-	// validi è voluto: il rilascio non deve buttare fuori chi è già connesso. Alla prossima
-	// revoca o al prossimo accesso il numero c'è, e da lì in poi il controllo è pieno.
-	const revocata = claims.tv !== undefined && claims.tv !== account.versione;
+	// Un token senza `tv` non vale. Erano accettati per non buttare fuori, al rilascio dell'11
+	// settembre 2026, chi era già connesso; ma i token di allora duravano dodici ore, e quella
+	// finestra è chiusa da un pezzo. Lasciarla aperta voleva dire che un token senza numero
+	// sfuggiva a qualunque revoca.
+	const revocata = claims.tv !== account.versione;
 	return { revocata, passwordDaCambiare: account.passwordDaCambiare };
 }
 

@@ -79,10 +79,11 @@ export const workoutSessions = pgTable('workout_sessions', {
 	planName: varchar('plan_name', { length: 255 }),
 	routineIndex: integer('routine_index'),
 	routineName: varchar('routine_name', { length: 255 }),
-	iniziataAlle: timestamp('iniziata_alle').notNull().defaultNow(),
+	// Con il fuso, come tutte le altre tabelle: senza, "le 18:30" non diceva di quale fuso.
+	iniziataAlle: timestamp('iniziata_alle', { withTimezone: true }).notNull().defaultNow(),
 	// Nulla finché l'allenamento è in corso: è così che il portale ritrova una sessione
 	// lasciata aperta quando il telefono si blocca a metà panca.
-	terminataAlle: timestamp('terminata_alle'),
+	terminataAlle: timestamp('terminata_alle', { withTimezone: true }),
 	note: text('note'),
 }, (table) => ({
 	socio: index('workout_sessions_member_id_idx').on(table.memberId),

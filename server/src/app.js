@@ -6,6 +6,8 @@ import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import multipart from '@fastify/multipart';
 import fastifyStatic from '@fastify/static';
+import { sql } from 'drizzle-orm';
+import { db } from './db/client.js';
 import entityRoutes from './routes/entities.js';
 import authRoutes from './routes/auth.js';
 import uploadRoutes from './routes/uploads.js';
@@ -32,6 +34,9 @@ const DIST_DIR = path.resolve(serverRoot, '..', 'dist');
 // Le sole rotte aperte a chi deve ancora cambiare una password scelta da altri: sapere chi è,
 // cambiarla, uscire.
 const CONSENTITE_CON_PASSWORD_DA_CAMBIARE = new Set(['/api/auth/me', '/api/auth/change-password', '/api/auth/logout']);
+
+// Quanto il controllo di salute aspetta il database prima di dirlo irraggiungibile.
+const ATTESA_DATABASE_MS = 2000;
 
 export function buildApp({ publicBaseUrl = 'http://localhost:3001', logger = true } = {}) {
 	const app = Fastify({ logger });
@@ -169,7 +174,28 @@ export function buildApp({ publicBaseUrl = 'http://localhost:3001', logger = tru
 	app.register(entityRoutes);
 	app.register(uploadRoutes, { uploadDir: UPLOAD_DIR, publicBaseUrl });
 
-	app.get('/health', async () => ({ ok: true, entities: ENTITY_NAMES.length }));
+	// Railway considera riuscito un rilascio solo se questa rotta risponde. Rispondeva sempre,
+	// anche con il database irraggiungibile: un server che non può leggere né scrivere niente
+	// risultava sano, e il rilascio andava a buon fine. Ora deve riuscire un `SELECT 1`, e in
+	// fretta — un controllo di salute che aspetta trenta secondi non dice niente di utile.
+	// Il motivo del guasto va nei log, non nella risposta: la rotta è aperta a chiunque.
+	app.get('/health', async (request, reply) => {
+		let timer;
+		try {
+			await Promise.race([
+				db.execute(sql`select 1`),
+				new Promise((_, rifiuta) => {
+					timer = setTimeout(() => rifiuta(new Error('il database non ha risposto in tempo')), ATTESA_DATABASE_MS);
+				}),
+			]);
+		} catch (err) {
+			request.log.error(err, 'controllo di salute: database non raggiungibile');
+			return reply.code(503).send({ ok: false, database: false });
+		} finally {
+			clearTimeout(timer);
+		}
+		return { ok: true, database: true, entities: ENTITY_NAMES.length };
+	});
 
 	// --- Il frontend, servito dallo stesso server -----------------------------------------
 	//

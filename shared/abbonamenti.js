@@ -4,6 +4,13 @@
 // un tipo non vendibile, e le schermate, che la mostrano prima di salvare. Due calcoli separati
 // della stessa scadenza avrebbero finito per dare due date diverse.
 
+import { oggiIso, giorniFra } from './giorni.js';
+import { motivoCambioStato } from './stati.js';
+
+// Oggi a Roma vive in `giorni.js`; resta esportato anche da qui perché server e schermate lo
+// prendono da questo modulo da quando è nato.
+export { oggiIso };
+
 export const UNITA_DURATA = [
 	{ valore: 'giorni', singolare: 'giorno', plurale: 'giorni' },
 	{ valore: 'mesi', singolare: 'mese', plurale: 'mesi' },
@@ -31,17 +38,14 @@ export const statoTipoValido = (v) => v in PER_STATO;
 
 /** Perché un tipo non può passare a `nuovo`, o null. */
 export function motivoCambioStatoNonValido(attuale, nuovo) {
-	if (!statoTipoValido(nuovo)) return 'Stato non valido: attivo, sospeso o annullato.';
-	if (attuale === 'annullato' && nuovo !== 'annullato') return "Un abbonamento annullato non si riattiva: creane uno nuovo.";
-	return null;
+	return motivoCambioStato(attuale, nuovo, {
+		valido: statoTipoValido,
+		nonValido: 'Stato non valido: attivo, sospeso o annullato.',
+		definitivo: 'Un abbonamento annullato non si riattiva: creane uno nuovo.',
+	});
 }
 
 export const NOTE_MASSIMO = 140;
-
-/** La data di oggi a Roma, YYYY-MM-DD: il server gira in UTC, la palestra no. */
-export function oggiIso(adesso = new Date()) {
-	return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Rome', year: 'numeric', month: '2-digit', day: '2-digit' }).format(adesso);
-}
 
 /** Un tipo si vende se è attivo e la sua data massima di vendita, se c'è, non è passata. */
 export function motivoNonVendibile(tipo, oggi = oggiIso()) {
@@ -74,8 +78,7 @@ export function statoIscrizione(iscrizione, oggi = oggiIso()) {
 	const fine = iscrizione?.end_date ? String(iscrizione.end_date).slice(0, 10) : null;
 	if (!fine) return 'active';
 	if (fine < oggi) return 'expired';
-	const giorni = Math.round((Date.parse(`${fine}T00:00:00Z`) - Date.parse(`${oggi}T00:00:00Z`)) / 86_400_000);
-	return giorni <= GIORNI_ABBONAMENTO_IN_SCADENZA ? 'expiring' : 'active';
+	return giorniFra(oggi, fine) <= GIORNI_ABBONAMENTO_IN_SCADENZA ? 'expiring' : 'active';
 }
 
 /**

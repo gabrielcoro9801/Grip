@@ -65,12 +65,6 @@ export default function MemberProfile() {
               </div>
             </div>
           ))}
-          {member?.note && (
-            <div className="pt-2">
-              <p className="text-xs text-muted-foreground">Note</p>
-              <p className="text-sm">{member.note}</p>
-            </div>
-          )}
         </CardContent>
       </Card>
 

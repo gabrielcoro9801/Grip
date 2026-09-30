@@ -14,11 +14,8 @@ import { bookings, courses, events, memberDocuments, members, sessions, subscrip
 import { getUserFromRequest } from '../auth/tokens.js';
 import { canReadEntity } from '../auth/authorize.js';
 import { conStatoDocumenti } from '../../../shared/anagrafica.js';
-import { GIORNI_ABBONAMENTO_IN_SCADENZA, oggiIso } from '../../../shared/abbonamenti.js';
-
-const GIORNO_MS = 86_400_000;
-const aMezzanotte = (iso) => Date.parse(`${String(iso).slice(0, 10)}T00:00:00Z`);
-const spostaGiorni = (iso, n) => new Date(aMezzanotte(iso) + n * GIORNO_MS).toISOString().slice(0, 10);
+import { GIORNI_ABBONAMENTO_IN_SCADENZA } from '../../../shared/abbonamenti.js';
+import { oggiIso, giorniFra, spostaGiorni } from '../../../shared/giorni.js';
 
 export default async function dashboardRoutes(fastify) {
 	fastify.addHook('preHandler', async (request, reply) => {
@@ -32,7 +29,7 @@ export default async function dashboardRoutes(fastify) {
 	fastify.get('/api/dashboard', async (request) => {
 		const ruolo = request.utente.ruolo;
 		const oggi = oggiIso();
-		const giorniDa = (data) => (data ? Math.round((aMezzanotte(data) - aMezzanotte(oggi)) / GIORNO_MS) : null);
+		const giorniDa = (data) => giorniFra(oggi, data);
 		const puo = (entita) => canReadEntity(ruolo, entita);
 
 		const [iscritti, abbonamenti, certificati, prossime] = await Promise.all([
@@ -56,8 +53,10 @@ export default async function dashboardRoutes(fastify) {
 	});
 }
 
+// Gli archiviati hanno lasciato la palestra: non si contano, e non si richiamano per rinnovi o
+// certificati.
 async function contaSoci() {
-	const [{ quanti }] = await db.select({ quanti: count() }).from(members);
+	const [{ quanti }] = await db.select({ quanti: count() }).from(members).where(isNull(members.archiviatoIl));
 	return Number(quanti);
 }
 
@@ -75,7 +74,8 @@ async function rinnovi(oggi, giorniDa) {
 			endDate: subscriptions.endDate, nome: members.fullName,
 		})
 		.from(subscriptions)
-		.innerJoin(members, eq(subscriptions.memberId, members.id));
+		.innerJoin(members, eq(subscriptions.memberId, members.id))
+		.where(isNull(members.archiviatoIl));
 
 	const validi = new Set(righe.filter((r) => !r.endDate || r.endDate >= oggi).map((r) => r.memberId));
 	const ultimoScaduto = new Map();
@@ -111,7 +111,7 @@ async function avvisiCertificati(giorniDa) {
 		})
 		.from(memberDocuments)
 		.innerJoin(members, eq(memberDocuments.memberId, members.id))
-		.where(eq(memberDocuments.documentType, 'certificato_medico'));
+		.where(and(eq(memberDocuments.documentType, 'certificato_medico'), isNull(members.archiviatoIl)));
 
 	const perSocio = new Map();
 	for (const r of righe) {

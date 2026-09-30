@@ -8,7 +8,6 @@
     "build": "vite build",
     "lint": "eslint . --quiet",
     "lint:fix": "eslint . --fix",
-    "typecheck": "tsc -p ./jsconfig.json",
     "preview": "vite preview",
     "test": "node --import ./src/fusoDeiTest.js --test \"src/**/*.test.js\""
   },
@@ -50,7 +49,6 @@
     "playwright": "^1.63.0",
     "postcss": "^8.5.3",
     "tailwindcss": "^3.4.17",
-    "typescript": "^5.8.2",
     "vite": "^6.1.0"
   }
 }

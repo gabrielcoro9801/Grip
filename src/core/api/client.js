@@ -163,6 +163,14 @@ export const api = {
 		impostaAccessoPortale(memberId, password) {
 			return request(`/api/soci/${encodeURIComponent(memberId)}/accesso-portale`, { method: 'POST', body: { password } });
 		},
+		/** Archivia un socio che ha lasciato la palestra. → { socio, prenotazioni_disdette } */
+		archivia(memberId) {
+			return request(`/api/soci/${encodeURIComponent(memberId)}/archivia`, { method: 'POST' });
+		},
+		/** Riattiva un socio archiviato. → { socio } */
+		riattiva(memberId) {
+			return request(`/api/soci/${encodeURIComponent(memberId)}/riattiva`, { method: 'POST' });
+		},
 	},
 
 	/**

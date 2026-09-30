@@ -45,7 +45,9 @@ export default function CourseSessionCard({
       </div>
       {/* Senza abbonamento quel giorno non si prenota: lo dice il server, e al posto del
           pulsante si legge il perché — un pulsante che risponde sempre "no" non spiega niente. */}
-      {!memberBooking && session._motivoNonPrenotabile ? (
+      {session._finita ? (
+        <p className="text-xs text-muted-foreground">La lezione è già finita.</p>
+      ) : !memberBooking && session._motivoNonPrenotabile ? (
         <p className="text-xs text-muted-foreground">{session._motivoNonPrenotabile}</p>
       ) : (
         <div className="flex gap-2">

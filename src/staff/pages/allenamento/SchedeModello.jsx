@@ -243,7 +243,8 @@ export default function SchedeModello() {
               <Select value={socioScelto} onValueChange={setSocioScelto}>
                 <SelectTrigger id="assegna-socio"><SelectValue placeholder="Scegli il socio" /></SelectTrigger>
                 <SelectContent>
-                  {soci.map((s) => <SelectItem key={s.id} value={s.id}>{s.full_name}</SelectItem>)}
+                  {/* Chi ha lasciato la palestra non riceve schede nuove. */}
+                  {soci.filter((s) => !s.archiviato_il).map((s) => <SelectItem key={s.id} value={s.id}>{s.full_name}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>

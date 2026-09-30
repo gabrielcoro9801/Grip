@@ -1,5 +1,5 @@
-// Entità trasversali: Organization (singleton applicativo, vedi src/hooks/useOrganization.js)
-// e AuditLog (log generico, vedi src/lib/auditLog.js).
+// Entità trasversali: Organization (singleton applicativo, letto da src/staff/lib/useOrganization.js)
+// e AuditLog (registro delle azioni, scritto dal server in server/src/lib/registro.js).
 import { pgTable, uuid, varchar, text, boolean, integer, timestamp, jsonb, primaryKey, uniqueIndex } from 'drizzle-orm/pg-core';
 
 // L'intestazione dell'ente: serve a dare un nome e un logo alle schermate.
@@ -27,7 +27,7 @@ export const numberingCounters = pgTable('numbering_counters', {
 	pk: primaryKey({ columns: [table.organizationId, table.scope] }),
 }));
 
-// Log azioni generico (src/lib/auditLog.js). entita_tipo/tipo_azione sono lasciati
+// Registro delle azioni (server/src/lib/registro.js). entita_tipo/tipo_azione sono lasciati
 // come testo libero (non enum rigido): il codice li tratta come convenzione applicativa
 // aperta, non come vincolo di dominio chiuso (vedi report HR/trasversali).
 export const auditLogs = pgTable('audit_logs', {

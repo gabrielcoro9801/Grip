@@ -5,7 +5,7 @@ import CoursesByCalendar from "@/member/components/CoursesByCalendar";
 import { caricaAgenda, prenotaLezione, disdiciPrenotazione } from "@/core/api/portale";
 import { useToast } from "@/ui/primitivi/use-toast";
 import { LoadingState } from "@/ui/Spinner";
-import { toIsoDate, aggiungiGiorni } from "@/core/domain/format";
+import { oggiIso, spostaGiorni } from "@/core/domain/giorni";
 
 /**
  * Da sette richieste a una.
@@ -30,13 +30,10 @@ export default function MemberCoursesCalendar() {
       // Due mesi: il calendario si sfoglia una settimana per volta, e chiedere solo i
       // prossimi giorni farebbe trovare vuote le settimane più avanti. Restano comunque le
       // lezioni di un intervallo dichiarato, non "le ultime cinquecento" come prima.
-      // Date nei campi locali: con `toISOString()` (UTC), fra mezzanotte e le due l'agenda
-      // partiva da ieri.
-      const oggi = new Date();
-      const agenda = await caricaAgenda({
-        dal: toIsoDate(oggi),
-        al: toIsoDate(aggiungiGiorni(oggi, 60)),
-      });
+      // "Oggi" è quello di Roma, lo stesso del server: con `toISOString()` (UTC), fra
+      // mezzanotte e le due l'agenda partiva da ieri.
+      const oggi = oggiIso();
+      const agenda = await caricaAgenda({ dal: oggi, al: spostaGiorni(oggi, 60) });
       setLezioni(agenda.giorni.flatMap((g) => g.lezioni));
     } catch {
       // La schermata resta vuota con il suo messaggio: un errore qui non deve far cadere
@@ -59,8 +56,10 @@ export default function MemberCoursesCalendar() {
       _instructor: l.istruttore && { id: l.istruttore.id, full_name: l.istruttore.nome },
       _room: l.sala && { id: l.sala.id, name: l.sala.nome },
       _posti: l.posti,
-      // Perché non si può prenotare (senza abbonamento quel giorno), o null.
+      // Perché non si può prenotare (senza abbonamento quel giorno, o già finita), o null.
       _motivoNonPrenotabile: l.motivo_non_prenotabile ?? null,
+      // Finita: resta in agenda, ma non si prenota né si disdice più.
+      _finita: Boolean(l.finita),
       _miaPrenotazione: l.mia_prenotazione && {
         id: l.mia_prenotazione.id,
         status: l.mia_prenotazione.stato,

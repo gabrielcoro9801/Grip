@@ -7,9 +7,10 @@
 // La sala non ha più una capienza: quanta gente entra a lezione lo decide l'evento, che può
 // cambiare da corso a corso nella stessa stanza.
 
-// Da oggi in avanti si usa `oggiIso` dei tipi di abbonamento: la data di Roma è una sola, e
+// Da oggi in avanti si usa `oggiIso` di `giorni.js`: la data di Roma è una sola, e
 // calcolarla una seconda volta qui avrebbe voluto dire poterla sbagliare in un posto solo.
-import { oggiIso } from './abbonamenti.js';
+import { oggiIso } from './giorni.js';
+import { motivoCambioStato } from './stati.js';
 export { oggiIso };
 
 // Tre stati. Sospesa è un periodo e si disfa; annullata è per sempre — la stanza non c'è più,
@@ -27,9 +28,11 @@ export const statoSalaValido = (v) => v in PER_STATO;
 
 /** Perché una sala non può passare a `nuovo`, o null. */
 export function motivoCambioStatoNonValido(attuale, nuovo) {
-	if (!statoSalaValido(nuovo)) return 'Stato non valido: attiva, sospesa o annullata.';
-	if (attuale === 'annullato' && nuovo !== 'annullato') return 'Una sala annullata non si riattiva: creane una nuova.';
-	return null;
+	return motivoCambioStato(attuale, nuovo, {
+		valido: statoSalaValido,
+		nonValido: 'Stato non valido: attiva, sospesa o annullata.',
+		definitivo: 'Una sala annullata non si riattiva: creane una nuova.',
+	});
 }
 
 /**
@@ -66,12 +69,6 @@ export function motivoSospensioneNonValida(dal, al) {
 	if (!E_UNA_DATA.test(String(al ?? ''))) return 'Indica fino a che giorno la sala è sospesa.';
 	if (al < dal) return 'La fine della sospensione non può precedere il suo inizio.';
 	return null;
-}
-
-/** Se la sospensione della sala copre quel giorno (estremi compresi). */
-export function sospensioneCopre(sala, data) {
-	if (!sala || sala.stato !== 'sospeso' || !sala.sospesa_dal || !sala.sospesa_al) return false;
-	return data >= sala.sospesa_dal && data <= sala.sospesa_al;
 }
 
 /**
@@ -229,6 +226,6 @@ export function motivoSalaNonPrenotabile(sala, inizio, fine) {
 }
 
 /** Il messaggio che rifiuta un evento in una sala sospesa. */
-export function messaggioSalaSospesa(sala) {
+function messaggioSalaSospesa(sala) {
 	return `La sala «${sala.name}» è sospesa dal ${dataIt(sala.sospesa_dal)} al ${dataIt(sala.sospesa_al)}: in quel periodo non si programmano lezioni.`;
 }

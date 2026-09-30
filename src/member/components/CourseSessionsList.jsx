@@ -33,7 +33,7 @@ export default function CourseSessionsList({
   const alreadyBookedCount = sessions.length - sessionsToBook.length;
 
   const memberActiveBookings = useMemo(
-    () => sessions.filter((s) => s._miaPrenotazione).map((s) => s._miaPrenotazione),
+    () => sessions.filter((s) => s._miaPrenotazione && !s._finita).map((s) => s._miaPrenotazione),
     [sessions]
   );
 

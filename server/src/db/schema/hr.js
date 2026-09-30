@@ -3,6 +3,7 @@
 import { sql } from 'drizzle-orm';
 import { pgTable, uuid, varchar, text, boolean, date, integer, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
 import { organizations } from './common.js';
+import { members } from './crm.js';
 
 export const collaboratori = pgTable('collaboratori', {
 	id: uuid('id').defaultRandom().primaryKey(),
@@ -34,7 +35,9 @@ export const staffAccounts = pgTable('staff_accounts', {
 	ruolo: varchar('ruolo', { length: 32 }).notNull(), // admin | reception | istruttore | member
 	attivo: boolean('attivo').notNull().default(true),
 	linkedCollaboratoreId: uuid('linked_collaboratore_id').references(() => collaboratori.id),
-	linkedMemberId: uuid('linked_member_id'), // FK logica -> members.id (import evitato per non ciclare crm.js->hr.js)
+	// L'account del portale di un socio: uno per socio, e verso un socio che esiste. Era solo una
+	// colonna, e due account potevano puntare allo stesso socio, o a uno che non c'era più.
+	linkedMemberId: uuid('linked_member_id').references(() => members.id),
 	lastActivityDate: timestamp('last_activity_date', { withTimezone: true }),
 	// Il numero che rende revocabile una sessione.
 	//
@@ -56,4 +59,5 @@ export const staffAccounts = pgTable('staff_accounts', {
 	// L'email è unica senza guardare le maiuscole, come la confronta il login: prima potevano
 	// esistere "Mario@x.it" e "mario@x.it", e l'accesso ne sceglieva uno a caso.
 	emailUnica: uniqueIndex('staff_accounts_email_lower_idx').on(sql`lower(${table.email})`),
+	unoPerSocio: uniqueIndex('staff_accounts_linked_member_id_idx').on(table.linkedMemberId),
 }));

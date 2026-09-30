@@ -39,6 +39,12 @@ export const members = pgTable('members', {
 	// altro file caricato (entities/hooks.js).
 	fotoUrl: text('foto_url'),
 	notes: text('notes'),
+	// Il giorno in cui il socio è stato archiviato perché ha lasciato la palestra; vuoto finché
+	// frequenta. Archiviato non vuol dire cancellato: la scheda, gli abbonamenti e lo storico
+	// restano, ma non compare più negli elenchi, non compra abbonamenti, non prenota, e portale e
+	// QR non lo fanno entrare. Si riattiva quando torna. Lo scrivono solo le rotte dedicate
+	// (routes/soci.js), non l'endpoint generico.
+	archiviatoIl: date('archiviato_il'),
 	createdDate: timestamp('created_date', { withTimezone: true }).notNull().defaultNow(),
 	updatedDate: timestamp('updated_date', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({
@@ -115,4 +121,7 @@ export const qrAccessi = pgTable('qr_accessi', {
 	stato: varchar('stato', { length: 16 }).notNull().default('attivo'), // attivo | revocato
 }, (table) => ({
 	socio: index('qr_accessi_cliente_id_idx').on(table.clienteId),
+	// Un socio ha un codice attivo alla volta: con due, la porta e il telefono potevano
+	// sceglierne ognuno uno diverso (`limit(1)` senza ordine), e revocarne uno lasciava l'altro.
+	unAttivo: uniqueIndex('qr_accessi_attivo_unico_idx').on(table.clienteId).where(sql`${table.stato} = 'attivo'`),
 }));

@@ -6,7 +6,7 @@ import SectionTabs from "@/staff/components/SectionTabs";
 import PageContainer from "@/staff/components/PageContainer";
 import { LoadingState } from "@/ui/Spinner";
 import { ErrorState } from "@/ui/StateViews";
-import { toIsoDate, aggiungiGiorni } from "@/core/domain/format";
+import { oggiIso, spostaGiorni } from "@/core/domain/giorni";
 
 // Quanto calendario passato si carica: abbastanza per rivedere il trimestre appena chiuso.
 const GIORNI_DI_STORIA = 92;
@@ -55,7 +55,7 @@ export default function CorsiLayout() {
   const [caricato, setCaricato] = useState(false);
   const loadData = useCallback(async () => {
     try {
-      const dal = toIsoDate(aggiungiGiorni(new Date(), -GIORNI_DI_STORIA));
+      const dal = spostaGiorni(oggiIso(), -GIORNI_DI_STORIA);
       const [courses, categories, instructors, events, sessions, rooms, members, bookings] = await Promise.all([
         api.entities.Course.list(),
         api.entities.Category.list(),

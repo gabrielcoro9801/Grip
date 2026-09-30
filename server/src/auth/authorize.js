@@ -39,7 +39,11 @@ const ENTITY_MODULES = {
 	Session: 'calendar',
 	Room: 'calendar',
 	Booking: 'calendar',
-	Collaboratore: 'calendar',
+
+	// L'anagrafica di chi lavora nella struttura si gestisce da Utenti e ruoli, accanto agli
+	// account a cui si collega: stesso modulo per leggerla e per scriverla. Era sotto il
+	// calendario, e chi aveva il calendario la scriveva senza poterla leggere.
+	Collaboratore: 'admin_users',
 
 	// Catalogo esercizi e schede di allenamento. La matrice dice già che la reception le
 	// vede e non le tocca ("crm_plans": ["view"]): finché mancavano da qui, quel limite
@@ -179,11 +183,4 @@ export function canReadEntity(role, entityName) {
 /** Se per la lettura di un'entità qualcuno ha preso una decisione. */
 export function haRegolaDiLettura(entityName) {
 	return entityName in LETTURA;
-}
-
-// Le registrazioni scritte a mano scavalcano le causali e possono movimentare qualsiasi
-// conto: sono lo strumento con cui si può alterare la contabilità senza lasciare traccia
-// del perché. Restano possibili, ma solo all'amministratore.
-export function canCreateManualEntry(role) {
-	return role === 'admin';
 }
