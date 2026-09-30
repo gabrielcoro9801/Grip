@@ -2,7 +2,6 @@ import React, { useState, useEffect } from "react";
 import { caricaProfilo } from "@/core/api/portale";
 import { useMemberAuth } from "@/member/session/MemberAuthContext";
 import { Card, CardContent } from "@/ui/primitivi/card";
-import SelettoreTema from "@/ui/SelettoreTema";
 import { Button } from "@/ui/primitivi/button";
 import { User, Mail, Phone, MapPin, Calendar, Heart, Pencil, LogOut, Hash, KeyRound } from "lucide-react";
 import { DialogCambioPassword } from "@/ui/CambioPassword";
@@ -65,15 +64,6 @@ export default function MemberProfile() {
               </div>
             </div>
           ))}
-        </CardContent>
-      </Card>
-
-      {/* Sul telefono la barra laterale non c'è, quindi la scelta del tema va qui: è la
-          pagina dove un socio cerca le proprie impostazioni. */}
-      <Card className="border-0 shadow-sm lg:hidden">
-        <CardContent className="p-4 space-y-2">
-          <p className="text-sm font-medium">Aspetto</p>
-          <SelettoreTema />
         </CardContent>
       </Card>
 

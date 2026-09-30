@@ -25,7 +25,7 @@ describe('nessuna entità resta senza una decisione, nemmeno in lettura', () => 
 
 describe('la matrice predefinita, in lettura', () => {
 	test("l'istruttore non legge il registro né gli account", () => {
-		for (const entita of ['AuditLog', 'StaffAccount', 'Collaboratore']) {
+		for (const entita of ['AuditLog', 'StaffAccount']) {
 			assert.equal(canReadEntity('istruttore', entita), false, entita);
 		}
 	});

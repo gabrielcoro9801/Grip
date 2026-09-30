@@ -63,6 +63,7 @@ export default function MemberLayout() {
             <Dumbbell className="w-4 h-4 text-sidebar-primary-foreground" aria-hidden="true" />
           </div>
           <span className="font-heading font-bold text-lg text-white">Grip</span>
+          <SelettoreTema className="ml-auto bg-sidebar-accent text-sidebar-foreground" />
         </div>
         <nav aria-label="Navigazione del portale soci" className="flex-1 py-4 px-2 space-y-1 overflow-y-auto">
           {navItems.map(item => (
@@ -82,7 +83,6 @@ export default function MemberLayout() {
           ))}
         </nav>
         <div className="p-2 border-t border-sidebar-border space-y-2">
-          <SelettoreTema />
           <div className="px-3 py-2 rounded-lg bg-sidebar-accent/50">
             <p className="text-sm font-medium text-white truncate">{memberUser.nome}</p>
           </div>
@@ -104,6 +104,7 @@ export default function MemberLayout() {
           <div className="flex items-center gap-2">
             <Dumbbell className="w-5 h-5 text-primary" aria-hidden="true" />
             <span className="font-heading font-bold">Grip</span>
+            <SelettoreTema className="ml-1" />
           </div>
           <button
             type="button"

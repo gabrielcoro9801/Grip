@@ -40,11 +40,6 @@ const ENTITY_MODULES = {
 	Room: 'calendar',
 	Booking: 'calendar',
 
-	// L'anagrafica di chi lavora nella struttura si gestisce da Utenti e ruoli, accanto agli
-	// account a cui si collega: stesso modulo per leggerla e per scriverla. Era sotto il
-	// calendario, e chi aveva il calendario la scriveva senza poterla leggere.
-	Collaboratore: 'admin_users',
-
 	// Catalogo esercizi e schede di allenamento. La matrice dice già che la reception le
 	// vede e non le tocca ("crm_plans": ["view"]): finché mancavano da qui, quel limite
 	// valeva solo per i pulsanti nascosti, e la stessa richiesta fatta a mano passava.
@@ -168,7 +163,6 @@ const LETTURA = {
 	WorkoutSession: ['crm_plans'],
 	WorkoutLog: ['crm_plans'],
 	StaffAccount: ['admin_users'],
-	Collaboratore: ['admin_users'],
 	AuditLog: ['audit_log'],
 };
 

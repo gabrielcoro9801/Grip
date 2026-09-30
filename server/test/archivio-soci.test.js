@@ -171,24 +171,11 @@ describe('istruttori e corsi disattivati', () => {
 	});
 });
 
-describe('i collaboratori', () => {
-	test('nascono con nome, cognome e tipo di rapporto; si eliminano finché nessun account li cita', async () => {
-		const senzaTipo = await admin({ method: 'POST', url: '/api/entities/Collaboratore', payload: { nome: 'Anna', cognome: 'Prova' } });
-		assert.equal(senzaTipo.statusCode, 400);
-		assert.match(senzaTipo.json().error, /tipo di rapporto/);
-
-		const creato = await admin({ method: 'POST', url: '/api/entities/Collaboratore', payload: { nome: ' Anna ', cognome: 'Prova', tipo_rapporto: 'collaboratore_sportivo', email: '' } });
-		assert.equal(creato.statusCode, 201, creato.body);
-		assert.equal(creato.json().nome, 'Anna');
-		assert.equal(creato.json().email, null);
-		const idCollaboratore = creato.json().id;
-
-		await db.update(staffAccounts).set({ linkedCollaboratoreId: idCollaboratore }).where(eq(staffAccounts.id, id.account[0]));
-		const bloccato = await admin({ method: 'DELETE', url: `/api/entities/Collaboratore/${idCollaboratore}` });
-		assert.equal(bloccato.statusCode, 400, bloccato.body);
-		assert.match(bloccato.json().error, /ancora collegato ad altri dati \(un account\)/);
-
-		await db.update(staffAccounts).set({ linkedCollaboratoreId: null }).where(eq(staffAccounts.id, id.account[0]));
-		assert.equal((await admin({ method: 'DELETE', url: `/api/entities/Collaboratore/${idCollaboratore}` })).statusCode, 200);
+describe('i collaboratori non esistono più', () => {
+	test('né come entità, né come collegamento di un account', async () => {
+		assert.equal((await admin({ method: 'GET', url: '/api/entities/Collaboratore' })).statusCode, 404);
+		const account = await admin({ method: 'GET', url: `/api/entities/StaffAccount/${id.account[0]}` });
+		assert.equal(account.statusCode, 200, account.body);
+		assert.equal('linked_collaboratore_id' in account.json(), false);
 	});
 });

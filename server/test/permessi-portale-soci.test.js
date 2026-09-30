@@ -164,7 +164,6 @@ describe('cosa un socio non deve poter leggere', () => {
 	// Ciascuna di queste risposte è stata davvero 200 prima della correzione.
 	for (const entita of [
 		'StaffAccount',
-		'Collaboratore',
 		'AuditLog',
 	]) {
 		test(`${entita} è vietata`, async () => {
@@ -401,7 +400,7 @@ describe('le rotte fuori da /api/entities', () => {
 
 describe('lo staff continua a vedere tutto', () => {
 	test('un amministratore legge le aree vietate al socio', async () => {
-		for (const entita of ['StaffAccount', 'Collaboratore', 'AuditLog']) {
+		for (const entita of ['StaffAccount', 'AuditLog']) {
 			const res = await come(tokenAdmin, { method: 'GET', url: `/api/entities/${entita}` });
 			assert.equal(res.statusCode, 200, `${entita} dovrebbe essere leggibile da un admin`);
 		}

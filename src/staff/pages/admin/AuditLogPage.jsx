@@ -41,6 +41,7 @@ const ENTITY_LABELS = {
   session: "Lezione",
   room: "Sala",
   booking: "Prenotazione",
+  // I collaboratori non esistono più, ma il registro tiene le azioni fatte quando c'erano.
   collaboratore: "Collaboratore",
   staff_account: "Account",
   exercise: "Esercizio",

@@ -1,28 +1,12 @@
-// Dominio staff: Collaboratore (anagrafica di chi lavora per l'ente) e StaffAccount
-// (login/sessione — da NON confondere con Collaboratore, vedi nota sotto).
+// Dominio staff: StaffAccount, gli account di chi entra nel gestionale (e dei soci nel portale).
+//
+// C'era anche un'anagrafica dei collaboratori, a cui un account si poteva collegare: tolta
+// (migrazione 0043). Chi lavora nella struttura è un utente interno e basta.
 import { sql } from 'drizzle-orm';
-import { pgTable, uuid, varchar, text, boolean, date, integer, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
-import { organizations } from './common.js';
+import { pgTable, uuid, varchar, text, boolean, integer, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
 import { members } from './crm.js';
 
-export const collaboratori = pgTable('collaboratori', {
-	id: uuid('id').defaultRandom().primaryKey(),
-	organizationId: uuid('organization_id').references(() => organizations.id),
-	nome: varchar('nome', { length: 255 }).notNull(),
-	cognome: varchar('cognome', { length: 255 }).notNull(),
-	// La colonna è NOT NULL senza valore predefinito in banca dati: resta dichiarata qui
-	// perché ometterla farebbe fallire ogni inserimento.
-	tipoRapporto: varchar('tipo_rapporto', { length: 32 }).notNull(), // dipendente | collaboratore_sportivo
-	ruolo: varchar('ruolo', { length: 255 }), // testo libero (es. "Istruttore"), diverso da staff_accounts.ruolo
-	email: varchar('email', { length: 255 }),
-	phone: varchar('phone', { length: 64 }),
-	hireDate: date('hire_date'),
-	notes: text('notes'),
-	attivo: boolean('attivo').notNull().default(true),
-});
-
-// Account di login per staff e member (ruolo="member"). Tabella di autenticazione,
-// separata dall'anagrafica `collaboratori` a cui si collega via linked_collaboratore_id.
+// Account di login per staff e member (ruolo="member").
 //
 // Le password sono hashate con bcrypt lato server (colonna password_hash) e non
 // escono MAI dall'API: il serializer le rimuove esplicitamente. Il login avviene su
@@ -34,7 +18,6 @@ export const staffAccounts = pgTable('staff_accounts', {
 	passwordHash: text('password_hash').notNull(),
 	ruolo: varchar('ruolo', { length: 32 }).notNull(), // admin | reception | istruttore | member
 	attivo: boolean('attivo').notNull().default(true),
-	linkedCollaboratoreId: uuid('linked_collaboratore_id').references(() => collaboratori.id),
 	// L'account del portale di un socio: uno per socio, e verso un socio che esiste. Era solo una
 	// colonna, e due account potevano puntare allo stesso socio, o a uno che non c'era più.
 	linkedMemberId: uuid('linked_member_id').references(() => members.id),
