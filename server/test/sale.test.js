@@ -499,3 +499,38 @@ describe('due richieste insieme sulla stessa sala', () => {
 		}
 	});
 });
+
+describe('un evento nuovo, e le note di un corso', () => {
+	const creaEvento = (payload) => come({ method: 'POST', url: '/api/entities/Event', payload });
+	// Una sala tutta sua: quella comune a questo file, a questo punto, l'hanno sospesa i test sopra.
+	let idSalaLibera;
+	before(async () => {
+		const sala = (await creaSala({ name: 'Sala eventi nuovi' })).json();
+		daPulire.sale.push(sala.id);
+		idSalaLibera = sala.id;
+	});
+	const base = () => ({
+		course_id: idCorso, room_id: idSalaLibera, capacity: 10, start_date: DOMANI, start_time: '10:00', end_time: '11:00',
+	});
+
+	test('a date personalizzate non si crea più', async () => {
+		const res = await creaEvento({ ...base(), recurrence_type: 'custom', custom_dates: [DOMANI] });
+		assert.equal(res.statusCode, 400, res.body);
+		assert.match(res.json().error, /data singola o ogni settimana/);
+	});
+
+	test('una data singola si crea come prima', async () => {
+		const res = await creaEvento({ ...base(), recurrence_type: 'single' });
+		assert.equal(res.statusCode, 201, res.body);
+		daPulire.eventi.push(res.json().id);
+	});
+
+	test('le note di un corso stanno in 140 caratteri', async () => {
+		const troppo = await come({ method: 'PUT', url: `/api/entities/Course/${idCorso}`, payload: { description: 'x'.repeat(141) } });
+		assert.equal(troppo.statusCode, 400, troppo.body);
+		const giusto = await come({ method: 'PUT', url: `/api/entities/Course/${idCorso}`, payload: { description: 'x'.repeat(140) } });
+		assert.equal(giusto.statusCode, 200, giusto.body);
+		const vuoto = await come({ method: 'PUT', url: `/api/entities/Course/${idCorso}`, payload: { description: '  ' } });
+		assert.equal(vuoto.json().description, null);
+	});
+});

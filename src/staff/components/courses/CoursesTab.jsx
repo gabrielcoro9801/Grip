@@ -12,6 +12,7 @@ import { Textarea } from "@/ui/primitivi/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/ui/primitivi/select";
 import { Plus, Pencil, Trash2, Power, PowerOff } from "lucide-react";
 import { useToast } from "@/ui/primitivi/use-toast";
+import { NOTE_CORSO_MASSIMO } from "@/core/domain/corsi";
 
 // Categorie e istruttori si creavano anche da qui, in due finestre appese al catalogo, mentre
 // hanno una pagina ciascuna nella stessa barra in alto. Due porte per la stessa stanza: una
@@ -45,10 +46,14 @@ export default function CoursesTab({ data, reload }) {
     setShowCourseForm(true);
   };
 
+  // Le note stanno in tre righe della tile. Quelle scritte prima del limite possono superarlo:
+  // si leggono intere nella finestra, e per salvare vanno accorciate.
+  const noteTroppoLunghe = form.description.length > NOTE_CORSO_MASSIMO;
+
   const handleSave = async (e) => {
     e.preventDefault();
-    if (!form.name.trim() || !form.category_id || !form.instructor_id) return;
-    const payload = { ...form };
+    if (!form.name.trim() || !form.category_id || !form.instructor_id || noteTroppoLunghe) return;
+    const payload = { ...form, description: form.description.trim() || null };
     try {
       if (editing) {
         await api.entities.Course.update(editing.id, payload);
@@ -114,11 +119,11 @@ export default function CoursesTab({ data, reload }) {
       ) : (
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {elenco.map(course => (
-            <Card key={course.id} className={`border-0 shadow-sm ${course.attivo === false ? "opacity-70" : ""}`}>
+            <Card key={course.id} className={`border-0 shadow-sm min-w-0 ${course.attivo === false ? "opacity-70" : ""}`}>
               <CardContent className="p-4">
                 <div className="flex items-start justify-between mb-2">
                   <div className="min-w-0">
-                    <h4 className="font-medium">{course.name}</h4>
+                    <h4 className="font-medium truncate" title={course.name}>{course.name}</h4>
                     {course.attivo === false && <p className="text-xs text-muted-foreground">Disattivato: non si programma più</p>}
                   </div>
                   {puoModificare && (
@@ -140,10 +145,14 @@ export default function CoursesTab({ data, reload }) {
                     </div>
                   )}
                 </div>
-                <div className="space-y-1 text-xs text-muted-foreground">
-                  <div>Categoria: <span className="text-foreground font-medium">{catName(course.category_id)}</span></div>
-                  <div>Istruttore: <span className="text-foreground font-medium">{instName(course.instructor_id)}</span></div>
-                  {course.description && <p className="mt-2">{course.description}</p>}
+                <div className="space-y-1 text-xs text-muted-foreground min-w-0">
+                  <div className="truncate">Categoria: <span className="text-foreground font-medium">{catName(course.category_id)}</span></div>
+                  <div className="truncate">Istruttore: <span className="text-foreground font-medium">{instName(course.instructor_id)}</span></div>
+                  {/* Le note stanno in tre righe: una parola lunga va a capo invece di uscire dalla
+                      tile, e il testo che c'era prima del limite si legge intero passandoci sopra. */}
+                  {course.description && (
+                    <p className="mt-2 line-clamp-3 break-words [overflow-wrap:anywhere]" title={course.description}>{course.description}</p>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -180,8 +189,18 @@ export default function CoursesTab({ data, reload }) {
               {instructors.length === 0 && <p className="text-xs text-muted-foreground mt-1">Nessun istruttore: registralo nella pagina Istruttori.</p>}
             </div>
 
-            <div><Label>Descrizione</Label><Textarea value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} /></div>
-            <Button type="submit" className="w-full" disabled={!form.name.trim() || !form.category_id || !form.instructor_id}>
+            <div>
+              <div className="flex items-baseline justify-between">
+                <Label htmlFor="corso-note">Note</Label>
+                <span className={`text-xs tabular-nums ${noteTroppoLunghe ? "text-destructive" : "text-muted-foreground"}`}>{form.description.length}/{NOTE_CORSO_MASSIMO}</span>
+              </div>
+              <Textarea
+                id="corso-note" rows={3} maxLength={NOTE_CORSO_MASSIMO} className="resize-none"
+                value={form.description} onChange={e => setForm({ ...form, description: e.target.value })}
+              />
+              {noteTroppoLunghe && <p className="text-xs text-destructive mt-1">Le note sono state scritte prima del limite: accorciale a {NOTE_CORSO_MASSIMO} caratteri per salvare.</p>}
+            </div>
+            <Button type="submit" className="w-full" disabled={!form.name.trim() || !form.category_id || !form.instructor_id || noteTroppoLunghe}>
               {editing ? "Salva" : "Crea corso"}
             </Button>
           </form>

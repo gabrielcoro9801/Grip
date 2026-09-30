@@ -25,6 +25,7 @@ import {
 	motivoCambioStatoNonValido as motivoCambioStatoSalaNonValido,
 	NOME_MASSIMO as NOME_SALA_MASSIMO, NOTE_MASSIMO as NOTE_SALA_MASSIMO,
 } from '../../../shared/sale.js';
+import { NOTE_CORSO_MASSIMO, RICORRENZE_CREABILI } from '../../../shared/corsi.js';
 
 // Campi rimossi da ogni risposta, per entità.
 const HIDDEN_FIELDS = {
@@ -432,6 +433,11 @@ const WRITE_TRANSFORMS = {
 	// `mutationBlockedReason`.
 	async Event(body, { creazione }) {
 		const rest = { ...(body ?? {}) };
+		// Un evento nuovo è una data singola o una regola settimanale: le date personalizzate non
+		// si creano più. Quelli fatti così prima restano e si modificano.
+		if ((creazione || presente(rest, 'recurrence_type')) && !RICORRENZE_CREABILI.includes(rest.recurrence_type)) {
+			throw rifiuta('Un evento si ripete in una data singola o ogni settimana.');
+		}
 		if (creazione) {
 			const motivo = await motivoEventoInSalaNonPrenotabile(rest);
 			if (motivo) throw rifiuta(motivo);
@@ -501,6 +507,10 @@ const WRITE_TRANSFORMS = {
 	// descrizione, non guarda l'istruttore: quello che conta è a chi lo si sta affidando adesso.
 	async Course(body, { creazione }) {
 		const rest = { ...(body ?? {}) };
+		if (presente(rest, 'description')) {
+			if (vuoto(rest.description)) rest.description = null;
+			else if (String(rest.description).length > NOTE_CORSO_MASSIMO) throw rifiuta(`Le note stanno in ${NOTE_CORSO_MASSIMO} caratteri.`);
+		}
 		if ((creazione || presente(rest, 'instructor_id')) && !vuoto(rest.instructor_id)) {
 			const [istruttore] = await db
 				.select({ nome: instructors.fullName, attivo: instructors.attivo })
