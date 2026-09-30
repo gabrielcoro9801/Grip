@@ -18,7 +18,9 @@ if [ "$(id -u)" = "0" ]; then
 	if [ "$(stat -c %u "$cartella")" != "$(id -u node)" ]; then
 		chown -R node:node "$cartella"
 	fi
-	exec su-exec node "$0" "$@"
+	# Attraverso `sh`, come nel CMD del Dockerfile: il file arriva da un checkout Windows senza
+	# il bit di esecuzione, e `su-exec node "$0"` si fermerebbe su "Permission denied".
+	exec su-exec node sh "$0" "$@"
 fi
 
 # Le migrazioni prima di accettare richieste: se falliscono il container non parte, invece
