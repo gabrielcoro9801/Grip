@@ -29,6 +29,43 @@ const MODULO_VUOTO = () => ({
 
 const scegli = (oggetto, campi) => Object.fromEntries(campi.filter((c) => c in oggetto).map((c) => [c, oggetto[c]]));
 
+/** "1 lezione", "3 lezioni". */
+const frase = (n, uno, molti) => `${n} ${n === 1 ? uno : molti}`;
+
+/** L'evento come lo descrive il modulo di creazione. */
+function datiDelModulo(form) {
+  const weekly = form.recurrence_type === "weekly";
+  return {
+    course_id: form.course_id, room_id: form.room_id,
+    capacity: Number(form.capacity),
+    recurrence_type: form.recurrence_type,
+    days_of_week: weekly ? form.days_of_week : undefined,
+    start_date: form.start_date,
+    end_condition: weekly ? form.end_condition : undefined,
+    end_date: weekly && form.end_condition === "by_date" ? form.end_date : undefined,
+    occurrence_count: weekly && form.end_condition === "by_count" ? Number(form.occurrence_count) : undefined,
+    start_time: form.start_time, end_time: form.end_time,
+  };
+}
+
+/** "14/09: sala occupata da «Yoga» 09:00–10:00" → la data a parte, il motivo accanto. */
+function RigaConflitto({ testo }) {
+  const i = testo.indexOf(": ");
+  const data = i > 0 && i <= 5 ? testo.slice(0, i) : null;
+  const resto = data ? testo.slice(i + 2) : testo;
+  const motivo = resto.charAt(0).toUpperCase() + resto.slice(1);
+  // L'orario in fondo non si spezza a metà.
+  const orario = motivo.match(/\s(\d{2}:\d{2}–\d{2}:\d{2})$/);
+  return (
+    <li className="flex gap-3 px-3 py-2 text-sm">
+      {data && <span className="shrink-0 font-medium tabular-nums">{data}</span>}
+      <span className="text-muted-foreground">
+        {orario ? <>{motivo.slice(0, orario.index)} <span className="whitespace-nowrap tabular-nums">{orario[1]}</span></> : motivo}
+      </span>
+    </li>
+  );
+}
+
 /**
  * La finestra dell'evento: crea, e modifica.
  *
@@ -93,19 +130,30 @@ export default function EventFormDialog({ open, onClose, data, reload, lezione =
 
   const oggi = oggiIso();
 
-  const previewCount = useMemo(() => {
-    if (inModifica || !form.start_date) return 0;
-    if (form.recurrence_type === "weekly" && form.days_of_week.length === 0) return 0;
-    try {
-      return generateSessionDates({
-        recurrence_type: form.recurrence_type, start_date: form.start_date,
-        days_of_week: form.days_of_week, end_condition: form.end_condition,
-        end_date: form.end_date, occurrence_count: form.occurrence_count,
-      }).length;
-    } catch { return 0; }
-  }, [form, inModifica]);
+  // Le lezioni che il modulo creerebbe, e quali cadono sopra un'altra lezione: si vede mentre
+  // si compila, non dopo aver premuto "Crea". Quando sono tutte in conflitto il pulsante si
+  // spegne — un pulsante acceso che non fa niente è peggio di uno spento che dice perché.
+  const anteprima = useMemo(() => {
+    if (inModifica || !form.start_date) return null;
+    if (form.recurrence_type === "weekly") {
+      if (form.days_of_week.length === 0) return null;
+      if (form.end_condition === "by_date" ? !form.end_date : !(Number(form.occurrence_count) > 0)) return null;
+    }
+    const dati = datiDelModulo(form);
+    let date;
+    try { date = generateSessionDates(dati); } catch { return null; }
+    if (date.length === 0) return null;
+    const controllabile = date.length <= MAX_SESSIONS && form.room_id && form.start_time && form.end_time && form.start_time < form.end_time;
+    if (!controllabile) return { date, conflitti: [], libere: date };
+    const corso = courses.find(c => c.id === form.course_id);
+    const { conflicts, cleanDates } = checkEventConflicts(date, dati, corso, sessions, events, courses);
+    return { date, conflitti: conflicts, libere: cleanDates };
+  }, [form, inModifica, courses, sessions, events]);
 
+  const previewCount = anteprima?.date.length ?? 0;
   const overLimit = previewCount > MAX_SESSIONS;
+  const conflittiAnteprima = anteprima?.conflitti.length ?? 0;
+  const tutteInConflitto = conflittiAnteprima > 0 && anteprima.libere.length === 0;
 
   // Le lezioni che "tutta la serie" cambierebbe, con i giorni scelti adesso.
   const lezioniSerie = useMemo(() => {
@@ -198,19 +246,7 @@ export default function EventFormDialog({ open, onClose, data, reload, lezione =
       if (form.end_condition === "by_date" && form.end_date < form.start_date) { setError("La data di fine non può precedere quella di inizio."); return; }
       if (form.end_condition === "by_count" && (!form.occurrence_count || Number(form.occurrence_count) <= 0)) { setError("Il numero di occorrenze è obbligatorio."); return; }
     }
-    const weekly = form.recurrence_type === "weekly";
-    const eventData = {
-      course_id: form.course_id, room_id: form.room_id,
-      capacity: Number(form.capacity),
-      recurrence_type: form.recurrence_type,
-      days_of_week: weekly ? form.days_of_week : undefined,
-      start_date: form.start_date,
-      end_condition: weekly ? form.end_condition : undefined,
-      end_date: weekly && form.end_condition === "by_date" ? form.end_date : undefined,
-      occurrence_count: weekly && form.end_condition === "by_count" ? Number(form.occurrence_count) : undefined,
-      start_time: form.start_time, end_time: form.end_time,
-    };
-
+    const eventData = datiDelModulo(form);
     const dates = generateSessionDates(eventData);
     if (dates.length > MAX_SESSIONS) {
       setError(`Questo pattern genera ${dates.length} sessioni, il massimo consentito in una sola creazione è ${MAX_SESSIONS}. Riduci l'intervallo di date o il numero di occorrenze.`);
@@ -220,28 +256,36 @@ export default function EventFormDialog({ open, onClose, data, reload, lezione =
 
     const course = courses.find(c => c.id === form.course_id);
     const { conflicts, cleanDates } = checkEventConflicts(dates, eventData, course, sessions, events, courses);
-    if (cleanDates.length === 0) {
-      setError(conflicts.length === 1
-        ? `La data è in conflitto: l'evento non è stato creato.\n${conflicts[0].message}`
-        : `Tutte le ${conflicts.length} date sono in conflitto: l'evento non è stato creato.\n${conflicts.map(c => c.message).join("\n")}`);
-      return;
-    }
-    // Qualche data in conflitto: non si crea niente finché non lo si decide. O le lezioni
-    // possibili, o nessuna.
+    if (cleanDates.length === 0) { mostraConflittiCreazione(conflicts, 0); return; }
+    // Qualche data in conflitto: non si crea niente finché non lo si decide. "Annulla" lascia
+    // perdere tutto l'evento, "Crea comunque" crea le lezioni possibili.
     if (conflicts.length > 0) {
       setPasso({
         tipo: "conflitti",
-        titolo: `${conflicts.length} ${conflicts.length === 1 ? "data è" : "date sono"} in conflitto`,
-        testo: `Le altre ${cleanDates.length} lezioni si possono creare. Le date in conflitto restano fuori dalla serie.`,
+        titolo: "Date in conflitto",
+        testo: `${frase(cleanDates.length, "lezione su", "lezioni su")} ${dates.length} ${cleanDates.length === 1 ? "verrà creata" : "verranno create"}: le date in conflitto saranno saltate.`,
         problemi: conflicts.map(c => c.message),
-        conferma: `Crea comunque ${cleanDates.length === 1 ? "l'unica lezione possibile" : `le ${cleanDates.length} lezioni possibili`}`,
-        annulla: "Annulla tutto",
+        conferma: "Crea comunque",
         onConferma: () => crea(eventData, cleanDates),
-        onAnnulla: chiudi,
+        onChiudi: chiudi,
       });
       return;
     }
     crea(eventData, dates);
+  };
+
+  // I conflitti, solo da leggere: dal collegamento "Vedi" dell'anteprima, o quando nessuna
+  // data si può creare. Si chiude e si torna al modulo, con tutto quello che si era scritto.
+  const mostraConflittiCreazione = (conflitti, libere) => {
+    setPasso({
+      tipo: "conflitti",
+      titolo: libere === 0 ? (conflitti.length === 1 ? "Data in conflitto" : "Tutte le date sono in conflitto") : "Date in conflitto",
+      testo: libere === 0
+        ? "Nessuna lezione si può creare così: cambia orario, sala o date."
+        : `Se crei l'evento, ${conflitti.length === 1 ? "questa data verrà saltata" : "queste date verranno saltate"}.`,
+      problemi: conflitti.map(c => c.message),
+      onChiudi: () => setPasso(null),
+    });
   };
 
   // === Modifica ===
@@ -305,19 +349,25 @@ export default function EventFormDialog({ open, onClose, data, reload, lezione =
     if (problemi.length > 0) {
       // Il corso vale per tutto l'evento: non si cambia a metà, lasciando fuori le lezioni in conflitto.
       if (ambito !== "serie" || problemi.length === quante || cambi.course_id) {
-        setPasso(null);
-        setError(`La modifica non si può salvare:\n${elenco.join("\n")}`);
+        setPasso({
+          tipo: "conflitti",
+          titolo: "Modifica non possibile",
+          testo: cambi.course_id && ambito === "serie" && problemi.length < quante
+            ? "Il corso vale per tutta la serie: con queste lezioni in conflitto non si può cambiare."
+            : "Cambia orario, sala o capienza e riprova.",
+          problemi: elenco,
+          onChiudi: () => setPasso(null),
+        });
         return;
       }
       setPasso({
         tipo: "conflitti",
-        titolo: `${problemi.length} ${problemi.length === 1 ? "lezione non si può modificare" : "lezioni non si possono modificare"}`,
-        testo: `Le altre ${quante - problemi.length} si possono modificare; queste resterebbero come sono.`,
+        titolo: "Lezioni in conflitto",
+        testo: `${frase(quante - problemi.length, "lezione su", "lezioni su")} ${quante} ${quante - problemi.length === 1 ? "verrà modificata" : "verranno modificate"}: quelle in conflitto resteranno come sono.`,
         problemi: elenco,
-        conferma: `Modifica comunque le altre ${quante - problemi.length}`,
-        annulla: "Annulla",
+        conferma: "Prosegui comunque",
         onConferma: () => scrivi(piano, descrizione),
-        onAnnulla: () => setPasso(null),
+        onChiudi: () => setPasso(null),
       });
       return;
     }
@@ -449,18 +499,38 @@ export default function EventFormDialog({ open, onClose, data, reload, lezione =
               </p>
             )}
             {previewCount > 0 && (
-              <div className={`p-3 rounded-lg text-sm ${overLimit ? "bg-destructive/10 border border-destructive/30 text-destructive" : "bg-info/10 border border-info/30 text-info"}`}>
-                {overLimit ? <span className="flex items-center gap-2"><AlertTriangle className="w-4 h-4 shrink-0" /> Questo pattern genera {previewCount} sessioni. Il massimo è {MAX_SESSIONS}.</span>
-                  : <span>Questo pattern genererà <strong>{previewCount}</strong> sessioni.</span>}
-              </div>
+              overLimit ? (
+                <div className="flex items-center gap-2 p-3 rounded-lg text-sm bg-destructive/10 border border-destructive/30 text-destructive">
+                  <AlertTriangle className="w-4 h-4 shrink-0" /> {previewCount} lezioni: il massimo è {MAX_SESSIONS}.
+                </div>
+              ) : conflittiAnteprima > 0 ? (
+                <div className={`flex items-center gap-2 p-3 rounded-lg text-sm border ${tutteInConflitto ? "bg-destructive/10 border-destructive/30 text-destructive" : "bg-warning/10 border-warning/30 text-warning"}`}>
+                  <AlertTriangle className="w-4 h-4 shrink-0" />
+                  <span className="flex-1">
+                    {tutteInConflitto
+                      ? (previewCount === 1 ? "La data è in conflitto." : `Tutte le ${previewCount} date sono in conflitto.`)
+                      : `${frase(previewCount, "lezione", "lezioni")}, ${conflittiAnteprima} in conflitto.`}
+                  </span>
+                  <button
+                    type="button" className="shrink-0 font-medium underline underline-offset-2 hover:no-underline"
+                    onClick={() => mostraConflittiCreazione(anteprima.conflitti, anteprima.libere.length)}
+                  >
+                    Vedi
+                  </button>
+                </div>
+              ) : (
+                <div className="p-3 rounded-lg text-sm bg-info/10 border border-info/30 text-info">
+                  {previewCount === 1 ? "Verrà creata 1 lezione." : <>Verranno create <strong>{previewCount}</strong> lezioni.</>}
+                </div>
+              )
             )}
             {error && (
               <div className="flex items-start gap-2 p-3 rounded-lg bg-destructive/10 border border-destructive/30 text-destructive text-sm whitespace-pre-line">
                 <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" /><span>{error}</span>
               </div>
             )}
-            <Button type="submit" className="w-full" disabled={saving || !form.course_id || !form.room_id || overLimit || !!salaBloccante || !form.capacity}>
-              {inModifica ? (saving ? "Salvataggio..." : "Salva modifiche") : (saving ? "Generazione..." : "Crea evento e genera sessioni")}
+            <Button type="submit" className="w-full" disabled={saving || !form.course_id || !form.room_id || overLimit || tutteInConflitto || !!salaBloccante || !form.capacity}>
+              {inModifica ? (saving ? "Salvataggio..." : "Salva modifiche") : (saving ? "Creazione..." : "Crea evento")}
             </Button>
           </form>
         </DialogContent>
@@ -498,23 +568,32 @@ export default function EventFormDialog({ open, onClose, data, reload, lezione =
         </DialogContent>
       </Dialog>
 
-      {/* Qualche data non va: si decide se procedere con le altre o lasciar perdere. */}
-      <Dialog open={open && passo?.tipo === "conflitti"} onOpenChange={v => { if (!v && !saving) passo?.onAnnulla(); }}>
+      {/* I conflitti: da confermare ("Crea comunque", "Prosegui comunque") o solo da leggere. */}
+      <Dialog open={open && passo?.tipo === "conflitti"} onOpenChange={v => { if (!v && !saving) passo?.onChiudi(); }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>{passo?.titolo}</DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 shrink-0 text-warning" aria-hidden="true" />
+              {passo?.titolo}
+            </DialogTitle>
             <DialogDescription>{passo?.testo}</DialogDescription>
           </DialogHeader>
           {passo?.tipo === "conflitti" && (
-            <div className="space-y-3">
-              <div className="space-y-1 max-h-60 overflow-y-auto">
-                {passo.problemi.map((r, i) => <p key={i} className="text-sm text-muted-foreground p-2 rounded bg-muted/40">{r}</p>)}
+            <>
+              <ul className="max-h-64 overflow-y-auto rounded-lg border border-border divide-y divide-border">
+                {passo.problemi.map((r, i) => <RigaConflitto key={i} testo={r} />)}
+              </ul>
+              <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
+                {passo.onConferma ? (
+                  <>
+                    <Button variant="outline" onClick={passo.onChiudi} disabled={saving}>Annulla</Button>
+                    <Button onClick={passo.onConferma} disabled={saving}>{saving ? "Salvataggio..." : passo.conferma}</Button>
+                  </>
+                ) : (
+                  <Button onClick={passo.onChiudi}>Chiudi</Button>
+                )}
               </div>
-              <div className="flex flex-col-reverse sm:flex-row gap-2">
-                <Button variant="outline" className="flex-1" onClick={passo.onAnnulla} disabled={saving}>{passo.annulla}</Button>
-                <Button className="flex-1" onClick={passo.onConferma} disabled={saving}>{saving ? "Salvataggio..." : passo.conferma}</Button>
-              </div>
-            </div>
+            </>
           )}
         </DialogContent>
       </Dialog>

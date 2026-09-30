@@ -80,7 +80,7 @@ describe('le lezioni che non si possono cambiare', () => {
 			courses: [{ id: 'pilates', instructor_id: 'anna' }, { id: 'yoga', name: 'Yoga', instructor_id: 'luca' }],
 		}));
 		assert.deepEqual(problemi.map((p) => p.lezione.id), ['l3']);
-		assert.match(problemi[0].messaggio, /conflitto sala con "Yoga"/);
+		assert.equal(problemi[0].messaggio, '13/10: sala occupata da «Yoga» 18:30–19:30');
 		assert.deepEqual(daScrivere.map((d) => d.lezione.id), ['l4']);
 	});
 
