@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { Outlet } from "react-router-dom";
 import { CalendarDays, ClipboardCheck, LayoutList, DoorOpen, UserCog, Tags } from "lucide-react";
 import { api } from "@/core/api/client";
@@ -78,20 +78,9 @@ export default function CorsiLayout() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  // Il numero delle prenotazioni sta nella barra perché è l'unica voce che vale la pena
-  // guardare senza aprirla: dice se c'è qualcosa da fare.
-  const tabs = useMemo(
-    () => tabsBase.map((tab) => (
-      tab.path === "/calendario/prenotazioni"
-        ? { ...tab, label: `Prenotazioni (${data.bookings.length})` }
-        : tab
-    )),
-    [data.bookings.length]
-  );
-
   return (
     <div className="flex flex-col h-full">
-      <SectionTabs tabs={tabs} label="Sezioni dei corsi" />
+      <SectionTabs tabs={tabsBase} label="Sezioni dei corsi" />
       <div className="flex-1 overflow-y-auto">
         <PageContainer>
           {loading ? (

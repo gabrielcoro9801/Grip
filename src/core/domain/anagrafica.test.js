@@ -5,6 +5,7 @@ import test, { describe } from 'node:test';
 import assert from 'node:assert/strict';
 import {
 	codiceFiscaleValido,
+	partitaIvaValida,
 	normalizzaCodiceFiscale,
 	carattereDiControllo,
 	sessoValido,
@@ -176,4 +177,12 @@ describe("lo stato dei documenti, e chi finisce in archivio", () => {
 			{ cert: 'scaduto', ci: 'valido' }
 		);
 	});
+});
+
+test("la partita IVA: undici cifre e l'ultima di controllo", () => {
+  assert.equal(partitaIvaValida("01234567897"), true);
+  assert.equal(partitaIvaValida("IT 01234567897"), true, "prefisso e spazi non contano");
+  assert.equal(partitaIvaValida("01234567890"), false, "cifra di controllo sbagliata");
+  assert.equal(partitaIvaValida("1234567897"), false, "dieci cifre");
+  assert.equal(partitaIvaValida(""), false);
 });

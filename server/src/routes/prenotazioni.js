@@ -22,7 +22,7 @@ import { translateManyToSnakeCase } from '../entities/columnMaps.js';
 import { getUserFromRequest } from '../auth/tokens.js';
 import { canWriteEntity, canReadEntity } from '../auth/authorize.js';
 import { socioDiAccount } from '../auth/socioCorrente.js';
-import { prenota, disdici } from '../lib/prenotazioni.js';
+import { prenota, disdici, cambiaStato, spostaInLista, eliminaPrenotazione } from '../lib/prenotazioni.js';
 import { registra } from '../lib/registro.js';
 
 export default async function prenotazioniRoutes(fastify) {
@@ -133,5 +133,62 @@ export default async function prenotazioniRoutes(fastify) {
 			request.log.error(errore, 'disdetta fallita');
 			return reply.code(500).send({ error: 'Non è stato possibile disdire.' });
 		}
+	});
+
+	// --- Solo per lo staff ------------------------------------------------------------------
+	//
+	// Confermare, rimettere in lista, riattivare, riordinare la lista, cancellare un errore: il
+	// lavoro della reception dal gestionale. Il socio passa da prenota e disdici, e basta.
+	const soloStaff = (request, reply) => {
+		if (request.memberId) {
+			reply.code(403).send({ error: 'Non consentito.' });
+			return false;
+		}
+		return true;
+	};
+
+	const ETICHETTE_STATO = { confirmed: 'Confermata', waitlisted: "In lista d'attesa", cancelled: 'Annullata' };
+	const versoApi = (b) => b && ({
+		id: b.id, session_id: b.sessionId, member_id: b.memberId, member_name: b.memberName,
+		status: b.status, waitlist_position: b.waitlistPosition,
+	});
+
+	/** POST /api/prenotazioni/:id/stato { stato, oltre_capienza } → { booking, promossi } */
+	fastify.post('/api/prenotazioni/:id/stato', async (request, reply) => {
+		if (!soloStaff(request, reply)) return;
+		const stato = request.body?.stato;
+		const esito = await cambiaStato({ bookingId: request.params.id, stato, oltreCapienza: request.body?.oltre_capienza === true });
+		if (esito.errore) return reply.code(esito.errore).send({ error: esito.messaggio, code: esito.codice });
+		await registra(request.utente, {
+			tipoAzione: 'update', entitaTipo: 'booking', entitaId: request.params.id,
+			entitaNome: esito.aggiornata?.memberName ?? '', dettagli: `Stato: ${ETICHETTE_STATO[stato] ?? stato}${request.body?.oltre_capienza ? ' (oltre la capienza)' : ''}`,
+		}, request.log);
+		return {
+			booking: versoApi(esito.aggiornata) ?? null,
+			promossi: (esito.promosse ?? (esito.promossa ? [esito.promossa] : [])).map((b) => ({ id: b.id, member_name: b.memberName })),
+		};
+	});
+
+	/** POST /api/prenotazioni/:id/posizione { posizione } → { posizione } */
+	fastify.post('/api/prenotazioni/:id/posizione', async (request, reply) => {
+		if (!soloStaff(request, reply)) return;
+		const esito = await spostaInLista({ bookingId: request.params.id, posizione: request.body?.posizione });
+		if (esito.errore) return reply.code(esito.errore).send({ error: esito.messaggio });
+		await registra(request.utente, {
+			tipoAzione: 'update', entitaTipo: 'booking', entitaId: request.params.id, dettagli: `Lista d'attesa: posizione ${esito.posizione}`,
+		}, request.log);
+		return esito;
+	});
+
+	/** DELETE /api/prenotazioni/:id → { eliminata: true, promossi } — per le prenotazioni inserite per errore. */
+	fastify.delete('/api/prenotazioni/:id', async (request, reply) => {
+		if (!soloStaff(request, reply)) return;
+		const esito = await eliminaPrenotazione({ bookingId: request.params.id });
+		if (esito.errore) return reply.code(esito.errore).send({ error: esito.messaggio });
+		await registra(request.utente, {
+			tipoAzione: 'delete', entitaTipo: 'booking', entitaId: request.params.id,
+			entitaNome: esito.eliminata.memberName ?? '', dettagli: 'Prenotazione eliminata',
+		}, request.log);
+		return { eliminata: true, promossi: esito.promosse.map((b) => ({ id: b.id, member_name: b.memberName })) };
 	});
 }

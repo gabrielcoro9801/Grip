@@ -4,44 +4,53 @@ import { useStaffAuth } from "@/staff/lib/StaffAuthContext";
 import { canEdit } from "@/staff/lib/permissions";
 import { Card, CardContent } from "@/ui/primitivi/card";
 import { Button } from "@/ui/primitivi/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/ui/primitivi/dialog";
 import { Label } from "@/ui/primitivi/label";
 import { Input } from "@/ui/primitivi/input";
-import { Plus, Pencil, Trash2, X } from "lucide-react";
+import { EmptyState } from "@/ui/StateViews";
+import { Plus, Pencil, Trash2, Tags } from "lucide-react";
 import { useToast } from "@/ui/primitivi/use-toast";
 import { useConfirm } from "@/ui/ConfirmDialog";
 
 const VUOTO = { name: "", color: "#3b82f6" };
 
-// Una categoria si creava e basta: un nome scritto male o un colore che in calendario non si
-// distingueva restavano per sempre. Ora si corregge, e si elimina finché nessun corso la usa —
-// dopo, toglierla lascerebbe quei corsi senza gruppo e senza colore.
+// Una categoria si aggiunge e si corregge da una finestra, come corsi, sale e istruttori: il
+// modulo sempre aperto in cima alla pagina era l'unico della sezione. Si elimina finché nessun
+// corso la usa — dopo, toglierla lascerebbe quei corsi senza gruppo e senza colore.
 export default function CategoriesTab({ data, reload }) {
   const { categories, courses } = data;
   const { staffUser } = useStaffAuth();
   const puoModificare = canEdit(staffUser?.ruolo, "calendar");
   const { toast } = useToast();
   const [conferma, dialogoConferma] = useConfirm();
-  const [form, setForm] = useState(VUOTO);
+  const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
+  const [form, setForm] = useState(VUOTO);
+  const [salvando, setSalvando] = useState(false);
 
-  const annullaModifica = () => { setEditing(null); setForm(VUOTO); };
+  const apriCreazione = () => { setEditing(null); setForm(VUOTO); setShowForm(true); };
+  const apriModifica = (c) => { setEditing(c); setForm({ name: c.name || "", color: c.color || VUOTO.color }); setShowForm(true); };
 
-  const handleSubmit = async (e) => {
+  const salva = async (e) => {
     e.preventDefault();
-    if (!form.name.trim()) return;
+    const name = form.name.trim();
+    if (!name) return;
+    setSalvando(true);
     try {
       if (editing) {
-        await api.entities.Category.update(editing.id, { name: form.name.trim(), color: form.color });
+        await api.entities.Category.update(editing.id, { name, color: form.color });
         toast({ title: "Categoria aggiornata" });
       } else {
-        await api.entities.Category.create({ ...form, name: form.name.trim() });
+        await api.entities.Category.create({ name, color: form.color });
         toast({ title: "Categoria creata" });
       }
-      annullaModifica();
+      setShowForm(false);
+      setForm(VUOTO);
       reload();
     } catch (err) {
-      toast({ title: "Errore", description: err.message, variant: "destructive" });
+      toast({ title: "Categoria non salvata", description: err.message, variant: "destructive" });
     }
+    setSalvando(false);
   };
 
   const courseCount = (catId) => courses.filter(c => c.category_id === catId).length;
@@ -60,7 +69,6 @@ export default function CategoriesTab({ data, reload }) {
     if (!ok) return;
     try {
       await api.entities.Category.delete(categoria.id);
-      if (editing?.id === categoria.id) annullaModifica();
       toast({ title: "Categoria eliminata" });
       reload();
     } catch (err) {
@@ -70,59 +78,61 @@ export default function CategoriesTab({ data, reload }) {
 
   return (
     <div className="space-y-4">
+      {dialogoConferma}
       {puoModificare && (
-        <Card className="border-0 shadow-sm">
-          <CardContent className="p-4">
-            <form onSubmit={handleSubmit} className="flex flex-wrap gap-3 items-end">
-              <div className="flex-1 min-w-[200px]">
-                <Label>{editing ? `Modifica «${editing.name}»` : "Nuova categoria"}</Label>
-                <Input placeholder="Nome categoria" required value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
-              </div>
-              <div>
-                <Label>Colore</Label>
-                <Input type="color" className="w-16 p-1 h-9" value={form.color} onChange={e => setForm({ ...form, color: e.target.value })} />
-              </div>
-              <Button type="submit" size="sm">
-                {editing ? "Salva" : <><Plus className="w-4 h-4 mr-1" /> Crea</>}
-              </Button>
-              {editing && (
-                <Button type="button" size="sm" variant="outline" onClick={annullaModifica}>
-                  <X className="w-4 h-4 mr-1" /> Annulla
-                </Button>
-              )}
-            </form>
-          </CardContent>
-        </Card>
+        <Button size="sm" onClick={apriCreazione}><Plus className="w-4 h-4 mr-1" /> Nuova categoria</Button>
       )}
 
-      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {categories.map(c => (
-          <Card key={c.id} className="border-0 shadow-sm">
-            <CardContent className="p-4 flex items-center gap-3">
-              <div className="w-8 h-8 rounded-lg shrink-0" style={{ background: c.color || "#ccc" }} />
-              <div className="flex-1 min-w-0">
-                <h4 className="font-medium truncate">{c.name}</h4>
-                <p className="text-xs text-muted-foreground">{courseCount(c.id)} corsi collegati</p>
-              </div>
-              {puoModificare && (
-                <div className="flex shrink-0">
-                  <Button
-                    variant="ghost" size="icon" className="h-9 w-9" aria-label={`Modifica ${c.name}`}
-                    onClick={() => { setEditing(c); setForm({ name: c.name || "", color: c.color || VUOTO.color }); }}
-                  >
-                    <Pencil className="w-3.5 h-3.5" />
-                  </Button>
-                  <Button variant="ghost" size="icon" className="h-9 w-9 text-destructive" aria-label={`Elimina ${c.name}`} onClick={() => elimina(c)}>
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </Button>
+      {categories.length === 0 ? (
+        <EmptyState
+          icon={Tags}
+          title="Nessuna categoria"
+          description="Come si raggruppano i corsi: servono a ritrovarli e a dargli un colore in calendario."
+        />
+      ) : (
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {categories.map(c => (
+            <Card key={c.id} className="border-0 shadow-sm">
+              <CardContent className="p-4 flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg shrink-0" style={{ background: c.color || "#ccc" }} />
+                <div className="flex-1 min-w-0">
+                  <h4 className="font-medium truncate" title={c.name}>{c.name}</h4>
+                  <p className="text-xs text-muted-foreground">{courseCount(c.id)} corsi collegati</p>
                 </div>
-              )}
-            </CardContent>
-          </Card>
-        ))}
-        {categories.length === 0 && <p className="text-sm text-muted-foreground text-center py-8">Nessuna categoria</p>}
-      </div>
-      {dialogoConferma}
+                {puoModificare && (
+                  <div className="flex shrink-0">
+                    <Button variant="ghost" size="icon" className="h-9 w-9" aria-label={`Modifica ${c.name}`} onClick={() => apriModifica(c)}>
+                      <Pencil className="w-3.5 h-3.5" />
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-9 w-9 text-destructive" aria-label={`Elimina ${c.name}`} onClick={() => elimina(c)}>
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </Button>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      <Dialog open={showForm} onOpenChange={setShowForm}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>{editing ? "Modifica categoria" : "Nuova categoria"}</DialogTitle></DialogHeader>
+          <form onSubmit={salva} className="space-y-3">
+            <div>
+              <Label htmlFor="categoria-nome">Nome *</Label>
+              <Input id="categoria-nome" required maxLength={255} value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
+            </div>
+            <div>
+              <Label htmlFor="categoria-colore">Colore in calendario</Label>
+              <Input id="categoria-colore" type="color" className="w-16 p-1 h-9" value={form.color} onChange={e => setForm({ ...form, color: e.target.value })} />
+            </div>
+            <Button type="submit" className="w-full" disabled={!form.name.trim() || salvando}>
+              {salvando ? "Salvataggio..." : editing ? "Salva categoria" : "Crea categoria"}
+            </Button>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

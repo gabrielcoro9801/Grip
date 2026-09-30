@@ -142,6 +142,18 @@ export const api = {
 		disdici(bookingId) {
 			return request(`/api/prenotazioni/${bookingId}/disdici`, { method: 'POST' });
 		},
+		/** Solo staff: porta una prenotazione a confirmed / waitlisted / cancelled. → { booking, promossi } */
+		cambiaStato(bookingId, stato, { oltreCapienza = false } = {}) {
+			return request(`/api/prenotazioni/${bookingId}/stato`, { method: 'POST', body: { stato, oltre_capienza: oltreCapienza } });
+		},
+		/** Solo staff: sposta in lista d'attesa alla posizione indicata (1 = prima). */
+		spostaInLista(bookingId, posizione) {
+			return request(`/api/prenotazioni/${bookingId}/posizione`, { method: 'POST', body: { posizione } });
+		},
+		/** Solo staff: cancella davvero una prenotazione inserita per errore. → { eliminata, promossi } */
+		elimina(bookingId) {
+			return request(`/api/prenotazioni/${bookingId}`, { method: 'DELETE' });
+		},
 		/** Le prenotazioni delle lezioni da `dal` (YYYY-MM-DD) in avanti. Solo per lo staff. */
 		dal(dal) {
 			return request(`/api/prenotazioni?dal=${encodeURIComponent(dal)}`);
