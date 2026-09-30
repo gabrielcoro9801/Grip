@@ -1,0 +1,3 @@
+# Gli script di shell girano nel container Linux: con i fine riga di Windows `sh` legge
+# "set -e\r" e si ferma all'avvio. Restano LF anche su un checkout Windows con autocrlf.
+*.sh text eol=lf

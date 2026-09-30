@@ -6,8 +6,9 @@ import { ChevronLeft, ChevronRight, Plus, Clock, MapPin, Users, Pencil, Calendar
 import { getSessionAvailability } from "@/core/domain/bookingUtils";
 import EventFormDialog from "@/staff/components/courses/EventFormDialog";
 import ManageSessions from "@/staff/components/courses/ManageSessions";
+import { grigliaDelMese } from "@/staff/lib/eventUtils";
 import SessionAudit from "@/staff/components/courses/SessionAudit";
-import { formatData } from "@/core/domain/format";
+import { formatData, toIsoDate } from "@/core/domain/format";
 
 const DAY_HEADERS = ["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"];
 const MONTH_NAMES = ["Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno", "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"];
@@ -54,25 +55,14 @@ export default function CalendarView({ data, reload }) {
     return map;
   }, [visibleSessions]);
 
-  const monthGrid = useMemo(() => {
-    const year = currentMonth.getFullYear();
-    const month = currentMonth.getMonth();
-    const firstDay = new Date(year, month, 1);
-    const dow = firstDay.getDay();
-    const offset = dow === 0 ? 6 : dow - 1;
-    const startDate = new Date(firstDay);
-    startDate.setDate(startDate.getDate() - offset);
-    const days = [];
-    for (let i = 0; i < 42; i++) {
-      const d = new Date(startDate);
-      d.setDate(d.getDate() + i);
-      days.push(d);
-    }
-    return days;
-  }, [currentMonth]);
+  const monthGrid = useMemo(
+    () => grigliaDelMese(currentMonth.getFullYear(), currentMonth.getMonth()),
+    [currentMonth]
+  );
 
   const monthLabel = `${MONTH_NAMES[currentMonth.getMonth()]} ${currentMonth.getFullYear()}`;
-  const todayStr = new Date().toISOString().split("T")[0];
+  // Oggi nei campi locali, come le chiavi delle caselle (vedi `grigliaDelMese`).
+  const todayStr = toIsoDate(new Date());
   const roomName = (id) => rooms.find(r => r.id === id)?.name || "—";
 
   const toggleCategory = (catId) => {
@@ -112,8 +102,7 @@ export default function CalendarView({ data, reload }) {
           </div>
 
           <div className="grid grid-cols-7 gap-1">
-            {monthGrid.map((date, i) => {
-              const dateStr = date.toISOString().split("T")[0];
+            {monthGrid.map(({ data: date, chiave: dateStr }, i) => {
               const isCurrentMonth = date.getMonth() === currentMonth.getMonth();
               const isToday = dateStr === todayStr;
               const daySessions = sessionsByDate.get(dateStr) || [];

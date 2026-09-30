@@ -5,6 +5,7 @@ import CoursesByCalendar from "@/member/components/CoursesByCalendar";
 import { caricaAgenda, prenotaLezione, disdiciPrenotazione } from "@/core/api/portale";
 import { useToast } from "@/ui/primitivi/use-toast";
 import { LoadingState } from "@/ui/Spinner";
+import { toIsoDate, aggiungiGiorni } from "@/core/domain/format";
 
 /**
  * Da sette richieste a una.
@@ -29,11 +30,12 @@ export default function MemberCoursesCalendar() {
       // Due mesi: il calendario si sfoglia una settimana per volta, e chiedere solo i
       // prossimi giorni farebbe trovare vuote le settimane più avanti. Restano comunque le
       // lezioni di un intervallo dichiarato, non "le ultime cinquecento" come prima.
+      // Date nei campi locali: con `toISOString()` (UTC), fra mezzanotte e le due l'agenda
+      // partiva da ieri.
       const oggi = new Date();
-      const fra = new Date(oggi.getTime() + 60 * 24 * 60 * 60 * 1000);
       const agenda = await caricaAgenda({
-        dal: oggi.toISOString().split("T")[0],
-        al: fra.toISOString().split("T")[0],
+        dal: toIsoDate(oggi),
+        al: toIsoDate(aggiungiGiorni(oggi, 60)),
       });
       setLezioni(agenda.giorni.flatMap((g) => g.lezioni));
     } catch {
@@ -57,6 +59,8 @@ export default function MemberCoursesCalendar() {
       _instructor: l.istruttore && { id: l.istruttore.id, full_name: l.istruttore.nome },
       _room: l.sala && { id: l.sala.id, name: l.sala.nome },
       _posti: l.posti,
+      // Perché non si può prenotare (senza abbonamento quel giorno), o null.
+      _motivoNonPrenotabile: l.motivo_non_prenotabile ?? null,
       _miaPrenotazione: l.mia_prenotazione && {
         id: l.mia_prenotazione.id,
         status: l.mia_prenotazione.stato,

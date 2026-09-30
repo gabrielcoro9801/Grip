@@ -152,23 +152,64 @@ export function messaggioSospensioneBloccata(nomeSala, dal, al, date) {
  * - Eventi in corso o futuri: non si tocca. Ci sono soci prenotati su lezioni che devono ancora
  *   arrivare, e toglierla di mezzo adesso lascerebbe loro un appuntamento senza stanza.
  *
- * @param {{maiUsata: boolean, occupataDaQui: boolean}} calendario
+ * Una sala già annullata con un passato non ha più niente da fare: è già dove deve stare. Prima
+ * il cestino proponeva di nuovo "Annulla definitivamente", e il messaggio "Sala annullata"
+ * arrivava senza che cambiasse niente.
+ *
+ * @param {{maiUsata: boolean, occupataDaQui: boolean, annullata?: boolean}} calendario
  * @returns {'elimina'|'annulla'|'niente'}
  */
-export function azioneSullaSala({ maiUsata, occupataDaQui }) {
+export function azioneSullaSala({ maiUsata, occupataDaQui, annullata = false }) {
 	if (occupataDaQui) return 'niente';
-	return maiUsata ? 'elimina' : 'annulla';
+	if (maiUsata) return 'elimina';
+	return annullata ? 'niente' : 'annulla';
 }
+
+/** Perché il cestino non fa niente su una sala: prenotata da qui in avanti, o già annullata. */
+export const SALA_GIA_ANNULLATA = 'La sala è già annullata e ha ospitato lezioni: resta com\'è, attaccata al calendario passato.';
 
 /**
  * Il messaggio che spiega perché una sala usata in passato si annulla invece di sparire.
  *
  * Non è un rifiuto: è la stessa intenzione, eseguita nel modo che non riscrive la storia.
  * Ha preso il posto di un "non si elimina" secco, che diceva di no senza dire cosa fare.
+ *
+ * Conta gli eventi se ce ne sono, altrimenti le lezioni (spostate qui da un evento che sta in
+ * un'altra sala): dire "12 eventi" di 12 lezioni sarebbe falso.
  */
-export function messaggioAnnullaInveceDiEliminare(nomeSala, quanti) {
-	const eventi = quanti === 1 ? "1 evento che si è tenuto" : `${quanti} eventi che si sono tenuti`;
-	return `«${nomeSala}» non si elimina perché in questa sala c'è ${eventi} davvero: cancellarla toglierebbe il «dove» a lezioni già fatte. Si annulla: non si potrà più programmarci niente, e il calendario passato resta com'è.`;
+export function messaggioAnnullaInveceDiEliminare(nomeSala, { eventi = 0, lezioni = 0 } = {}) {
+	const cosa = eventi
+		? (eventi === 1 ? "c'è 1 evento che si è tenuto" : `ci sono ${eventi} eventi che si sono tenuti`)
+		: (lezioni === 1 ? "c'è 1 lezione che si è tenuta" : `ci sono ${lezioni} lezioni che si sono tenute`);
+	return `«${nomeSala}» non si elimina perché in questa sala ${cosa} davvero: cancellarla toglierebbe il «dove» a lezioni già fatte. Si annulla: non si potrà più programmarci niente, e il calendario passato resta com'è.`;
+}
+
+/**
+ * Le sale fra cui scegliere quando si programma: le annullate non ci sono.
+ *
+ * Erano nella tendina, spente: una sala annullata non si userà mai più, e tenerla lì allunga
+ * solo l'elenco.
+ */
+export function saleProgrammabili(sale) {
+	return (sale ?? []).filter((s) => s.stato !== 'annullato');
+}
+
+/**
+ * Il nome di una sala nella tendina, con il motivo se nel periodo scelto non si può usare.
+ *
+ * L'etichetta guardava lo stato di *oggi*: poteva dire "sospensione conclusa" di una sala chiusa
+ * proprio nelle date dell'evento, e senza dire quali. E la gestione lezioni ne aveva un'altra.
+ * Questa è una sola, e parla del periodo di cui si sta parlando.
+ *
+ * @param fine null se non è nota (evento a occorrenze).
+ */
+export function etichettaSalaNelPeriodo(sala, inizio, fine) {
+	if (!sala) return '';
+	if (sala.stato === 'annullato') return `${sala.name} — annullata`;
+	if (inizio && sospensioneTocca(sala, inizio, fine)) {
+		return `${sala.name} — sospesa dal ${dataIt(sala.sospesa_dal)} al ${dataIt(sala.sospesa_al)}`;
+	}
+	return sala.name;
 }
 
 /**

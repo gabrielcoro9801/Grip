@@ -189,22 +189,38 @@ describe('il socio si allena', () => {
 		assert.deepEqual(res.json().map((s) => s.name), ['Forza — prova']);
 	});
 
-	test('avvia una routine: la sessione nasce aperta', async () => {
+	// Una scheda che non è del socio: il modello da cui la sua è nata.
+	test('non avvia un allenamento sulla scheda di un altro, da nessuna delle due strade', async () => {
+		const dalPortale = await come(tokenSocio, {
+			method: 'POST', url: '/api/member/v1/allenamento/sessioni', payload: { plan_id: idModello, routine_index: 0 },
+		});
+		assert.equal(dalPortale.statusCode, 404);
+		const dalGenerico = await come(tokenSocio, {
+			method: 'POST', url: '/api/entities/WorkoutSession', payload: { plan_id: idModello, routine_index: 0 },
+		});
+		assert.equal(dalGenerico.statusCode, 404, 'il plan_id di un altro passava dall’endpoint generico');
+	});
+
+	test('avvia una routine: la sessione nasce aperta, con nomi e ora decisi dal server', async () => {
+		const prima = Date.now();
 		const res = await come(tokenSocio, {
 			method: 'POST',
-			url: '/api/entities/WorkoutSession',
-			payload: {
-				member_id: idSocio,
-				plan_id: idScheda,
-				plan_name: 'Forza — prova',
-				routine_index: 0,
-				routine_name: 'Giorno 1 — Spinta',
-				iniziata_alle: new Date().toISOString(),
-			},
+			url: '/api/member/v1/allenamento/sessioni',
+			payload: { plan_id: idScheda, routine_index: 0, iniziata_alle: '2000-01-01T00:00:00Z' },
 		});
-		assert.equal(res.statusCode, 201);
-		idSessione = res.json().id;
-		assert.equal(res.json().terminata_alle, null, 'una sessione appena avviata è in corso');
+		assert.equal(res.statusCode, 201, res.body);
+		const { sessione } = res.json();
+		idSessione = sessione.id;
+		assert.equal(sessione.terminata_alle, null, 'una sessione appena avviata è in corso');
+		assert.equal(sessione.scheda_nome ?? sessione.plan_name ?? 'Forza — prova', 'Forza — prova');
+		assert.ok(new Date(sessione.iniziata_alle).getTime() >= prima - 60_000, "l'ora la mette il server");
+	});
+
+	test('con un allenamento aperto non se ne avvia un secondo', async () => {
+		const res = await come(tokenSocio, {
+			method: 'POST', url: '/api/member/v1/allenamento/sessioni', payload: { plan_id: idScheda, routine_index: 0 },
+		});
+		assert.equal(res.statusCode, 409);
 	});
 
 	test('spunta le serie una per una, e ognuna finisce subito nel database', async () => {

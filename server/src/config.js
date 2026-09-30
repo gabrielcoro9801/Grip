@@ -80,6 +80,17 @@ export const config = {
 	 * finché qualcuno non prova ad aprirne una.
 	 */
 	uploadDir: process.env.UPLOAD_DIR || null,
+
+	/**
+	 * L'intestazione da cui leggere l'IP di chi si collega, se il server sta dietro un proxy.
+	 *
+	 * Su Railway ogni richiesta passa dal suo edge, e l'indirizzo che il server vede è quello del
+	 * proxy: tutti i client sembrerebbero la stessa persona, e un limite ai tentativi di accesso
+	 * per IP bloccherebbe l'intera palestra al primo che sbaglia. L'edge scrive l'IP vero in
+	 * `X-Real-IP`. Fuori da un proxy l'intestazione la sceglierebbe il client, quindi si legge
+	 * solo quando è dichiarata: in produzione `x-real-ip`, in sviluppo nessuna.
+	 */
+	intestazioneIp: (process.env.CLIENT_IP_HEADER ?? (SVILUPPO ? '' : 'x-real-ip')).toLowerCase() || null,
 };
 
 /**

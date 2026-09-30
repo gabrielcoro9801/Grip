@@ -146,6 +146,12 @@ export default [
     languageOptions: { globals: { ...GLOBALI_PORTABILI, ...globals.node } },
   },
   {
+    // Anche fuori da core un test gira con `node --test`, e il fuso dei test si fissa da
+    // `process.env.TZ` (src/fusoDeiTest.js).
+    files: ["src/staff/**/*.test.js", "src/member/**/*.test.js", "src/ui/**/*.test.js", "src/fusoDeiTest.js"],
+    languageOptions: { globals: { ...globals.node } },
+  },
+  {
     files: ["src/member/**/*.{js,mjs,cjs,jsx}"],
     rules: {
       "no-restricted-imports": [

@@ -1,39 +1,63 @@
 // Regole per-entità applicate dall'endpoint generico: campi che non devono mai
 // uscire dall'API, e trasformazioni da applicare in scrittura.
 import bcrypt from 'bcryptjs';
-import { and, asc, count, eq, gte, lte, ne } from 'drizzle-orm';
+import { and, asc, count, eq, gte, lte, ne, sql } from 'drizzle-orm';
 import { firmaUrl, togliFirma } from '../lib/urlFirmati.js';
 import { db } from '../db/client.js';
 import { assegnaCodiceSocio } from '../lib/codiceSocio.js';
-import { plans, rooms, sessions, events as eventsTable } from '../db/schema/index.js';
+import { plans, rooms, sessions, events as eventsTable, staffAccounts } from '../db/schema/index.js';
+import { motivoPasswordNonValida } from '../../../shared/password.js';
+import { usoDellaSala } from '../lib/sale.js';
 import { translateToSnakeCase } from './columnMaps.js';
 import {
 	sessoValido, normalizzaCodiceFiscale, codiceFiscaleValido, motivoDocumentoNonValido, tipoDocumentoValido,
 } from '../../../shared/anagrafica.js';
 import {
 	unitaDurataValida, statoTipoValido, motivoCambioStatoNonValido, motivoNonVendibile, dataFineAbbonamento,
-	oggiIso, NOTE_MASSIMO,
+	oggiIso, NOTE_MASSIMO, statoIscrizione,
 } from '../../../shared/abbonamenti.js';
 import {
 	statoSalaValido, motivoSospensioneNonValida, messaggioSospensioneBloccata,
-	motivoSalaNonPrenotabile, messaggioAnnullaInveceDiEliminare, SALA_PRENOTATA,
+	motivoSalaNonPrenotabile, messaggioAnnullaInveceDiEliminare, SALA_PRENOTATA, SALA_GIA_ANNULLATA, azioneSullaSala,
 	motivoCambioStatoNonValido as motivoCambioStatoSalaNonValido,
 	NOME_MASSIMO as NOME_SALA_MASSIMO, NOTE_MASSIMO as NOTE_SALA_MASSIMO,
 } from '../../../shared/sale.js';
 
 // Campi rimossi da ogni risposta, per entità.
 const HIDDEN_FIELDS = {
-	StaffAccount: ['password_hash'],
+	StaffAccount: ['password_hash', 'token_version'],
 };
 
 // Entità che non possono essere create, modificate o cancellate dall'endpoint generico,
 // con il motivo mostrato a chi ci prova.
-export const CREATE_FORBIDDEN = {};
-export const UPDATE_FORBIDDEN = {};
+//
+// Le prenotazioni si fanno e si disfano solo da `/api/prenotazioni`: lì posti e lista d'attesa
+// si contano in una transazione con la lezione bloccata. Dall'endpoint generico chi aveva il
+// calendario creava una prenotazione con lo stato che voleva — "confermata" su una lezione
+// piena — o ne cancellava una confermata senza che nessuno in attesa venisse promosso.
+const SOLO_DA_PRENOTAZIONI = 'Le prenotazioni si fanno e si disdicono dalle loro rotte, che contano i posti.';
+export const CREATE_FORBIDDEN = { Booking: SOLO_DA_PRENOTAZIONI };
+export const UPDATE_FORBIDDEN = { Booking: SOLO_DA_PRENOTAZIONI };
 export const DELETE_FORBIDDEN = {
 	// Le iscrizioni vendute puntano al tipo: cancellarlo lascerebbe iscrizioni senza origine.
 	Plan: "Un abbonamento del catalogo non si elimina: si sospende o si annulla.",
+	Booking: SOLO_DA_PRENOTAZIONI,
 };
+
+/**
+ * Campi che nessuna scrittura dall'API sceglie: la chiave e le date di sistema.
+ *
+ * `PUT` scriveva qualunque colonna presente nel corpo, `id` compreso: si poteva cambiare la
+ * chiave primaria di una riga, e con lei staccarla da tutto ciò che la cita.
+ */
+const CAMPI_DI_SISTEMA = ['id', 'created_date'];
+
+export function togliCampiDiSistema(corpo) {
+	if (!corpo || typeof corpo !== 'object' || Array.isArray(corpo)) return corpo;
+	const pulito = { ...corpo };
+	for (const campo of CAMPI_DI_SISTEMA) delete pulito[campo];
+	return pulito;
+}
 
 /**
  * Motivo per cui una singola riga non è modificabile, se ce n'è uno.
@@ -52,19 +76,28 @@ export async function mutationBlockedReason(entityName, _table, id, operazione, 
 		if (nonValido) return nonValido;
 		if (corpo.stato === 'sospeso') return salaNonSospendibile(id, corpo.sospesa_dal, corpo.sospesa_al);
 		// Annullare è definitivo, quindi vale la stessa soglia dell'eliminazione: finché ci sono
-		// lezioni da qui in avanti, quella stanza serve a qualcuno.
-		if (corpo.stato === 'annullato' && (await salaOccupataDaQui(id))) return SALA_PRENOTATA;
+		// lezioni da qui in avanti, quella stanza serve a qualcuno. Solo nel passaggio, però: il
+		// modulo manda sempre lo stato, e rinominare una sala già annullata non è annullarla di
+		// nuovo — prima falliva appena compariva una lezione futura, con un rifiuto incomprensibile.
+		if (corpo.stato === 'annullato' && sala?.stato !== 'annullato' && (await usoDellaSala(id)).occupataDaQui) {
+			return rifiutoSala(SALA_PRENOTATA, 'sala_prenotata');
+		}
 	}
 	if (entityName === 'Room' && operazione === 'delete') {
 		return salaNonEliminabile(id);
 	}
 	// Una modifica sposta l'evento, o la singola lezione, in un'altra sala o in altre date: il
-	// controllo va rifatto su com'è la riga *dopo*, non su quello che arriva nel corpo.
-	if (entityName === 'Event' && operazione === 'update' && corpo && (presente(corpo, 'room_id') || presente(corpo, 'start_date'))) {
+	// controllo va rifatto su com'è la riga *dopo*, non su quello che arriva nel corpo. Anche
+	// allungarlo conta — una nuova data di fine o nuove date personalizzate possono finire dentro
+	// una sospensione — e prima guardava solo sala e data d'inizio.
+	if (entityName === 'Event' && operazione === 'update' && corpo && CAMPI_PERIODO_EVENTO.some((c) => presente(corpo, c))) {
 		const [attuale] = await db.select().from(eventsTable).where(eq(eventsTable.id, id)).limit(1);
 		if (attuale) return motivoEventoInSalaNonPrenotabile({ ...translateToSnakeCase(eventsTable, attuale), ...corpo });
 	}
-	if (entityName === 'Session' && operazione === 'update' && corpo && (presente(corpo, 'room_id') || presente(corpo, 'date'))) {
+	// Riattivare una lezione annullata la rimette in una sala: che nel frattempo può essere stata
+	// annullata o sospesa proprio quel giorno.
+	const riattiva = corpo?.status === 'active';
+	if (entityName === 'Session' && operazione === 'update' && corpo && (presente(corpo, 'room_id') || presente(corpo, 'date') || riattiva)) {
 		const [attuale] = await db.select({ data: sessions.date, salaId: sessions.roomId }).from(sessions).where(eq(sessions.id, id)).limit(1);
 		if (attuale) {
 			const data = corpo.date ?? attuale.data;
@@ -73,6 +106,8 @@ export async function mutationBlockedReason(entityName, _table, id, operazione, 
 	}
 	return null;
 }
+
+const CAMPI_PERIODO_EVENTO = ['room_id', 'start_date', 'end_date', 'end_condition', 'occurrence_count', 'custom_dates', 'recurrence_type'];
 
 /**
  * Perché la sala non si può sospendere in quel periodo, o null.
@@ -91,41 +126,7 @@ async function salaNonSospendibile(id, dal, al) {
 		.where(and(eq(sessions.roomId, id), ne(sessions.status, 'cancelled'), gte(sessions.date, dal), lte(sessions.date, al)))
 		.orderBy(asc(sessions.date));
 	if (!occupate.length) return null;
-	return messaggioSospensioneBloccata(sala.name, dal, al, occupate.map((r) => r.data));
-}
-
-/**
- * Se la sala è impegnata da oggi in avanti.
- *
- * "Da qui in avanti" e non "in assoluto": è la differenza fra una stanza che serve ancora a
- * qualcuno e una che ha solo un passato.
- *
- * Le due domande non sono la stessa, e la differenza è fra una lezione e un evento. Una lezione
- * disdetta non conta: è un appuntamento che non c'è più, nessuno si presenterà. Un evento che non
- * è ancora cominciato conta comunque, anche a lezioni tutte disdette e anche se le sessioni non
- * sono mai state generate: è una cosa viva in calendario, le sue lezioni possono tornare, e
- * chiudere la stanza sotto di lui lo lascerebbe a puntare a un posto in cui non si entra più.
- *
- * Oggi sta col futuro: una lezione di stamattina deve ancora tenersi.
- */
-async function salaOccupataDaQui(id, oggi = oggiIso()) {
-	const [{ lezioni }] = await db
-		.select({ lezioni: count() })
-		.from(sessions)
-		.where(and(eq(sessions.roomId, id), ne(sessions.status, 'cancelled'), gte(sessions.date, oggi)));
-	if (Number(lezioni)) return true;
-	const [{ eventi }] = await db
-		.select({ eventi: count() })
-		.from(eventsTable)
-		.where(and(eq(eventsTable.roomId, id), gte(eventsTable.startDate, oggi)));
-	return Boolean(Number(eventi));
-}
-
-/** Quante volte la sala compare nel calendario, in qualunque epoca e stato. */
-async function quantoUsata(id) {
-	const [{ eventi }] = await db.select({ eventi: count() }).from(eventsTable).where(eq(eventsTable.roomId, id));
-	const [{ lezioni }] = await db.select({ lezioni: count() }).from(sessions).where(eq(sessions.roomId, id));
-	return { eventi: Number(eventi), lezioni: Number(lezioni) };
+	return rifiutoSala(messaggioSospensioneBloccata(sala.name, dal, al, occupate.map((r) => r.data)), 'sala_non_sospendibile');
 }
 
 /**
@@ -142,12 +143,17 @@ async function quantoUsata(id) {
  * altrove.
  */
 async function salaNonEliminabile(id) {
-	const [sala] = await db.select({ name: rooms.name }).from(rooms).where(eq(rooms.id, id)).limit(1);
+	const [sala] = await db.select({ name: rooms.name, stato: rooms.stato }).from(rooms).where(eq(rooms.id, id)).limit(1);
 	if (!sala) return null;
-	const { eventi, lezioni } = await quantoUsata(id);
-	if (!eventi && !lezioni) return null;
-	if (await salaOccupataDaQui(id)) return SALA_PRENOTATA;
-	return messaggioAnnullaInveceDiEliminare(sala.name, eventi || lezioni);
+	// Il conto è quello della pagina delle sale (lib/sale.js), e la decisione è la regola
+	// condivisa: prima qui ce n'era una seconda copia, scritta a mano.
+	const { eventi, lezioni, occupataDaQui } = await usoDellaSala(id);
+	const annullata = sala.stato === 'annullato';
+	const azione = azioneSullaSala({ maiUsata: !eventi && !lezioni, occupataDaQui, annullata });
+	if (azione === 'elimina') return null;
+	if (occupataDaQui) return rifiutoSala(SALA_PRENOTATA, 'sala_prenotata');
+	if (annullata) return rifiutoSala(SALA_GIA_ANNULLATA, 'sala_gia_annullata');
+	return rifiutoSala(messaggioAnnullaInveceDiEliminare(sala.name, { eventi, lezioni }), 'sala_da_annullare');
 }
 
 /** Perché quella sala non si può usare fra `inizio` e `fine`, o null. `fine` null = senza fine nota. */
@@ -188,6 +194,18 @@ function motivoEventoInSalaNonPrenotabile(evento) {
  * Porta il codice 400, che il gestore degli errori (routes/errorHandler.js) rimanda al client
  * col messaggio: chi compila il modulo deve leggere cosa correggere, non "errore interno".
  */
+/**
+ * Un rifiuto sulle sale, con un codice oltre al messaggio.
+ *
+ * La pagina delle sale decide quale finestra mostrare a seconda del rifiuto, e lo riconosceva
+ * dal testo italiano (`/non si elimina/`, `/sospendere/`): alla prima riformulazione il
+ * riconoscimento avrebbe smesso di funzionare, senza nessun errore. Il codice non cambia
+ * quando cambiano le parole.
+ */
+function rifiutoSala(messaggio, codice) {
+	return { error: messaggio, code: codice };
+}
+
 export function rifiuta(messaggio) {
 	const errore = new Error(messaggio);
 	errore.statusCode = 400;
@@ -230,10 +248,27 @@ export function anagraficaSocio(corpo, { creazione }) {
 // per compatibilità con i form esistenti, ma qui viene hashata in password_hash —
 // la password in chiaro non tocca mai il database.
 const WRITE_TRANSFORMS = {
-	async StaffAccount(body) {
-		const { password, password_hash: _ignored, ...rest } = body ?? {};
+	// Versione della sessione e obbligo di cambio non si scrivono da fuori: li decide questa
+	// regola. Una password scelta da qualcun altro — un amministratore che crea l'account o la
+	// reimposta — chiude le sessioni già aperte e va cambiata al primo accesso. Prima il reset
+	// aggiornava l'hash e basta: la finestra diceva "quella attuale smette subito di
+	// funzionare", ma chi era già dentro restava dentro fino a trenta giorni.
+	//
+	// Il ruolo non serve toccarlo qui: la sessione con un ruolo diverso da quello nel database
+	// non vale più (auth/revoca.js). Nemmeno la disattivazione: un account spento è già fuori.
+	async StaffAccount(body, { creazione, utente, id }) {
+		const {
+			password, password_hash: _hash, token_version: _versione, password_da_cambiare: _obbligo, ...rest
+		} = body ?? {};
+		if (creazione && !password) throw rifiuta('La password è obbligatoria.');
 		if (password) {
+			const nonValida = motivoPasswordNonValida(password);
+			if (nonValida) throw rifiuta(nonValida);
 			rest.password_hash = await bcrypt.hash(password, 10);
+			// Chi si reimposta la propria password da qui l'ha scelta da sé: nessun obbligo.
+			const perSe = !creazione && utente?.sub && String(utente.sub) === String(id);
+			rest.password_da_cambiare = !perSe;
+			if (!creazione) rest.token_version = sql`${staffAccounts.tokenVersion} + 1`;
 		}
 		return rest;
 	},
@@ -320,8 +355,8 @@ const WRITE_TRANSFORMS = {
 		if (creazione || presente(rest, 'name')) {
 			rest.name = String(rest.name ?? '').trim();
 			if (!rest.name) throw rifiuta('Il nome della sala è obbligatorio.');
-			// Il limite è anche nella colonna, ma lì il rifiuto arriva come
-			// "value too long for type character varying(50)": vero, e illeggibile.
+			// Il limite è anche nella colonna, ma lì il rifiuto arriva come un generico "un testo
+			// supera la lunghezza consentita", che non dice né quale né di quanto.
 			if (rest.name.length > NOME_SALA_MASSIMO) throw rifiuta(`Il nome della sala sta in ${NOME_SALA_MASSIMO} caratteri.`);
 		}
 		if (presente(rest, 'description')) {
@@ -361,6 +396,18 @@ const WRITE_TRANSFORMS = {
 		return rest;
 	},
 
+	// Una lezione nasce in una sala e in un giorno: se la sala è annullata, o sospesa quel giorno,
+	// non nasce. Il controllo sull'evento copre le lezioni generate dal modulo, ma `POST /Session`
+	// e `/Session/bulk` passavano senza guardare la sala.
+	async Session(body, { creazione }) {
+		const rest = { ...(body ?? {}) };
+		if (creazione) {
+			const motivo = await motivoSalaNonDisponibile(rest.room_id, rest.date, rest.date);
+			if (motivo) throw rifiuta(motivo);
+		}
+		return rest;
+	},
+
 	// Un contatto: i campi obbligatori li difende già il database; qui si ripuliscono i vuoti
 	// che i moduli mandano come stringa, perché un'email "" non è un'email.
 	async Lead(body) {
@@ -380,10 +427,13 @@ const WRITE_TRANSFORMS = {
 	},
 };
 
-/** @param opzioni { creazione: boolean } — alcune regole valgono solo quando la riga nasce. */
-export async function applyWriteTransform(entityName, body, { creazione = true } = {}) {
+/**
+ * @param opzioni { creazione, utente, id } — alcune regole valgono solo quando la riga nasce,
+ *                 altre dipendono da chi scrive e su quale riga.
+ */
+export async function applyWriteTransform(entityName, body, { creazione = true, utente = null, id = null } = {}) {
 	const transform = WRITE_TRANSFORMS[entityName];
-	return transform ? transform(body, { creazione }) : body;
+	return transform ? transform(body, { creazione, utente, id }) : body;
 }
 
 export function stripHiddenFields(entityName, row) {
@@ -398,6 +448,31 @@ export function stripHiddenFieldsMany(entityName, rows) {
 	const hidden = HIDDEN_FIELDS[entityName];
 	if (!hidden) return rows;
 	return rows.map((row) => stripHiddenFields(entityName, row));
+}
+
+/**
+ * Campi che escono calcolati invece che letti dalla colonna.
+ *
+ * Lo stato di un'iscrizione dipende dalle date e nessun processo aggiorna la colonna: si
+ * calcola qui, nel punto da cui passano tutte le letture, e così dashboard, elenchi, filtri e
+ * scheda del socio si correggono insieme senza che nessuna schermata debba saperlo.
+ */
+const CAMPI_CALCOLATI = {
+	Subscription: (riga) => ({ ...riga, status: statoIscrizione(riga) }),
+};
+const NOMI_CAMPI_CALCOLATI = { Subscription: ['status'] };
+
+/** I campi di un'entità che escono calcolati: un filtro su questi non si fa sulla colonna. */
+export const campiCalcolati = (entityName) => NOMI_CAMPI_CALCOLATI[entityName] ?? [];
+
+export function conCampiCalcolati(entityName, riga) {
+	const calcola = CAMPI_CALCOLATI[entityName];
+	return calcola && riga ? calcola(riga) : riga;
+}
+
+export function conCampiCalcolatiMolte(entityName, righe) {
+	const calcola = CAMPI_CALCOLATI[entityName];
+	return calcola && Array.isArray(righe) ? righe.map(calcola) : righe;
 }
 
 /**
@@ -438,4 +513,29 @@ export function firmaFileInLetturaMolte(righe) {
 
 export function togliFirmaInScrittura(body) {
 	return mappaCampiFile(body, togliFirma);
+}
+
+/**
+ * Un campo che finisce in `_url` accetta solo un file caricato da noi.
+ *
+ * Il valore lo scrive il client e le schermate lo mettono dentro un `<a href>`: React non
+ * blocca gli indirizzi `javascript:`, quindi chi poteva creare un documento scriveva
+ * `file_url: "javascript:…"` e, al clic dell'amministratore sul nome del documento, lo script
+ * girava nell'applicazione e si portava via il suo token. Ogni indirizzo di file che entra
+ * dall'API è quindi un `/uploads/<nome>` — con o senza dominio davanti, come lo restituisce
+ * `/api/uploads` — e nient'altro: niente `javascript:`, niente `data:`, niente percorsi annidati.
+ *
+ * L'estensione non si controlla qui: la decide già l'upload, e rifiutarla in scrittura
+ * renderebbe non più salvabili le righe con un file caricato prima di quella regola.
+ */
+const FILE_CARICATO = /^(?:https?:\/\/[^/?#\s\\]+)?\/uploads\/[\w-][\w.-]*$/i;
+
+export function verificaCampiFile(corpo) {
+	if (!corpo || typeof corpo !== 'object') return;
+	for (const [campo, valore] of Object.entries(corpo)) {
+		if (!CAMPO_E_UN_FILE.test(campo) || valore === null || valore === undefined || valore === '') continue;
+		if (typeof valore !== 'string' || !FILE_CARICATO.test(valore)) {
+			throw rifiuta(`Indirizzo di file non valido nel campo ${campo}: si accettano solo file caricati.`);
+		}
+	}
 }

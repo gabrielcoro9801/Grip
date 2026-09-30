@@ -74,8 +74,15 @@ export function StaffAuthProvider({ children }) {
     setStaffUser(null);
   }, []);
 
+  // Dopo un cambio password il server rimanda l'utente aggiornato (senza più l'obbligo).
+  const aggiornaUtente = useCallback((user) => {
+    if (!user) return;
+    applicaPermessiDi(user);
+    setStaffUser(user);
+  }, []);
+
   return (
-    <StaffAuthContext.Provider value={{ staffUser, loading, login, logout }}>
+    <StaffAuthContext.Provider value={{ staffUser, loading, login, logout, aggiornaUtente }}>
       {children}
     </StaffAuthContext.Provider>
   );

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { caricaProfilo } from "@/core/api/portale";
 import { useMemberAuth } from "@/member/session/MemberAuthContext";
 import { Link } from "react-router-dom";
@@ -7,24 +7,33 @@ import { Button } from "@/ui/primitivi/button";
 import { CreditCard, QrCode, FileText, User, ChevronRight, Calendar, AlertCircle } from "lucide-react";
 import StatusBadge from "@/ui/StatusBadge";
 import { LoadingState } from "@/ui/Spinner";
+import { ErrorState } from "@/ui/StateViews";
 import { formatData } from "@/core/domain/format";
 
 export default function MemberDashboard() {
   const { memberUser } = useMemberAuth();
   const [profilo, setProfilo] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [errore, setErrore] = useState(null);
 
   // Una richiesta sola: anagrafica e abbonamento arrivano insieme, e quale sia
-  // l'abbonamento in corso lo ha già deciso il server.
-  useEffect(() => {
+  // l'abbonamento in corso lo ha già deciso il server. Se fallisce lo si dice: prima la
+  // pagina mostrava "nessun abbonamento" a chi ce l'ha, solo perché la rete era caduta.
+  const carica = useCallback(() => {
+    setLoading(true);
+    setErrore(null);
     caricaProfilo()
       .then(setProfilo)
+      .catch(setErrore)
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => { carica(); }, [carica]);
 
   if (loading) {
     return <LoadingState minHeight="p-8" />;
   }
+  if (errore) return <ErrorState error={errore} onRetry={carica} className="p-8" />;
 
   const member = profilo?.socio;
   const activeSub = profilo?.abbonamento;

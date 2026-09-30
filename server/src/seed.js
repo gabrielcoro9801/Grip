@@ -59,8 +59,12 @@ async function seed() {
 			ruolo: 'admin',
 			attivo: true,
 		});
-		console.log(`Creato account admin: ${ADMIN_EMAIL} / ${ADMIN_PASSWORD}`);
-		console.log('Cambia questa password dopo il primo accesso.');
+		// La password non si stampa: finirebbe nei log di deploy, che leggono in tanti e restano.
+		// In sviluppo è quella scritta in cima a questo file; altrove l'ha scelta chi l'ha impostata.
+		console.log(`Creato account admin: ${ADMIN_EMAIL}`);
+		console.log(process.env.SEED_ADMIN_PASSWORD
+			? 'Password: quella di SEED_ADMIN_PASSWORD. Toglila dalle variabili dopo il primo accesso.'
+			: 'Password di sviluppo: vedi PASSWORD_DI_SVILUPPO in src/seed.js.');
 	}
 
 	process.exit(0);

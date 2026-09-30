@@ -4,7 +4,8 @@ import { useMemberAuth } from "@/member/session/MemberAuthContext";
 import { Card, CardContent } from "@/ui/primitivi/card";
 import SelettoreTema from "@/ui/SelettoreTema";
 import { Button } from "@/ui/primitivi/button";
-import { User, Mail, Phone, MapPin, Calendar, Heart, Pencil, LogOut, Hash } from "lucide-react";
+import { User, Mail, Phone, MapPin, Calendar, Heart, Pencil, LogOut, Hash, KeyRound } from "lucide-react";
+import { DialogCambioPassword } from "@/ui/CambioPassword";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter
 } from "@/ui/primitivi/dialog";
@@ -12,10 +13,11 @@ import { LoadingState } from "@/ui/Spinner";
 import { formatData } from "@/core/domain/format";
 
 export default function MemberProfile() {
-  const { logout } = useMemberAuth();
+  const { logout, aggiornaUtente } = useMemberAuth();
   const [member, setMember] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showReport, setShowReport] = useState(false);
+  const [cambioPassword, setCambioPassword] = useState(false);
 
   useEffect(() => {
     caricaProfilo()
@@ -85,9 +87,15 @@ export default function MemberProfile() {
         <Pencil className="w-4 h-4 mr-1" /> Segnala una modifica
       </Button>
 
+      <Button variant="outline" className="w-full" onClick={() => setCambioPassword(true)}>
+        <KeyRound className="w-4 h-4 mr-1" /> Cambia password
+      </Button>
+
       <Button variant="ghost" className="w-full text-destructive hover:text-destructive" onClick={logout}>
         <LogOut className="w-4 h-4 mr-1" /> Esci dall'area cliente
       </Button>
+
+      <DialogCambioPassword open={cambioPassword} onClose={() => setCambioPassword(false)} onCambiata={aggiornaUtente} />
 
       <Dialog open={showReport} onOpenChange={setShowReport}>
         <DialogContent>

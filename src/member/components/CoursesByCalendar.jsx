@@ -2,7 +2,7 @@ import React, { useState, useMemo } from "react";
 import { Button } from "@/ui/primitivi/button";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import CourseSessionCard from "@/member/components/CourseSessionCard";
-import { formatData } from "@/core/domain/format";
+import { formatData, toIsoDate } from "@/core/domain/format";
 
 export default function CoursesByCalendar({ enrichedSessions, onBook, onCancel, actionLoading }) {
   const [weekStart, setWeekStart] = useState(() => {
@@ -14,7 +14,9 @@ export default function CoursesByCalendar({ enrichedSessions, onBook, onCancel, 
     monday.setHours(0, 0, 0, 0);
     return monday;
   });
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split("T")[0]);
+  // Date lette nei campi locali: `toISOString()` è in UTC, e in Italia la mezzanotte è
+  // ancora il giorno prima.
+  const [selectedDate, setSelectedDate] = useState(() => toIsoDate(new Date()));
 
   const weekDays = useMemo(() => {
     const days = [];
@@ -64,7 +66,7 @@ export default function CoursesByCalendar({ enrichedSessions, onBook, onCancel, 
 
       <div className="grid grid-cols-7 gap-1">
         {weekDays.map(d => {
-          const dateStr = d.toISOString().split("T")[0];
+          const dateStr = toIsoDate(d);
           const isSelected = dateStr === selectedDate;
           const sess = enrichedSessions.filter(s => s.date === dateStr);
           const cats = new Map();

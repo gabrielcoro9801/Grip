@@ -13,6 +13,7 @@ import { db, pool } from '../src/db/client.js';
 import { members, staffAccounts, qrAccessi } from '../src/db/schema/index.js';
 import { codiceDinamico, verificaCodice, semeDelCodice } from '../src/lib/qrDinamico.js';
 import { finestraCorrente, DURATA_FINESTRA_MS } from '../../shared/qrDinamico.js';
+import { impostaMatrice, ripristinaMatricePredefinita, PERMESSI_PREDEFINITI } from '../../shared/permissions.js';
 
 const PASSWORD = 'prova-qr-1234';
 const SEME = 'GRIP-TEST-QRQR-AAAA-BBBB';
@@ -176,5 +177,22 @@ describe('la reception verifica', () => {
 		assert.equal(suo.json().codice, null);
 
 		await db.update(qrAccessi).set({ stato: 'attivo' }).where(inArray(qrAccessi.id, [idQr]));
+	});
+});
+
+// Il codice del minuto è una credenziale: lo riceveva qualunque account dello staff.
+describe('il codice di un socio lo chiede solo chi vede le anagrafiche', () => {
+	after(() => ripristinaMatricePredefinita());
+
+	test('la reception sì', async () => {
+		const res = await come(tokenStaff, { method: 'GET', url: `/api/qr/codice?cliente_id=${idSocio}` });
+		assert.equal(res.statusCode, 200);
+		assert.ok(res.json().codice);
+	});
+
+	test('un ruolo senza le anagrafiche no', async () => {
+		impostaMatrice({ permessi: { ...PERMESSI_PREDEFINITI, reception: { calendar: ['view', 'edit'] } }, capacita: {} });
+		const res = await come(tokenStaff, { method: 'GET', url: `/api/qr/codice?cliente_id=${idSocio}` });
+		assert.equal(res.statusCode, 403);
 	});
 });

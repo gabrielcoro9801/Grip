@@ -21,25 +21,43 @@ import { staffAccounts } from '../db/schema/index.js';
  * dei soci non li rilegge nessun altro: `/api/auth/me` li rileggeva già.
  */
 
-/** Vera se il token presentato appartiene a una sessione che è stata invalidata. */
-export async function sessioneRevocata(claims) {
-	if (!claims?.sub) return true;
+/**
+ * Lo stato della sessione di chi presenta il token.
+ *
+ * @returns {{ revocata: boolean, passwordDaCambiare: boolean }}
+ */
+export async function statoSessione(claims) {
+	if (!claims?.sub) return { revocata: true, passwordDaCambiare: false };
 
 	const [account] = await db
-		.select({ versione: staffAccounts.tokenVersion, attivo: staffAccounts.attivo })
+		.select({
+			versione: staffAccounts.tokenVersion,
+			attivo: staffAccounts.attivo,
+			ruolo: staffAccounts.ruolo,
+			passwordDaCambiare: staffAccounts.passwordDaCambiare,
+		})
 		.from(staffAccounts)
 		.where(eq(staffAccounts.id, claims.sub))
 		.limit(1);
 
 	// Account sparito o disattivato: la sessione non vale più, senza aspettare la scadenza.
-	if (!account || !account.attivo) return true;
+	if (!account || !account.attivo) return { revocata: true, passwordDaCambiare: false };
+
+	// Il ruolo sta nel token e le rotte lo leggono da lì: un utente declassato da
+	// amministratore a reception conservava i poteri di prima fino alla scadenza, dodici ore.
+	// Se il ruolo è cambiato, la sessione non vale più e si rientra con quello nuovo.
+	if (claims.ruolo !== account.ruolo) return { revocata: true, passwordDaCambiare: false };
 
 	// I token emessi prima che questa colonna esistesse non hanno `tv`. Trattarli come
 	// validi è voluto: il rilascio non deve buttare fuori chi è già connesso. Alla prossima
 	// revoca o al prossimo accesso il numero c'è, e da lì in poi il controllo è pieno.
-	if (claims.tv === undefined) return false;
+	const revocata = claims.tv !== undefined && claims.tv !== account.versione;
+	return { revocata, passwordDaCambiare: account.passwordDaCambiare };
+}
 
-	return claims.tv !== account.versione;
+/** Vera se il token presentato appartiene a una sessione che è stata invalidata. */
+export async function sessioneRevocata(claims) {
+	return (await statoSessione(claims)).revocata;
 }
 
 /**

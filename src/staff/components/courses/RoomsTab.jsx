@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { api } from "@/core/api/client";
 import { Card, CardContent } from "@/ui/primitivi/card";
 import { Button } from "@/ui/primitivi/button";
@@ -13,7 +13,7 @@ import { useConfirm } from "@/ui/ConfirmDialog";
 import { Plus, Pencil, Trash2, CalendarOff, DoorOpen, AlertTriangle } from "lucide-react";
 import { useToast } from "@/ui/primitivi/use-toast";
 import {
-  STATI_SALA, NOME_MASSIMO, NOTE_MASSIMO, ETICHETTA_STATO_SALA, SALA_PRENOTATA,
+  STATI_SALA, NOME_MASSIMO, NOTE_MASSIMO, ETICHETTA_STATO_SALA, SALA_PRENOTATA, SALA_GIA_ANNULLATA,
   statoSala, descriviSospensione, motivoSospensioneNonValida, motivoCambioStatoNonValido,
   azioneSullaSala, messaggioAnnullaInveceDiEliminare, dataIt, oggiIso,
 } from "@/core/domain/sale";
@@ -25,6 +25,16 @@ const SPIEGAZIONE_STATO = {
   attivo: "La sala si può usare: compare quando si programma un evento.",
   sospeso: "Nel periodo indicato la sala non si può usare, e non si programmano lezioni.",
   annullato: "La sala non si usa più, e non ci si programma niente. È definitivo: non si può riattivare.",
+};
+
+// La finestra da mostrare per ogni rifiuto del server, riconosciuto dal suo codice e non dal
+// testo: prima si cercavano parole come "sospendere" nel messaggio, e bastava riformularlo per
+// perdere la finestra senza nessun errore.
+const TITOLO_RIFIUTO = {
+  sala_prenotata: "Sala prenotata",
+  sala_non_sospendibile: "Sala non sospendibile",
+  sala_da_annullare: "Sala da annullare",
+  sala_gia_annullata: "Niente da fare",
 };
 
 const ORDINE_STATO = { attiva: 0, programmata: 1, conclusa: 2, sospesa: 3, annullata: 4 };
@@ -101,9 +111,22 @@ export default function RoomsTab({ data, reload }) {
     // regola: finché la sala è in calendario da qui in avanti, non si annulla. Il conto è già in
     // pagina, quindi la risposta arriva al salvataggio senza andare fino al server — che la
     // ripete comunque, perché è lui a conoscere il calendario di adesso.
-    if (editing && form.stato === "annullato" && calendarioDi(editing.id).occupataDaQui) {
+    const staAnnullando = editing && form.stato === "annullato" && editing.stato !== "annullato";
+    if (staAnnullando && calendarioDi(editing.id).occupataDaQui) {
       setBloccata({ titolo: "Sala prenotata", testo: SALA_PRENOTATA });
       return;
+    }
+    // Annullare è definitivo, e dal cestino lo si conferma: dal menu dello stato valeva lo
+    // stesso, ma partiva al primo "Salva".
+    if (staAnnullando) {
+      const ok = await conferma({
+        title: `Annullare la sala «${editing.name}»?`,
+        description: "Non ci si potrà più programmare niente, e non si potrà riattivare.",
+        confirmLabel: "Annulla definitivamente",
+        cancelLabel: "Lascia com'è",
+        destructive: true,
+      });
+      if (!ok) return;
     }
     const payload = {
       name: form.name.trim(),
@@ -128,48 +151,43 @@ export default function RoomsTab({ data, reload }) {
       // I rifiuti che dipendono dal calendario hanno una finestra loro: sono cose da leggere e da
       // capire — cosa c'è nel modo, e cosa fare prima — non avvisi che scompaiono da soli dopo
       // tre secondi.
-      if (err.message === SALA_PRENOTATA) setBloccata({ titolo: "Sala prenotata", testo: err.message });
-      else if (sospesa && /sospendere/.test(err.message)) setBloccata({ titolo: "Sala non sospendibile", testo: err.message });
+      if (TITOLO_RIFIUTO[err.code]) setBloccata({ titolo: TITOLO_RIFIUTO[err.code], testo: err.message });
       else toast({ title: "Sala non salvata", description: err.message, variant: "destructive" });
     }
     setSalvando(false);
   };
 
-  const quantiEventi = (roomId) => events.filter(e => e.room_id === roomId).length;
-
   /**
-   * Il calendario di ogni sala, letto una volta sola per tutte.
+   * Quanto è usata ogni sala, contato dal server sull'intero calendario.
    *
-   * Tre domande per sala su due elenchi: con un filtro per tile si finisce a scorrere gli stessi
-   * cinquecento eventi una volta per riga. Qui si scorrono una volta e basta.
-   *
-   * `occupataDaQui` non conta le lezioni cancellate — nessuno ci va — e tiene buoni gli eventi
-   * che partono in futuro anche senza sessioni generate, che è come nascono se qualcuno li crea
-   * dall'API senza passare dal modulo.
+   * Prima il conto si faceva qui, sugli elenchi della pagina: che sono troncati (le lezioni da
+   * tre mesi fa in avanti), e una sala con un passato più vecchio risultava mai usata — la
+   * conferma prometteva un'eliminazione che il server poi rifiutava. Si richiede quando il
+   * calendario cambia, cioè dopo ogni `reload`.
    */
-  const calendarioPerSala = useMemo(() => {
-    const per = new Map(rooms.map(r => [r.id, { eventi: 0, lezioni: 0, occupataDaQui: false }]));
-    for (const e of events) {
-      const riga = per.get(e.room_id);
-      if (!riga) continue;
-      riga.eventi += 1;
-      if (e.start_date >= oggi) riga.occupataDaQui = true;
-    }
-    for (const s of sessions) {
-      const riga = per.get(s.room_id);
-      if (!riga) continue;
-      riga.lezioni += 1;
-      if (s.status !== "cancelled" && s.date >= oggi) riga.occupataDaQui = true;
-    }
-    return per;
-  }, [rooms, events, sessions, oggi]);
+  const [uso, setUso] = useState(null);
+  useEffect(() => {
+    let vivo = true;
+    api.sale.uso().then((u) => { if (vivo) setUso(u); }).catch(() => { if (vivo) setUso(null); });
+    return () => { vivo = false; };
+  }, [rooms, events, sessions]);
 
-  const calendarioDi = (roomId) => calendarioPerSala.get(roomId) ?? { eventi: 0, lezioni: 0, occupataDaQui: false };
+  const calendarioDi = (roomId) => {
+    const u = uso?.[roomId];
+    return u ? { eventi: u.eventi, lezioni: u.lezioni, occupataDaQui: u.occupata_da_qui } : { eventi: 0, lezioni: 0, occupataDaQui: false };
+  };
 
-  /** Cosa fa il cestino su questa sala: elimina davvero, annulla, o è spento. */
+  /** Cosa fa il cestino su questa sala: elimina davvero, annulla, o niente. Senza il conto, niente. */
   const azioneDi = (room) => {
+    if (!uso) return "niente";
     const { eventi, lezioni, occupataDaQui } = calendarioDi(room.id);
-    return azioneSullaSala({ maiUsata: !eventi && !lezioni, occupataDaQui });
+    return azioneSullaSala({ maiUsata: !eventi && !lezioni, occupataDaQui, annullata: room.stato === "annullato" });
+  };
+
+  /** Perché il cestino non fa niente: prenotata da qui in avanti, già annullata, o conto non pronto. */
+  const motivoNiente = (room) => {
+    if (!uso) return "Sto contando le lezioni della sala: riprova fra un istante.";
+    return calendarioDi(room.id).occupataDaQui ? SALA_PRENOTATA : SALA_GIA_ANNULLATA;
   };
 
   /**
@@ -187,14 +205,15 @@ export default function RoomsTab({ data, reload }) {
   const eliminaOAnnulla = async (room) => {
     const azione = azioneDi(room);
     if (azione === "niente") {
-      setBloccata({ titolo: "Sala prenotata", testo: SALA_PRENOTATA });
+      const occupata = calendarioDi(room.id).occupataDaQui;
+      setBloccata({ titolo: occupata ? "Sala prenotata" : "Niente da fare", testo: motivoNiente(room) });
       return;
     }
     const { eventi, lezioni } = calendarioDi(room.id);
     const annulla = azione === "annulla";
     const ok = await conferma(annulla ? {
       title: `Annullare la sala «${room.name}»?`,
-      description: `${messaggioAnnullaInveceDiEliminare(room.name, eventi || lezioni)} È definitivo: non si potrà riattivare.`,
+      description: `${messaggioAnnullaInveceDiEliminare(room.name, { eventi, lezioni })} È definitivo: non si potrà riattivare.`,
       confirmLabel: "Annulla definitivamente",
       cancelLabel: "Lascia com'è",
       destructive: true,
@@ -218,8 +237,7 @@ export default function RoomsTab({ data, reload }) {
     } catch (err) {
       // Il calendario è cambiato sotto i piedi da quando la pagina è stata caricata: il server
       // ha l'ultima parola, e la sua risposta va letta, non fatta sparire dopo tre secondi.
-      if (err.message === SALA_PRENOTATA) setBloccata({ titolo: "Sala prenotata", testo: err.message });
-      else if (/non si elimina/.test(err.message)) setBloccata({ titolo: "Sala da annullare", testo: err.message });
+      if (TITOLO_RIFIUTO[err.code]) setBloccata({ titolo: TITOLO_RIFIUTO[err.code], testo: err.message });
       else toast({ title: annulla ? "Sala non annullata" : "Sala non eliminata", description: err.message, variant: "destructive" });
     }
   };
@@ -261,17 +279,17 @@ export default function RoomsTab({ data, reload }) {
                       >
                         <Pencil className="w-3.5 h-3.5" />
                       </Button>
-                      {/* Spento e grigio quando la sala è prenotata da qui in avanti: un pulsante
-                          che non si può premere deve *sembrare* non premibile, altrimenti si
-                          clicca tre volte prima di sospettare che sia lui. Il titolo dice perché,
-                          per chi ci passa sopra. */}
+                      {/* Grigio quando non c'è niente da fare: un pulsante che non si può usare deve
+                          *sembrare* non usabile. Ma non `disabled`: il pulsante spento ignora il
+                          puntatore, e né il titolo né la finestra col motivo comparivano mai.
+                          `aria-disabled` lo dice agli screen reader, e il clic spiega perché. */}
                       <Button
                         variant="ghost"
                         size="icon"
-                        disabled={azione === "niente"}
-                        className={`h-8 w-8 ${azione === "niente" ? "text-muted-foreground" : "text-destructive"}`}
+                        aria-disabled={azione === "niente"}
+                        className={`h-8 w-8 ${azione === "niente" ? "text-muted-foreground opacity-50 cursor-not-allowed" : "text-destructive"}`}
                         aria-label={azione === "annulla" ? `Annulla ${room.name}` : `Elimina ${room.name}`}
-                        title={azione === "niente" ? SALA_PRENOTATA : undefined}
+                        title={azione === "niente" ? motivoNiente(room) : undefined}
                         onClick={() => eliminaOAnnulla(room)}
                       >
                         <Trash2 className="w-3.5 h-3.5" />
@@ -286,7 +304,9 @@ export default function RoomsTab({ data, reload }) {
                       </span>
                     )}
                   </div>
-                  <div className="mt-1 text-xs text-muted-foreground">{quantiEventi(room.id)} eventi assegnati</div>
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    {uso ? `${calendarioDi(room.id).eventi} eventi assegnati` : " "}
+                  </div>
                   <p className="text-sm text-muted-foreground mt-2 line-clamp-2 break-words leading-5 h-10" title={room.description || undefined}>
                     {room.description}
                   </p>
@@ -318,7 +338,10 @@ export default function RoomsTab({ data, reload }) {
               <Select value={form.stato} onValueChange={(stato) => setForm((f) => ({ ...f, stato }))}>
                 <SelectTrigger aria-label="Stato della sala"><SelectValue /></SelectTrigger>
                 <SelectContent>
+                  {/* Una sala nuova non nasce annullata: sarebbe inutilizzabile per sempre dal
+                      primo istante. */}
                   {STATI_SALA
+                    .filter((s) => editing || s.valore !== "annullato")
                     .filter((s) => !motivoCambioStatoNonValido(editing?.stato ?? "attivo", s.valore))
                     .map((s) => <SelectItem key={s.valore} value={s.valore}>{s.etichetta}</SelectItem>)}
                 </SelectContent>

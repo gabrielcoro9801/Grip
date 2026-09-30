@@ -15,6 +15,7 @@ import { useConfirm } from "@/ui/ConfirmDialog";
 import { useToast } from "@/ui/primitivi/use-toast";
 import SchedaCard from "@/staff/components/SchedaCard";
 import { Plus, Pencil, Trash2, Copy, UserPlus, LayoutTemplate, Search } from "lucide-react";
+import { toIsoDate } from "@/core/domain/format";
 import { clonaRoutines } from "@/core/domain/scheda";
 
 export default function SchedeModello() {
@@ -84,7 +85,7 @@ export default function SchedeModello() {
         name: nomeAssegnata.trim() || daAssegnare.name,
         notes: daAssegnare.notes ?? "",
         routines: clonaRoutines(daAssegnare.routines),
-        assigned_date: new Date().toISOString().split("T")[0],
+        assigned_date: toIsoDate(new Date()),
         template_origin_id: daAssegnare.id,
       });
       setDaAssegnare(null);

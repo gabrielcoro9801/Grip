@@ -5,7 +5,6 @@ import { Button } from "@/ui/primitivi/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/ui/primitivi/dialog";
 import { useToast } from "@/ui/primitivi/use-toast";
 import CampiAnagrafica, { ANAGRAFICA_VUOTA, motivoAnagraficaIncompleta } from "@/staff/components/soci/CampiAnagrafica";
-import { logAction } from "@/staff/lib/auditLog";
 
 /**
  * La finestra che trasforma un lead in socio.
@@ -14,7 +13,7 @@ import { logAction } from "@/staff/lib/auditLog";
  * dell'anagrafica del socio, codice fiscale per primo. Confermando nasce il socio e il lead
  * sparisce, in un'operazione sola sul server; poi si apre la scheda del socio.
  */
-export default function TrasformaInSocio({ lead, staffUser, onChiudi }) {
+export default function TrasformaInSocio({ lead, onChiudi }) {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [valori, setValori] = useState(ANAGRAFICA_VUOTA);
@@ -37,7 +36,6 @@ export default function TrasformaInSocio({ lead, staffUser, onChiudi }) {
     setSalvando(true);
     try {
       const { member } = await api.lead.trasforma(lead.id, valori);
-      await logAction(staffUser, "create", "member", member.full_name, member.id, "Socio creato da un lead");
       toast({ title: "Socio creato", description: `${member.full_name} è ora un socio.` });
       onChiudi(true);
       navigate(`/crm/soci/${member.id}`);

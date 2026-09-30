@@ -15,7 +15,7 @@ import { useConfirm } from "@/ui/ConfirmDialog";
 import { useToast } from "@/ui/primitivi/use-toast";
 import SchedaCard from "@/staff/components/SchedaCard";
 import { Plus, Pencil, Trash2, ClipboardList, Search, LayoutTemplate } from "lucide-react";
-import { formatData } from "@/core/domain/format";
+import { formatData, toIsoDate } from "@/core/domain/format";
 import { clonaRoutines } from "@/core/domain/scheda";
 
 export default function SchedeAssegnate() {
@@ -113,7 +113,7 @@ export default function SchedeAssegnate() {
         name: `${scheda.name} (copia)`,
         notes: scheda.notes ?? "",
         routines: clonaRoutines(scheda.routines),
-        assigned_date: new Date().toISOString().split("T")[0],
+        assigned_date: toIsoDate(new Date()),
         template_origin_id: scheda.template_origin_id ?? null,
       });
       navigate(`/allenamento/schede/${copia.id}`);

@@ -8,9 +8,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Plus, AlertTriangle, X } from "lucide-react";
 import { useToast } from "@/ui/primitivi/use-toast";
 import { DAYS, DAYS_IT } from "@/staff/lib/courseValidation";
-import { motivoSalaNonPrenotabile, statoSala, ETICHETTA_STATO_SALA } from "@/core/domain/sale";
+import { motivoSalaNonPrenotabile, saleProgrammabili, etichettaSalaNelPeriodo } from "@/core/domain/sale";
 import { generateSessionDates, checkEventConflicts } from "@/staff/lib/eventUtils";
 import { validateSessionsBulk } from "@/staff/lib/sessionValidation";
+import { toIsoDate } from "@/core/domain/format";
 
 const MAX_SESSIONS = 104;
 
@@ -24,7 +25,7 @@ export default function EventFormDialog({ open, onClose, data, reload }) {
   const [form, setForm] = useState({
     course_id: "", room_id: "", capacity: "",
     recurrence_type: "single", days_of_week: [],
-    start_date: new Date().toISOString().split("T")[0],
+    start_date: toIsoDate(new Date()),
     end_condition: "by_date", end_date: "", occurrence_count: "",
     start_time: "09:00", end_time: "10:00",
     custom_dates: [],
@@ -37,7 +38,7 @@ export default function EventFormDialog({ open, onClose, data, reload }) {
       setForm({
         course_id: "", room_id: "", capacity: "",
         recurrence_type: "single", days_of_week: [],
-        start_date: new Date().toISOString().split("T")[0],
+        start_date: toIsoDate(new Date()),
         end_condition: "by_date", end_date: "", occurrence_count: "",
         start_time: "09:00", end_time: "10:00",
         custom_dates: [],
@@ -189,10 +190,9 @@ export default function EventFormDialog({ open, onClose, data, reload }) {
                 <Select value={form.room_id} onValueChange={v => setForm({ ...form, room_id: v })}>
                   <SelectTrigger><SelectValue placeholder="Seleziona" /></SelectTrigger>
                   <SelectContent>
-                    {rooms.map(r => (
+                    {saleProgrammabili(rooms).map(r => (
                       <SelectItem key={r.id} value={r.id} disabled={saleNonPrenotabili.has(r.id)}>
-                        {r.name}
-                        {saleNonPrenotabili.has(r.id) ? ` — ${ETICHETTA_STATO_SALA[statoSala(r)].etichetta.toLowerCase()}` : ""}
+                        {etichettaSalaNelPeriodo(r, periodo[0], periodo[1])}
                       </SelectItem>
                     ))}
                   </SelectContent>

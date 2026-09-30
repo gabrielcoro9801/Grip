@@ -1,4 +1,7 @@
-import { timeOverlap } from "./courseValidation";
+// Import relativi con l'estensione, e non con `@/`: così il file si carica anche con
+// `node --test`, e le date che genera si possono provare nel fuso vero (eventUtils.test.js).
+import { timeOverlap } from "./courseValidation.js";
+import { toIsoDate } from "../../core/domain/format.js";
 
 const DAY_MAP = { Monday: 1, Tuesday: 2, Wednesday: 3, Thursday: 4, Friday: 5, Saturday: 6, Sunday: 0 };
 
@@ -30,6 +33,10 @@ export function generateSessionDates(event) {
   const targetDays = new Set(daysOfWeek.map(d => DAY_MAP[d]).filter(d => d !== undefined));
   if (targetDays.size === 0) return [];
 
+  // Il ciclo cammina sulle mezzanotti *locali*, quindi anche la data va letta nei campi
+  // locali (`toIsoDate`). Con `toISOString()` usciva in UTC, che in Italia è ancora il giorno
+  // prima: un corso del lunedì veniva salvato di domenica, e il calendario del gestionale —
+  // sfalsato dello stesso giorno al contrario — lo mostrava giusto, nascondendo l'errore.
   const dates = [];
   let current = new Date(event.start_date + "T00:00:00");
   const MAX_ITERATIONS = 10000;
@@ -39,7 +46,7 @@ export function generateSessionDates(event) {
     const end = new Date(event.end_date + "T00:00:00");
     while (current <= end && iterations < MAX_ITERATIONS) {
       if (targetDays.has(current.getDay())) {
-        dates.push(current.toISOString().split("T")[0]);
+        dates.push(toIsoDate(current));
       }
       current.setDate(current.getDate() + 1);
       iterations++;
@@ -48,7 +55,7 @@ export function generateSessionDates(event) {
     const count = Number(event.occurrence_count) || 0;
     while (dates.length < count && iterations < MAX_ITERATIONS) {
       if (targetDays.has(current.getDay())) {
-        dates.push(current.toISOString().split("T")[0]);
+        dates.push(toIsoDate(current));
       }
       current.setDate(current.getDate() + 1);
       iterations++;
@@ -56,6 +63,25 @@ export function generateSessionDates(event) {
   }
 
   return dates;
+}
+
+/**
+ * Le 42 caselle del calendario mensile (sei settimane, da lunedì), ognuna con la data che
+ * mostra e la chiave `YYYY-MM-DD` con cui cercarne le lezioni.
+ *
+ * La chiave si legge nei campi locali: con `toISOString()` (UTC) la casella del giorno N
+ * cercava le lezioni del giorno N−1, e il calendario appariva sfalsato di un giorno.
+ */
+export function grigliaDelMese(anno, mese) {
+  const primo = new Date(anno, mese, 1);
+  const dow = primo.getDay();
+  const scarto = dow === 0 ? 6 : dow - 1;
+  const caselle = [];
+  for (let i = 0; i < 42; i++) {
+    const data = new Date(anno, mese, 1 - scarto + i);
+    caselle.push({ data, chiave: toIsoDate(data) });
+  }
+  return caselle;
 }
 
 /**

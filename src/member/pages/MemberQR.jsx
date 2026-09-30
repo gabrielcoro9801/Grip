@@ -58,7 +58,8 @@ export default function MemberQR() {
 
   // Se l'abbonamento sia ancora buono lo dice il server, con i giorni già contati.
   const daysToExpiry = activeSub?.giorni_alla_scadenza ?? null;
-  const canAccess = Boolean(activeSub) && activeSub.stato === "active" && daysToExpiry >= 0 && !isRevoked;
+  // "In scadenza" vale ancora: solo scaduto ferma l'accesso.
+  const canAccess = Boolean(activeSub) && activeSub.stato !== "expired" && daysToExpiry >= 0 && !isRevoked;
 
   return (
     <div className="min-h-[calc(100vh-3.5rem)] lg:min-h-screen flex flex-col items-center justify-center p-4 sm:p-6 space-y-6">

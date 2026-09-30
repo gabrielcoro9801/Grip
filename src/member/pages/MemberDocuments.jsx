@@ -1,20 +1,29 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { caricaDocumenti } from "@/core/api/portale";
 import { Card, CardContent } from "@/ui/primitivi/card";
 import { Badge } from "@/ui/primitivi/badge";
 import { FileText, Download, AlertCircle, Archive, CheckCircle, Clock } from "lucide-react";
 import { LoadingState } from "@/ui/Spinner";
+import { ErrorState } from "@/ui/StateViews";
 import { formatData } from "@/core/domain/format";
+import { hrefSicuro } from "@/ui/utils";
 
 export default function MemberDocuments() {
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [errore, setErrore] = useState(null);
 
-  useEffect(() => {
+  // Un errore di rete mostrava "nessun documento": falso, e senza modo di riprovare.
+  const carica = useCallback(() => {
+    setLoading(true);
+    setErrore(null);
     caricaDocumenti()
       .then(setDocuments)
+      .catch(setErrore)
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => { carica(); }, [carica]);
 
   // Se un documento sia scaduto, in scadenza o archiviato lo dice il server, in `stato`.
   // Stava qui, con la soglia dei trenta giorni scritta dentro la pagina — e quella dei sette
@@ -34,6 +43,7 @@ export default function MemberDocuments() {
   if (loading) {
     return <LoadingState minHeight="p-8" />;
   }
+  if (errore) return <ErrorState error={errore} onRetry={carica} className="p-8" />;
 
   return (
     <div className="max-w-3xl mx-auto p-4 sm:p-6 space-y-4">
@@ -74,8 +84,8 @@ export default function MemberDocuments() {
                         </Badge>
                       )}
                     </div>
-                    {doc.url && (
-                      <a href={doc.url} target="_blank" rel="noopener noreferrer" download={doc.nome_file}>
+                    {hrefSicuro(doc.url) && (
+                      <a href={hrefSicuro(doc.url)} target="_blank" rel="noopener noreferrer" download={doc.nome_file}>
                         <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center hover:bg-primary/20 transition-colors">
                           <Download className="w-4 h-4 text-primary" />
                         </div>

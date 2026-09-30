@@ -43,11 +43,17 @@ export default function CourseSessionCard({
         {room && <span className="flex items-center gap-1"><MapPin className="w-3 h-3" /> {room.name}</span>}
         {instructor?.full_name && <span className="flex items-center gap-1"><User className="w-3 h-3" /> {instructor.full_name}</span>}
       </div>
-      <div className="flex gap-2">
-        {!memberBooking && !isFull && <Button size="sm" className="w-full" onClick={onBook} disabled={actionLoading}>Prenota</Button>}
-        {!memberBooking && isFull && <Button size="sm" variant="outline" className="w-full" onClick={onBook} disabled={actionLoading}>Entra in lista d'attesa</Button>}
-        {memberBooking && <Button size="sm" variant="outline" className="w-full" onClick={onCancel} disabled={actionLoading}>Annulla</Button>}
-      </div>
+      {/* Senza abbonamento quel giorno non si prenota: lo dice il server, e al posto del
+          pulsante si legge il perché — un pulsante che risponde sempre "no" non spiega niente. */}
+      {!memberBooking && session._motivoNonPrenotabile ? (
+        <p className="text-xs text-muted-foreground">{session._motivoNonPrenotabile}</p>
+      ) : (
+        <div className="flex gap-2">
+          {!memberBooking && !isFull && <Button size="sm" className="w-full" onClick={onBook} disabled={actionLoading}>Prenota</Button>}
+          {!memberBooking && isFull && <Button size="sm" variant="outline" className="w-full" onClick={onBook} disabled={actionLoading}>Entra in lista d'attesa</Button>}
+          {memberBooking && <Button size="sm" variant="outline" className="w-full" onClick={onCancel} disabled={actionLoading}>Annulla</Button>}
+        </div>
+      )}
     </div>
   );
 }

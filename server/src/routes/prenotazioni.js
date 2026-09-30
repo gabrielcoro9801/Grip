@@ -15,17 +15,28 @@
 // posto nello stesso istante leggono entrambi "un posto libero" e si confermano entrambi:
 // nessuno dei due ha barato, ma la lezione ha un iscritto di troppo. Contare dentro una
 // transazione, con la lezione bloccata, è l'unico modo di non far succedere.
+import { eq, gte } from 'drizzle-orm';
+import { db } from '../db/client.js';
+import { bookings, sessions } from '../db/schema/index.js';
+import { translateManyToSnakeCase } from '../entities/columnMaps.js';
 import { getUserFromRequest } from '../auth/tokens.js';
-import { canWriteEntity } from '../auth/authorize.js';
+import { canWriteEntity, canReadEntity } from '../auth/authorize.js';
 import { socioDiAccount } from '../auth/socioCorrente.js';
 import { prenota, disdici } from '../lib/prenotazioni.js';
+import { registra } from '../lib/registro.js';
 
 export default async function prenotazioniRoutes(fastify) {
 	fastify.addHook('preHandler', async (request, reply) => {
 		const utente = getUserFromRequest(request);
 		if (!utente) return reply.code(401).send({ error: 'Non autenticato.' });
 
-		if (utente.ruolo === 'member') {
+		// La lettura è dello staff, con il permesso di lettura delle prenotazioni: il socio le
+		// sue le chiede al portale (routes/member).
+		if (request.method === 'GET') {
+			if (utente.ruolo === 'member' || !canReadEntity(utente.ruolo, 'Booking')) {
+				return reply.code(403).send({ error: 'Non consentito.' });
+			}
+		} else if (utente.ruolo === 'member') {
 			// Il socio collegato si rilegge dal database e non dal token, così togliere il
 			// collegamento ha effetto subito.
 			const memberId = await socioDiAccount(utente.sub);
@@ -35,6 +46,25 @@ export default async function prenotazioniRoutes(fastify) {
 			return reply.code(403).send({ error: 'Il tuo ruolo non consente questa modifica.' });
 		}
 		request.utente = utente;
+	});
+
+	/**
+	 * GET /api/prenotazioni?dal=YYYY-MM-DD — le prenotazioni delle lezioni da quel giorno in poi.
+	 *
+	 * Il calendario del gestionale chiedeva "le ultime 500 prenotazioni create": oltre quella
+	 * soglia sparivano dai conteggi dei posti, in silenzio. Filtrare per data di creazione non
+	 * basterebbe — "Prenota tutte" prenota con mesi d'anticipo — quindi si filtra sulla data
+	 * della lezione, che sta in un'altra tabella: per questo non passa dall'endpoint generico.
+	 */
+	fastify.get('/api/prenotazioni', async (request, reply) => {
+		const dal = String(request.query?.dal ?? '');
+		if (!/^\d{4}-\d{2}-\d{2}$/.test(dal)) return reply.code(400).send({ error: 'Indica da che giorno (dal=AAAA-MM-GG).' });
+		const righe = await db
+			.select({ prenotazione: bookings })
+			.from(bookings)
+			.innerJoin(sessions, eq(bookings.sessionId, sessions.id))
+			.where(gte(sessions.date, dal));
+		return translateManyToSnakeCase(bookings, righe.map((r) => r.prenotazione));
 	});
 
 	/**
@@ -56,6 +86,10 @@ export default async function prenotazioniRoutes(fastify) {
 			const esito = await prenota({ sessionId, memberId });
 
 			if (esito.errore) return reply.code(esito.errore).send({ error: esito.messaggio });
+			await registra(request.utente, {
+				tipoAzione: 'create', entitaTipo: 'booking', entitaNome: esito.creata.memberName, entitaId: esito.creata.id,
+				dettagli: esito.creata.status === 'waitlisted' ? "In lista d'attesa" : 'Confermata',
+			}, request.log);
 			reply.code(201);
 			return {
 				booking: {
@@ -86,6 +120,9 @@ export default async function prenotazioniRoutes(fastify) {
 			const esito = await disdici({ bookingId: request.params.id, soloDelSocio: request.memberId ?? null });
 
 			if (esito.errore) return reply.code(esito.errore).send({ error: esito.messaggio });
+			await registra(request.utente, {
+				tipoAzione: 'delete', entitaTipo: 'booking', entitaId: request.params.id, dettagli: 'Prenotazione disdetta',
+			}, request.log);
 			return {
 				promoted: Boolean(esito.promossa),
 				promosso: esito.promossa

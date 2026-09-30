@@ -1,8 +1,6 @@
 import React, { useState, useMemo } from "react";
 import { Link } from "react-router-dom";
 import { api } from "@/core/api/client";
-import { useStaffAuth } from "@/staff/lib/StaffAuthContext";
-import { logAction } from "@/staff/lib/auditLog";
 import { Button } from "@/ui/primitivi/button";
 import { Badge } from "@/ui/primitivi/badge";
 import { Input } from "@/ui/primitivi/input";
@@ -21,7 +19,6 @@ import DialogResetPassword from "@/staff/components/admin/DialogResetPassword";
  * sospendere.
  */
 export default function AccountSoci({ accounts, members, reload }) {
-	const { staffUser } = useStaffAuth();
 	const { toast } = useToast();
 	const [cerca, setCerca] = useState("");
 	const [resetTarget, setResetTarget] = useState(null);
@@ -45,10 +42,6 @@ export default function AccountSoci({ accounts, members, reload }) {
 		const attivo = !acc.attivo;
 		try {
 			await api.entities.StaffAccount.update(acc.id, { attivo });
-			await logAction(
-				staffUser, attivo ? "activate" : "deactivate", "staff_account",
-				acc.nome, acc.id, attivo ? "Accesso al portale riattivato" : "Accesso al portale sospeso",
-			);
 			toast({ title: attivo ? "Accesso riattivato" : "Accesso sospeso", description: acc.nome });
 			reload();
 		} catch (err) {

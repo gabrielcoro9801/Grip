@@ -175,6 +175,8 @@ describe('eliminare, annullare, o niente', () => {
 		const cancellata = await elimina(sala.id);
 		assert.equal(cancellata.statusCode, 400, cancellata.body);
 		assert.equal(cancellata.json().error, SALA_PRENOTATA);
+		// Il codice, perché la pagina decide su quello e non sul testo.
+		assert.equal(cancellata.json().code, 'sala_prenotata');
 
 		// Dal menu a tendina dell'anagrafica si arriva allo stesso muro, con le stesse parole.
 		const annullata = await annulla(sala.id);
@@ -225,7 +227,45 @@ describe('eliminare, annullare, o niente', () => {
 
 		const res = await elimina(altra.id);
 		assert.equal(res.statusCode, 400, res.body);
-		assert.match(res.json().error, /1 evento che si è tenuto/);
+		// Qui non c'è nessun evento, c'è una lezione: il messaggio diceva "1 evento" per tutte e
+		// due, e con tre eventi scriveva "c'è 3 eventi".
+		assert.match(res.json().error, /c'è 1 lezione che si è tenuta/);
+	});
+
+	test('un evento cominciato ieri e non ancora finito tiene la sala', async () => {
+		// Si guardava solo l'inizio dell'evento: uno cominciato ieri che finisce fra un mese, con
+		// le lezioni tutte disdette, lasciava annullare la sala sotto di sé.
+		await svuotaCalendario();
+		const sala = (await creaSala({ name: `Sala in corso ${Date.now()}` })).json();
+		daPulire.sale.push(sala.id);
+		const [evento] = await db.insert(events).values({
+			courseId: idCorso, roomId: sala.id, capacity: 10, recurrenceType: 'weekly', daysOfWeek: ['Monday'],
+			startDate: IERI, endCondition: 'by_date', endDate: giornoRelativo(30), startTime: '10:00', endTime: '11:00',
+		}).returning();
+		daPulire.eventi.push(evento.id);
+		assert.equal((await annulla(sala.id)).json().error, SALA_PRENOTATA);
+	});
+
+	test('una sala già annullata con un passato non si annulla di nuovo, e il cestino lo dice', async () => {
+		await svuotaCalendario();
+		const sala = (await creaSala({ name: `Sala già chiusa ${Date.now()}` })).json();
+		daPulire.sale.push(sala.id);
+		await fissaLezione(UN_ANNO_FA, sala.id);
+		assert.equal((await annulla(sala.id)).statusCode, 200);
+		const res = await elimina(sala.id);
+		assert.equal(res.statusCode, 400);
+		assert.match(res.json().error, /già annullata/);
+	});
+
+	test('una sala annullata si rinomina anche se nel frattempo è comparsa una lezione futura', async () => {
+		await svuotaCalendario();
+		const sala = (await creaSala({ name: `Sala da rinominare ${Date.now()}` })).json();
+		daPulire.sale.push(sala.id);
+		assert.equal((await annulla(sala.id)).statusCode, 200);
+		await fissaLezione(DOMANI, sala.id);
+		// Il modulo manda sempre anche lo stato: non è un nuovo annullamento.
+		const res = await modificaSala(sala.id, { name: 'Sala rinominata', stato: 'annullato' });
+		assert.equal(res.statusCode, 200, res.body);
 	});
 
 	test('tolto il calendario, la sala se ne va', async () => {
@@ -284,6 +324,39 @@ describe('in una sala annullata non si programma niente, mai', () => {
 		assert.equal(res.statusCode, 400, res.body);
 		assert.match(res.json().error, /è annullata/);
 	});
+
+	// Le lezioni create direttamente, una o in blocco, passavano senza guardare la sala.
+	test('né ci si crea una lezione, da sola o in blocco', async () => {
+		await svuotaCalendario();
+		const { evento } = await fissaLezione(DOMANI);
+		const lezione = { event_id: evento.id, date: DOMANI, start_time: '12:00', end_time: '13:00', room_id: idAnnullata, capacity: 5 };
+		assert.equal((await come({ method: 'POST', url: '/api/entities/Session', payload: lezione })).statusCode, 400);
+		assert.equal((await come({ method: 'POST', url: '/api/entities/Session/bulk', payload: [lezione] })).statusCode, 400);
+	});
+
+	test('e un evento allungato dentro una sospensione viene rifiutato', async () => {
+		// Si ricontrollava solo se cambiavano sala o data d'inizio: allungare la fine passava.
+		await svuotaCalendario();
+		const sala = (await creaSala({ name: `Sala chiusa più avanti ${Date.now()}` })).json();
+		daPulire.sale.push(sala.id);
+		assert.equal((await modificaSala(sala.id, { stato: 'sospeso', sospesa_dal: giornoRelativo(40), sospesa_al: giornoRelativo(50) })).statusCode, 200);
+		const [evento] = await db.insert(events).values({
+			courseId: idCorso, roomId: sala.id, capacity: 10, recurrenceType: 'weekly', daysOfWeek: ['Monday'],
+			startDate: DOMANI, endCondition: 'by_date', endDate: giornoRelativo(20), startTime: '10:00', endTime: '11:00',
+		}).returning();
+		daPulire.eventi.push(evento.id);
+		const res = await come({ method: 'PUT', url: `/api/entities/Event/${evento.id}`, payload: { end_date: giornoRelativo(45) } });
+		assert.equal(res.statusCode, 400, res.body);
+		assert.match(res.json().error, /sospesa/);
+	});
+
+	test('né ci si riattiva una lezione annullata', async () => {
+		await svuotaCalendario();
+		const { lezione } = await fissaLezione(DOMANI, idSala, 'cancelled');
+		await db.update(sessions).set({ roomId: idAnnullata }).where(inArray(sessions.id, [lezione.id]));
+		const res = await come({ method: 'PUT', url: `/api/entities/Session/${lezione.id}`, payload: { status: 'active' } });
+		assert.equal(res.statusCode, 400, res.body);
+	});
 });
 
 describe('sospendere è sempre un periodo', () => {
@@ -298,7 +371,15 @@ describe('sospendere è sempre un periodo', () => {
 	});
 
 	test('tornare attiva cancella il periodo', async () => {
-		assert.equal((await modificaSala(idSala, { stato: 'sospeso', sospesa_dal: '2026-10-01', sospesa_al: '2026-10-15' })).statusCode, 200);
+		// Calendario vuoto e date calcolate da oggi. Con le date scritte a mano, la lezione di
+		// *domani* lasciata nella sala dal blocco precedente finiva dentro il periodo a partire
+		// dal 30 settembre, la sospensione veniva rifiutata e il test cadeva senza che nessuno
+		// avesse toccato niente.
+		await svuotaCalendario();
+		const dal = giornoRelativo(30);
+		const al = giornoRelativo(45);
+		const sospesa = await modificaSala(idSala, { stato: 'sospeso', sospesa_dal: dal, sospesa_al: al });
+		assert.equal(sospesa.statusCode, 200, sospesa.body);
 		const riattivata = (await modificaSala(idSala, { stato: 'attivo' })).json();
 		assert.equal(riattivata.stato, 'attivo');
 		assert.equal(riattivata.sospesa_dal, null);
@@ -393,5 +474,31 @@ describe('in una sala sospesa non si programma', () => {
 		const res = await come({ method: 'PUT', url: `/api/entities/Session/${lezione.id}`, payload: { room_id: idSala } });
 		assert.equal(res.statusCode, 400, res.body);
 		assert.match(res.json().error, /sospesa/);
+	});
+});
+
+// Annullare una sala e programmarci un evento erano "controllo, poi scrittura" senza blocco:
+// arrivando insieme, passavano tutte e due, e la sala annullata si ritrovava un evento.
+describe('due richieste insieme sulla stessa sala', () => {
+	test('annullarla e programmarci un evento: al massimo una delle due passa', async () => {
+		for (let giro = 0; giro < 5; giro++) {
+			const sala = (await creaSala({ name: `Sala contesa ${Date.now()}-${giro}` })).json();
+			daPulire.sale.push(sala.id);
+			const [annullata, evento] = await Promise.all([
+				modificaSala(sala.id, { stato: 'annullato' }),
+				come({
+					method: 'POST', url: '/api/entities/Event',
+					payload: {
+						course_id: idCorso, room_id: sala.id, capacity: 10, recurrence_type: 'single',
+						start_date: DOMANI, start_time: '10:00', end_time: '11:00',
+					},
+				}),
+			]);
+			if (evento.statusCode === 201) daPulire.eventi.push(evento.json().id);
+			assert.ok(
+				!(annullata.statusCode === 200 && evento.statusCode === 201),
+				`giro ${giro}: sala annullata e evento creato insieme`,
+			);
+		}
 	});
 });

@@ -1,114 +1,48 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { api } from "@/core/api/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/ui/primitivi/card";
 import { Badge } from "@/ui/primitivi/badge";
 import { Users, UserCheck, Calendar, AlertTriangle, Clock, FileWarning } from "lucide-react";
 import StatusBadge from "@/ui/StatusBadge";
 import { LoadingState } from "@/ui/Spinner";
-import { formatData, giorniAllaData, giorniTra, aggiungiGiorni, stessoGiornoOdopo } from "@/core/domain/format";
-import { conStatoDocumenti } from "@/core/domain/anagrafica";
+import { ErrorState } from "@/ui/StateViews";
+import { formatData } from "@/core/domain/format";
 
+/**
+ * La home del gestionale: numeri e avvisi.
+ *
+ * Li conta il server (`GET /api/dashboard`). Prima questa pagina scaricava sette tabelle
+ * intere — tutte le prenotazioni e tutte le lezioni comprese — e le incrociava qui. Le regole
+ * non sono cambiate: un certificato già sostituito non è un avviso, di un abbonamento scaduto
+ * si avvisa solo chi non ha rinnovato, "soci attivi" conta soci e non abbonamenti.
+ *
+ * Una parte che il ruolo non può vedere arriva `null` e non si mostra.
+ */
 export default function Dashboard() {
-  const [members, setMembers] = useState([]);
-  const [subscriptions, setSubscriptions] = useState([]);
-  const [documents, setDocuments] = useState([]);
-  const [bookings, setBookings] = useState([]);
+  const [dati, setDati] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [errore, setErrore] = useState(null);
 
-  useEffect(() => {
-    Promise.all([
-      api.entities.Member.list(),
-      api.entities.Subscription.list(),
-      api.entities.MemberDocument.list(),
-      api.entities.Booking.list(),
-      api.entities.Session.list(),
-      api.entities.Event.list(),
-      api.entities.Course.list(),
-    ]).then(([m, s, d, b, sess, evts, crs]) => {
-      const resolvedBookings = b.map(bk => {
-        const session = sess.find(s => s.id === bk.session_id);
-        const event = evts.find(e => e.id === session?.event_id);
-        const course = crs.find(c => c.id === event?.course_id);
-        return { ...bk, _course_name: course?.name, _date: session?.date };
-      });
-      setMembers(m);
-      setSubscriptions(s);
-      setDocuments(d);
-      setBookings(resolvedBookings);
-      setLoading(false);
-    });
+  // Senza la gestione dell'errore, alla prima richiesta fallita la pagina restava sulla
+  // rotellina per sempre: nessun messaggio, nessun modo di riprovare se non ricaricare tutto.
+  const carica = useCallback(() => {
+    setLoading(true);
+    setErrore(null);
+    api.dashboard().then(setDati).catch(setErrore).finally(() => setLoading(false));
   }, []);
 
-  if (loading) {
-    return (
-      <LoadingState minHeight="h-full" />
-    );
-  }
+  useEffect(() => { carica(); }, [carica]);
 
-  // Certificate alerts
-  //
-  // Il tipo era testo libero, e qui si cercava "Medical Certificate" mentre il modulo
-  // scriveva "Certificato Medico": l'avviso non è mai scattato. Ora il tipo è vincolato.
-  //
-  // Lo stato lo decide `conStatoDocumenti`, socio per socio: se è archiviato non è un avviso.
-  // Senza quel raggruppamento, un certificato scaduto e già sostituito restava qui per sempre,
-  // accanto a quello nuovo e valido — e un elenco di avvisi che non si svuota mai smette di
-  // essere letto.
-  const documentiPerSocio = new Map();
-  for (const d of documents) {
-    if (!documentiPerSocio.has(d.member_id)) documentiPerSocio.set(d.member_id, []);
-    documentiPerSocio.get(d.member_id).push(d);
-  }
-  const certAlerts = [...documentiPerSocio.values()]
-    .flatMap(documentiDelSocio => conStatoDocumenti(documentiDelSocio, giorniAllaData))
-    .filter(d => d.document_type === "certificato_medico" && (d.stato === "scaduto" || d.stato === "in_scadenza"))
-    .map(d => {
-      const member = members.find(m => m.id === d.member_id);
-      return {
-        ...d,
-        member_name: member?.full_name || "Sconosciuto",
-        daysLeft: d.giorni_alla_scadenza,
-        expired: d.stato === "scaduto",
-      };
-    })
-    .sort((a, b) => a.daysLeft - b.daysLeft);
+  if (loading) return <LoadingState minHeight="h-full" />;
+  if (errore) return <ErrorState error={errore} onRetry={carica} className="h-full" />;
 
-  // Subscription alerts
-  const subAlerts = subscriptions
-    // `giorniAllaData` risponde `null` quando la scadenza non c'è, e `null <= 14` in
-    // JavaScript è **vero**: senza questo controllo, un abbonamento senza data di fine
-    // comparirebbe fra quelli in scadenza. Con moment usciva NaN, che invece è falso —
-    // ed è il genere di differenza che una sostituzione si porta dietro in silenzio.
-    .filter(s => {
-      if (s.status === "expiring" || s.status === "expired") return true;
-      const giorni = giorniAllaData(s.end_date);
-      return s.status === "active" && giorni !== null && giorni <= 14;
-    })
-    .map(s => {
-      const member = members.find(m => m.id === s.member_id);
-      const daysLeft = giorniAllaData(s.end_date);
-      return { ...s, member_name: member?.full_name || "Sconosciuto", daysLeft };
-    })
-    .sort((a, b) => a.daysLeft - b.daysLeft);
-
-  // Upcoming classes (next 7 days)
-  const fraUnaSettimana = aggiungiGiorni(new Date(), 7);
-  const upcomingBookings = bookings
-    .filter(b =>
-      b.status !== "cancelled" && b._date
-      && stessoGiornoOdopo(b._date)
-      && stessoGiornoOdopo(fraUnaSettimana, b._date))
-    .sort((a, b) => giorniTra(a._date, b._date));
-
-  // KPIs
-  const activeMembers = subscriptions.filter(s => s.status === "active").length;
-
+  const { kpi, certificati, rinnovi, prossime } = dati;
   const kpis = [
-    { label: "Soci attivi", value: activeMembers, icon: UserCheck, color: "text-success", bg: "bg-success/10" },
-    { label: "Soci iscritti", value: members.length, icon: Users, color: "text-info", bg: "bg-info/10" },
-    { label: "Certificati in scadenza", value: certAlerts.length, icon: FileWarning, color: "text-warning", bg: "bg-warning/10" },
-    { label: "Prossime lezioni", value: upcomingBookings.length, icon: Calendar, color: "text-violet-600", bg: "bg-violet-50" },
-  ];
+    { label: "Soci attivi", value: kpi.soci_attivi, icon: UserCheck, color: "text-success", bg: "bg-success/10" },
+    { label: "Soci iscritti", value: kpi.soci_iscritti, icon: Users, color: "text-info", bg: "bg-info/10" },
+    { label: "Certificati in scadenza", value: kpi.certificati_in_scadenza, icon: FileWarning, color: "text-warning", bg: "bg-warning/10" },
+    { label: "Prossime lezioni", value: kpi.prossime_lezioni, icon: Calendar, color: "text-violet-600", bg: "bg-violet-50" },
+  ].filter((k) => k.value !== null);
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
@@ -138,99 +72,102 @@ export default function Dashboard() {
 
       {/* Alerts Grid */}
       <div className="grid lg:grid-cols-2 gap-6">
-        {/* Certificate Alerts */}
-        <Card className="border-0 shadow-sm">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base font-heading flex items-center gap-2">
-              <FileWarning className="w-4 h-4 text-warning" />
-              Avvisi certificati
-              {certAlerts.length > 0 && (
-                <Badge variant="destructive" className="text-xs ml-auto">{certAlerts.length}</Badge>
+        {certificati && (
+          <Card className="border-0 shadow-sm">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base font-heading flex items-center gap-2">
+                <FileWarning className="w-4 h-4 text-warning" />
+                Avvisi certificati
+                {certificati.length > 0 && (
+                  <Badge variant="destructive" className="text-xs ml-auto">{certificati.length}</Badge>
+                )}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {certificati.length === 0 ? (
+                <p className="text-sm text-muted-foreground py-4 text-center">Tutti i certificati sono aggiornati</p>
+              ) : (
+                <div className="space-y-3">
+                  {certificati.map(cert => (
+                    <div key={cert.id} className={`flex items-center justify-between p-3 rounded-lg ${cert.scaduto ? "bg-destructive/10" : "bg-warning/10"}`}>
+                      <div>
+                        <p className="text-sm font-medium">{cert.member_name || "Sconosciuto"}</p>
+                        <p className="text-xs text-muted-foreground">{cert.file_name}</p>
+                      </div>
+                      <Badge variant="outline" className={`text-xs ${cert.scaduto ? "bg-destructive/10 text-destructive border-destructive/30" : "bg-warning/10 text-warning border-warning/30"}`}>
+                        {cert.scaduto ? `Scaduto da ${Math.abs(cert.giorni)}g` : `${cert.giorni}g residui`}
+                      </Badge>
+                    </div>
+                  ))}
+                </div>
               )}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {certAlerts.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-4 text-center">Tutti i certificati sono aggiornati</p>
-            ) : (
-              <div className="space-y-3">
-                {certAlerts.map(cert => (
-                  <div key={cert.id} className={`flex items-center justify-between p-3 rounded-lg ${cert.expired ? "bg-destructive/10" : "bg-warning/10"}`}>
-                    <div>
-                      <p className="text-sm font-medium">{cert.member_name}</p>
-                      <p className="text-xs text-muted-foreground">{cert.file_name}</p>
-                    </div>
-                    <Badge variant="outline" className={`text-xs ${cert.expired ? "bg-destructive/10 text-destructive border-destructive/30" : "bg-warning/10 text-warning border-warning/30"}`}>
-                      {cert.expired ? `Scaduto da ${Math.abs(cert.daysLeft)}g` : `${cert.daysLeft}g residui`}
-                    </Badge>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        )}
 
-        {/* Subscription Alerts */}
-        <Card className="border-0 shadow-sm">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base font-heading flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4 text-warning" />
-              Rinnovi abbonamenti
-              {subAlerts.length > 0 && (
-                <Badge variant="destructive" className="text-xs ml-auto">{subAlerts.length}</Badge>
+        {rinnovi && (
+          <Card className="border-0 shadow-sm">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base font-heading flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-warning" />
+                Rinnovi abbonamenti
+                {rinnovi.length > 0 && (
+                  <Badge variant="destructive" className="text-xs ml-auto">{rinnovi.length}</Badge>
+                )}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {rinnovi.length === 0 ? (
+                <p className="text-sm text-muted-foreground py-4 text-center">Nessun rinnovo imminente</p>
+              ) : (
+                <div className="space-y-3">
+                  {rinnovi.map(sub => (
+                    <div key={sub.id} className={`flex items-center justify-between p-3 rounded-lg ${sub.giorni < 0 ? "bg-destructive/10" : "bg-warning/10"}`}>
+                      <div>
+                        <p className="text-sm font-medium">{sub.member_name || "Sconosciuto"}</p>
+                        <p className="text-xs text-muted-foreground">{sub.plan_name}</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <StatusBadge status={sub.status} />
+                        <span className="text-xs text-muted-foreground">
+                          {sub.giorni < 0 ? `da ${Math.abs(sub.giorni)}g` : `${sub.giorni}g`}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               )}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {subAlerts.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-4 text-center">Nessun rinnovo imminente</p>
-            ) : (
-              <div className="space-y-3">
-                {subAlerts.map(sub => (
-                  <div key={sub.id} className={`flex items-center justify-between p-3 rounded-lg ${sub.daysLeft < 0 ? "bg-destructive/10" : "bg-warning/10"}`}>
-                    <div>
-                      <p className="text-sm font-medium">{sub.member_name}</p>
-                      <p className="text-xs text-muted-foreground">{sub.plan_name}</p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <StatusBadge status={sub.status} />
-                      <span className="text-xs text-muted-foreground">
-                        {sub.daysLeft < 0 ? `da ${Math.abs(sub.daysLeft)}g` : `${sub.daysLeft}g`}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        )}
 
-        {/* Upcoming Classes */}
-        <Card className="border-0 shadow-sm lg:col-span-2">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base font-heading flex items-center gap-2">
-              <Clock className="w-4 h-4 text-primary" />
-              Prossime lezioni prenotate (7 giorni)
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {upcomingBookings.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-4 text-center">Nessuna prenotazione imminente</p>
-            ) : (
-              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                {upcomingBookings.map(b => (
-                  <div key={b.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
-                    <div>
-                      <p className="text-sm font-medium">{b._course_name || "Corso"}</p>
-                      <p className="text-xs text-muted-foreground">{b.member_name} · {b._date ? formatData(b._date, "giorno") : "—"}</p>
+        {prossime && (
+          <Card className="border-0 shadow-sm lg:col-span-2">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base font-heading flex items-center gap-2">
+                <Clock className="w-4 h-4 text-primary" />
+                Prossime lezioni prenotate (7 giorni)
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {prossime.length === 0 ? (
+                <p className="text-sm text-muted-foreground py-4 text-center">Nessuna prenotazione imminente</p>
+              ) : (
+                <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {prossime.map(b => (
+                    <div key={b.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
+                      <div>
+                        <p className="text-sm font-medium">{b.course_name || "Corso"}</p>
+                        <p className="text-xs text-muted-foreground">{b.member_name} · {formatData(b.date, "giorno")}</p>
+                      </div>
+                      <StatusBadge status={b.status} />
                     </div>
-                    <StatusBadge status={b.status} />
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
       </div>
     </div>
   );

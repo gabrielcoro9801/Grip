@@ -20,6 +20,7 @@ import {
   Dumbbell, Timer, Save, Copy, CalendarDays, Link2, Unlink,
 } from "lucide-react";
 import { etichettaGruppo } from "@/core/domain/gruppiMuscolari";
+import { toIsoDate } from "@/core/domain/format";
 import {
   nuovaSerie, nuovoEsercizio, nuovaRoutine, clonaRoutines, clonaEsercizi, sposta,
   formatRecupero, totaleSerie, totaleSerieScheda, motivoNonSalvabile,
@@ -297,7 +298,7 @@ export default function EditorScheda() {
       if (nuova) {
         const creata = await api.entities.ExercisePlan.create({
           ...dati,
-          assigned_date: scheda.is_template ? null : new Date().toISOString().split("T")[0],
+          assigned_date: scheda.is_template ? null : toIsoDate(new Date()),
           template_origin_id: null,
         });
         setModificata(false);

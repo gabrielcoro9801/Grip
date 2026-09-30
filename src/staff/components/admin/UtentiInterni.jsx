@@ -1,7 +1,6 @@
 import React, { useState, useMemo } from "react";
 import { api } from "@/core/api/client";
 import { useStaffAuth } from "@/staff/lib/StaffAuthContext";
-import { logAction } from "@/staff/lib/auditLog";
 import { Button } from "@/ui/primitivi/button";
 import { Badge } from "@/ui/primitivi/badge";
 import { Input } from "@/ui/primitivi/input";
@@ -11,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Pencil, KeyRound, UserPlus, Ban, CheckCircle2, Search } from "lucide-react";
 import { useToast } from "@/ui/primitivi/use-toast";
 import { formatDataOra } from "@/core/domain/format";
+import { LUNGHEZZA_MINIMA_PASSWORD } from "@/core/domain/password";
 import DialogResetPassword from "@/staff/components/admin/DialogResetPassword";
 
 const NESSUNO = "none";
@@ -84,30 +84,17 @@ export default function UtentiInterni({ accounts, collaboratori, ruoli, reload }
 				linked_collaboratore_id: form.linked_collaboratore_id || null,
 			};
 			if (inModifica) {
-				const ruoloCambiato = form.ruolo !== inModifica.ruolo;
 				await api.entities.StaffAccount.update(inModifica.id, {
 					...comune,
 					...(form.password ? { password: form.password } : {}),
 				});
-				await logAction(
-					staffUser,
-					ruoloCambiato ? "role_change" : "update",
-					"staff_account", form.nome, inModifica.id,
-					ruoloCambiato
-						? `Ruolo cambiato da ${etichettaRuolo(inModifica.ruolo)} a ${etichettaRuolo(form.ruolo)}`
-						: "Modifica dati account",
-				);
 				toast({ title: "Account aggiornato", description: form.nome });
 			} else {
-				const creato = await api.entities.StaffAccount.create({
+				await api.entities.StaffAccount.create({
 					...comune,
 					password: form.password,
 					attivo: true,
 				});
-				await logAction(
-					staffUser, "create", "staff_account", form.nome, creato.id,
-					`Nuovo account interno, ruolo ${etichettaRuolo(form.ruolo)}`,
-				);
 				toast({ title: "Account creato", description: form.nome });
 			}
 			setMostraForm(false);
@@ -123,10 +110,6 @@ export default function UtentiInterni({ accounts, collaboratori, ruoli, reload }
 		const attivo = !acc.attivo;
 		try {
 			await api.entities.StaffAccount.update(acc.id, { attivo });
-			await logAction(
-				staffUser, attivo ? "activate" : "deactivate", "staff_account",
-				acc.nome, acc.id, attivo ? "Account riattivato" : "Account disattivato",
-			);
 			toast({ title: attivo ? "Account riattivato" : "Account disattivato", description: acc.nome });
 			reload();
 		} catch (err) {
@@ -248,8 +231,12 @@ export default function UtentiInterni({ accounts, collaboratori, ruoli, reload }
 								required={!inModifica}
 								value={form.password}
 								onChange={(e) => setForm({ ...form, password: e.target.value })}
-								placeholder={inModifica ? "Lascia vuoto per non cambiarla" : ""}
+								minLength={form.password ? LUNGHEZZA_MINIMA_PASSWORD : undefined}
+								placeholder={inModifica ? "Lascia vuoto per non cambiarla" : `Almeno ${LUNGHEZZA_MINIMA_PASSWORD} caratteri`}
 							/>
+							<p className="text-xs text-muted-foreground mt-1">
+								Al primo accesso la persona dovrà sceglierne una sua.
+							</p>
 						</div>
 						<div>
 							<Label>Collaboratore collegato</Label>

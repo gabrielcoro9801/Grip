@@ -187,7 +187,12 @@ macchina solo per creare il primo account: due cose sgradevoli da chiedere a ogn
 che installa Grip.
 
 Se le variabili mancano il server parte lo stesso, ma avvisa nei log che nessuno potrà
-accedere.
+accedere. La password deve avere almeno 10 caratteri (la regola è in `shared/password.js`): più
+corta, l'account non viene creato e il log lo dice.
+
+**Dopo il primo accesso togli `SEED_ADMIN_PASSWORD` dalle variabili del servizio.** Al primo
+accesso l'applicazione chiede comunque di sceglierne una nuova — quella nella variabile la vede
+chiunque gestisca il deploy — ma lasciarla lì non serve a niente e resta leggibile.
 
 > Esiste anche `npm run db:seed`, che fa la stessa cosa da riga di comando: serve in locale.
 > Dal proprio PC **non funziona sulla produzione**, perché `DATABASE_URL` punta alla rete

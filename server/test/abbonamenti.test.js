@@ -7,6 +7,7 @@ import { eq, inArray } from 'drizzle-orm';
 import { buildApp } from '../src/app.js';
 import { db, pool } from '../src/db/client.js';
 import { members, plans, staffAccounts, subscriptions } from '../src/db/schema/index.js';
+import { statoIscrizione, oggiIso } from '../../shared/abbonamenti.js';
 
 const PASSWORD = 'prova-abbonamenti-1234';
 const suffisso = Date.now();
@@ -107,5 +108,43 @@ describe('vendere un abbonamento', () => {
 		const res = await vendi({ plan_id: idTipi[0], start_date: '2026-09-16' });
 		assert.equal(res.statusCode, 400);
 		assert.match(res.json().error, /fino al/);
+	});
+});
+
+// Nessun processo aggiornava la colonna `status`: un'iscrizione nasceva "active" e restava
+// tale per sempre, e dashboard, filtri e portale mostravano come attivi abbonamenti scaduti.
+describe('lo stato di un’iscrizione viene dalle date', () => {
+	const oggi = '2026-09-30';
+
+	test('"oggi" è il giorno di Roma, non quello UTC', () => {
+		// Il server gira in UTC: fra mezzanotte e le due (ora legale) la sua data è ancora ieri,
+		// e le lezioni di oggi risultavano "già passate", i giorni alla scadenza sbagliati di uno.
+		assert.equal(oggiIso(new Date('2026-09-30T23:30:00Z')), '2026-10-01');
+		assert.equal(oggiIso(new Date('2026-12-31T23:30:00Z')), '2027-01-01');
+	});
+
+	test('la regola', () => {
+		assert.equal(statoIscrizione({ end_date: '2026-09-29' }, oggi), 'expired');
+		assert.equal(statoIscrizione({ end_date: '2026-09-30' }, oggi), 'expiring', "l'ultimo giorno vale ancora");
+		assert.equal(statoIscrizione({ end_date: '2026-10-14' }, oggi), 'expiring');
+		assert.equal(statoIscrizione({ end_date: '2026-10-15' }, oggi), 'active');
+		assert.equal(statoIscrizione({ end_date: null }, oggi), 'active');
+	});
+
+	test("un'iscrizione scaduta esce scaduta, qualunque cosa dica la colonna", async () => {
+		const [scaduta] = await db
+			.insert(subscriptions)
+			.values({ memberId: idSocio, planName: 'Vecchio', startDate: '2020-01-01', endDate: '2020-01-31', status: 'active' })
+			.returning();
+		const letta = (await come({ method: 'GET', url: `/api/entities/Subscription/${scaduta.id}` })).json();
+		assert.equal(letta.status, 'expired');
+	});
+
+	test('e il filtro per stato guarda lo stato calcolato', async () => {
+		const scadute = (await come({ method: 'GET', url: `/api/entities/Subscription?member_id=${idSocio}&status=expired` })).json();
+		assert.ok(scadute.length >= 1);
+		assert.ok(scadute.every((s) => s.status === 'expired'));
+		const attive = (await come({ method: 'GET', url: `/api/entities/Subscription?member_id=${idSocio}&status=active` })).json();
+		assert.ok(attive.every((s) => s.status === 'active'));
 	});
 });

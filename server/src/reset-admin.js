@@ -14,6 +14,7 @@ import { sql } from 'drizzle-orm';
 import { db, pool } from './db/client.js';
 import { staffAccounts } from './db/schema/index.js';
 import { annunciaDatabase } from './lib/descriviDatabase.js';
+import { motivoPasswordNonValida } from '../../shared/password.js';
 
 const EMAIL = process.env.RESET_EMAIL;
 const PASSWORD = process.env.RESET_PASSWORD;
@@ -27,9 +28,11 @@ if (!EMAIL || !PASSWORD) {
 }
 
 // Una password corta qui è un problema serio: questo account può tutto, ed è raggiungibile
-// da internet. Meglio rifiutare che lasciar passare una scelta frettolosa.
-if (PASSWORD.length < 12) {
-	console.error(`La password è di ${PASSWORD.length} caratteri: ne servono almeno 12.`);
+// da internet. La regola è quella di ogni altra password (shared/password.js): ce n'erano
+// quattro diverse, e questa era l'unica a chiedere 12.
+const nonValida = motivoPasswordNonValida(PASSWORD);
+if (nonValida) {
+	console.error(nonValida);
 	console.error("Questo account ha accesso a tutto ed è esposto su internet.");
 	process.exit(1);
 }
@@ -57,6 +60,11 @@ await db
 		// rientrare, e un account disattivato o declassato non risolverebbe il problema.
 		ruolo: 'admin',
 		attivo: true,
+		// La password l'ha scelta chi lancia lo script, che è l'amministratore stesso.
+		passwordDaCambiare: false,
+		// Se si arriva qui perché l'account è stato rubato, chi l'ha rubato non deve restare
+		// dentro: le sessioni già aperte non valgono più.
+		tokenVersion: sql`${staffAccounts.tokenVersion} + 1`,
 	})
 	.where(sql`${staffAccounts.id} = ${account.id}`);
 

@@ -292,6 +292,16 @@ describe("l'agenda dei corsi", () => {
 
 		assert.equal(dati.giorni.flatMap((g) => g.lezioni).find((l) => l.id === idLezione), undefined);
 	});
+
+	// Una data malformata tornava come errore 500; un intervallo di un secolo faceva leggere al
+	// server tutte le lezioni e tutte le prenotazioni della palestra.
+	test('un intervallo sbagliato o troppo lungo si rifiuta con un 400', async () => {
+		for (const query of ['dal=ieri', 'dal=2026-10-01&al=2026-13-45', 'dal=2026-10-10&al=2026-10-01', 'dal=2000-01-01&al=2100-01-01']) {
+			const res = await come(tokenSocio, `/api/member/v1/corsi/agenda?${query}`);
+			assert.equal(res.statusCode, 400, `${query} → ${res.statusCode}`);
+		}
+		assert.equal((await come(tokenSocio, '/api/member/v1/corsi/agenda?dal=2026-10-01&al=2026-12-31')).statusCode, 200);
+	});
 });
 
 describe('prenotare e disdire dal portale', () => {
@@ -573,7 +583,9 @@ describe('il contratto resta quello promesso', () => {
 
 		assert.deepEqual(
 			Object.keys(mia).sort(),
-			['categoria', 'corso', 'data', 'fine', 'id', 'inizio', 'istruttore', 'mia_prenotazione', 'posti', 'sala']
+			// `motivo_non_prenotabile` è un'aggiunta (null quando si può prenotare): un client che
+			// non lo conosce lo ignora, e il contratto non si rompe.
+			['categoria', 'corso', 'data', 'fine', 'id', 'inizio', 'istruttore', 'mia_prenotazione', 'motivo_non_prenotabile', 'posti', 'sala']
 		);
 		assert.deepEqual(
 			Object.keys(mia.posti).sort(),

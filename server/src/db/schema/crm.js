@@ -1,7 +1,7 @@
 // Dominio CRM/membership: Member, Subscription, Plan, MemberDocument, QRAccesso.
 // Campi dedotti dall'uso reale nel codice (il datastore precedente non aveva schema).
 import { sql } from 'drizzle-orm';
-import { pgTable, uuid, varchar, text, boolean, integer, numeric, date, timestamp, check, uniqueIndex } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, text, boolean, integer, numeric, date, timestamp, check, uniqueIndex, index } from 'drizzle-orm/pg-core';
 
 // Anagrafica "socio" applicativo (login member, prenotazioni, documenti, QR).
 export const members = pgTable('members', {
@@ -79,7 +79,11 @@ export const subscriptions = pgTable('subscriptions', {
 	pricePaid: numeric('price_paid', { precision: 10, scale: 2 }),
 	createdDate: timestamp('created_date', { withTimezone: true }).notNull().defaultNow(),
 	updatedDate: timestamp('updated_date', { withTimezone: true }).notNull().defaultNow(),
-});
+}, (table) => ({
+	// Le chiavi esterne Postgres non le indicizza da solo: "gli abbonamenti di un socio" era
+	// una lettura della tabella intera.
+	socio: index('subscriptions_member_id_idx').on(table.memberId),
+}));
 
 export const memberDocuments = pgTable('member_documents', {
 	id: uuid('id').defaultRandom().primaryKey(),
@@ -98,6 +102,7 @@ export const memberDocuments = pgTable('member_documents', {
 	createdDate: timestamp('created_date', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({
 	tipoValido: check('member_documents_tipo_valido', sql`${table.documentType} IN ('certificato_medico', 'documento_identita', 'altro')`),
+	socio: index('member_documents_member_id_idx').on(table.memberId),
 }));
 
 export const qrAccessi = pgTable('qr_accessi', {
@@ -108,4 +113,6 @@ export const qrAccessi = pgTable('qr_accessi', {
 	codice: varchar('codice', { length: 64 }).notNull().unique(), // formato GRIP-XXXX-XXXX-XXXX-XXXX
 	dataGenerazione: timestamp('data_generazione', { withTimezone: true }).notNull().defaultNow(),
 	stato: varchar('stato', { length: 16 }).notNull().default('attivo'), // attivo | revocato
-});
+}, (table) => ({
+	socio: index('qr_accessi_cliente_id_idx').on(table.clienteId),
+}));

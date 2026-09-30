@@ -81,6 +81,18 @@ export async function caricaProgressiEsercizio(nome) {
 	return serie;
 }
 
+/**
+ * Avvia un allenamento su una routine di una propria scheda. Nomi e ora li mette il server,
+ * che controlla anche che la scheda sia del socio.
+ */
+export async function avviaAllenamento(idScheda, indiceRoutine) {
+	const { sessione } = await api.richiesta(`${BASE}/allenamento/sessioni`, {
+		method: 'POST',
+		body: { plan_id: idScheda, routine_index: indiceRoutine },
+	});
+	return sessione;
+}
+
 /** Un allenamento da eseguire o riprendere, con le serie già spuntate e quelle della volta prima. */
 export function caricaSessioneAllenamento(id) {
 	return api.richiesta(`${BASE}/allenamento/sessioni/${id}`);

@@ -16,7 +16,6 @@ import { useToast } from "@/ui/primitivi/use-toast";
 import { useConfirm } from "@/ui/ConfirmDialog";
 import { useStaffAuth } from "@/staff/lib/StaffAuthContext";
 import { canEdit } from "@/staff/lib/permissions";
-import { logAction } from "@/staff/lib/auditLog";
 import { formatData, formatEuro } from "@/core/domain/format";
 import {
   UNITA_DURATA, STATI_TIPO, NOTE_MASSIMO, descriviDurata, motivoCambioStatoNonValido, oggiIso,
@@ -74,14 +73,13 @@ export default function PlansCatalog() {
     e.preventDefault();
     setSalvando(true);
     try {
-      const creato = await api.entities.Plan.create({
+      await api.entities.Plan.create({
         ...form,
         price: Number(form.price),
         durata_valore: Number(form.durata_valore),
         vendibile_fino_al: form.vendibile_fino_al || null,
         description: form.description.trim() || null,
       });
-      await logAction(staffUser, "create", "plan", creato.name, creato.id, "Abbonamento aggiunto al catalogo");
       toast({ title: "Abbonamento creato" });
       setShowForm(false);
       setForm(MODULO_VUOTO);
@@ -120,7 +118,6 @@ export default function PlansCatalog() {
     setSalvando(true);
     try {
       await api.entities.Plan.update(tipo.id, { stato });
-      await logAction(staffUser, "update", "plan", tipo.name, tipo.id, "Stato dell'abbonamento cambiato", tipo.stato, stato);
       toast({ title: "Stato aggiornato" });
       setCambioStato(null);
       loadData();

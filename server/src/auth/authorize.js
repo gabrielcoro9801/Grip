@@ -53,11 +53,12 @@ const ENTITY_MODULES = {
 };
 
 /**
- * Il registro delle azioni si scrive soltanto aggiungendo righe.
+ * Il registro delle azioni non si scrive dall'API: lo scrive il server (lib/registro.js).
  *
  * La matrice dà `audit_log: ["view"]` perfino all'amministratore, ma l'endpoint generico
- * lasciava cancellare: un registro che chi ci è dentro può ripulire non è un registro.
- * Le righe nuove le scrive l'applicazione mentre si lavora, quindi la creazione resta.
+ * lasciava cancellare: un registro che chi ci è dentro può ripulire non è un registro. Poi è
+ * caduta anche la creazione: le righe le scriveva il browser, con attore e orario scelti dal
+ * client, e chiunque poteva aggiungerne di attribuite ad altri.
  */
 const SOLO_AGGIUNTA = new Set(['AuditLog']);
 
@@ -91,7 +92,7 @@ export function canWriteEntity(role, entityName, metodo = 'POST') {
 	if (role === 'member') return false;
 	if (SOLA_LETTURA.has(entityName)) return false;
 	if (SOLO_IL_PROPRIETARIO.has(entityName)) return false;
-	if (SOLO_AGGIUNTA.has(entityName)) return metodo === 'POST';
+	if (SOLO_AGGIUNTA.has(entityName)) return false;
 	if (ADMIN_ONLY_WRITE.has(entityName)) return role === 'admin';
 
 	const modulo = ENTITY_MODULES[entityName];
@@ -119,6 +120,65 @@ export function haRegolaDiScrittura(entityName) {
 		SOLA_LETTURA.has(entityName) ||
 		SOLO_AGGIUNTA.has(entityName)
 	);
+}
+
+/**
+ * Chi dello staff può leggere cosa.
+ *
+ * Fino a qui il controllo scattava solo sulle scritture, e qualunque ruolo dello staff
+ * leggeva qualunque entità: un istruttore apriva `GET /api/entities/AuditLog` o
+ * `StaffAccount` anche se la matrice non gli dà né il registro né gli account, e un ruolo
+ * costruito **senza** i documenti leggeva lo stesso i certificati medici. Il menu nascondeva
+ * la voce, l'API rispondeva.
+ *
+ * `null` = un catalogo: serve a tutti per lavorare, e dentro non ci sono persone.
+ * Un elenco = basta uno di quei moduli in visione. I dati di una persona restano del modulo
+ * che li governa; l'anagrafica dei soci si apre anche ai moduli le cui schermate mostrano i
+ * nomi dei soci (calendario, schede, account), finché quelle schermate non riceveranno i
+ * nomi già pronti dal server invece della tabella intera.
+ *
+ * **Ogni entità del registro deve comparire qui**, come per la scrittura: una dimenticata è
+ * chiusa, e il test in `permessi-lettura.test.js` se ne accorge.
+ */
+const LETTURA = {
+	// Cataloghi.
+	Course: null,
+	Category: null,
+	Instructor: null,
+	Room: null,
+	Event: null,
+	Session: null,
+	Plan: null,
+	Exercise: null,
+	Organization: null,
+
+	// Dati delle persone.
+	Member: ['crm_members', 'calendar', 'crm_plans', 'admin_users'],
+	Subscription: ['crm_members'],
+	QRAccesso: ['crm_members'],
+	MemberDocument: ['crm_documents'],
+	Lead: ['crm_leads'],
+	CanaleContatto: ['crm_leads'],
+	Booking: ['calendar'],
+	ExercisePlan: ['crm_plans'],
+	WorkoutSession: ['crm_plans'],
+	WorkoutLog: ['crm_plans'],
+	StaffAccount: ['admin_users'],
+	Collaboratore: ['admin_users'],
+	AuditLog: ['audit_log'],
+};
+
+/** Se un ruolo dello staff può leggere un'entità. Il socio non passa da qui: vedi memberScope.js. */
+export function canReadEntity(role, entityName) {
+	if (role === 'member') return false;
+	if (!(entityName in LETTURA)) return false;
+	const moduli = LETTURA[entityName];
+	return moduli === null || moduli.some((modulo) => canAccess(role, modulo, 'view'));
+}
+
+/** Se per la lettura di un'entità qualcuno ha preso una decisione. */
+export function haRegolaDiLettura(entityName) {
+	return entityName in LETTURA;
 }
 
 // Le registrazioni scritte a mano scavalcano le causali e possono movimentare qualsiasi

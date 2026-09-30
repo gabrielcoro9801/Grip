@@ -35,24 +35,33 @@ function loadOrganization() {
     _cachedOrg = org;
     return org;
   })();
+  // Una promessa fallita non si tiene in cache: restava lì, e ogni componente che chiedeva
+  // l'organizzazione riceveva lo stesso errore finché non si ricaricava la pagina — anche dopo
+  // che la rete era tornata.
+  _cachePromise.catch(() => { _cachePromise = null; });
   return _cachePromise;
 }
 
 export function useOrganization() {
   const [organization, setOrganization] = useState(_cachedOrg);
   const [loading, setLoading] = useState(!_cachedOrg);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     if (_cachedOrg) return;
     let cancelled = false;
-    loadOrganization().then((org) => {
-      if (!cancelled) {
-        setOrganization(org);
-        setLoading(false);
-      }
-    });
+    loadOrganization()
+      .then((org) => {
+        if (!cancelled) setOrganization(org);
+      })
+      .catch((err) => {
+        if (!cancelled) setError(err);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
     return () => { cancelled = true; };
   }, []);
 
-  return { organization, loading };
+  return { organization, loading, error };
 }

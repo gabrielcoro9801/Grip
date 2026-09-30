@@ -6,8 +6,21 @@ import { eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { staffAccounts } from '../db/schema/index.js';
 import { signToken, getUserFromRequest } from '../auth/tokens.js';
-import { revocaSessioniDi } from '../auth/revoca.js';
 import { matriceCorrente } from '../../../shared/permissions.js';
+import { motivoPasswordNonValida } from '../../../shared/password.js';
+import { secondiDiAttesa, registraFallimento, registraSuccesso } from '../lib/tentativiAccesso.js';
+import { config } from '../config.js';
+import { registra } from '../lib/registro.js';
+
+// Un hash vero di una password che nessuno ha: serve a far durare un login su un'email
+// inesistente quanto uno su un'email che esiste. Stesso costo (10) degli hash degli account.
+const HASH_FITTIZIO = bcrypt.hashSync('nessun-account-ha-questa-password', 10);
+
+/** L'IP di chi si collega: dall'intestazione del proxy se ce n'è uno (config.intestazioneIp). */
+function ipDi(request) {
+	const daProxy = config.intestazioneIp && request.headers[config.intestazioneIp];
+	return String(daProxy || request.ip || '').split(',')[0].trim() || null;
+}
 
 // Ciò che il client può vedere di un account: mai l'hash della password.
 //
@@ -24,6 +37,9 @@ function toPublicUser(account) {
 		attivo: account.attivo,
 		linked_collaboratore_id: account.linkedCollaboratoreId,
 		linked_member_id: account.linkedMemberId,
+		// Vera se la password l'ha scelta qualcun altro: le schermate mostrano solo il cambio
+		// password, e il server rifiuta il resto finché non è fatto.
+		password_da_cambiare: account.passwordDaCambiare,
 		permessi: matrice.permessi[account.ruolo] ?? {},
 		capacita: matrice.capacita[account.ruolo] ?? [],
 	};
@@ -37,6 +53,13 @@ export default async function authRoutes(fastify) {
 			return reply.code(400).send({ error: 'Email e password sono obbligatorie.' });
 		}
 
+		const ip = ipDi(request);
+		const attesa = secondiDiAttesa(email, ip);
+		if (attesa > 0) {
+			reply.header('Retry-After', String(attesa));
+			return reply.code(429).send({ error: `Troppi tentativi falliti. Riprova fra ${Math.ceil(attesa / 60)} minuti.` });
+		}
+
 		// Confronto case-insensitive sull'email: gli utenti digitano l'indirizzo
 		// con maiuscole variabili e un login fallito per questo sarebbe incomprensibile.
 		const [account] = await db
@@ -48,10 +71,16 @@ export default async function authRoutes(fastify) {
 		// Messaggio volutamente identico in tutti i casi di fallimento: non rivelare
 		// se l'email esiste, se è disattivata o se è solo la password a essere errata.
 		const invalid = { error: 'Credenziali non valide.' };
-		if (!account || !account.attivo) return reply.code(401).send(invalid);
 
-		const passwordOk = await bcrypt.compare(password, account.passwordHash);
-		if (!passwordOk) return reply.code(401).send(invalid);
+		// Il confronto si fa sempre, anche senza account, contro un hash fittizio: se l'email non
+		// esisteva la risposta arrivava subito, se esisteva dopo il calcolo di bcrypt, e dal tempo
+		// di risposta si capiva quali email hanno un account.
+		const passwordOk = await bcrypt.compare(String(password), account?.passwordHash ?? HASH_FITTIZIO);
+		if (!account || !account.attivo || !passwordOk) {
+			registraFallimento(email, ip);
+			return reply.code(401).send(invalid);
+		}
+		registraSuccesso(email);
 
 		await db
 			.update(staffAccounts)
@@ -90,8 +119,10 @@ export default async function authRoutes(fastify) {
 		if (!currentPassword || !newPassword) {
 			return reply.code(400).send({ error: 'Password attuale e nuova sono obbligatorie.' });
 		}
-		if (newPassword.length < 8) {
-			return reply.code(400).send({ error: 'La nuova password deve avere almeno 8 caratteri.' });
+		const nonValida = motivoPasswordNonValida(newPassword);
+		if (nonValida) return reply.code(400).send({ error: nonValida });
+		if (newPassword === currentPassword) {
+			return reply.code(400).send({ error: 'La nuova password deve essere diversa da quella attuale.' });
 		}
 
 		const [account] = await db.select().from(staffAccounts).where(eq(staffAccounts.id, claims.sub)).limit(1);
@@ -101,15 +132,29 @@ export default async function authRoutes(fastify) {
 			return reply.code(400).send({ error: 'Password attuale non corretta.' });
 		}
 
-		await db
+		// Chi conosceva la vecchia password non deve restare dentro: cambiarla butta fuori tutte
+		// le sessioni di questo account. Quella da cui si sta chiedendo riceve un token nuovo,
+		// con il numero di versione nuovo: chi ha appena cambiato la password non deve
+		// rientrare, e dopo un cambio obbligato sarebbe un giro in più senza motivo.
+		const [aggiornato] = await db
 			.update(staffAccounts)
-			.set({ passwordHash: await bcrypt.hash(newPassword, 10) })
-			.where(eq(staffAccounts.id, account.id));
+			.set({
+				passwordHash: await bcrypt.hash(newPassword, 10),
+				passwordDaCambiare: false,
+				tokenVersion: sql`${staffAccounts.tokenVersion} + 1`,
+			})
+			.where(eq(staffAccounts.id, account.id))
+			.returning();
 
-		// Chi conosceva la vecchia password non deve restare dentro: cambiarla butta fuori
-		// tutte le sessioni di questo account, compresa quella da cui si sta chiedendo.
-		await revocaSessioniDi(account.id);
+		await registra(claims, {
+			tipoAzione: 'password_change', entitaTipo: 'staff_account', entitaNome: aggiornato.nome, entitaId: aggiornato.id,
+			dettagli: account.passwordDaCambiare ? 'Password scelta al primo accesso' : "Password cambiata dall'interessato",
+		}, request.log);
 
-		return { success: true };
+		return {
+			success: true,
+			token: signToken({ sub: aggiornato.id, ruolo: aggiornato.ruolo, tv: aggiornato.tokenVersion }),
+			user: toPublicUser(aggiornato),
+		};
 	});
 }

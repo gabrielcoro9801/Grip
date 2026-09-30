@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { api } from "@/core/api/client";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/ui/primitivi/select";
 import { Input } from "@/ui/primitivi/input";
@@ -6,7 +6,12 @@ import { Label } from "@/ui/primitivi/label";
 import { Badge } from "@/ui/primitivi/badge";
 import PageHeader from "@/staff/components/PageHeader";
 import { LoadingState } from "@/ui/Spinner";
+import { ErrorState } from "@/ui/StateViews";
+import { Button } from "@/ui/primitivi/button";
 import { formatDataOra } from "@/core/domain/format";
+
+// Quante voci per volta: abbastanza per una giornata di lavoro, poche per aprire la pagina.
+const PAGINA = 100;
 
 const ACTION_LABELS = {
   create: "Creazione",
@@ -16,15 +21,31 @@ const ACTION_LABELS = {
   activate: "Riattivazione",
   role_change: "Cambio ruolo",
   password_reset: "Reset password",
+  password_change: "Cambio password",
 };
 
+// I tipi li scrive il server (server/src/lib/registro.js), dal nome dell'entità. Le voci
+// della contabilità sono sparite con la contabilità.
 const ENTITY_LABELS = {
-  finance_expense: "Spesa",
-  finance_revenue: "Entrata",
-  booking: "Prenotazione",
+  member: "Socio",
+  subscription: "Iscrizione",
+  plan: "Abbonamento",
+  member_document: "Documento",
+  qraccesso: "Codice d'accesso",
+  lead: "Contatto",
+  canale_contatto: "Canale",
   course: "Corso",
-  member: "Cliente",
-  staff_account: "Account staff",
+  category: "Categoria",
+  instructor: "Istruttore",
+  event: "Evento",
+  session: "Lezione",
+  room: "Sala",
+  booking: "Prenotazione",
+  collaboratore: "Collaboratore",
+  staff_account: "Account",
+  exercise: "Esercizio",
+  exercise_plan: "Scheda",
+  organization: "Ente",
 };
 
 export default function AuditLogPage() {
@@ -35,9 +56,41 @@ export default function AuditLogPage() {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
 
-  useEffect(() => {
-    api.entities.AuditLog.list("-timestamp", 200).then(l => { setLogs(l); setLoading(false); });
+  const [altre, setAltre] = useState(false);
+  const [caricandoAltre, setCaricandoAltre] = useState(false);
+  const [errore, setErrore] = useState(null);
+
+  // Una pagina alla volta, dalla più recente. Prima erano le ultime 200 righe e basta: tutto
+  // quello che c'era prima non si poteva più vedere dalla schermata. "Carica altre" riparte
+  // dall'orario dell'ultima voce mostrata; le voci con lo stesso orario si scartano per id.
+  const caricaPagina = useCallback(async (prima) => {
+    const filtro = prima ? { timestamp__lte: prima } : {};
+    const pagina = await api.entities.AuditLog.filter(filtro, "-timestamp", PAGINA + 1);
+    setAltre(pagina.length > PAGINA);
+    return pagina.slice(0, PAGINA);
   }, []);
+
+  useEffect(() => {
+    caricaPagina(null).then(setLogs).catch(setErrore).finally(() => setLoading(false));
+  }, [caricaPagina]);
+
+  const caricaAltre = async () => {
+    setCaricandoAltre(true);
+    try {
+      // Un millisecondo in più: il database tiene i microsecondi, il JSON i millisecondi, e
+      // ripartire dall'orario troncato perderebbe le voci dello stesso millisecondo. I doppioni
+      // che ne vengono si scartano qui sotto.
+      const ultimo = logs[logs.length - 1]?.timestamp;
+      const pagina = await caricaPagina(ultimo ? new Date(Date.parse(ultimo) + 1).toISOString() : null);
+      setLogs((gia) => {
+        const visti = new Set(gia.map((l) => l.id));
+        return [...gia, ...pagina.filter((l) => !visti.has(l.id))];
+      });
+    } catch (err) {
+      setErrore(err);
+    }
+    setCaricandoAltre(false);
+  };
 
   const uniqueUsers = useMemo(() => {
     const users = new Map();
@@ -54,6 +107,7 @@ export default function AuditLogPage() {
   }, [logs, filterUser, filterAction, dateFrom, dateTo]);
 
   if (loading) return <LoadingState minHeight="h-full" />;
+  if (errore && !logs.length) return <ErrorState error={errore} onRetry={() => window.location.reload()} />;
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-6xl mx-auto space-y-6">
@@ -128,7 +182,16 @@ export default function AuditLogPage() {
         </table>
       </div>
 
-      <p className="text-xs text-muted-foreground">{filtered.length} voci trovate</p>
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-xs text-muted-foreground">
+          {filtered.length} voci trovate{altre ? " fra quelle caricate" : ""}
+        </p>
+        {altre && (
+          <Button size="sm" variant="outline" onClick={caricaAltre} disabled={caricandoAltre}>
+            {caricandoAltre ? "Caricamento…" : "Carica voci più vecchie"}
+          </Button>
+        )}
+      </div>
     </div>
   );
 }

@@ -11,6 +11,7 @@ function toMemberSession(user) {
     nome: user.nome,
     email: user.email,
     member_id: user.linked_member_id,
+    password_da_cambiare: Boolean(user.password_da_cambiare),
   };
 }
 
@@ -54,7 +55,10 @@ export function MemberAuthProvider({ children }) {
       }
       setMemberUser(toMemberSession(user));
       return { ok: true };
-    } catch {
+    } catch (err) {
+      // Il blocco dopo troppi tentativi va detto com'è: "credenziali non valide" farebbe
+      // riprovare, e ogni tentativo allungherebbe l'attesa.
+      if (err?.status === 429) return { ok: false, error: err.message };
       return invalid;
     }
   }, []);
@@ -64,8 +68,13 @@ export function MemberAuthProvider({ children }) {
     setMemberUser(null);
   }, []);
 
+  // Dopo un cambio password il server rimanda l'utente aggiornato (senza più l'obbligo).
+  const aggiornaUtente = useCallback((user) => {
+    if (user) setMemberUser(toMemberSession(user));
+  }, []);
+
   return (
-    <MemberAuthContext.Provider value={{ memberUser, loading, login, logout }}>
+    <MemberAuthContext.Provider value={{ memberUser, loading, login, logout, aggiornaUtente }}>
       {children}
     </MemberAuthContext.Provider>
   );

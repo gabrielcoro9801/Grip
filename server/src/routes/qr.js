@@ -11,6 +11,7 @@ import { getUserFromRequest } from '../auth/tokens.js';
 import { socioDiAccount } from '../auth/socioCorrente.js';
 import { codiceDinamico, verificaCodice, semeDelCodice } from '../lib/qrDinamico.js';
 import { msResiduiFinestra } from '../../../shared/qrDinamico.js';
+import { canAccess } from '../../../shared/permissions.js';
 
 export default async function qrRoutes(fastify) {
 	fastify.addHook('preHandler', async (request, reply) => {
@@ -42,6 +43,11 @@ export default async function qrRoutes(fastify) {
 			clienteId = memberId;
 		} else if (!clienteId) {
 			return reply.code(400).send({ error: 'Manca cliente_id.' });
+		} else if (!canAccess(utente.ruolo, 'crm_members', 'view')) {
+			// Il codice del minuto è una credenziale: con quello si entra al posto del socio.
+			// Lo riceveva qualunque account dello staff; ora solo chi vede le anagrafiche, che
+			// è chi lo confronta con lo schermo del socio alla reception.
+			return reply.code(403).send({ error: 'Non consentito.' });
 		}
 
 		const [qr] = await db

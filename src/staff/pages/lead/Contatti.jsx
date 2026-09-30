@@ -14,7 +14,6 @@ import { useConfirm } from "@/ui/ConfirmDialog";
 import { useToast } from "@/ui/primitivi/use-toast";
 import { useStaffAuth } from "@/staff/lib/StaffAuthContext";
 import { canEdit } from "@/staff/lib/permissions";
-import { logAction } from "@/staff/lib/auditLog";
 import { formatData, toIsoDate } from "@/core/domain/format";
 import { SESSI, etichettaSesso } from "@/core/domain/anagrafica";
 import { Plus, Search, Contact, Pencil, Trash2, UserCheck } from "lucide-react";
@@ -87,8 +86,7 @@ export default function Contatti() {
       if (id) {
         await api.entities.Lead.update(id, dati);
       } else {
-        const creato = await api.entities.Lead.create(dati);
-        await logAction(staffUser, "create", "lead", `${creato.nome} ${creato.cognome}`, creato.id, "Nuovo contatto");
+        await api.entities.Lead.create(dati);
       }
       toast({ title: id ? "Contatto aggiornato" : "Contatto registrato" });
       setModulo(null);
@@ -109,7 +107,6 @@ export default function Contatti() {
     if (!ok) return;
     try {
       await api.entities.Lead.delete(lead.id);
-      await logAction(staffUser, "delete", "lead", `${lead.nome} ${lead.cognome}`, lead.id, "Contatto eliminato");
       toast({ title: "Contatto eliminato" });
       carica();
     } catch (err) {
@@ -287,7 +284,6 @@ export default function Contatti() {
 
       <TrasformaInSocio
         lead={daTrasformare}
-        staffUser={staffUser}
         onChiudi={(fatto) => { setDaTrasformare(null); if (fatto) carica(); }}
       />
     </div>

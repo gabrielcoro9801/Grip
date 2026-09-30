@@ -15,12 +15,12 @@ import CampiAnagrafica, { anagraficaDi, motivoAnagraficaIncompleta } from "@/sta
 import DocumentiSocio from "@/staff/components/soci/DocumentiSocio";
 import { AvatarSocio, SceltaFoto } from "@/staff/components/soci/FotoSocio";
 import { caricaFile } from "@/staff/lib/uploads";
-import { canEdit } from "@/staff/lib/permissions";
+import { canAccess, canEdit } from "@/staff/lib/permissions";
+import { motivoPasswordNonValida, LUNGHEZZA_MINIMA_PASSWORD } from "@/core/domain/password";
 import { etichettaSesso } from "@/core/domain/anagrafica";
 import { generateQRCode, generaPasswordTemporanea } from "@/staff/lib/qrUtils";
 import { qrDataUrl } from "@/ui/qr/qrImmagine";
 import { useQrDinamico } from "@/ui/hooks/useQrDinamico";
-import { logAction } from "@/staff/lib/auditLog";
 import { useToast } from "@/ui/primitivi/use-toast";
 import { LoadingState } from "@/ui/Spinner";
 import { formatData, formatDataOra, formatEuro } from "@/core/domain/format";
@@ -71,6 +71,9 @@ export default function MemberDetail() {
   // costruito a mano può avere l'uno e non l'altro — e allora carica ed elimina sarebbero
   // pulsanti che chiamano l'API solo per prendersi un 403.
   const puoModificareDocumenti = canEdit(staffUser?.ruolo, "crm_documents");
+  // Senza la visione il server rifiuta anche la lettura: la sezione non si mostra, invece di
+  // mostrarla vuota come se il socio non avesse documenti.
+  const puoVedereDocumenti = canAccess(staffUser?.ruolo, "crm_documents", "view");
   const [qrAccess, setQrAccess] = useState(null);
   const [portalAccount, setPortalAccount] = useState(null);
   const [showPasswordDialog, setShowPasswordDialog] = useState(false);
@@ -87,13 +90,15 @@ export default function MemberDetail() {
       // sezioni Allenamento e Gestione corsi. Con loro se ne vanno le letture di tutte le
       // lezioni, gli eventi e i corsi dell'ente, che servivano solo a dare un nome a una
       // prenotazione.
+      // I documenti hanno un permesso loro: un ruolo che vede le anagrafiche ma non i
+      // certificati apre la scheda lo stesso, senza la sezione documenti.
       const [m, p, s, d, qr, sa] = await Promise.all([
         api.entities.Member.get(id),
         api.entities.Plan.list(),
         api.entities.Subscription.filter({ member_id: id }),
-        api.entities.MemberDocument.filter({ member_id: id }),
+        puoVedereDocumenti ? api.entities.MemberDocument.filter({ member_id: id }) : [],
         api.entities.QRAccesso.filter({ cliente_id: id }),
-        api.entities.StaffAccount.filter({ linked_member_id: id, ruolo: "member" }),
+        api.soci.accessoPortale(id),
       ]);
 
       setMember(m);
@@ -102,7 +107,7 @@ export default function MemberDetail() {
       // Si propongono solo i tipi che si possono vendere oggi; il server lo ricontrolla.
       setPlans(p.filter(pl => !motivoNonVendibile(pl)));
       setQrAccess(qr[0] || null);
-      setPortalAccount(sa[0] || null);
+      setPortalAccount(sa);
       setLoading(false);
     } catch (err) {
       setLoadError(true);
@@ -158,7 +163,6 @@ export default function MemberDetail() {
       if (foto.file) dati.foto_url = (await caricaFile({ file: foto.file })).file_url;
       else if (foto.rimossa) dati.foto_url = null;
       await api.entities.Member.update(id, dati);
-      await logAction(staffUser, "update", "member", `${dati.nome} ${dati.cognome}`.trim(), id, "Anagrafica modificata");
       toast({ title: "Anagrafica aggiornata" });
       chiudiAnagrafica();
       loadData();
@@ -181,7 +185,6 @@ export default function MemberDetail() {
   const handleRevokeQR = async () => {
     if (!qrAccess) return;
     await api.entities.QRAccesso.update(qrAccess.id, { stato: "revocato" });
-    await logAction(staffUser, "deactivate", "member", `QR revocato — ${member?.full_name}`, qrAccess.id, "QR accesso revocato");
     toast({ title: "QR revocato" });
     loadData();
   };
@@ -190,20 +193,23 @@ export default function MemberDetail() {
     const newCode = generateQRCode();
     if (qrAccess) {
       await api.entities.QRAccesso.update(qrAccess.id, { codice: newCode, stato: "attivo", data_generazione: new Date().toISOString() });
-      await logAction(staffUser, "update", "member", `QR rigenerato — ${member?.full_name}`, qrAccess.id, "QR accesso rigenerato", qrAccess.codice, newCode);
     } else {
-      const created = await api.entities.QRAccesso.create({
+      await api.entities.QRAccesso.create({
         cliente_id: id,
         cliente_name: member?.full_name || "",
         codice: newCode,
         data_generazione: new Date().toISOString(),
         stato: "attivo",
       });
-      await logAction(staffUser, "create", "member", `QR generato — ${member?.full_name}`, created.id, "QR accesso generato");
     }
     toast({ title: "QR rigenerato" });
     loadData();
   };
+
+  // L'accesso al portale passa da una rotta sua, con il permesso della scheda: prima si
+  // scriveva un account, che il server riserva all'amministratore, e per la reception i due
+  // pulsanti rispondevano sempre 403. Il registro delle azioni lo scrive il server.
+  const impostaAccesso = (password) => api.soci.impostaAccessoPortale(id, password);
 
   const handleSetPassword = async (e) => {
     e.preventDefault();
@@ -211,27 +217,15 @@ export default function MemberDetail() {
       toast({ title: "Le password non coincidono", variant: "destructive" });
       return;
     }
-    if (passwordForm.password.length < 6) {
-      toast({ title: "Password troppo corta (min 6 caratteri)", variant: "destructive" });
+    const nonValida = motivoPasswordNonValida(passwordForm.password);
+    if (nonValida) {
+      toast({ title: nonValida, variant: "destructive" });
       return;
     }
     setSaving(true);
     try {
-      if (portalAccount) {
-        await api.entities.StaffAccount.update(portalAccount.id, { password: passwordForm.password });
-        await logAction(staffUser, "password_reset", "staff_account", `Portale socio — ${member?.full_name}`, portalAccount.id, "Password impostata da Gestione membri");
-      } else {
-        const created = await api.entities.StaffAccount.create({
-          nome: member?.full_name || "Socio",
-          email: member?.email || "",
-          ruolo: "member",
-          password: passwordForm.password,
-          attivo: true,
-          linked_member_id: id,
-        });
-        await logAction(staffUser, "create", "staff_account", `Portale socio — ${member?.full_name}`, created.id, "Account portale socio creato da Gestione membri");
-      }
-      toast({ title: "Password impostata", description: "Il socio può accedere al portale" });
+      await impostaAccesso(passwordForm.password);
+      toast({ title: "Password impostata", description: "Al primo accesso il socio dovrà sceglierne una sua" });
       setShowPasswordDialog(false);
       setPasswordForm({ password: "", confirm: "" });
       loadData();
@@ -245,20 +239,7 @@ export default function MemberDetail() {
     setSaving(true);
     try {
       const pwd = generaPasswordTemporanea();
-      if (portalAccount) {
-        await api.entities.StaffAccount.update(portalAccount.id, { password: pwd });
-        await logAction(staffUser, "password_reset", "staff_account", `Portale socio — ${member?.full_name}`, portalAccount.id, "Password generata da Gestione membri");
-      } else {
-        const created = await api.entities.StaffAccount.create({
-          nome: member?.full_name || "Socio",
-          email: member?.email || "",
-          ruolo: "member",
-          password: pwd,
-          attivo: true,
-          linked_member_id: id,
-        });
-        await logAction(staffUser, "create", "staff_account", `Portale socio — ${member?.full_name}`, created.id, "Account portale socio creato da Gestione membri");
-      }
+      await impostaAccesso(pwd);
       setGeneratedPassword(pwd);
       toast({ title: "Password generata" });
       loadData();
@@ -364,9 +345,11 @@ export default function MemberDetail() {
 
         {/* I documenti occupano due righe: sono la tile più lunga, e affiancata ad abbonamenti
             e accesso non lascia buchi nella griglia. */}
-        <div className="lg:row-span-2">
-          <DocumentiSocio socio={member} documenti={documents} puoModificare={puoModificareDocumenti} staffUser={staffUser} onCambio={loadData} />
-        </div>
+        {puoVedereDocumenti && (
+          <div className="lg:row-span-2">
+            <DocumentiSocio socio={member} documenti={documents} puoModificare={puoModificareDocumenti} staffUser={staffUser} onCambio={loadData} />
+          </div>
+        )}
 
         {/* Accesso: il QR per entrare in palestra e la password per entrare nel portale.
             Sono le due credenziali del socio, e si gestiscono insieme. */}
@@ -425,19 +408,21 @@ export default function MemberDetail() {
               </div>
               {/* L'account del portale si crea con l'email del socio: senza, i pulsanti restano
                   spenti e il perché si legge passandoci sopra. */}
-              <div className="flex gap-2 mt-3" title={member.email ? undefined : "Serve l'email del socio per creare l'account del portale"}>
-                <Button size="sm" variant="outline" onClick={() => { setShowPasswordDialog(true); setGeneratedPassword(""); }} disabled={saving || !member.email}>
-                  Imposta password
-                </Button>
-                <Button size="sm" variant="outline" onClick={handleGeneratePassword} disabled={saving || !member.email}>
-                  Genera password
-                </Button>
-              </div>
+              {puoModificare && (
+                <div className="flex gap-2 mt-3" title={member.email ? undefined : "Serve l'email del socio per creare l'account del portale"}>
+                  <Button size="sm" variant="outline" onClick={() => { setShowPasswordDialog(true); setGeneratedPassword(""); }} disabled={saving || !member.email}>
+                    Imposta password
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={handleGeneratePassword} disabled={saving || !member.email}>
+                    Genera password
+                  </Button>
+                </div>
+              )}
               {generatedPassword && (
                 <div className="mt-3 p-3 rounded-lg bg-muted">
                   <p className="text-xs text-muted-foreground mb-1">Password generata:</p>
                   <p className="font-mono text-sm font-medium break-all">{generatedPassword}</p>
-                  <p className="text-xs text-warning mt-1">Comunica questa password al socio</p>
+                  <p className="text-xs text-warning mt-1">Comunicala al socio: al primo accesso dovrà sceglierne una sua.</p>
                 </div>
               )}
             </section>
@@ -498,7 +483,7 @@ export default function MemberDetail() {
           <DialogHeader><DialogTitle>Imposta password portale</DialogTitle></DialogHeader>
           <form onSubmit={handleSetPassword} className="space-y-3">
             <p className="text-xs text-muted-foreground">Account: {member?.email}</p>
-            <div><Label>Nuova password *</Label><Input type="text" required value={passwordForm.password} onChange={e => setPasswordForm({...passwordForm, password: e.target.value})} placeholder="Min 6 caratteri" /></div>
+            <div><Label>Nuova password *</Label><Input type="text" required value={passwordForm.password} onChange={e => setPasswordForm({...passwordForm, password: e.target.value})} placeholder={`Almeno ${LUNGHEZZA_MINIMA_PASSWORD} caratteri`} /></div>
             <div><Label>Conferma password *</Label><Input type="text" required value={passwordForm.confirm} onChange={e => setPasswordForm({...passwordForm, confirm: e.target.value})} /></div>
             <Button type="submit" className="w-full" disabled={saving}>{saving ? "Salvataggio..." : "Imposta password"}</Button>
           </form>

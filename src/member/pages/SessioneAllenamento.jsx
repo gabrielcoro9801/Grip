@@ -16,6 +16,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import TimerRecupero from "@/member/components/TimerRecupero";
 import SelettoreEsercizi from "@/ui/allenamento/SelettoreEsercizi";
 import { ChevronDown, Plus, Check, Timer, Trash2, StickyNote, Repeat, X } from "lucide-react";
+import { toIsoDate } from "@/core/domain/format";
 import { etichettaGruppo } from "@/core/domain/gruppiMuscolari";
 import {
   formatDurata, formatRecupero, statisticheAllenamento, tipoSerie, TIPI_SERIE,
@@ -375,7 +376,7 @@ export default function SessioneAllenamento() {
         massimale: adessoStimato,
         peso: numero(riga.kg),
         reps: repsFatte,
-        data: new Date().toISOString().split("T")[0],
+        data: toIsoDate(new Date()),
       });
       return copia;
     });

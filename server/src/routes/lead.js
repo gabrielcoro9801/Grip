@@ -13,6 +13,8 @@ import { translateToJs, translateToSnakeCase } from '../entities/columnMaps.js';
 import { anagraficaSocio } from '../entities/hooks.js';
 import { assegnaCodiceSocio } from '../lib/codiceSocio.js';
 import { registerPgErrorHandler } from './errorHandler.js';
+import { oggiIso } from '../../../shared/abbonamenti.js';
+import { registra } from '../lib/registro.js';
 
 // Quello che la finestra di trasformazione può scrivere sul socio. Il codice socio, i consensi
 // marketing e le date di sistema restano fuori: il codice lo assegna il contatore, e il
@@ -48,7 +50,7 @@ export default async function leadRoutes(fastify) {
 			CAMPI_SOCIO.filter((c) => c in (request.body ?? {})).map((c) => [c, request.body[c]])
 		);
 		const anagrafica = anagraficaSocio(corpo, { creazione: true });
-		if (anagrafica.gdpr_consent === true) anagrafica.gdpr_consent_date = new Date().toISOString().slice(0, 10);
+		if (anagrafica.gdpr_consent === true) anagrafica.gdpr_consent_date = oggiIso();
 
 		const socio = await db.transaction(async (tx) => {
 			const [lead] = await tx.select().from(leads).where(eq(leads.id, request.params.id)).limit(1).for('update');
@@ -66,6 +68,10 @@ export default async function leadRoutes(fastify) {
 		});
 
 		if (!socio) return reply.code(404).send({ error: 'Il contatto non esiste più: forse è già stato trasformato.' });
+		await registra(getUserFromRequest(request), {
+			tipoAzione: 'create', entitaTipo: 'member', entitaNome: socio.fullName, entitaId: socio.id,
+			dettagli: 'Socio nato da un contatto (lead)',
+		}, request.log);
 		reply.code(201);
 		return { member: translateToSnakeCase(members, socio) };
 	});

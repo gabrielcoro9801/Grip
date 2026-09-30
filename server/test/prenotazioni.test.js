@@ -10,7 +10,7 @@ import bcrypt from 'bcryptjs';
 import { eq, inArray } from 'drizzle-orm';
 import { buildApp } from '../src/app.js';
 import { db, pool } from '../src/db/client.js';
-import { members, staffAccounts, rooms, courses, events, sessions, bookings } from '../src/db/schema/index.js';
+import { members, staffAccounts, rooms, courses, events, sessions, bookings, subscriptions } from '../src/db/schema/index.js';
 
 const PASSWORD = 'prova-prenotazioni-1234';
 const CAPIENZA = 2;
@@ -43,6 +43,9 @@ before(async () => {
 		.values([1, 2, 3, 4].map((n) => ({ nome: 'Socio', cognome: `${n}`, codiceSocio: `P${'ABCD'[n - 1]}${String(suffisso).replace(/\d/g, (c) => 'ABCDEFGHIJ'[c])}`, email: `socio${n}.pren.${suffisso}@test.local` })))
 		.returning();
 	idSoci.push(...soci.map((s) => s.id));
+	// Si prenota solo con un abbonamento che copre il giorno della lezione (FUN-09): i soci
+	// della prova ne hanno uno, tranne dove la prova è proprio quella.
+	await db.insert(subscriptions).values(soci.map((s) => ({ memberId: s.id, planName: 'Prova', startDate: '2026-01-01', endDate: '2027-12-31' })));
 
 	const passwordHash = await bcrypt.hash(PASSWORD, 4);
 	const account = await db
@@ -97,6 +100,7 @@ after(async () => {
 	if (idSala) await db.delete(rooms).where(inArray(rooms.id, [idSala]));
 	if (idSoci.length) await db.delete(staffAccounts).where(inArray(staffAccounts.linkedMemberId, idSoci));
 	await db.delete(staffAccounts).where(inArray(staffAccounts.nome, ['Reception Pren']));
+	if (idSoci.length) await db.delete(subscriptions).where(inArray(subscriptions.memberId, idSoci));
 	if (idSoci.length) await db.delete(members).where(inArray(members.id, idSoci));
 	await app.close();
 	await pool.end();
@@ -255,5 +259,75 @@ describe('disdire sistema la lista', () => {
 		const sua = (await prenota(tokenSocio[0])).json().booking;
 		const res = await come(tokenStaff, { method: 'POST', url: `/api/prenotazioni/${sua.id}/disdici` });
 		assert.equal(res.statusCode, 200);
+	});
+});
+
+// Si prenotava anche senza abbonamento. La regola è sul giorno della lezione, non su oggi.
+describe('senza un abbonamento quel giorno non si prenota', () => {
+	after(async () => {
+		await db.update(subscriptions).set({ startDate: '2026-01-01', endDate: '2027-12-31' }).where(eq(subscriptions.memberId, idSoci[0]));
+	});
+
+	test('scaduto prima della lezione: rifiutato, dal portale come dalla reception', async () => {
+		await pulisciPrenotazioni();
+		await db.update(subscriptions).set({ endDate: '2026-11-30' }).where(eq(subscriptions.memberId, idSoci[0]));
+		const dalSocio = await prenota(tokenSocio[0]);
+		assert.equal(dalSocio.statusCode, 400);
+		assert.match(dalSocio.json().error, /abbonamento valido/);
+		assert.equal((await prenota(tokenStaff, { member_id: idSoci[0] })).statusCode, 400);
+	});
+
+	test('che comincia proprio il giorno della lezione: si prenota', async () => {
+		await pulisciPrenotazioni();
+		await db.update(subscriptions).set({ startDate: '2026-12-01', endDate: '2026-12-31' }).where(eq(subscriptions.memberId, idSoci[0]));
+		assert.equal((await prenota(tokenSocio[0])).statusCode, 201);
+	});
+});
+
+// La promozione esisteva solo nella disdetta: portando una lezione da 2 a 4 posti, chi era in
+// lista d'attesa restava lì con due posti vuoti davanti.
+describe('una capienza che cresce promuove la lista d’attesa', () => {
+	after(async () => {
+		await db.update(sessions).set({ capacity: CAPIENZA }).where(eq(sessions.id, idLezione));
+	});
+
+	test('entrano in ordine quanti ci stanno, e la coda si rinumera', async () => {
+		await pulisciPrenotazioni();
+		for (const token of tokenSocio) assert.equal((await prenota(token)).statusCode, 201);
+		// Due confermati, due in attesa (posizioni 1 e 2).
+		const res = await come(tokenStaff, { method: 'PUT', url: `/api/entities/Session/${idLezione}`, payload: { capacity: CAPIENZA + 1, modified_manually: true } });
+		assert.equal(res.statusCode, 200, res.body);
+
+		const righe = await db.select().from(bookings).where(eq(bookings.sessionId, idLezione));
+		const perSocio = Object.fromEntries(righe.map((r) => [r.memberId, r]));
+		assert.equal(perSocio[idSoci[2]].status, 'confirmed', 'il primo in attesa entra');
+		assert.equal(perSocio[idSoci[3]].status, 'waitlisted');
+		assert.equal(perSocio[idSoci[3]].waitlistPosition, 1, 'e chi resta sale al primo posto della coda');
+	});
+});
+
+// Il calendario del gestionale caricava "le 500 lezioni con la data più alta" e "le 500
+// prenotazioni create per ultime": con un anno di corsi settimanali il mese corrente usciva
+// dalla lista. Ora chiede un intervallo.
+describe('il calendario chiede un intervallo, non un numero fisso', () => {
+	test('le lezioni si filtrano da una data in avanti', async () => {
+		const dopo = (await come(tokenStaff, { method: 'GET', url: `/api/entities/Session?event_id=${idEvento}&date__gte=2026-11-30` })).json();
+		assert.deepEqual(dopo.map((l) => l.id), [idLezione]);
+		const prima = (await come(tokenStaff, { method: 'GET', url: `/api/entities/Session?event_id=${idEvento}&date__lte=2026-11-30` })).json();
+		assert.deepEqual(prima, []);
+	});
+
+	test('le prenotazioni si chiedono per data della lezione', async () => {
+		await pulisciPrenotazioni();
+		assert.equal((await prenota(tokenSocio[0])).statusCode, 201);
+		const dal = (await come(tokenStaff, { method: 'GET', url: '/api/prenotazioni?dal=2026-11-30' })).json();
+		assert.ok(dal.some((p) => p.session_id === idLezione));
+		const dopo = (await come(tokenStaff, { method: 'GET', url: '/api/prenotazioni?dal=2026-12-02' })).json();
+		assert.ok(!dopo.some((p) => p.session_id === idLezione));
+	});
+
+	test('senza data, o da un socio, non si leggono', async () => {
+		assert.equal((await come(tokenStaff, { method: 'GET', url: '/api/prenotazioni' })).statusCode, 400);
+		assert.equal((await come(tokenSocio[0], { method: 'GET', url: '/api/prenotazioni?dal=2026-01-01' })).statusCode, 403);
 	});
 });

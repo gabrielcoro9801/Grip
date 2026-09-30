@@ -38,6 +38,9 @@ RUN npm ci
 COPY vite.config.js jsconfig.json index.html member.html tailwind.config.js postcss.config.js components.json ./
 COPY src ./src
 COPY shared ./shared
+# I file serviti così come sono, dalla radice del sito: oggi lo script del tema, che
+# entrambi i gusci caricano prima di React (e che la guardia qui sotto controlla).
+COPY public ./public
 
 RUN npm run build
 
@@ -62,13 +65,23 @@ RUN for guscio in index.html member.html; do \
             && ls -la dist && exit 1); \
     done
 
+# Lo script del tema non fa fallire la build se manca: le pagine partirebbero lo
+# stesso, con un lampo bianco per chi usa il tema scuro e un errore in console.
+RUN test -f dist/tema.js \
+    || (echo "ERRORE: manca dist/tema.js — controlla il COPY di public/." && exit 1)
+
 # --- Fase 2: l'immagine che gira --------------------------------------------
 FROM node:22-alpine AS runtime
 
-# Un processo che non serve a niente non gira da amministratore: se un giorno
-# venisse compromesso, non avrebbe i permessi per toccare il sistema.
+# Il server non gira da amministratore: se un giorno venisse compromesso, non
+# avrebbe i permessi per toccare il sistema. Il commento lo diceva già, ma mancava
+# il resto — il processo girava come root. Ora il container parte come root solo
+# per dare la cartella degli upload (un volume, che Railway monta come root)
+# all'utente `node`, e `su-exec` passa a `node` prima di migrazioni e server:
+# vedi server/avvio.sh.
 WORKDIR /app
 ENV NODE_ENV=production
+RUN apk add --no-cache su-exec
 
 COPY server/package.json server/package-lock.json ./server/
 # `--omit=dev` esclude drizzle-kit, che è uno strumento di sviluppo: le
@@ -96,6 +109,7 @@ COPY --from=frontend /app/dist ./dist
 # documentazione dell'intento.
 EXPOSE 3001
 
-# Le migrazioni prima di accettare richieste: se falliscono il container non
-# parte, invece di rispondere con errori incomprensibili su uno schema vecchio.
-CMD ["sh", "-c", "npm --prefix server run db:deploy && node server/src/index.js"]
+COPY server/avvio.sh ./server/avvio.sh
+
+# Migrazioni e server partono da avvio.sh, dopo il passaggio a `node`.
+CMD ["sh", "server/avvio.sh"]

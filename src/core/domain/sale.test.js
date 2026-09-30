@@ -4,6 +4,7 @@ import {
   statoSala, sospensioneCopre, sospensioneTocca, motivoSospensioneNonValida,
   descriviSospensione, messaggioSospensioneBloccata, messaggioAnnullaInveceDiEliminare,
   azioneSullaSala, motivoSalaNonPrenotabile, motivoCambioStatoNonValido,
+  saleProgrammabili, etichettaSalaNelPeriodo,
 } from "./sale.js";
 
 const SOSPESA = { name: "Sala Pesi", stato: "sospeso", sospesa_dal: "2026-10-01", sospesa_al: "2026-10-15" };
@@ -72,13 +73,30 @@ test("cosa si può fare di una sala dipende da quanto si perderebbe", () => {
   assert.equal(azioneSullaSala({ maiUsata: false, occupataDaQui: true }), "niente");
   // Una sala nuova e già prenotata resta intoccabile: conta il calendario, non l'anzianità.
   assert.equal(azioneSullaSala({ maiUsata: true, occupataDaQui: true }), "niente");
+  // Già annullata con un passato: è già dove deve stare, non si annulla una seconda volta.
+  assert.equal(azioneSullaSala({ maiUsata: false, occupataDaQui: false, annullata: true }), "niente");
+  // Già annullata ma mai usata: si può ancora eliminare davvero.
+  assert.equal(azioneSullaSala({ maiUsata: true, occupataDaQui: false, annullata: true }), "elimina");
 });
 
-test("il messaggio dell'annullamento dice cosa si salva e cosa si perde", () => {
-  const molti = messaggioAnnullaInveceDiEliminare("Sala Pesi", 3);
-  assert.match(molti, /3 eventi che si sono tenuti/);
+test("il messaggio dell'annullamento dice cosa si salva e cosa si perde, in italiano", () => {
+  const molti = messaggioAnnullaInveceDiEliminare("Sala Pesi", { eventi: 3 });
+  // Con tre eventi diceva «c'è 3 eventi».
+  assert.match(molti, /ci sono 3 eventi che si sono tenuti/);
   assert.match(molti, /Si annulla/);
-  assert.match(messaggioAnnullaInveceDiEliminare("Sala Pesi", 1), /1 evento che si è tenuto/);
+  assert.match(messaggioAnnullaInveceDiEliminare("Sala Pesi", { eventi: 1 }), /c'è 1 evento che si è tenuto/);
+  // Solo lezioni spostate qui da un evento di un'altra sala: sono lezioni, non eventi.
+  assert.match(messaggioAnnullaInveceDiEliminare("Sala Pesi", { lezioni: 12 }), /ci sono 12 lezioni che si sono tenute/);
+});
+
+test("le tendine: niente sale annullate, e il motivo detto sul periodo scelto", () => {
+  const attiva = { id: "a", name: "Pesi", stato: "attivo" };
+  const sospesa = { id: "s", name: "Yoga", stato: "sospeso", sospesa_dal: "2026-10-01", sospesa_al: "2026-10-15" };
+  const annullata = { id: "x", name: "Vecchia", stato: "annullato" };
+  assert.deepEqual(saleProgrammabili([attiva, sospesa, annullata]).map((s) => s.id), ["a", "s"]);
+  assert.equal(etichettaSalaNelPeriodo(sospesa, "2026-10-10", "2026-10-10"), "Yoga — sospesa dal 01/10/2026 al 15/10/2026");
+  // Fuori dal periodo la sala funziona: niente etichetta, qualunque cosa dica il calendario di oggi.
+  assert.equal(etichettaSalaNelPeriodo(sospesa, "2026-11-01", "2026-11-01"), "Yoga");
 });
 
 test("una sala annullata non si prenota mai, in nessuna data", () => {

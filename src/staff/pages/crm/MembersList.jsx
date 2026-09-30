@@ -11,7 +11,7 @@ import PageHeader from "@/staff/components/PageHeader";
 import StatusBadge from "@/ui/StatusBadge";
 import { Plus, Search, Users } from "lucide-react";
 import { LoadingState } from "@/ui/Spinner";
-import { EmptyState } from "@/ui/StateViews";
+import { EmptyState, ErrorState } from "@/ui/StateViews";
 import { useToast } from "@/ui/primitivi/use-toast";
 import { caricaFile } from "@/staff/lib/uploads";
 import { formatData } from "@/core/domain/format";
@@ -72,15 +72,18 @@ export default function MembersList() {
   const [salvando, setSalvando] = useState(false);
   const { toast } = useToast();
 
+  const [errore, setErrore] = useState(null);
+
+  // Senza `catch`, un errore di rete lasciava la pagina sulla rotellina per sempre.
   const loadData = () => {
+    setErrore(null);
     Promise.all([
       api.entities.Member.list(),
       api.entities.Subscription.list(),
     ]).then(([m, s]) => {
       setMembers(m);
       setSubscriptions(s);
-      setLoading(false);
-    });
+    }).catch(setErrore).finally(() => setLoading(false));
   };
 
   useEffect(() => { loadData(); }, []);
@@ -129,6 +132,7 @@ export default function MembersList() {
   if (loading) {
     return <LoadingState minHeight="h-64" />;
   }
+  if (errore) return <ErrorState error={errore} onRetry={() => { setLoading(true); loadData(); }} />;
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">

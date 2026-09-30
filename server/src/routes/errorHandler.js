@@ -6,6 +6,16 @@ const PG_ERROR_MESSAGES = {
 	23505: 'Valore duplicato su un campo che deve essere univoco.',
 	23502: 'Campo obbligatorio mancante.',
 	23514: 'Valore non valido per un vincolo del campo (check constraint).',
+	// Errori di formato: un UUID malformato nell'indirizzo, un testo troppo lungo, una data o un
+	// numero impossibili. Sono errori di chi chiede, non guasti del server: finivano in 500 e nei
+	// log come tali.
+	'22P02': 'Valore in formato non valido.',
+	22001: 'Un testo supera la lunghezza consentita.',
+	22007: 'Data non valida.',
+	22008: "Data fuori dall'intervallo ammesso.",
+	22003: "Numero fuori dall'intervallo ammesso.",
+	// Scaduta l'attesa di un lock (lib/sale.js): qualcun altro sta lavorando sulla stessa sala.
+	'55P03': 'Qualcun altro sta modificando la stessa sala in questo momento: riprova fra qualche secondo.',
 };
 
 // Per alcuni vincoli il messaggio generico non dice cosa fare. Il nome del vincolo arriva da
@@ -14,11 +24,27 @@ const PG_ERROR_MESSAGES = {
 const VINCOLI_CON_MESSAGGIO = {
 	members_codice_fiscale_univoco: 'Esiste già un socio con questo codice fiscale.',
 	canali_contatto_nome_unique: 'Esiste già un canale con questo nome.',
+	staff_accounts_email_lower_idx: 'Esiste già un account con questa email (le maiuscole non contano).',
 	leads_canale_id_canali_contatto_id_fk: 'Il canale è usato da alcuni contatti: disattivalo invece di eliminarlo.',
 };
 
+/**
+ * L'errore di Postgres dentro quello che arriva.
+ *
+ * Da drizzle-orm 0.44 un errore del database arriva avvolto in un `DrizzleQueryError`, con
+ * quello di Postgres in `cause`: leggendo solo il primo livello, codice e vincolo erano
+ * spariti e ogni violazione tornava a essere un 500.
+ */
+function erroreDelDatabase(error) {
+	for (let e = error; e; e = e.cause) {
+		if (e.code && /^[0-9A-Z]{5}$/.test(String(e.code))) return e;
+	}
+	return error;
+}
+
 export function registerPgErrorHandler(fastify) {
-	fastify.setErrorHandler((error, request, reply) => {
+	fastify.setErrorHandler((errore, request, reply) => {
+		const error = erroreDelDatabase(errore);
 		const message = VINCOLI_CON_MESSAGGIO[error.constraint] ?? PG_ERROR_MESSAGES[error.code];
 		if (message) {
 			// `error.detail` di Postgres contiene il valore che ha violato il vincolo — cose
@@ -33,12 +59,12 @@ export function registerPgErrorHandler(fastify) {
 		// Fastify segnala da sé gli errori di richiesta (JSON malformato, corpo vuoto,
 		// payload troppo grande): rispondere 500 farebbe credere a un guasto del server
 		// una richiesta che va semplicemente corretta.
-		if (error.statusCode >= 400 && error.statusCode < 500) {
-			reply.code(error.statusCode).send({ error: error.message });
+		if (errore.statusCode >= 400 && errore.statusCode < 500) {
+			reply.code(errore.statusCode).send({ error: errore.message });
 			return;
 		}
 
-		request.log.error(error);
+		request.log.error(errore);
 		reply.code(500).send({ error: 'Errore interno del server' });
 	});
 }

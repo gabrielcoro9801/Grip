@@ -1,13 +1,13 @@
 import React, { useState, useMemo } from "react";
 import { ChevronLeft } from "lucide-react";
 import CourseSessionsList from "@/member/components/CourseSessionsList";
-import { formatData } from "@/core/domain/format";
+import { formatData, toIsoDate } from "@/core/domain/format";
 
 export default function CoursesByCategory({ enrichedSessions, onBook, onCancel, onBookAll, onCancelAll, actionLoading }) {
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [selectedCourse, setSelectedCourse] = useState(null);
 
-  const today = new Date().toISOString().split("T")[0];
+  const today = toIsoDate(new Date());
 
   const upcomingSessions = useMemo(() => {
     return enrichedSessions

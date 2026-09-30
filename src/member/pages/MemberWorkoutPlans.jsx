@@ -1,8 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, lazy, Suspense } from "react";
 import { useNavigate } from "react-router-dom";
-import { api } from "@/core/api/client";
-import { caricaAllenamento, annullaSessioneAllenamento, caricaProgressiEsercizio } from "@/core/api/portale";
-import { useMemberAuth } from "@/member/session/MemberAuthContext";
+import { caricaAllenamento, annullaSessioneAllenamento, caricaProgressiEsercizio, avviaAllenamento } from "@/core/api/portale";
 import { Card, CardContent } from "@/ui/primitivi/card";
 import { Button } from "@/ui/primitivi/button";
 import { Badge } from "@/ui/primitivi/badge";
@@ -21,7 +19,6 @@ import { formatRecupero, formatDurata, totaleSerie, riepilogoSerie, riepilogoRpe
 const ProgressiEsercizio = lazy(() => import("@/member/components/ProgressiEsercizio"));
 
 export default function MemberWorkoutPlans() {
-  const { memberUser } = useMemberAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
   const [conferma, dialogoConferma] = useConfirm();
@@ -110,14 +107,8 @@ export default function MemberWorkoutPlans() {
     }
     setAvvioInCorso(`${scheda.id}__${indiceRoutine}`);
     try {
-      const sessione = await api.entities.WorkoutSession.create({
-        member_id: memberUser.member_id,
-        plan_id: scheda.id,
-        plan_name: scheda.nome,
-        routine_index: indiceRoutine,
-        routine_name: routine.nome,
-        iniziata_alle: new Date().toISOString(),
-      });
+      // Dalla rotta del portale: controlla che la scheda sia nostra e mette l'ora del server.
+      const sessione = await avviaAllenamento(scheda.id, indiceRoutine);
       navigate(`/member-portal/allenamento/sessione/${sessione.id}`);
     } catch (err) {
       toast({ title: "Non è stato possibile avviare", description: err.message, variant: "destructive" });

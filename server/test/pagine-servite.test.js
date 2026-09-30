@@ -44,7 +44,34 @@ describe('le intestazioni delle pagine servite', () => {
 
 		assert.equal(risposta.statusCode, 200);
 		assert.match(risposta.headers['content-type'], /text\/html/);
-		assert.equal(risposta.headers['content-security-policy'], undefined);
+		// La pagina ha la sua CSP, quella dell'applicazione: mai quella degli upload.
+		assert.doesNotMatch(risposta.headers['content-security-policy'] ?? '', /sandbox/);
+	});
+
+	// Le pagine non avevano nessuna intestazione di sicurezza: si potevano incorniciare in un
+	// altro sito, e uno script iniettato poteva leggere il token e mandarlo ovunque.
+	test('una pagina esce con le intestazioni di sicurezza', { skip: !existsSync(DIST_DIR) && 'dist/ non compilata' }, async () => {
+		const risposta = await app.inject({ method: 'GET', url: '/crm', headers: { accept: 'text/html' } });
+		const csp = risposta.headers['content-security-policy'];
+
+		assert.match(csp, /script-src 'self'(;|$)/, 'niente script scritti nella pagina né da altri siti');
+		assert.match(csp, /frame-ancestors 'none'/);
+		assert.match(csp, /connect-src 'self'/);
+		assert.equal(risposta.headers['x-frame-options'], 'SAMEORIGIN');
+		assert.match(risposta.headers['strict-transport-security'], /max-age=31536000/);
+		assert.equal(risposta.headers['referrer-policy'], 'same-origin');
+	});
+
+	// Con la CSP gli script scritti dentro la pagina non girano più: se uno dei gusci ne
+	// contenesse ancora, il browser lo bloccherebbe senza che nessun test se ne accorga.
+	test('i gusci non contengono script scritti nella pagina', { skip: !existsSync(DIST_DIR) && 'dist/ non compilata' }, async () => {
+		for (const url of ['/crm', '/member-portal']) {
+			const corpo = (await app.inject({ method: 'GET', url, headers: { accept: 'text/html' } })).body;
+			const inline = [...corpo.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g)].filter((m) => m[1].trim());
+			assert.deepEqual(inline.map((m) => m[1].slice(0, 60)), [], `script inline in ${url}`);
+			assert.match(corpo, /<script src="\/tema\.js"><\/script>/);
+		}
+		assert.equal((await app.inject({ method: 'GET', url: '/tema.js' })).statusCode, 200);
 	});
 
 	// Le applicazioni sono due, con due punti d'ingresso. Mandare il guscio sbagliato non dà

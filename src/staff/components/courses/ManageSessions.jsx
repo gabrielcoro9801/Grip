@@ -12,7 +12,7 @@ import { DAYS, DAYS_IT, getDayOfWeekFromDate } from "@/staff/lib/courseValidatio
 import { checkSessionConflict } from "@/staff/lib/eventUtils";
 import { validateSessionWrite } from "@/staff/lib/sessionValidation";
 import { formatData } from "@/core/domain/format";
-import { motivoSalaNonPrenotabile } from "@/core/domain/sale";
+import { motivoSalaNonPrenotabile, saleProgrammabili, etichettaSalaNelPeriodo } from "@/core/domain/sale";
 
 const FILTER_OPTIONS = [
   { value: "single", label: "Solo questa sessione" },
@@ -121,6 +121,11 @@ export default function ManageSessions({ data, reload, initialSessionId }) {
     const date = targetSessions.map(s => s.date);
     return new Set(rooms.filter(r => date.some(d => motivoSalaNonPrenotabile(r, d, d))).map(r => r.id));
   }, [rooms, targetSessions]);
+  // Le date delle lezioni scelte, dalla prima all'ultima: l'etichetta della sala parla di quelle.
+  const periodoScelto = useMemo(() => {
+    const date = targetSessions.map(s => s.date).sort();
+    return [date[0] ?? null, date[date.length - 1] ?? null];
+  }, [targetSessions]);
 
   const filterReady = useMemo(() => {
     if (filterType === "single") return !!filterSessionId;
@@ -459,9 +464,9 @@ export default function ManageSessions({ data, reload, initialSessionId }) {
               <Select value={editForm.room_id} onValueChange={v => setEditForm({ ...editForm, room_id: v })}>
                 <SelectTrigger><SelectValue placeholder="Mantieni attuale" /></SelectTrigger>
                 <SelectContent>
-                  {rooms.map(r => (
+                  {saleProgrammabili(rooms).map(r => (
                     <SelectItem key={r.id} value={r.id} disabled={saleNonPrenotabili.has(r.id)}>
-                      {r.name}{saleNonPrenotabili.has(r.id) ? (r.stato === "annullato" ? " — annullata" : " — sospesa in queste date") : ""}
+                      {etichettaSalaNelPeriodo(r, periodoScelto[0], periodoScelto[1])}
                     </SelectItem>
                   ))}
                 </SelectContent>

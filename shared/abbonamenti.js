@@ -53,6 +53,53 @@ export function motivoNonVendibile(tipo, oggi = oggiIso()) {
 	return null;
 }
 
+/**
+ * Da quanti giorni prima della fine un'iscrizione è "in scadenza".
+ *
+ * È la soglia che la dashboard della segreteria usava già per i suoi avvisi. Gli avvisi del
+ * portale soci ne hanno una loro, più stretta (sette giorni): lì si parla al socio, qui alla
+ * segreteria, che deve avere il tempo di proporre il rinnovo.
+ */
+export const GIORNI_ABBONAMENTO_IN_SCADENZA = 14;
+
+/**
+ * Lo stato di un'iscrizione, calcolato dalle date: 'active' | 'expiring' | 'expired'.
+ *
+ * Nel database c'è una colonna `status`, ma nessun processo la aggiorna: un'iscrizione nasceva
+ * "active" e restava tale per sempre, e dashboard, filtri, bollini e portale mostravano come
+ * attivi abbonamenti scaduti da mesi. Lo stato è una conseguenza delle date — la stessa scelta
+ * fatta per i documenti — e chi legge un'iscrizione dal server lo riceve già calcolato così.
+ */
+export function statoIscrizione(iscrizione, oggi = oggiIso()) {
+	const fine = iscrizione?.end_date ? String(iscrizione.end_date).slice(0, 10) : null;
+	if (!fine) return 'active';
+	if (fine < oggi) return 'expired';
+	const giorni = Math.round((Date.parse(`${fine}T00:00:00Z`) - Date.parse(`${oggi}T00:00:00Z`)) / 86_400_000);
+	return giorni <= GIORNI_ABBONAMENTO_IN_SCADENZA ? 'expiring' : 'active';
+}
+
+/**
+ * Vera se almeno una delle iscrizioni copre quel giorno (inizio e fine compresi).
+ *
+ * È la regola della prenotazione: si prenota una lezione solo con un abbonamento valido il
+ * giorno in cui si tiene — non oggi, perché chi rinnova il mese prossimo può già prenotare le
+ * lezioni del mese prossimo, e chi scade domani non può prenotare quelle della settimana dopo.
+ */
+export function abbonamentoCopre(iscrizioni, giorno) {
+	const data = String(giorno ?? '').slice(0, 10);
+	if (!data) return false;
+	return (iscrizioni ?? []).some((i) => {
+		const inizio = i?.start_date ? String(i.start_date).slice(0, 10) : null;
+		const fine = i?.end_date ? String(i.end_date).slice(0, 10) : null;
+		return (!inizio || inizio <= data) && (!fine || data <= fine);
+	});
+}
+
+export const MESSAGGIO_SENZA_ABBONAMENTO = "Per prenotare serve un abbonamento valido il giorno della lezione: rivolgiti alla reception.";
+
+/** Vera se l'iscrizione vale ancora oggi (attiva o in scadenza). */
+export const iscrizioneValida = (iscrizione, oggi = oggiIso()) => statoIscrizione(iscrizione, oggi) !== 'expired';
+
 const iso = (d) => d.toISOString().slice(0, 10);
 const giorniNelMese = (anno, mese) => new Date(Date.UTC(anno, mese + 1, 0)).getUTCDate();
 

@@ -1,4 +1,5 @@
 import { api } from "@/core/api/client";
+import { toIsoDate } from "@/core/domain/format";
 
 /**
  * Prenota una lezione.
@@ -49,7 +50,7 @@ export async function cancelBooking(bookingId) {
  * - Ritorna riepilogo { confirmed, waitlisted }
  */
 export async function bookAllSessions(sessions, memberId, allBookings) {
-  const today = new Date().toISOString().split("T")[0];
+  const today = toIsoDate(new Date());
   const eligible = sessions
     .filter(s => s.status === "active" && s.date >= today)
     .sort((a, b) => a.date.localeCompare(b.date) || a.start_time.localeCompare(b.start_time));

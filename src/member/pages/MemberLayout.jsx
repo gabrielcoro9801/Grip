@@ -4,6 +4,7 @@ import { useMemberAuth } from "@/member/session/MemberAuthContext";
 import MemberLogin from "./MemberLogin";
 import { LoadingState } from "@/ui/Spinner";
 import SelettoreTema from "@/ui/SelettoreTema";
+import { CambioPasswordObbligatorio } from "@/ui/CambioPassword";
 import { Dumbbell, Home, FileText, CreditCard, User, QrCode, LogOut, LayoutGrid, ClipboardList } from "lucide-react";
 
 // Una sola lista di destinazioni. Le barre erano due, con nomi diversi per lo
@@ -23,7 +24,7 @@ const bottomTabs = navItems.filter((item) => item.inBasso);
 
 export default function MemberLayout() {
   const location = useLocation();
-  const { memberUser, loading, logout } = useMemberAuth();
+  const { memberUser, loading, logout, aggiornaUtente } = useMemberAuth();
 
   if (loading) {
     return <LoadingState minHeight="min-h-screen" label="Caricamento del portale in corso" />;
@@ -31,6 +32,12 @@ export default function MemberLayout() {
 
   if (!memberUser) {
     return <MemberLogin />;
+  }
+
+  // La password data dalla reception si cambia prima di tutto il resto: il server rifiuterebbe
+  // comunque ogni altra richiesta.
+  if (memberUser.password_da_cambiare) {
+    return <CambioPasswordObbligatorio nome={memberUser.nome} onCambiata={aggiornaUtente} onEsci={logout} />;
   }
 
   const isActive = (path, end) => {

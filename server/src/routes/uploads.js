@@ -11,6 +11,7 @@ import { mkdir } from 'node:fs/promises';
 import { pipeline } from 'node:stream/promises';
 import path from 'node:path';
 import { getUserFromRequest } from '../auth/tokens.js';
+import { cancellaFile } from '../lib/fileCaricati.js';
 
 // Tipi ammessi, ognuno con l'estensione con cui viene salvato.
 //
@@ -65,11 +66,18 @@ export default async function uploadRoutes(fastify, options) {
 		const storedName = `${randomUUID()}${ext}`;
 		const destination = path.join(uploadDir, storedName);
 
-		await pipeline(data.file, createWriteStream(destination));
+		try {
+			await pipeline(data.file, createWriteStream(destination));
+		} catch (err) {
+			// Un caricamento interrotto lascerebbe un pezzo di file che nessuna riga cita.
+			await cancellaFile(destination);
+			throw err;
+		}
 
-		// @fastify/multipart segnala così il superamento del limite di dimensione:
-		// il file va scartato, non lasciato a metà sul disco.
+		// @fastify/multipart segnala così il superamento del limite di dimensione: il file va
+		// scartato, non lasciato a metà sul disco. Il commento lo diceva da tempo; ora lo fa.
 		if (data.file.truncated) {
+			await cancellaFile(destination);
 			return reply.code(413).send({ error: 'File troppo grande.' });
 		}
 

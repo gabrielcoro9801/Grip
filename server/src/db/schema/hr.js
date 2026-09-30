@@ -1,6 +1,7 @@
 // Dominio staff: Collaboratore (anagrafica di chi lavora per l'ente) e StaffAccount
 // (login/sessione — da NON confondere con Collaboratore, vedi nota sotto).
-import { pgTable, uuid, varchar, text, boolean, date, integer, timestamp } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
+import { pgTable, uuid, varchar, text, boolean, date, integer, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
 import { organizations } from './common.js';
 
 export const collaboratori = pgTable('collaboratori', {
@@ -46,4 +47,13 @@ export const staffAccounts = pgTable('staff_accounts', {
 	// Diventa indispensabile il giorno in cui esiste un'app installata: lì le sessioni durano
 	// settimane, e sono venti righe che non si aggiungono più volentieri dopo.
 	tokenVersion: integer('token_version').notNull().default(1),
-});
+	// Vera quando la password l'ha scelta qualcun altro: un amministratore che la reimposta, la
+	// reception che la genera per il portale, il primo avvio che la legge da una variabile. Chi
+	// l'ha scelta la conosce, quindi finché resta vera l'API risponde solo al cambio password
+	// (vedi `app.js`).
+	passwordDaCambiare: boolean('password_da_cambiare').notNull().default(false),
+}, (table) => ({
+	// L'email è unica senza guardare le maiuscole, come la confronta il login: prima potevano
+	// esistere "Mario@x.it" e "mario@x.it", e l'accesso ne sceglieva uno a caso.
+	emailUnica: uniqueIndex('staff_accounts_email_lower_idx').on(sql`lower(${table.email})`),
+}));

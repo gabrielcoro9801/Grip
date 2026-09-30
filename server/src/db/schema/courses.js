@@ -4,7 +4,7 @@
 // 1 Booking punta sempre a una Session, mai direttamente a Event/Course).
 // NB: escluso volutamente il modello legacy/orfano trovato in MemberSelfService.jsx
 // (Course.day_of_week/room_id, Booking.course_id/date) — codice morto non instradato.
-import { pgTable, uuid, varchar, text, boolean, integer, date, time, jsonb, timestamp, check } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, text, boolean, integer, date, time, jsonb, timestamp, check, index } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { members } from './crm.js';
 
@@ -73,7 +73,12 @@ export const events = pgTable('events', {
 	startTime: time('start_time').notNull(),
 	endTime: time('end_time').notNull(),
 	createdDate: timestamp('created_date', { withTimezone: true }).notNull().defaultNow(),
-});
+}, (table) => ({
+	// Postgres non indicizza da solo le chiavi esterne: ogni controllo sulle sale ("è occupata
+	// da qui in avanti?") e ogni elenco per corso leggeva la tabella intera.
+	salaInizio: index('events_room_id_start_date_idx').on(table.roomId, table.startDate),
+	corso: index('events_course_id_idx').on(table.courseId),
+}));
 
 export const sessions = pgTable('sessions', {
 	id: uuid('id').defaultRandom().primaryKey(),
@@ -87,7 +92,12 @@ export const sessions = pgTable('sessions', {
 	capacity: integer('capacity').notNull(),
 	status: varchar('status', { length: 16 }).notNull().default('active'), // active | cancelled
 	modifiedManually: boolean('modified_manually').notNull().default(false),
-});
+}, (table) => ({
+	// Il calendario chiede le lezioni per data, l'agenda del portale pure, le sale per sala e data.
+	data: index('sessions_date_idx').on(table.date),
+	evento: index('sessions_event_id_idx').on(table.eventId),
+	salaData: index('sessions_room_id_date_idx').on(table.roomId, table.date),
+}));
 
 export const bookings = pgTable('bookings', {
 	id: uuid('id').defaultRandom().primaryKey(),
@@ -97,4 +107,8 @@ export const bookings = pgTable('bookings', {
 	status: varchar('status', { length: 16 }).notNull().default('confirmed'), // confirmed | waitlisted | cancelled
 	waitlistPosition: integer('waitlist_position'),
 	createdDate: timestamp('created_date', { withTimezone: true }).notNull().defaultNow(),
-});
+}, (table) => ({
+	// Ogni prenotazione conta i posti della sua lezione; il portale cerca quelle del socio.
+	lezione: index('bookings_session_id_idx').on(table.sessionId),
+	socio: index('bookings_member_id_idx').on(table.memberId),
+}));

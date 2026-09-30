@@ -59,6 +59,9 @@ async function request(path, { method = 'GET', body, headers = {} } = {}) {
 		const payload = await res.json().catch(() => ({}));
 		const error = new Error(payload.error || `Errore HTTP ${res.status}`);
 		error.status = res.status;
+		// Il codice del rifiuto, quando il server lo manda: le schermate decidono su quello e non
+		// sul testo del messaggio, che può cambiare parole senza cambiare significato.
+		if (payload.code) error.code = payload.code;
 		throw error;
 	}
 
@@ -139,6 +142,42 @@ export const api = {
 		disdici(bookingId) {
 			return request(`/api/prenotazioni/${bookingId}/disdici`, { method: 'POST' });
 		},
+		/** Le prenotazioni delle lezioni da `dal` (YYYY-MM-DD) in avanti. Solo per lo staff. */
+		dal(dal) {
+			return request(`/api/prenotazioni?dal=${encodeURIComponent(dal)}`);
+		},
+	},
+
+	/**
+	 * Quello che la scheda di un socio deve sapere e che non sta nella tabella dei soci.
+	 *
+	 * L'accesso al portale è un account, e gli account si leggono solo da Admin & Utenti:
+	 * questa rotta dice alla scheda se l'accesso c'è, con il permesso della scheda.
+	 */
+	soci: {
+		async accessoPortale(memberId) {
+			const { account } = await request(`/api/soci/${encodeURIComponent(memberId)}/accesso-portale`);
+			return account;
+		},
+		/** Crea l'accesso al portale o ne reimposta la password. → { account, creato } */
+		impostaAccessoPortale(memberId, password) {
+			return request(`/api/soci/${encodeURIComponent(memberId)}/accesso-portale`, { method: 'POST', body: { password } });
+		},
+	},
+
+	/**
+	 * Numeri e avvisi della dashboard, contati dal server. Una parte che il ruolo non può
+	 * vedere arriva `null`.
+	 */
+	dashboard() {
+		return request('/api/dashboard');
+	},
+
+	/** Quanto è usata ogni sala, contato dal server sull'intero calendario. */
+	sale: {
+		uso() {
+			return request('/api/sale/uso');
+		},
 	},
 
 	/**
@@ -205,11 +244,17 @@ export const api = {
 			setToken(null);
 		},
 
-		changePassword(currentPassword, newPassword) {
-			return request('/api/auth/change-password', {
+		/**
+		 * Cambia la propria password. Il server chiude tutte le sessioni dell'account e
+		 * restituisce un token nuovo per questa: lo si tiene, e si resta dentro.
+		 */
+		async changePassword(currentPassword, newPassword) {
+			const { token, user } = await request('/api/auth/change-password', {
 				method: 'POST',
 				body: { current_password: currentPassword, new_password: newPassword },
 			});
+			setToken(token);
+			return user;
 		},
 
 		isAuthenticated() {

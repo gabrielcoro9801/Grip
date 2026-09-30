@@ -1,4 +1,4 @@
-import { eq, and, gte, lte, inArray, ne, desc, isNotNull } from 'drizzle-orm';
+import { eq, and, gte, lte, inArray, ne, desc, isNotNull, isNull } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import {
 	members, subscriptions, memberDocuments, qrAccessi,
@@ -13,6 +13,7 @@ import { prenota, disdici } from '../../lib/prenotazioni.js';
 import { firmaUrl } from '../../lib/urlFirmati.js';
 import { msResiduiFinestra } from '../../../../shared/qrDinamico.js';
 import { nomeDocumento, conStatoDocumenti } from '../../../../shared/anagrafica.js';
+import { statoIscrizione, abbonamentoCopre, MESSAGGIO_SENZA_ABBONAMENTO, oggiIso } from '../../../../shared/abbonamenti.js';
 
 /**
  * L'API del portale soci.
@@ -108,7 +109,11 @@ export default async function memberRoutes(fastify) {
 			giorniDaOggi
 		);
 
-		const corrente = abbonamenti.find((a) => a.status === 'active') ?? abbonamenti[0] ?? null;
+		// La corrente è la più recente ancora valida oggi; se non ce n'è, l'ultima scaduta. La
+		// colonna `status` non si guarda: nessuno la aggiorna, e sceglieva come "corrente" anche
+		// un abbonamento scaduto da mesi.
+		const statoDi = (a) => statoIscrizione({ end_date: a.endDate });
+		const corrente = abbonamenti.find((a) => statoDi(a) !== 'expired') ?? abbonamenti[0] ?? null;
 
 		return {
 			socio: {
@@ -127,7 +132,7 @@ export default async function memberRoutes(fastify) {
 			abbonamento: corrente && {
 				id: corrente.id,
 				piano: corrente.planName,
-				stato: corrente.status,
+				stato: statoDi(corrente),
 				inizio: corrente.startDate,
 				fine: corrente.endDate,
 				giorni_alla_scadenza: giorniDaOggi(corrente.endDate),
@@ -152,7 +157,7 @@ export default async function memberRoutes(fastify) {
 			abbonamenti: righe.map((a) => ({
 				id: a.id,
 				piano: a.planName,
-				stato: a.status,
+				stato: statoIscrizione({ end_date: a.endDate }),
 				inizio: a.startDate,
 				fine: a.endDate,
 				giorni_alla_scadenza: giorniDaOggi(a.endDate),
@@ -247,10 +252,16 @@ export default async function memberRoutes(fastify) {
 	 * posti escono **numeri**, non le prenotazioni altrui: chi frequenta cosa non è un dato
 	 * che il portale di un socio abbia ragione di ricevere.
 	 */
-	fastify.get('/corsi/agenda', async (request) => {
-		const oggi = new Date().toISOString().split('T')[0];
+	fastify.get('/corsi/agenda', async (request, reply) => {
+		const oggi = oggiIso();
 		const dal = request.query.dal ?? oggi;
 		const al = request.query.al ?? fraGiorni(dal, 30);
+
+		// Le date arrivano dalla query così come sono: una malformata finiva al database e
+		// tornava come errore 500, e `?dal=2000-01-01&al=2100-01-01` faceva leggere al server
+		// tutte le lezioni e tutte le prenotazioni della palestra.
+		const motivo = motivoIntervalloNonValido(dal, al);
+		if (motivo) return reply.code(400).send({ error: motivo });
 
 		const righe = await db
 			.select({
@@ -294,12 +305,20 @@ export default async function memberRoutes(fastify) {
 			if (String(p.memberId) === String(request.idSocio)) mie.set(p.sessionId, p);
 		}
 
+		// Se il socio può prenotare quella lezione lo dice il server, con la stessa regola che
+		// applica quando la prenotazione arriva: così il portale lo mostra prima del pulsante.
+		const mieIscrizioni = await db
+			.select({ start_date: subscriptions.startDate, end_date: subscriptions.endDate })
+			.from(subscriptions)
+			.where(eq(subscriptions.memberId, request.idSocio));
+
 		const giorni = new Map();
 		for (const r of righe) {
 			const s = r.sessione;
 			const c = conta.get(s.id) ?? { confermati: 0, in_attesa: 0 };
 			const miaPrenotazione = mie.get(s.id);
 			const capienza = s.capacity ?? 0;
+			const coperta = abbonamentoCopre(mieIscrizioni, s.date);
 
 			const lezione = {
 				id: s.id,
@@ -317,6 +336,8 @@ export default async function memberRoutes(fastify) {
 					in_attesa: c.in_attesa,
 					al_completo: c.confermati >= capienza,
 				},
+				// null se si può prenotare; altrimenti il perché, da mostrare al posto del pulsante.
+				motivo_non_prenotabile: coperta ? null : MESSAGGIO_SENZA_ABBONAMENTO,
 				mia_prenotazione: miaPrenotazione
 					? {
 						id: miaPrenotazione.id,
@@ -461,6 +482,43 @@ export default async function memberRoutes(fastify) {
 	 * `precedente` è il conto che il portale faceva scaricandosi mille righe di storico e
 	 * duecento sessioni, **in palestra, mentre uno si allena**. Qui è una query.
 	 */
+	/**
+	 * Avvia un allenamento su una routine di una delle proprie schede.
+	 *
+	 * Prima il portale lo creava dall'endpoint generico, con `plan_id`, nomi e ora scelti dal
+	 * client: si poteva avviare una sessione sulla scheda di un altro socio e farsene
+	 * restituire le routine. Qui la scheda deve essere del socio, i nomi si copiano dalla
+	 * scheda e l'ora la mette il server.
+	 */
+	fastify.post('/allenamento/sessioni', async (request, reply) => {
+		const idScheda = request.body?.plan_id;
+		const indice = Number(request.body?.routine_index);
+		const [scheda] = idScheda
+			? await db.select().from(exercisePlans)
+				.where(and(eq(exercisePlans.id, idScheda), eq(exercisePlans.memberId, request.idSocio)))
+				.limit(1)
+			: [];
+		if (!scheda) return reply.code(404).send({ error: 'Scheda inesistente.' });
+		const routine = Array.isArray(scheda.routines) ? scheda.routines[indice] : undefined;
+		if (!Number.isInteger(indice) || !routine) return reply.code(400).send({ error: 'Routine inesistente.' });
+
+		const [aperta] = await db.select({ id: workoutSessions.id }).from(workoutSessions)
+			.where(and(eq(workoutSessions.memberId, request.idSocio), isNull(workoutSessions.terminataAlle)))
+			.limit(1);
+		if (aperta) return reply.code(409).send({ error: 'Hai già un allenamento in corso: riprendilo o terminalo.' });
+
+		const [creata] = await db.insert(workoutSessions).values({
+			memberId: request.idSocio,
+			planId: scheda.id,
+			planName: scheda.name,
+			routineIndex: indice,
+			routineName: routine.nome ?? routine.name ?? null,
+			iniziataAlle: new Date(),
+		}).returning();
+		reply.code(201);
+		return { sessione: sessioneVersoApi(creata) };
+	});
+
 	fastify.get('/allenamento/sessioni/:id', async (request, reply) => {
 		const [sessione] = await db
 			.select()
@@ -570,7 +628,7 @@ export default async function memberRoutes(fastify) {
 				pesoUsato: c.peso_usato ?? null,
 				repsFatte: c.reps_fatte ?? null,
 				rpePercepito: c.rpe_percepito ?? null,
-				data: new Date().toISOString().split('T')[0],
+				data: oggiIso(),
 				note: c.note ?? null,
 			})
 			.returning();
@@ -726,7 +784,9 @@ function aMezzanotte(data) {
 function giorniDaOggi(data) {
 	const quando = aMezzanotte(data);
 	if (!quando) return null;
-	const oggi = aMezzanotte(new Date().toISOString());
+	// Oggi a Roma: la data UTC fra mezzanotte e le due è ancora ieri, e i giorni alla
+	// scadenza uscivano sbagliati di uno.
+	const oggi = aMezzanotte(oggiIso());
 	return Math.round((quando - oggi) / GIORNO_MS);
 }
 
@@ -740,7 +800,22 @@ function entroGiorni(data, soglia) {
 	return giorni !== null && giorni <= soglia;
 }
 
+// Il calendario del portale chiede due mesi; tre bastano a qualunque vista ragionevole.
+const GIORNI_MASSIMI_AGENDA = 92;
+const E_UNA_DATA = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Perché l'intervallo chiesto all'agenda non va bene, o null. */
+function motivoIntervalloNonValido(dal, al) {
+	if (!E_UNA_DATA.test(String(dal)) || !aMezzanotte(dal)) return 'La data di inizio non è valida (AAAA-MM-GG).';
+	if (!E_UNA_DATA.test(String(al)) || !aMezzanotte(al)) return 'La data di fine non è valida (AAAA-MM-GG).';
+	if (al < dal) return 'La data di fine non può precedere quella di inizio.';
+	if ((aMezzanotte(al) - aMezzanotte(dal)) / GIORNO_MS > GIORNI_MASSIMI_AGENDA) {
+		return `L'agenda si chiede per al massimo ${GIORNI_MASSIMI_AGENDA} giorni alla volta.`;
+	}
+	return null;
+}
+
 function fraGiorni(dal, quanti) {
-	const partenza = aMezzanotte(dal) ?? aMezzanotte(new Date().toISOString());
+	const partenza = aMezzanotte(dal) ?? aMezzanotte(oggiIso());
 	return new Date(partenza.getTime() + quanti * GIORNO_MS).toISOString().split('T')[0];
 }

@@ -253,6 +253,27 @@
       "when": 1790200562662,
       "tag": "0035_sale_annullate",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1790772531805,
+      "tag": "0036_password_da_cambiare",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1790787309270,
+      "tag": "0037_indici_chiavi_esterne",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1790787373716,
+      "tag": "0038_email_account_senza_maiuscole",
+      "breakpoints": true
     }
   ]
 }

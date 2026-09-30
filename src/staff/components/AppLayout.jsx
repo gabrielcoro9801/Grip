@@ -6,8 +6,9 @@ import StaffLogin from "@/staff/pages/StaffLogin";
 import {
   LayoutDashboard, Users, Calendar,
   ChevronLeft, ChevronRight, LogOut, Menu, Dumbbell,
-  ShieldCheck, ScrollText, UserPlus
+  ShieldCheck, ScrollText, UserPlus, KeyRound
 } from "lucide-react";
+import { CambioPasswordObbligatorio, DialogCambioPassword } from "@/ui/CambioPassword";
 import { Button } from "@/ui/primitivi/button";
 import { Badge } from "@/ui/primitivi/badge";
 import { LoadingState } from "@/ui/Spinner";
@@ -34,9 +35,10 @@ const navItems = [
 
 export default function AppLayout() {
   const location = useLocation();
-  const { staffUser, loading: staffLoading, logout } = useStaffAuth();
+  const { staffUser, loading: staffLoading, logout, aggiornaUtente } = useStaffAuth();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [cambioPassword, setCambioPassword] = useState(false);
 
   // Staff auth gate: if no staff profile selected, show staff login
   if (staffLoading) {
@@ -44,6 +46,11 @@ export default function AppLayout() {
   }
   if (!staffUser) {
     return <StaffLogin />;
+  }
+  // Una password scelta da qualcun altro si cambia prima di tutto il resto: il server
+  // rifiuterebbe comunque ogni altra richiesta.
+  if (staffUser.password_da_cambiare) {
+    return <CambioPasswordObbligatorio nome={staffUser.nome} onCambiata={aggiornaUtente} onEsci={logout} />;
   }
 
   const isActive = (path) => {
@@ -127,6 +134,15 @@ export default function AppLayout() {
           )}
           <button
             type="button"
+            onClick={() => setCambioPassword(true)}
+            title={collapsed ? "Cambia password" : undefined}
+            className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm w-full text-sidebar-foreground hover:bg-sidebar-accent hover:text-white transition-colors"
+          >
+            <KeyRound className="w-5 h-5 flex-shrink-0" aria-hidden="true" />
+            <span className={collapsed ? "sr-only" : undefined}>Cambia password</span>
+          </button>
+          <button
+            type="button"
             onClick={handleLogout}
             className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm w-full text-sidebar-foreground hover:bg-sidebar-accent hover:text-white transition-colors"
           >
@@ -172,6 +188,8 @@ export default function AppLayout() {
           </Suspense>
         </main>
       </div>
+
+      <DialogCambioPassword open={cambioPassword} onClose={() => setCambioPassword(false)} onCambiata={aggiornaUtente} />
     </div>
   );
 }

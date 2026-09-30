@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
+import helmet from '@fastify/helmet';
 import multipart from '@fastify/multipart';
 import fastifyStatic from '@fastify/static';
 import entityRoutes from './routes/entities.js';
@@ -13,17 +14,24 @@ import ruoliRoutes from './routes/ruoli.js';
 import qrRoutes from './routes/qr.js';
 import prenotazioniRoutes from './routes/prenotazioni.js';
 import leadRoutes from './routes/lead.js';
+import sociRoutes from './routes/soci.js';
+import saleRoutes from './routes/sale.js';
+import dashboardRoutes from './routes/dashboard.js';
 import memberRoutes from './routes/member/index.js';
-import { firmaValida, nomeFileDa } from './lib/urlFirmati.js';
+import { firmaValida } from './lib/urlFirmati.js';
+import { UPLOAD_DIR } from './lib/fileCaricati.js';
 import { getUserFromRequest } from './auth/tokens.js';
-import { sessioneRevocata } from './auth/revoca.js';
+import { statoSessione } from './auth/revoca.js';
 import { ENTITY_NAMES } from './entities/registry.js';
 import { config } from './config.js';
 
 const serverRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const UPLOAD_DIR = config.uploadDir || path.join(serverRoot, 'uploads');
 // Il frontend compilato: sta nella radice del repository, un livello sopra server/.
 const DIST_DIR = path.resolve(serverRoot, '..', 'dist');
+
+// Le sole rotte aperte a chi deve ancora cambiare una password scelta da altri: sapere chi è,
+// cambiarla, uscire.
+const CONSENTITE_CON_PASSWORD_DA_CAMBIARE = new Set(['/api/auth/me', '/api/auth/change-password', '/api/auth/logout']);
 
 export function buildApp({ publicBaseUrl = 'http://localhost:3001', logger = true } = {}) {
 	const app = Fastify({ logger });
@@ -31,6 +39,38 @@ export function buildApp({ publicBaseUrl = 'http://localhost:3001', logger = tru
 	// In sviluppo il frontend Vite e questo backend girano su porte diverse: CORS
 	// aperto è accettabile solo in locale, da restringere prima di qualunque deploy.
 	app.register(cors, { origin: config.origineConsentita });
+
+	// Le intestazioni di sicurezza delle pagine. Gli upload avevano già una CSP severa, le
+	// pagine dell'applicazione nessuna: si potevano incorniciare in un altro sito, e il token di
+	// sessione sta nel localStorage, dove qualunque script iniettato lo legge. La CSP è la rete
+	// che limita i danni di un'iniezione: script solo dal nostro dominio, niente script scritti
+	// nella pagina (il tema sta in public/tema.js apposta), nessuna chiamata verso altri siti.
+	//
+	// `style-src 'unsafe-inline'` resta: i componenti dell'interfaccia (Radix) posizionano menu
+	// e finestre con attributi `style`, e senza si aprirebbero nel posto sbagliato. Uno stile
+	// iniettato non legge token.
+	//
+	// Gli upload conservano la loro CSP più severa: la loro `setHeaders` la sovrascrive.
+	app.register(helmet, {
+		contentSecurityPolicy: {
+			useDefaults: false,
+			directives: {
+				defaultSrc: ["'self'"],
+				scriptSrc: ["'self'"],
+				styleSrc: ["'self'", "'unsafe-inline'"],
+				imgSrc: ["'self'", 'data:', 'blob:'],
+				fontSrc: ["'self'", 'data:'],
+				connectSrc: ["'self'"],
+				objectSrc: ["'none'"],
+				baseUri: ["'self'"],
+				formAction: ["'self'"],
+				frameAncestors: ["'none'"],
+			},
+		},
+		referrerPolicy: { policy: 'same-origin' },
+		// Railway serve solo in HTTPS: il browser non deve mai provare la versione in chiaro.
+		strictTransportSecurity: { maxAge: 31536000, includeSubDomains: true },
+	});
 	app.register(multipart, { limits: { fileSize: 10 * 1024 * 1024 } });
 	// I file caricati non si servono più a chiunque conosca l'indirizzo.
 	//
@@ -45,14 +85,45 @@ export function buildApp({ publicBaseUrl = 'http://localhost:3001', logger = tru
 	//
 	// A chi non ha la firma si risponde 404 e non 403: di un file che non può vedere non gli
 	// si conferma nemmeno l'esistenza.
-	app.addHook('onRequest', async (request, reply) => {
-		const percorso = (request.raw.url ?? '').split('?')[0];
-		if (!percorso.startsWith('/uploads/')) return;
+	//
+	// **Il controllo sta dentro il contesto che serve i file, e legge il nome dalla rotta.**
+	// Prima era un hook globale che confrontava il testo grezzo dell'indirizzo con
+	// `/uploads/`: ma il router decodifica l'indirizzo prima di scegliere la rotta, e
+	// `/%75ploads/x.pdf` (`%75` è la `u`) non superava il confronto e arrivava lo stesso ai
+	// file, senza firma. Qui invece il hook vale per tutte le richieste che il router manda
+	// allo static, comunque sia scritto l'indirizzo, e il nome è quello che il router ha
+	// capito, già decodificato.
+	//
+	// Le due intestazioni sono la seconda difesa, e resta necessaria: la firma dice *chi* può
+	// aprire il file, queste dicono cosa quel file può fare una volta aperto. `nosniff`
+	// impedisce al browser di indovinare un tipo diverso da quello dichiarato, e una CSP che
+	// non concede nulla toglie a un documento servito da qui la possibilità di eseguire script
+	// o di chiamare altri indirizzi — cioè di comportarsi da pagina del nostro dominio.
+	//
+	// `decorateReply: false`: `reply.sendFile` deve appartenere allo static del frontend, non
+	// a questo. Le intestazioni vivono nella chiusura del plugin che le registra, non nella
+	// cartella: se fosse questo a decorare `sendFile`, anche l'index.html mandato al router
+	// (più sotto) uscirebbe con la CSP degli upload, e la pagina resterebbe nera.
+	app.register(async function fileCaricati(istanza) {
+		istanza.addHook('onRequest', async (request, reply) => {
+			const nome = request.params?.['*'];
+			// Un nome con una barra non è mai uno dei nostri: i file stanno tutti in una cartella sola.
+			if (!nome || nome.includes('/') || nome.includes('\\')
+				|| !firmaValida(nome, request.query?.scade, request.query?.firma)) {
+				return reply.code(404).send({ error: 'Non trovato' });
+			}
+		});
 
-		const nome = nomeFileDa(percorso);
-		if (!nome || !firmaValida(nome, request.query?.scade, request.query?.firma)) {
-			return reply.code(404).send({ error: 'Non trovato' });
-		}
+		istanza.register(fastifyStatic, {
+			root: UPLOAD_DIR,
+			prefix: '/uploads/',
+			decorateReply: false,
+			// Da @fastify/static 10 riceve il `reply` di Fastify, non la risposta grezza di Node.
+			setHeaders(reply) {
+				reply.header('X-Content-Type-Options', 'nosniff');
+				reply.header('Content-Security-Policy', "default-src 'none'; sandbox");
+			},
+		});
 	});
 
 	// Una sessione revocata smette di valere subito, non alla scadenza del token.
@@ -65,32 +136,21 @@ export function buildApp({ publicBaseUrl = 'http://localhost:3001', logger = tru
 	//
 	// Le richieste senza token passano di qui senza toccare il database: a rifiutarle ci
 	// pensano le rotte, ognuna con la sua regola.
+	//
+	// Nello stesso punto, e con la stessa lettura, sta l'obbligo di cambiare una password
+	// scelta da qualcun altro: finché non la si cambia, l'API risponde solo a quello che serve
+	// per cambiarla. Imporlo qui e non nella schermata vuol dire che non lo si aggira
+	// chiamando l'API a mano con la password che la reception ha dettato.
 	app.addHook('preHandler', async (request, reply) => {
 		const claims = getUserFromRequest(request);
 		if (!claims) return;
-		if (await sessioneRevocata(claims)) {
+		const { revocata, passwordDaCambiare } = await statoSessione(claims);
+		if (revocata) {
 			return reply.code(401).send({ error: 'Sessione non più valida.' });
 		}
-	});
-
-	// Le due intestazioni sono la seconda difesa, e resta necessaria: la firma dice *chi* può
-	// aprire il file, queste dicono cosa quel file può fare una volta aperto. `nosniff`
-	// impedisce al browser di indovinare un tipo diverso da quello dichiarato, e una CSP che
-	// non concede nulla toglie a un documento servito da qui la possibilità di eseguire script
-	// o di chiamare altri indirizzi — cioè di comportarsi da pagina del nostro dominio.
-	//
-	// `decorateReply: false`: `reply.sendFile` deve appartenere allo static del frontend, non
-	// a questo. Le intestazioni vivono nella chiusura del plugin che le registra, non nella
-	// cartella: se fosse questo a decorare `sendFile`, anche l'index.html mandato al router
-	// (più sotto) uscirebbe con la CSP degli upload, e la pagina resterebbe nera.
-	app.register(fastifyStatic, {
-		root: UPLOAD_DIR,
-		prefix: '/uploads/',
-		decorateReply: false,
-		setHeaders(res) {
-			res.setHeader('X-Content-Type-Options', 'nosniff');
-			res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
-		},
+		if (passwordDaCambiare && !CONSENTITE_CON_PASSWORD_DA_CAMBIARE.has(request.routeOptions?.url)) {
+			return reply.code(403).send({ error: 'Prima di continuare devi cambiare la password.', code: 'password_da_cambiare' });
+		}
 	});
 
 	app.register(authRoutes);
@@ -99,6 +159,9 @@ export function buildApp({ publicBaseUrl = 'http://localhost:3001', logger = tru
 	app.register(qrRoutes);
 	app.register(prenotazioniRoutes);
 	app.register(leadRoutes);
+	app.register(sociRoutes);
+	app.register(saleRoutes);
+	app.register(dashboardRoutes);
 	// L'API del portale soci, sotto un prefisso suo e con una versione nel percorso: è il
 	// contratto che un domani reggerà un'app installata, che non si aggiorna a comando.
 	// Registrata prima delle rotte generiche perché è la più specifica.
@@ -141,11 +204,11 @@ export function buildApp({ publicBaseUrl = 'http://localhost:3001', logger = tru
 			root: DIST_DIR,
 			prefix: '/',
 			cacheControl: false,
-			setHeaders(res, percorsoFile) {
+			setHeaders(reply, percorsoFile) {
 				// Un file sotto assets/ ha l'impronta del contenuto nel nome (index-a6vVHwFR.js):
 				// con quel nome non cambierà mai più, e i gusci citano i nomi nuovi a ogni rilascio.
 				const eUnAsset = percorsoFile.includes(CARTELLA_ASSET);
-				res.setHeader('Cache-Control', eUnAsset ? 'public, max-age=31536000, immutable' : 'no-store');
+				reply.header('Cache-Control', eUnAsset ? 'public, max-age=31536000, immutable' : 'no-store');
 			},
 		});
 

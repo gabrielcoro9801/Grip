@@ -53,8 +53,9 @@ describe('la reception fa il suo e non di più', () => {
 });
 
 describe('il registro delle azioni si allunga e non si accorcia', () => {
-	test("l'applicazione può aggiungere righe", () => {
-		assert.equal(canWriteEntity('admin', 'AuditLog', 'POST'), true);
+	test('nessuno lo scrive dall’API: lo scrive il server', () => {
+		// Le righe le creava il browser, con attore e orario decisi dal client.
+		assert.equal(canWriteEntity('admin', 'AuditLog', 'POST'), false);
 	});
 
 	test('nemmeno un amministratore può cancellarle o riscriverle', () => {

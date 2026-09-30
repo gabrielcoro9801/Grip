@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { api } from "@/core/api/client";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/ui/primitivi/select";
 import PageHeader from "@/staff/components/PageHeader";
 import StatusBadge from "@/ui/StatusBadge";
 import { Link } from "react-router-dom";
 import { LoadingState } from "@/ui/Spinner";
-import { EmptyState } from "@/ui/StateViews";
+import { EmptyState, ErrorState } from "@/ui/StateViews";
 import { CreditCard } from "lucide-react";
 import { formatData, formatEuro } from "@/core/domain/format";
 
@@ -14,23 +14,29 @@ export default function SubscriptionsList() {
   const [members, setMembers] = useState([]);
   const [filter, setFilter] = useState("all");
   const [loading, setLoading] = useState(true);
+  const [errore, setErrore] = useState(null);
 
-  useEffect(() => {
+  // Senza `catch`, un errore di rete lasciava la pagina sulla rotellina per sempre.
+  const carica = useCallback(() => {
+    setLoading(true);
+    setErrore(null);
     Promise.all([
       api.entities.Subscription.list(),
       api.entities.Member.list(),
     ]).then(([s, m]) => {
       setSubscriptions(s);
       setMembers(m);
-      setLoading(false);
-    });
+    }).catch(setErrore).finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => { carica(); }, [carica]);
 
   const getMemberName = (id) => members.find(m => m.id === id)?.full_name || "Sconosciuto";
 
   const filtered = filter === "all" ? subscriptions : subscriptions.filter(s => s.status === filter);
 
   if (loading) return <LoadingState minHeight="h-64" />;
+  if (errore) return <ErrorState error={errore} onRetry={carica} />;
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">

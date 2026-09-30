@@ -1,6 +1,7 @@
 import { eq, and, ne, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { bookings, sessions, members } from '../db/schema/index.js';
+import { bookings, sessions, members, subscriptions } from '../db/schema/index.js';
+import { abbonamentoCopre, MESSAGGIO_SENZA_ABBONAMENTO, oggiIso } from '../../../shared/abbonamenti.js';
 
 /**
  * Prenotare e disdire: le due regole, in un posto solo.
@@ -35,9 +36,20 @@ export async function prenota({ sessionId, memberId }) {
 		if (!lezione) return { errore: 404, messaggio: 'Lezione inesistente.' };
 		if (lezione.status !== 'active') return { errore: 400, messaggio: 'La lezione è stata annullata.' };
 
-		const oggi = new Date().toISOString().split('T')[0];
+		// Oggi a Roma, non in UTC: fra mezzanotte e le due la data UTC è ancora ieri.
+		const oggi = oggiIso();
 		if (String(lezione.date) < oggi) {
 			return { errore: 400, messaggio: 'La lezione è già passata.' };
+		}
+
+		// Senza un abbonamento che copra il giorno della lezione non si prenota: dal portale come
+		// dalla reception, perché la regola sta qui e non nei pulsanti.
+		const iscrizioni = await tx
+			.select({ start_date: subscriptions.startDate, end_date: subscriptions.endDate })
+			.from(subscriptions)
+			.where(eq(subscriptions.memberId, memberId));
+		if (!abbonamentoCopre(iscrizioni, lezione.date)) {
+			return { errore: 400, messaggio: MESSAGGIO_SENZA_ABBONAMENTO };
 		}
 
 		const [gia] = await tx
@@ -114,31 +126,49 @@ export async function disdici({ bookingId, soloDelSocio = null }) {
 			.where(eq(bookings.id, prenotazione.id));
 
 		// Solo una disdetta confermata libera un posto: chi era in lista d'attesa e rinuncia
-		// non promuove nessuno, sposta solo la coda.
-		const eraConfermata = prenotazione.status === 'confirmed';
-
-		const coda = await tx
-			.select()
-			.from(bookings)
-			.where(and(eq(bookings.sessionId, prenotazione.sessionId), eq(bookings.status, 'waitlisted')))
-			.orderBy(bookings.waitlistPosition, bookings.createdDate);
-
-		let promossa = null;
-		let daRinumerare = coda;
-		if (eraConfermata && coda.length > 0) {
-			promossa = coda[0];
-			await tx
-				.update(bookings)
-				.set({ status: 'confirmed', waitlistPosition: null })
-				.where(eq(bookings.id, promossa.id));
-			daRinumerare = coda.slice(1);
-		}
-
-		for (const [indice, riga] of daRinumerare.entries()) {
-			if (riga.waitlistPosition === indice + 1) continue;
-			await tx.update(bookings).set({ waitlistPosition: indice + 1 }).where(eq(bookings.id, riga.id));
-		}
-
-		return { promossa };
+		// non promuove nessuno, sposta solo la coda. Il conto dei posti lo fa la stessa regola
+		// che vale quando cresce la capienza.
+		const promosse = await promuoviFinoACapienza(tx, prenotazione.sessionId);
+		return { promossa: promosse[0] ?? null };
 	});
+}
+
+/**
+ * Riempie i posti liberi di una lezione con la lista d'attesa, in ordine, e rinumera la coda.
+ *
+ * Serve ovunque i posti liberi possano crescere: una disdetta confermata, ma anche una
+ * capienza portata da 10 a 15. Prima la promozione esisteva solo nella disdetta, e chi era in
+ * lista d'attesa restava lì con cinque posti vuoti davanti.
+ *
+ * Va chiamata dentro una transazione: blocca la lezione come fa `prenota`, così una
+ * prenotazione che arriva nello stesso istante non conta gli stessi posti.
+ *
+ * @returns le prenotazioni promosse, in ordine.
+ */
+export async function promuoviFinoACapienza(tx, sessionId) {
+	const [lezione] = await tx.select().from(sessions).where(eq(sessions.id, sessionId)).limit(1).for('update');
+	if (!lezione) return [];
+
+	const [{ confermate }] = await tx
+		.select({ confermate: sql`count(*) filter (where ${bookings.status} = 'confirmed')`.mapWith(Number) })
+		.from(bookings)
+		.where(eq(bookings.sessionId, sessionId));
+
+	const coda = await tx
+		.select()
+		.from(bookings)
+		.where(and(eq(bookings.sessionId, sessionId), eq(bookings.status, 'waitlisted')))
+		.orderBy(bookings.waitlistPosition, bookings.createdDate);
+
+	const liberi = Math.max(0, (lezione.capacity ?? 0) - confermate);
+	const promosse = coda.slice(0, liberi);
+	for (const riga of promosse) {
+		await tx.update(bookings).set({ status: 'confirmed', waitlistPosition: null }).where(eq(bookings.id, riga.id));
+	}
+
+	for (const [indice, riga] of coda.slice(liberi).entries()) {
+		if (riga.waitlistPosition === indice + 1) continue;
+		await tx.update(bookings).set({ waitlistPosition: indice + 1 }).where(eq(bookings.id, riga.id));
+	}
+	return promosse;
 }

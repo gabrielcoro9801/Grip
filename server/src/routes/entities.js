@@ -1,22 +1,29 @@
 // Endpoint REST generico che copre list/filter/get/create/update/delete/bulkCreate
 // per tutte le 39 entità, con la stessa semantica del vecchio datastore.
 // Un solo set di route invece di 39 endpoint dedicati.
-import { eq, and, asc, desc } from 'drizzle-orm';
+import { eq, and, asc, desc, gte, lte } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { entityRegistry } from '../entities/registry.js';
 import { getColumnMaps, translateToJs, translateToSnakeCase, translateManyToSnakeCase } from '../entities/columnMaps.js';
 import {
 	applyWriteTransform, stripHiddenFields, stripHiddenFieldsMany,
-	firmaFileInLettura, firmaFileInLetturaMolte, togliFirmaInScrittura,
+	firmaFileInLettura, firmaFileInLetturaMolte, togliFirmaInScrittura, verificaCampiFile,
+	conCampiCalcolati, conCampiCalcolatiMolte, campiCalcolati, togliCampiDiSistema,
 	CREATE_FORBIDDEN, UPDATE_FORBIDDEN, DELETE_FORBIDDEN, mutationBlockedReason,
 } from '../entities/hooks.js';
 import { getUserFromRequest } from '../auth/tokens.js';
-import { canWriteEntity } from '../auth/authorize.js';
+import { canWriteEntity, canReadEntity } from '../auth/authorize.js';
 import { memberPuoLeggere, memberPuoScrivere, colonnaProprietario, colonnaProprietarioScrittura, nascondiCampiPerSocio, forzaProprietario } from '../auth/memberScope.js';
 import { socioDiAccount } from '../auth/socioCorrente.js';
 import { registerPgErrorHandler } from './errorHandler.js';
+import { colonneFile, cancellaFileNonPiuUsati } from '../lib/fileCaricati.js';
+import { promuoviFinoACapienza } from '../lib/prenotazioni.js';
+import { conSaleBloccate } from '../lib/sale.js';
+import { registra, tipoEntita, nomeLeggibile, descriviModifica } from '../lib/registro.js';
 
 const WRITE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+const MASSIMO_RIGHE = 5000;
+const MASSIMO_CREAZIONE_MULTIPLA = 500;
 
 export default async function entityRoutes(fastify) {
 	registerPgErrorHandler(fastify);
@@ -29,6 +36,7 @@ export default async function entityRoutes(fastify) {
 		if (!user) {
 			return reply.code(401).send({ error: 'Non autenticato.' });
 		}
+		request.utente = user;
 		const { name } = request.params;
 		if (name && !entityRegistry[name]) {
 			return reply.code(404).send({ error: `Entità sconosciuta: ${name}` });
@@ -41,6 +49,11 @@ export default async function entityRoutes(fastify) {
 			: canWriteEntity(user.ruolo, name, request.method);
 		if (name && scrittura && !consentito) {
 			return reply.code(403).send({ error: 'Il tuo ruolo non consente questa modifica.' });
+		}
+		// E anche sulle letture: nascondere la voce di menu non impedisce di chiedere i
+		// certificati medici o il registro delle azioni all'API.
+		if (name && !scrittura && user.ruolo !== 'member' && !canReadEntity(user.ruolo, name)) {
+			return reply.code(403).send({ error: 'Il tuo ruolo non consente di leggere questi dati.' });
 		}
 
 		// Un socio entra in un'area che deve mostrargli i propri dati: tutto il resto —
@@ -59,7 +72,8 @@ export default async function entityRoutes(fastify) {
 		}
 	});
 
-	// LIST (con _sort/_limit) e FILTER (qualsiasi altro query param = uguaglianza):
+	// LIST (con _sort/_limit) e FILTER (qualsiasi altro query param = uguaglianza; con il
+	// suffisso __gte / __lte = da / fino a):
 	// GET /api/entities/:name?_sort=-created_date&_limit=200
 	// GET /api/entities/:name?member_id=...
 	fastify.get('/api/entities/:name', async (request) => {
@@ -72,8 +86,17 @@ export default async function entityRoutes(fastify) {
 
 		const conditions = Object.entries(filters)
 			.map(([key, value]) => {
+				// Intervalli: `?date__gte=2026-10-01&date__lte=2026-10-31`. Senza, l'unico modo di
+				// chiedere "le lezioni da qui in avanti" era prenderne un numero fisso ordinato per
+				// data, e il calendario teneva le 500 più lontane nel futuro invece del mese corrente.
+				const intervallo = /^(.+)__(gte|lte)$/.exec(key);
+				if (intervallo) {
+					const colonna = dbNameToColumn[intervallo[1]];
+					if (!colonna || campiCalcolati(entityName).includes(intervallo[1])) return null;
+					return intervallo[2] === 'gte' ? gte(colonna, value) : lte(colonna, value);
+				}
 				const column = dbNameToColumn[key];
-				if (!column) return null;
+				if (!column || campiCalcolati(entityName).includes(key)) return null;
 				// I query param arrivano sempre come stringhe: i booleani vanno riconvertiti
 				// o Postgres rifiuta il confronto su colonne boolean (es. ?attivo=true).
 				if (column.dataType === 'boolean') return eq(column, value === 'true');
@@ -96,10 +119,25 @@ export default async function entityRoutes(fastify) {
 			const column = dbNameToColumn[isDesc ? _sort.slice(1) : _sort];
 			if (column) query = query.orderBy(isDesc ? desc(column) : asc(column));
 		}
-		if (_limit) query = query.limit(parseInt(_limit, 10));
+		// Un tetto sempre, anche quando il client non lo chiede: senza, una lista restituiva
+		// l'intera tabella e `_limit=10000000` chiedeva di tutto. È alto apposta — le pagine
+		// del gestionale leggono ancora elenchi interi (ARC-01) e troncarli in silenzio sarebbe
+		// peggio — e se lo si raggiunge lo si scrive nei log, perché vuol dire che una pagina
+		// va riscritta per chiedere meno.
+		const richiesto = Number.parseInt(_limit, 10);
+		const tetto = Number.isInteger(richiesto) && richiesto > 0 ? Math.min(richiesto, MASSIMO_RIGHE) : MASSIMO_RIGHE;
+		query = query.limit(tetto);
 
 		const rows = await query;
-		const risultato = firmaFileInLetturaMolte(stripHiddenFieldsMany(entityName, translateManyToSnakeCase(table, rows)));
+		if (rows.length >= MASSIMO_RIGHE) {
+			request.log.warn({ entita: entityName, righe: rows.length }, 'lista troncata al tetto massimo');
+		}
+		let risultato =conCampiCalcolatiMolte(entityName, firmaFileInLetturaMolte(stripHiddenFieldsMany(entityName, translateManyToSnakeCase(table, rows))));
+		// Un filtro su un campo calcolato va applicato al valore calcolato, non alla colonna:
+		// `?status=expired` sulla colonna non troverebbe mai niente.
+		for (const campo of campiCalcolati(entityName)) {
+			if (filters[campo] !== undefined) risultato = risultato.filter((r) => String(r[campo]) === String(filters[campo]));
+		}
 		return request.memberId ? nascondiCampiPerSocio(entityName, risultato) : risultato;
 	});
 
@@ -120,37 +158,51 @@ export default async function entityRoutes(fastify) {
 			}
 		}
 
-		const risultato = firmaFileInLettura(stripHiddenFields(entityName, translateToSnakeCase(table, row)));
+		const risultato = conCampiCalcolati(entityName, firmaFileInLettura(stripHiddenFields(entityName, translateToSnakeCase(table, row))));
 		return request.memberId ? nascondiCampiPerSocio(entityName, risultato) : risultato;
 	});
 
 	// POST /api/entities/:name
-	fastify.post('/api/entities/:name', async (request, reply) => {
+	fastify.post('/api/entities/:name', async (request, reply) => conSaleBloccate(await saleCoinvolte(request), async () => {
 		const entityName = request.params.name;
 		if (CREATE_FORBIDDEN[entityName]) {
 			return reply.code(400).send({ error: CREATE_FORBIDDEN[entityName] });
 		}
 		const table = entityRegistry[entityName];
-		let body = await applyWriteTransform(entityName, togliFirmaInScrittura(request.body));
+		const ricevuto = togliFirmaInScrittura(togliCampiDiSistema(request.body));
+		verificaCampiFile(ricevuto);
+		if (await riferimentoAltrui(request, entityName, ricevuto)) return reply.code(404).send({ error: 'Non trovato' });
+		let body = await applyWriteTransform(entityName, ricevuto, { utente: request.utente });
 		// Un socio crea solo record intestati a sé: l'appartenenza la impone il server,
 		// altrimenti basterebbe cambiare un identificativo nella richiesta.
 		if (request.memberId) body = forzaProprietario(entityName, body, request.memberId);
 		const [row] = await db.insert(table).values(translateToJs(table, body)).returning();
+		const creata = translateToSnakeCase(table, row);
+		await registra(request.utente, {
+			tipoAzione: 'create', entitaTipo: tipoEntita(entityName), entitaNome: nomeLeggibile(creata), entitaId: row.id,
+		}, request.log);
 		reply.code(201);
-		return firmaFileInLettura(stripHiddenFields(entityName, translateToSnakeCase(table, row)));
-	});
+		return conCampiCalcolati(entityName, firmaFileInLettura(stripHiddenFields(entityName, creata)));
+	}));
 
 	// POST /api/entities/:name/bulk  (bulkCreate)
-	fastify.post('/api/entities/:name/bulk', async (request, reply) => {
+	fastify.post('/api/entities/:name/bulk', async (request, reply) => conSaleBloccate(await saleCoinvolte(request), async () => {
 		const entityName = request.params.name;
 		if (CREATE_FORBIDDEN[entityName]) {
 			return reply.code(400).send({ error: CREATE_FORBIDDEN[entityName] });
 		}
 		const table = entityRegistry[entityName];
 		const source = Array.isArray(request.body) ? request.body : [];
+		// Un evento genera al massimo 104 lezioni: 500 righe per volta bastano e avanzano.
+		if (source.length > MASSIMO_CREAZIONE_MULTIPLA) {
+			return reply.code(400).send({ error: `Al massimo ${MASSIMO_CREAZIONE_MULTIPLA} righe per volta.` });
+		}
 		const items = [];
 		for (const item of source) {
-			let riga = await applyWriteTransform(entityName, togliFirmaInScrittura(item));
+			const ricevuto = togliFirmaInScrittura(togliCampiDiSistema(item));
+			verificaCampiFile(ricevuto);
+			if (await riferimentoAltrui(request, entityName, ricevuto)) return reply.code(404).send({ error: 'Non trovato' });
+			let riga = await applyWriteTransform(entityName, ricevuto, { utente: request.utente });
 			// L'appartenenza va imposta anche qui, non solo sulla creazione singola: finché
 			// mancava, bastava passare da /bulk invece che dalla rotta normale per creare
 			// righe intestate a un altro socio — il controllo c'era, e si aggirava
@@ -160,9 +212,15 @@ export default async function entityRoutes(fastify) {
 		}
 		if (!items.length) return [];
 		const rows = await db.insert(table).values(items).returning();
+		// Una voce sola per la creazione multipla: 104 lezioni generate da un evento sono
+		// un'azione, non 104.
+		await registra(request.utente, {
+			tipoAzione: 'create', entitaTipo: tipoEntita(entityName), entitaNome: `${rows.length} righe`,
+			dettagli: `Creazione multipla: ${rows.length}`,
+		}, request.log);
 		reply.code(201);
-		return firmaFileInLetturaMolte(stripHiddenFieldsMany(entityName, translateManyToSnakeCase(table, rows)));
-	});
+		return conCampiCalcolatiMolte(entityName, firmaFileInLetturaMolte(stripHiddenFieldsMany(entityName, translateManyToSnakeCase(table, rows))));
+	}));
 
 	/**
 	 * Se la riga che un socio sta per modificare o cancellare è davvero sua.
@@ -189,8 +247,54 @@ export default async function entityRoutes(fastify) {
 		return String(row[dbNameToJsKey[colonna]]) !== String(request.memberId);
 	}
 
+	/**
+	 * Le sale che una scrittura tocca, da tenere ferme mentre la si controlla e la si esegue
+	 * (vedi `conSaleBloccate`): la sala stessa, quella in cui nasce un evento o una lezione, e —
+	 * per uno spostamento — sia quella di partenza sia quella d'arrivo.
+	 */
+	async function saleCoinvolte(request) {
+		const entityName = request.params.name;
+		if (!['Room', 'Event', 'Session'].includes(entityName)) return [];
+		if (entityName === 'Room') return request.params.id ? [request.params.id] : [];
+		const corpi = Array.isArray(request.body) ? request.body : [request.body ?? {}];
+		const sale = corpi.map((c) => c?.room_id).filter(Boolean);
+		if (request.params.id) {
+			const tabella = entityRegistry[entityName];
+			const { dbNameToColumn, dbNameToJsKey } = getColumnMaps(tabella);
+			const [attuale] = await db.select().from(tabella).where(eq(dbNameToColumn.id, request.params.id)).limit(1);
+			if (attuale) sale.push(attuale[dbNameToJsKey.room_id]);
+		}
+		return sale;
+	}
+
+	/**
+	 * Se un socio sta citando la scheda o l'allenamento di un altro.
+	 *
+	 * L'intestazione della riga la impone `forzaProprietario`, ma i riferimenti no: un socio
+	 * avviava un allenamento con il `plan_id` della scheda di un altro, e poi il portale gli
+	 * restituiva le routine di quella scheda. Serve conoscere l'id, ma resta un accesso ai dati
+	 * di un altro. Risponde come `rigaNonSua`: a chi non deve vedere una riga non si conferma
+	 * nemmeno che esista.
+	 */
+	async function riferimentoAltrui(request, entityName, corpo) {
+		if (!request.memberId || !corpo) return false;
+		const controlli = [];
+		if ((entityName === 'WorkoutSession' || entityName === 'WorkoutLog') && corpo.plan_id) {
+			controlli.push([entityRegistry.ExercisePlan, corpo.plan_id]);
+		}
+		if (entityName === 'WorkoutLog' && corpo.session_id) {
+			controlli.push([entityRegistry.WorkoutSession, corpo.session_id]);
+		}
+		for (const [tabella, id] of controlli) {
+			const { dbNameToColumn, dbNameToJsKey } = getColumnMaps(tabella);
+			const [riga] = await db.select().from(tabella).where(eq(dbNameToColumn.id, id)).limit(1);
+			if (!riga || String(riga[dbNameToJsKey.member_id]) !== String(request.memberId)) return true;
+		}
+		return false;
+	}
+
 	// PUT /api/entities/:name/:id
-	fastify.put('/api/entities/:name/:id', async (request, reply) => {
+	fastify.put('/api/entities/:name/:id', async (request, reply) => conSaleBloccate(await saleCoinvolte(request), async () => {
 		const entityName = request.params.name;
 		if (UPDATE_FORBIDDEN[entityName]) {
 			return reply.code(400).send({ error: UPDATE_FORBIDDEN[entityName] });
@@ -200,20 +304,43 @@ export default async function entityRoutes(fastify) {
 			return reply.code(404).send({ error: 'Non trovato' });
 		}
 		const bloccato = await mutationBlockedReason(entityName, table, request.params.id, 'update', request.body);
-		if (bloccato) return reply.code(400).send({ error: bloccato });
+		if (bloccato) return reply.code(400).send(typeof bloccato === 'string' ? { error: bloccato } : bloccato);
 		const { dbNameToColumn } = getColumnMaps(table);
-		let body = await applyWriteTransform(entityName, togliFirmaInScrittura(request.body), { creazione: false });
+		const ricevuto = togliFirmaInScrittura(togliCampiDiSistema(request.body));
+		verificaCampiFile(ricevuto);
+		if (await riferimentoAltrui(request, entityName, ricevuto)) return reply.code(404).send({ error: 'Non trovato' });
+		let body = await applyWriteTransform(entityName, ricevuto, { creazione: false, utente: request.utente, id: request.params.id });
 		// Nemmeno con una modifica si cambia intestatario: senza, un socio potrebbe
 		// spostare a un altro una riga sua, o prendersi la riga di qualcun altro in due passi.
 		if (request.memberId) body = forzaProprietario(entityName, body, request.memberId);
 		const data = translateToJs(table, body);
+		// Com'era la riga prima: serve al registro (cosa è cambiato) e ai file (una foto
+		// sostituita va cancellata dal disco).
+		const campiFileToccati = colonneFile(table).map(([nome]) => nome).filter((nome) => nome in body);
+		const [prima] = await db.select().from(table).where(eq(dbNameToColumn.id, request.params.id)).limit(1);
 		const [row] = await db.update(table).set(data).where(eq(dbNameToColumn.id, request.params.id)).returning();
 		if (!row) return reply.code(404).send({ error: 'Non trovato' });
-		return firmaFileInLettura(stripHiddenFields(entityName, translateToSnakeCase(table, row)));
-	});
+		// Una capienza cresciuta libera posti: chi è in lista d'attesa entra, in ordine.
+		if (entityName === 'Session' && 'capacity' in body) {
+			await db.transaction((tx) => promuoviFinoACapienza(tx, row.id));
+		}
+		const vecchia = prima ? translateToSnakeCase(table, prima) : null;
+		const nuova = translateToSnakeCase(table, row);
+		if (vecchia) {
+			const cambiati = campiFileToccati.filter((nome) => vecchia[nome] && vecchia[nome] !== nuova[nome]);
+			if (cambiati.length) await cancellaFileNonPiuUsati(table, vecchia, cambiati);
+		}
+		// Il corpo com'è arrivato (con `password`), non quello trasformato (con l'hash): il
+		// registro deve sapere che la password è cambiata, non come.
+		await registra(request.utente, {
+			...descriviModifica(vecchia, { ...body, ...(ricevuto?.password ? { password: true } : {}) }),
+			entitaTipo: tipoEntita(entityName), entitaNome: nomeLeggibile(nuova), entitaId: row.id,
+		}, request.log);
+		return conCampiCalcolati(entityName, firmaFileInLettura(stripHiddenFields(entityName, nuova)));
+	}));
 
 	// DELETE /api/entities/:name/:id
-	fastify.delete('/api/entities/:name/:id', async (request, reply) => {
+	fastify.delete('/api/entities/:name/:id', async (request, reply) => conSaleBloccate(await saleCoinvolte(request), async () => {
 		const entityName = request.params.name;
 		if (DELETE_FORBIDDEN[entityName]) {
 			return reply.code(400).send({ error: DELETE_FORBIDDEN[entityName] });
@@ -223,10 +350,17 @@ export default async function entityRoutes(fastify) {
 			return reply.code(404).send({ error: 'Non trovato' });
 		}
 		const bloccato = await mutationBlockedReason(entityName, table, request.params.id, 'delete');
-		if (bloccato) return reply.code(400).send({ error: bloccato });
+		if (bloccato) return reply.code(400).send(typeof bloccato === 'string' ? { error: bloccato } : bloccato);
 		const { dbNameToColumn } = getColumnMaps(table);
 		const [row] = await db.delete(table).where(eq(dbNameToColumn.id, request.params.id)).returning();
 		if (!row) return reply.code(404).send({ error: 'Non trovato' });
+		// Eliminare un documento vuol dire eliminare anche il file: un certificato medico che
+		// resta sul disco dopo un "non si può recuperare" non è stato eliminato.
+		const eliminata = translateToSnakeCase(table, row);
+		await cancellaFileNonPiuUsati(table, eliminata);
+		await registra(request.utente, {
+			tipoAzione: 'delete', entitaTipo: tipoEntita(entityName), entitaNome: nomeLeggibile(eliminata), entitaId: row.id,
+		}, request.log);
 		return { success: true };
-	});
+	}));
 }

@@ -9,8 +9,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/ui/primitivi
 import { useToast } from "@/ui/primitivi/use-toast";
 import { useConfirm } from "@/ui/ConfirmDialog";
 import { caricaFile } from "@/staff/lib/uploads";
-import { logAction } from "@/staff/lib/auditLog";
 import { formatData, giorniAllaData } from "@/core/domain/format";
+import { hrefSicuro } from "@/ui/utils";
 import {
   TIPI_DOCUMENTO,
   nomeDocumento,
@@ -44,10 +44,11 @@ function rigaScadenza(doc) {
 
 /** Il nome del documento apre il file; senza file resta testo, perché non c'è niente da aprire. */
 function NomeDocumento({ doc }) {
-  if (!doc.file_url) return <p className="text-sm font-medium truncate">{nomeDocumento(doc)}</p>;
+  const href = hrefSicuro(doc.file_url);
+  if (!href) return <p className="text-sm font-medium truncate">{nomeDocumento(doc)}</p>;
   return (
     <a
-      href={doc.file_url}
+      href={href}
       target="_blank"
       rel="noreferrer"
       title="Apri il documento"
@@ -160,7 +161,6 @@ export default function DocumentiSocio({ socio, documenti, puoModificare, staffU
         file_name: file.name,
         caricato_da: staffUser?.nome || "",
       });
-      await logAction(staffUser, "create", "member", `Documento — ${socio.full_name}`, socio.id, nomeDocumento(dati));
       toast({ title: "Documento caricato" });
       setModulo(null);
       onCambio();
@@ -180,7 +180,6 @@ export default function DocumentiSocio({ socio, documenti, puoModificare, staffU
     if (!ok) return;
     try {
       await api.entities.MemberDocument.delete(doc.id);
-      await logAction(staffUser, "delete", "member", `Documento — ${socio.full_name}`, socio.id, nomeDocumento(doc));
       toast({ title: "Documento eliminato" });
       onCambio();
     } catch (err) {
@@ -282,9 +281,9 @@ export default function DocumentiSocio({ socio, documenti, puoModificare, staffU
                       <td className="px-3 py-2 text-muted-foreground whitespace-nowrap">{formatData(doc.created_date, "breve")}</td>
                       <td className="px-3 py-2 text-muted-foreground whitespace-nowrap">{formatData(doc.expiry_date, "breve")}</td>
                       <td className="px-3 py-2 text-right">
-                        {doc.file_url && (
+                        {hrefSicuro(doc.file_url) && (
                           <Button asChild size="sm" variant="outline" className="h-8">
-                            <a href={doc.file_url} target="_blank" rel="noreferrer">Apri</a>
+                            <a href={hrefSicuro(doc.file_url)} target="_blank" rel="noreferrer">Apri</a>
                           </Button>
                         )}
                       </td>

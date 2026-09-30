@@ -1,5 +1,5 @@
 // Dominio fitness: Exercise, ExercisePlan, WorkoutLog.
-import { pgTable, uuid, varchar, text, integer, numeric, date, jsonb, boolean, timestamp } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, text, integer, numeric, date, jsonb, boolean, timestamp, index } from 'drizzle-orm/pg-core';
 import { members } from './crm.js';
 
 // Il catalogo degli esercizi: cosa sono, non come si eseguono in una scheda.
@@ -60,7 +60,11 @@ export const exercisePlans = pgTable('exercise_plans', {
 	// di proposito: è un'informazione storica, e un modello dismesso deve poter essere
 	// eliminato senza trascinarsi dietro le schede già in mano ai soci.
 	templateOriginId: uuid('template_origin_id'),
-});
+}, (table) => ({
+	// Le chiavi esterne Postgres non le indicizza da solo: ogni richiesta del portale ("le mie
+	// schede", "le mie serie") leggeva la tabella intera.
+	socio: index('exercise_plans_member_id_idx').on(table.memberId),
+}));
 
 // Un allenamento vero: la routine che il socio ha avviato, quando l'ha iniziata e quando
 // l'ha chiusa. È la riga che tiene insieme le serie eseguite — senza, un allenamento
@@ -80,7 +84,9 @@ export const workoutSessions = pgTable('workout_sessions', {
 	// lasciata aperta quando il telefono si blocca a metà panca.
 	terminataAlle: timestamp('terminata_alle'),
 	note: text('note'),
-});
+}, (table) => ({
+	socio: index('workout_sessions_member_id_idx').on(table.memberId),
+}));
 
 // Una serie eseguita. La tabella esisteva già come "un esercizio registrato a fine
 // allenamento"; ora ogni riga è una serie sola, spuntata mentre la si fa.
@@ -107,4 +113,7 @@ export const workoutLogs = pgTable('workout_logs', {
 	rpePercepito: numeric('rpe_percepito', { precision: 3, scale: 1 }),
 	data: date('data').notNull(),
 	note: text('note'),
-});
+}, (table) => ({
+	socio: index('workout_logs_member_id_idx').on(table.memberId),
+	sessione: index('workout_logs_session_id_idx').on(table.sessionId),
+}));

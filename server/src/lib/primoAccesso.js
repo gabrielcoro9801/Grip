@@ -24,6 +24,7 @@ import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { staffAccounts, organizations } from '../db/schema/index.js';
 import { bootstrapRuoli } from './ruoli.js';
+import { motivoPasswordNonValida } from '../../../shared/password.js';
 
 export async function creaAmministratoreIniziale(log) {
 	const [{ quanti }] = await db
@@ -46,6 +47,12 @@ export async function creaAmministratoreIniziale(log) {
 		log?.warn('Nessun account presente e SEED_ADMIN_EMAIL non impostata: indicala e riavvia.');
 		return { creato: false, motivo: 'email non impostata' };
 	}
+	// La stessa regola di ogni altra password: questo account può tutto ed è esposto su internet.
+	const nonValida = motivoPasswordNonValida(password);
+	if (nonValida) {
+		log?.warn(`SEED_ADMIN_PASSWORD non va bene: ${nonValida} Correggila e riavvia.`);
+		return { creato: false, motivo: 'password non valida' };
+	}
 
 	// L'ente e i suoi ruoli servono comunque: senza organizzazione l'applicazione non sa a
 	// chi appartengono i dati, e senza ruoli non si decide chi può fare cosa.
@@ -63,11 +70,14 @@ export async function creaAmministratoreIniziale(log) {
 		passwordHash: await bcrypt.hash(password, 10),
 		ruolo: 'admin',
 		attivo: true,
+		// La password sta in una variabile del servizio, che vede chiunque gestisca il deploy:
+		// al primo accesso va sostituita con una che conosce solo l'amministratore.
+		passwordDaCambiare: true,
 	});
 
 	log?.info(
 		`Primo avvio: creato l'amministratore ${email} per "${ente.nome}" (${ruoliCreati} ruoli). ` +
-		'Cambia la password dopo il primo accesso.',
+		'Al primo accesso verrà chiesto di cambiare la password; poi togli SEED_ADMIN_PASSWORD dalle variabili.',
 	);
 
 	return { creato: true, email, organizzazione: ente.nome };
