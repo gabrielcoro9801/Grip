@@ -56,7 +56,7 @@ before(async () => {
 
 	const [sala] = await db.insert(rooms).values({ name: `Sala archivio ${suffisso}` }).returning();
 	id.sala = sala.id;
-	const [istruttore] = await db.insert(instructors).values({ fullName: `Istruttore archivio ${suffisso}` }).returning();
+	const [istruttore] = await db.insert(instructors).values({ nome: 'Istruttore', cognome: `Archivio ${suffisso}` }).returning();
 	id.istruttore = istruttore.id;
 	const [corso] = await db.insert(courses).values({ name: `Corso archivio ${suffisso}`, instructorId: istruttore.id }).returning();
 	id.corso = corso.id;

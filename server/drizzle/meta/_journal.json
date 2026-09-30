@@ -288,6 +288,20 @@
       "when": 1790792766130,
       "tag": "0040_archivio_e_disattivazione",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1790795761592,
+      "tag": "0041_istruttori_nome_cognome_cf_piva",
+      "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1790795771589,
+      "tag": "0042_via_tax_id_istruttori",
+      "breakpoints": true
     }
   ]
 }

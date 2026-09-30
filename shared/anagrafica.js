@@ -70,6 +70,35 @@ export function codiceFiscaleValido(valoreGrezzo) {
 }
 
 // ---------------------------------------------------------------------------------------
+// Partita IVA
+// ---------------------------------------------------------------------------------------
+
+/** Le note di un istruttore stanno in tre righe della sua tile. */
+export const NOTE_ISTRUTTORE_MASSIMO = 140;
+
+/** Solo le cifre, senza spazi né prefisso "IT": "IT 012 345 67890" → "01234567890". */
+export function normalizzaPartitaIva(valore) {
+  return String(valore ?? "").replace(/\s+/g, "").toUpperCase().replace(/^IT/, "");
+}
+
+/**
+ * Se la partita IVA è scritta bene: undici cifre, e l'ultima è quella di controllo.
+ *
+ * Come per il codice fiscale, non dice che esista: prende l'errore di battitura.
+ */
+export function partitaIvaValida(valoreGrezzo) {
+  const piva = normalizzaPartitaIva(valoreGrezzo);
+  if (!/^\d{11}$/.test(piva)) return false;
+  let somma = 0;
+  for (let i = 0; i < 10; i += 1) {
+    const cifra = Number(piva[i]);
+    if (i % 2 === 0) somma += cifra;
+    else somma += cifra * 2 > 9 ? cifra * 2 - 9 : cifra * 2;
+  }
+  return (10 - (somma % 10)) % 10 === Number(piva[10]);
+}
+
+// ---------------------------------------------------------------------------------------
 // Documenti del socio
 // ---------------------------------------------------------------------------------------
 

@@ -15,12 +15,22 @@ export const categories = pgTable('categories', {
 });
 
 // Anagrafica di chi tiene i corsi.
+//
+// Nome e cognome separati, come per i soci: il nome completo lo calcola il database, e lo
+// leggono calendario, portale e catalogo senza sapere come è fatto. Codice fiscale e partita
+// IVA erano un campo solo ("tax_id"), in cui finiva l'uno o l'altra: ora sono due, e il codice
+// fiscale è obbligatorio (lo impone il server: gli istruttori registrati prima possono non
+// averlo, e lo completano alla prima modifica).
 export const instructors = pgTable('instructors', {
 	id: uuid('id').defaultRandom().primaryKey(),
-	fullName: varchar('full_name', { length: 255 }).notNull(),
-	taxId: varchar('tax_id', { length: 32 }),
+	nome: varchar('nome', { length: 120 }).notNull(),
+	cognome: varchar('cognome', { length: 120 }).notNull(),
+	fullName: varchar('full_name', { length: 255 }).generatedAlwaysAs(sql`trim(nome || ' ' || cognome)`),
+	codiceFiscale: varchar('codice_fiscale', { length: 16 }),
+	partitaIva: varchar('partita_iva', { length: 11 }),
 	contactEmail: varchar('contact_email', { length: 255 }),
 	contactPhone: varchar('contact_phone', { length: 64 }),
+	// Stanno in tre righe della tile: il limite lo impone il server (NOTE_ISTRUTTORE_MASSIMO).
 	notes: text('notes'),
 	// Chi ha tenuto dei corsi non si elimina — il calendario passato perderebbe il suo nome — ma
 	// smette di comparire fra quelli a cui si assegna un corso.

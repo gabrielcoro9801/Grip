@@ -18,6 +18,58 @@ import { lezioneFinita } from '../../../shared/giorni.js';
  */
 
 /**
+ * Perché quel socio non può avere una prenotazione viva su quella lezione, o null.
+ *
+ * È la stessa regola per una prenotazione nuova e per una annullata che lo staff riattiva:
+ * lezione attiva e non ancora finita, socio non archiviato, abbonamento valido quel giorno,
+ * nessun'altra prenotazione viva sulla stessa lezione.
+ *
+ * @param escludi l'id della prenotazione che si sta riattivando, che non conta come doppione.
+ */
+async function motivoNonPrenotabile(tx, lezione, memberId, { escludi = null } = {}) {
+	if (lezione.status !== 'active') return { errore: 400, messaggio: 'La lezione è stata annullata.' };
+
+	// Oggi a Roma, non in UTC: fra mezzanotte e le due la data UTC è ancora ieri. E non solo
+	// la data: una lezione di stamattina, finita, si prenotava fino a mezzanotte.
+	if (lezioneFinita(lezione)) return { errore: 400, messaggio: 'La lezione è già passata.' };
+
+	const socio = await socioDi(tx, memberId);
+	if (!socio) return { errore: 404, messaggio: 'Socio inesistente.' };
+	// Chi ha lasciato la palestra non prenota, da nessuna delle due rotte.
+	if (socio.archiviatoIl) return { errore: 400, messaggio: 'Il socio è archiviato: riattivalo dalla sua scheda per prenotare.' };
+
+	// Senza un abbonamento che copra il giorno della lezione non si prenota: dal portale come
+	// dalla reception, perché la regola sta qui e non nei pulsanti.
+	const iscrizioni = await tx
+		.select({ start_date: subscriptions.startDate, end_date: subscriptions.endDate })
+		.from(subscriptions)
+		.where(eq(subscriptions.memberId, memberId));
+	if (!abbonamentoCopre(iscrizioni, lezione.date)) return { errore: 400, messaggio: MESSAGGIO_SENZA_ABBONAMENTO };
+
+	const [gia] = await tx
+		.select({ id: bookings.id })
+		.from(bookings)
+		.where(and(
+			eq(bookings.sessionId, lezione.id),
+			eq(bookings.memberId, memberId),
+			ne(bookings.status, 'cancelled'),
+			...(escludi ? [ne(bookings.id, escludi)] : []),
+		))
+		.limit(1);
+	if (gia) return { errore: 409, messaggio: "C'è già una prenotazione per questa lezione." };
+	return null;
+}
+
+async function socioDi(tx, memberId) {
+	const [socio] = await tx
+		.select({ nome: members.fullName, archiviatoIl: members.archiviatoIl })
+		.from(members)
+		.where(eq(members.id, memberId))
+		.limit(1);
+	return socio ?? null;
+}
+
+/**
  * Prenota una lezione.
  *
  * Lo stato non si accetta da chi chiede: lo decide il conto dei posti. Un client che manda
@@ -35,43 +87,10 @@ export async function prenota({ sessionId, memberId }) {
 			.limit(1)
 			.for('update');
 		if (!lezione) return { errore: 404, messaggio: 'Lezione inesistente.' };
-		if (lezione.status !== 'active') return { errore: 400, messaggio: 'La lezione è stata annullata.' };
 
-		// Oggi a Roma, non in UTC: fra mezzanotte e le due la data UTC è ancora ieri. E non solo
-		// la data: una lezione di stamattina, finita, si prenotava fino a mezzanotte.
-		if (lezioneFinita(lezione)) {
-			return { errore: 400, messaggio: 'La lezione è già passata.' };
-		}
-
-		const [socio] = await tx
-			.select({ nome: members.fullName, archiviatoIl: members.archiviatoIl })
-			.from(members)
-			.where(eq(members.id, memberId))
-			.limit(1);
-		if (!socio) return { errore: 404, messaggio: 'Socio inesistente.' };
-		// Chi ha lasciato la palestra non prenota, da nessuna delle due rotte.
-		if (socio.archiviatoIl) return { errore: 400, messaggio: 'Il socio è archiviato: riattivalo dalla sua scheda per prenotare.' };
-
-		// Senza un abbonamento che copra il giorno della lezione non si prenota: dal portale come
-		// dalla reception, perché la regola sta qui e non nei pulsanti.
-		const iscrizioni = await tx
-			.select({ start_date: subscriptions.startDate, end_date: subscriptions.endDate })
-			.from(subscriptions)
-			.where(eq(subscriptions.memberId, memberId));
-		if (!abbonamentoCopre(iscrizioni, lezione.date)) {
-			return { errore: 400, messaggio: MESSAGGIO_SENZA_ABBONAMENTO };
-		}
-
-		const [gia] = await tx
-			.select({ id: bookings.id })
-			.from(bookings)
-			.where(and(
-				eq(bookings.sessionId, sessionId),
-				eq(bookings.memberId, memberId),
-				ne(bookings.status, 'cancelled'),
-			))
-			.limit(1);
-		if (gia) return { errore: 409, messaggio: 'Hai già una prenotazione per questa lezione.' };
+		const rifiuto = await motivoNonPrenotabile(tx, lezione, memberId);
+		if (rifiuto) return rifiuto;
+		const socio = await socioDi(tx, memberId);
 
 		const [{ confermate, inAttesa }] = await tx
 			.select({
@@ -181,4 +200,126 @@ export async function promuoviFinoACapienza(tx, sessionId) {
 		await tx.update(bookings).set({ waitlistPosition: indice + 1 }).where(eq(bookings.id, riga.id));
 	}
 	return promosse;
+}
+
+// --- Il lavoro della reception sulle prenotazioni -----------------------------------------
+//
+// Il socio prenota e disdice. Lo staff deve poter fare anche il resto: confermare qualcuno che
+// era in lista d'attesa, rimetterlo in lista, riattivare una prenotazione disdetta per sbaglio,
+// cambiare l'ordine della lista, cancellare una prenotazione inserita per errore. Tutto dentro
+// una transazione con la lezione bloccata, come prenotare: sono decisioni sui posti, e due
+// operatori sulla stessa lezione non devono contare gli stessi posti.
+//
+// Il portale non ha niente da sapere: legge le stesse righe, e quello che fa la reception lo
+// vede il socio alla prossima apertura.
+
+const STATI_PRENOTAZIONE = ['confirmed', 'waitlisted', 'cancelled'];
+
+/** La prenotazione e la sua lezione, bloccate tutte e due. */
+async function prenotazioneBloccata(tx, bookingId) {
+	const [prenotazione] = await tx.select().from(bookings).where(eq(bookings.id, bookingId)).limit(1).for('update');
+	if (!prenotazione) return { errore: { errore: 404, messaggio: 'Prenotazione inesistente.' } };
+	const [lezione] = await tx.select().from(sessions).where(eq(sessions.id, prenotazione.sessionId)).limit(1).for('update');
+	if (lezione && lezioneFinita(lezione)) {
+		return { errore: { errore: 400, messaggio: 'La lezione è già finita: le sue prenotazioni non si cambiano più.' } };
+	}
+	return { prenotazione, lezione };
+}
+
+/**
+ * Porta una prenotazione a un altro stato.
+ *
+ * - Confermata: da lista d'attesa o da annullata. Se la lezione è piena si rifiuta, a meno che
+ *   la reception dica esplicitamente di andare oltre la capienza (`oltreCapienza`).
+ * - In lista d'attesa: in coda alla lista.
+ * - Annullata: è una disdetta, con la lista d'attesa che avanza.
+ *
+ * Una prenotazione annullata che torna viva passa dalle stesse regole di una nuova: socio non
+ * archiviato, abbonamento valido quel giorno, nessun doppione.
+ *
+ * Dopo ogni cambio la lista d'attesa si rinumera, e se si sono liberati posti avanza da sola.
+ */
+export async function cambiaStato({ bookingId, stato, oltreCapienza = false }) {
+	if (!STATI_PRENOTAZIONE.includes(stato)) return { errore: 400, messaggio: 'Stato non valido: confermata, in lista d\'attesa o annullata.' };
+	if (stato === 'cancelled') return disdici({ bookingId });
+
+	return db.transaction(async (tx) => {
+		const { prenotazione, lezione, errore } = await prenotazioneBloccata(tx, bookingId);
+		if (errore) return errore;
+		if (prenotazione.status === stato) return { aggiornata: prenotazione, promosse: [] };
+
+		if (prenotazione.status === 'cancelled') {
+			const rifiuto = await motivoNonPrenotabile(tx, lezione, prenotazione.memberId, { escludi: prenotazione.id });
+			if (rifiuto) return rifiuto;
+		}
+
+		const [{ confermate, inAttesa }] = await tx
+			.select({
+				confermate: sql`count(*) filter (where ${bookings.status} = 'confirmed' and ${bookings.id} <> ${prenotazione.id})`.mapWith(Number),
+				inAttesa: sql`count(*) filter (where ${bookings.status} = 'waitlisted' and ${bookings.id} <> ${prenotazione.id})`.mapWith(Number),
+			})
+			.from(bookings)
+			.where(eq(bookings.sessionId, prenotazione.sessionId));
+
+		if (stato === 'confirmed' && confermate >= (lezione.capacity ?? 0) && !oltreCapienza) {
+			return {
+				errore: 409,
+				codice: 'lezione_piena',
+				messaggio: `La lezione è al completo (${confermate} su ${lezione.capacity ?? 0}). Confermando si va oltre la capienza.`,
+			};
+		}
+
+		const [aggiornata] = await tx
+			.update(bookings)
+			.set(stato === 'confirmed'
+				? { status: 'confirmed', waitlistPosition: null }
+				: { status: 'waitlisted', waitlistPosition: inAttesa + 1 })
+			.where(eq(bookings.id, prenotazione.id))
+			.returning();
+
+		const promosse = await promuoviFinoACapienza(tx, prenotazione.sessionId);
+		const [finale] = await tx.select().from(bookings).where(eq(bookings.id, prenotazione.id)).limit(1);
+		return { aggiornata: finale ?? aggiornata, promosse: promosse.filter((p) => p.id !== prenotazione.id) };
+	});
+}
+
+/**
+ * Sposta una prenotazione in lista d'attesa alla posizione indicata (1 = la prima), e rinumera
+ * le altre. Serve quando la reception decide un ordine diverso da quello di arrivo.
+ */
+export async function spostaInLista({ bookingId, posizione }) {
+	return db.transaction(async (tx) => {
+		const { prenotazione, errore } = await prenotazioneBloccata(tx, bookingId);
+		if (errore) return errore;
+		if (prenotazione.status !== 'waitlisted') return { errore: 400, messaggio: "La prenotazione non è in lista d'attesa." };
+
+		const coda = await tx
+			.select()
+			.from(bookings)
+			.where(and(eq(bookings.sessionId, prenotazione.sessionId), eq(bookings.status, 'waitlisted')))
+			.orderBy(bookings.waitlistPosition, bookings.createdDate);
+		const altri = coda.filter((b) => b.id !== prenotazione.id);
+		const indice = Math.min(Math.max(Number.parseInt(posizione, 10) || 1, 1), coda.length) - 1;
+		altri.splice(indice, 0, prenotazione);
+		for (const [i, riga] of altri.entries()) {
+			if (riga.waitlistPosition !== i + 1) {
+				await tx.update(bookings).set({ waitlistPosition: i + 1 }).where(eq(bookings.id, riga.id));
+			}
+		}
+		return { posizione: indice + 1 };
+	});
+}
+
+/**
+ * Cancella una prenotazione, per davvero: per quelle inserite per errore, che non devono
+ * restare nello storico come disdette. Se occupava un posto, la lista d'attesa avanza.
+ */
+export async function eliminaPrenotazione({ bookingId }) {
+	return db.transaction(async (tx) => {
+		const { prenotazione, errore } = await prenotazioneBloccata(tx, bookingId);
+		if (errore) return errore;
+		await tx.delete(bookings).where(eq(bookings.id, prenotazione.id));
+		const promosse = await promuoviFinoACapienza(tx, prenotazione.sessionId);
+		return { eliminata: prenotazione, promosse };
+	});
 }

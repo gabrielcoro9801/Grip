@@ -10,7 +10,7 @@ export default function Prenotazioni() {
     <>
       <PageHeader
         title="Prenotazioni"
-        description="Chi si è iscritto a quale lezione, e chi si è poi presentato."
+        description="Chi è iscritto a quale lezione. Da qui si prenota per un socio, si conferma, si gestisce la lista d'attesa e si disdice."
       />
       <BookingsTab data={data} reload={reload} />
     </>

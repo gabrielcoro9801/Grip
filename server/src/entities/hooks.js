@@ -13,6 +13,7 @@ import { usoDellaSala } from '../lib/sale.js';
 import { translateToSnakeCase } from './columnMaps.js';
 import {
 	sessoValido, normalizzaCodiceFiscale, codiceFiscaleValido, motivoDocumentoNonValido, tipoDocumentoValido,
+	normalizzaPartitaIva, partitaIvaValida, NOTE_ISTRUTTORE_MASSIMO,
 } from '../../../shared/anagrafica.js';
 import {
 	unitaDurataValida, statoTipoValido, motivoCambioStatoNonValido, motivoNonVendibile, dataFineAbbonamento,
@@ -457,6 +458,40 @@ const WRITE_TRANSFORMS = {
 			throw rifiuta('Il tipo di rapporto va scelto: dipendente o collaboratore sportivo.');
 		}
 		for (const campo of ['ruolo', 'email', 'phone', 'hire_date', 'notes']) {
+			if (presente(rest, campo) && vuoto(rest[campo])) rest[campo] = null;
+		}
+		return rest;
+	},
+
+	// Un istruttore: nome e cognome (il nome completo lo calcola il database), codice fiscale
+	// obbligatorio e scritto bene, partita IVA facoltativa ma scritta bene, note in tre righe.
+	// Chi è stato registrato prima del codice fiscale obbligatorio lo completa alla prima
+	// modifica che lo tocca; cambiare solo lo stato (attivo) non lo pretende.
+	async Instructor(body, { creazione }) {
+		const { full_name: _calcolato, ...rest } = body ?? {};
+		for (const campo of ['nome', 'cognome']) {
+			if (presente(rest, campo)) rest[campo] = String(rest[campo] ?? '').trim();
+			if ((creazione || presente(rest, campo)) && vuoto(rest[campo])) {
+				throw rifiuta(campo === 'nome' ? 'Il nome è obbligatorio.' : 'Il cognome è obbligatorio.');
+			}
+		}
+		if (creazione || presente(rest, 'codice_fiscale')) {
+			if (vuoto(rest.codice_fiscale)) throw rifiuta('Il codice fiscale è obbligatorio.');
+			rest.codice_fiscale = normalizzaCodiceFiscale(rest.codice_fiscale);
+			if (!codiceFiscaleValido(rest.codice_fiscale)) throw rifiuta('Il codice fiscale non è valido: controlla di averlo scritto bene.');
+		}
+		if (presente(rest, 'partita_iva')) {
+			if (vuoto(rest.partita_iva)) rest.partita_iva = null;
+			else {
+				rest.partita_iva = normalizzaPartitaIva(rest.partita_iva);
+				if (!partitaIvaValida(rest.partita_iva)) throw rifiuta('La partita IVA non è valida: sono undici cifre, controlla di averla scritta bene.');
+			}
+		}
+		if (presente(rest, 'notes')) {
+			if (vuoto(rest.notes)) rest.notes = null;
+			else if (String(rest.notes).length > NOTE_ISTRUTTORE_MASSIMO) throw rifiuta(`Le note stanno in ${NOTE_ISTRUTTORE_MASSIMO} caratteri.`);
+		}
+		for (const campo of ['contact_email', 'contact_phone']) {
 			if (presente(rest, campo) && vuoto(rest[campo])) rest[campo] = null;
 		}
 		return rest;
