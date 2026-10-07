@@ -274,6 +274,38 @@ describe('la trasformazione in socio', () => {
 	});
 });
 
+describe('i dati di Andamento', () => {
+	test('righe anonime: lead aperti, lead persi col motivo, soci nati da un contatto', async () => {
+		const [canaleAndamento] = await db.insert(canaliContatto).values({ nome: `Andamento ${Date.now()}` }).returning();
+		idCanali.push(canaleAndamento.id);
+		const aperto = await nuovoLead({ canale_id: canaleAndamento.id, anno_nascita: 1990 });
+		const perso = await nuovoLead({ canale_id: canaleAndamento.id });
+		await db.update(leads).set({ stato: 'non_interessato', motivoChiusura: 'orari' }).where(eq(leads.id, perso.id));
+		const [socio] = await db.insert(members).values({
+			nome: 'Nato', cognome: 'Da Contatto', codiceSocio: `AN${String(Date.now()).replace(/\d/g, (c) => 'ABCDEFGHIJ'[c])}`,
+			leadCanaleId: canaleAndamento.id, leadDataContatto: '2026-09-01', dateOfBirth: '1992-04-03', sesso: 'M',
+		}).returning();
+		idSocio.push(socio.id);
+
+		const res = await come('reception', { method: 'GET', url: '/api/lead/andamento' });
+		assert.equal(res.statusCode, 200, res.body);
+		const righe = res.json().righe.filter((r) => r.canale_id === canaleAndamento.id);
+		assert.deepEqual(righe.map((r) => r.esito).sort(), ['aperto', 'perso', 'socio']);
+		assert.equal(righe.find((r) => r.esito === 'perso').motivo, 'orari');
+		const delSocio = righe.find((r) => r.esito === 'socio');
+		assert.equal(delSocio.anno_nascita, 1992);
+		assert.equal(delSocio.data_contatto, '2026-09-01');
+		assert.ok(delSocio.socio_dal);
+		// Niente nomi, niente recapiti: escono solo i campi dei conti.
+		assert.deepEqual(Object.keys(righe[0]).sort(), ['anno_nascita', 'canale_id', 'data_contatto', 'esito', 'motivo', 'sesso', 'socio_dal']);
+		assert.ok(res.json().canali.some((c) => c.id === canaleAndamento.id));
+		void aperto;
+
+		assert.equal((await come('istruttore', { method: 'GET', url: '/api/lead/andamento' })).statusCode, 200);
+		assert.equal((await come('socio', { method: 'GET', url: '/api/lead/andamento' })).statusCode, 403);
+	});
+});
+
 describe('gli stati di un lead', () => {
 	const azione = (chi, id, nome, corpo = {}) => post(chi, `/api/lead/${id}/${nome}`, corpo);
 	const diario = async (id) => db.select().from(leadAttivita).where(eq(leadAttivita.leadId, id)).orderBy(leadAttivita.createdDate);

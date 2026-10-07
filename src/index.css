@@ -37,6 +37,22 @@
     --chart-3: 0 84% 60%;
     --chart-4: 217 91% 60%;
     --chart-5: 280 65% 60%;
+    /* I colori dei grafici (Andamento dei lead), in esadecimale perché si usano così come sono
+       negli stili in linea. Ogni colore ha un significato fisso in tutta la pagina: blu i
+       contatti, acqua chi è diventato socio, arancio chi si è perso, grigio chi è ancora in
+       corso. Validati contro la superficie delle card (contrasto, daltonismo) in chiaro e in
+       scuro; l'acqua in chiaro sta sotto 3:1, ed è per questo che i numeri sono sempre scritti. */
+    --viz-contatti: #2a78d6;
+    --viz-soci: #1baf7a;
+    --viz-persi: #eb6834;
+    --viz-in-corso: #b4b9c2;
+    --viz-riferimento: #898781;
+    /* Una scala a un tono solo (blu) per la stagionalità: dal quasi nulla al massimo. */
+    --viz-scala-1: #cde2fb;
+    --viz-scala-2: #9ec5f4;
+    --viz-scala-3: #5598e7;
+    --viz-scala-4: #256abf;
+    --viz-scala-5: #104281;
     --radius: 0.625rem;
     /* Due alias, non tre: `heading` e `body` oggi risolvono alla stessa
        famiglia, ma restano distinti perché un domani si cambi la sola
@@ -88,6 +104,17 @@
     --chart-3: 0 72% 60%;
     --chart-4: 217 85% 62%;
     --chart-5: 280 60% 66%;
+    --viz-contatti: #3987e5;
+    --viz-soci: #199e70;
+    --viz-persi: #d95926;
+    --viz-in-corso: #4b5263;
+    --viz-riferimento: #898781;
+    /* Sul fondo scuro "di più" vuol dire più chiaro: la scala si rovescia. */
+    --viz-scala-1: #184f95;
+    --viz-scala-2: #1c5cab;
+    --viz-scala-3: #2a78d6;
+    --viz-scala-4: #5598e7;
+    --viz-scala-5: #9ec5f4;
     --sidebar-background: 220 25% 10%;
     --sidebar-foreground: 210 15% 85%;
     --sidebar-primary: 168 65% 52%;

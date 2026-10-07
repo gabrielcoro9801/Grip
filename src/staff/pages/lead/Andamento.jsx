@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
+import { useSearchParams } from "react-router-dom";
 import { api } from "@/core/api/client";
-import { Card, CardContent, CardHeader, CardTitle } from "@/ui/primitivi/card";
 import { Button } from "@/ui/primitivi/button";
 import { Label } from "@/ui/primitivi/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/ui/primitivi/select";
@@ -8,238 +8,198 @@ import PageHeader from "@/staff/components/PageHeader";
 import { LoadingState } from "@/ui/Spinner";
 import { ErrorState } from "@/ui/StateViews";
 import { SESSI, etichettaSesso } from "@/core/domain/anagrafica";
+import { oggiIso } from "@/core/domain/giorni";
 import {
-  MESI, filtraContatti, contaPer, contattiPerMese, anniDisponibili, anniNascitaDisponibili,
+  MESI, FASCE_ETA, intervalloPeriodo, filtraAndamento, fasciaEta, riepilogoAndamento, serieMensile, esitiPerCanale,
+  matriceStagionalita, motiviPerdita, contaInOrdine, anniDisponibili, etichettaMotivoChiusura,
 } from "@/core/domain/lead";
+import RiquadriNumeri from "@/staff/components/lead/andamento/RiquadriNumeri";
+import GraficoMensile from "@/staff/components/lead/andamento/GraficoMensile";
+import EsitiCanali from "@/staff/components/lead/andamento/EsitiCanali";
+import Stagionalita from "@/staff/components/lead/andamento/Stagionalita";
+import BarreConteggio from "@/staff/components/lead/andamento/BarreConteggio";
+import { COLORI } from "@/staff/components/lead/andamento/comuni";
+import { X } from "lucide-react";
 
 // Radix non accetta una voce con valore vuoto: "tutti" è il filtro spento.
 const TUTTI = "tutti";
-const FILTRI_VUOTI = { anno: TUTTI, mese: TUTTI, sesso: TUTTI, annoNascita: TUTTI, canaleId: TUTTI };
 
-const numero = new Intl.NumberFormat("it-IT");
-
-function Filtro({ id, etichetta, valore, onChange, voci, disabilitato }) {
+function Filtro({ id, etichetta, valore, onChange, voci }) {
   return (
-    <div className="min-w-[9rem] flex-1">
+    <div className="min-w-[10rem] flex-1 sm:flex-none">
       <Label htmlFor={id} className="text-xs text-muted-foreground">{etichetta}</Label>
-      <Select value={valore} onValueChange={onChange} disabled={disabilitato}>
+      <Select value={valore ?? TUTTI} onValueChange={(v) => onChange(v === TUTTI ? null : v)}>
         <SelectTrigger id={id} className="h-9"><SelectValue /></SelectTrigger>
         <SelectContent>
-          <SelectItem value={TUTTI}>Tutti</SelectItem>
-          {voci.map((v) => <SelectItem key={v.valore} value={String(v.valore)}>{v.etichetta}</SelectItem>)}
+          {voci.map((v) => <SelectItem key={v.valore} value={v.valore}>{v.etichetta}</SelectItem>)}
         </SelectContent>
       </Select>
     </div>
   );
 }
 
+const etichettaMotivo = (m) => (m === "non_raggiungibile" ? "Non raggiungibile" : etichettaMotivoChiusura(m));
+const meseLeggibile = (mese) => `${MESI[Number(mese.slice(5, 7)) - 1]} ${mese.slice(0, 4)}`;
+
 /**
- * I contatti per mese, a colonne.
+ * Andamento dei contatti: quanti ne arrivano, da dove, quando, di chi — e soprattutto quanti
+ * diventano soci e perché gli altri si perdono.
  *
- * Una serie sola, quindi niente legenda: il titolo dice cosa si guarda. Il numero sta sulla
- * colonna più alta e su quella del mese scelto; gli altri li danno il tooltip (anche da
- * tastiera) e la tabella, così nessun valore dipende dal passaggio del mouse.
+ * I filtri stanno in una riga sopra a tutto e nell'indirizzo, così una vista si manda a un
+ * collega. Ogni grafico è anche un filtro: un clic su un mese, un canale, un sesso o una fascia
+ * restringe tutta la pagina. Il grafico da cui si è filtrato ignora il proprio filtro, così la
+ * voce scelta resta in evidenza e le altre si vedono ancora, attenuate.
  */
-function ColonneMesi({ serie, meseEvidenziato }) {
-  const [attivo, setAttivo] = useState(null);
-  const massimo = Math.max(...serie.map((m) => m.totale), 0);
-  const indiceMassimo = massimo > 0 ? serie.findIndex((m) => m.totale === massimo) : -1;
-  const ALTEZZA = 160;
-
-  return (
-    <div className="relative">
-      <div className="flex items-end gap-1 border-b border-border" style={{ height: ALTEZZA + 24 }} role="list" aria-label="Contatti per mese">
-        {serie.map((m, i) => {
-          const h = massimo ? Math.round((m.totale / massimo) * ALTEZZA) : 0;
-          const evidenziato = meseEvidenziato === null || meseEvidenziato === m.mese;
-          const etichetta = m.totale > 0 && (i === indiceMassimo || meseEvidenziato === m.mese);
-          return (
-            <div
-              key={m.mese}
-              role="listitem"
-              tabIndex={0}
-              aria-label={`${m.etichetta}: ${m.totale} ${m.totale === 1 ? "contatto" : "contatti"}`}
-              className="relative flex-1 h-full flex flex-col items-center justify-end outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
-              onPointerEnter={() => setAttivo(i)}
-              onPointerLeave={() => setAttivo(null)}
-              onFocus={() => setAttivo(i)}
-              onBlur={() => setAttivo(null)}
-            >
-              {etichetta && <span className="text-xs font-medium text-foreground mb-1 tabular-nums">{numero.format(m.totale)}</span>}
-              <div
-                className={`w-full max-w-[24px] rounded-t-[4px] transition-opacity ${evidenziato ? "bg-primary" : "bg-primary/30"}`}
-                style={{ height: h }}
-              />
-              {attivo === i && (
-                <div role="tooltip" className="absolute bottom-full mb-2 z-10 whitespace-nowrap rounded-md border border-border bg-popover px-2.5 py-1.5 text-xs shadow-md pointer-events-none">
-                  <span className="font-semibold text-foreground tabular-nums">{numero.format(m.totale)}</span>
-                  <span className="text-muted-foreground"> · {m.etichetta}</span>
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
-      <div className="flex gap-1 mt-1.5" aria-hidden="true">
-        {serie.map((m) => (
-          <span key={m.mese} className="flex-1 text-center text-[11px] text-muted-foreground">{m.etichetta.slice(0, 3)}</span>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-/** Una ripartizione a barre orizzontali, col valore in punta. Poche voci: tutte etichettate. */
-function BarreRipartizione({ righe, totale, vuoto }) {
-  if (!righe.length) return <p className="text-sm text-muted-foreground py-4 text-center">{vuoto}</p>;
-  const massimo = Math.max(...righe.map((r) => r.totale));
-  return (
-    <ul className="space-y-2.5">
-      {righe.map((r) => {
-        const quota = totale ? Math.round((r.totale / totale) * 100) : 0;
-        return (
-          <li key={r.chiave} className="grid grid-cols-[minmax(6rem,9rem)_1fr] items-center gap-3">
-            <span className="text-sm text-foreground truncate" title={r.etichetta}>{r.etichetta}</span>
-            <div className="flex items-center gap-2 min-w-0">
-              <div className="h-4 rounded-r-[4px] bg-primary" style={{ width: `${(r.totale / massimo) * 80}%` }} aria-hidden="true" />
-              <span className="text-xs text-muted-foreground tabular-nums whitespace-nowrap">
-                <span className="font-medium text-foreground">{numero.format(r.totale)}</span> · {quota}%
-              </span>
-            </div>
-          </li>
-        );
-      })}
-    </ul>
-  );
-}
-
 export default function Andamento() {
-  const [leads, setLeads] = useState([]);
-  const [canali, setCanali] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [dati, setDati] = useState(null);
   const [errore, setErrore] = useState(null);
-  const [filtri, setFiltri] = useState(FILTRI_VUOTI);
-  const [tabella, setTabella] = useState(false);
+  const [parametri, setParametri] = useSearchParams();
 
   const carica = useCallback(() => {
     setErrore(null);
-    Promise.all([api.entities.Lead.list(), api.entities.CanaleContatto.list("nome")])
-      .then(([l, c]) => { setLeads(l); setCanali(c); })
-      .catch(setErrore)
-      .finally(() => setLoading(false));
+    api.lead.andamento().then(setDati).catch(setErrore);
   }, []);
-
   useEffect(() => { carica(); }, [carica]);
 
-  const attivi = useMemo(
-    () => Object.fromEntries(Object.entries(filtri).map(([k, v]) => [k, v === TUTTI ? null : v])),
-    [filtri]
-  );
-  const filtrati = useMemo(() => filtraContatti(leads, attivi), [leads, attivi]);
+  const filtri = {
+    periodo: parametri.get("periodo") || "ultimi_12",
+    canaleId: parametri.get("canale"),
+    sesso: parametri.get("sesso"),
+    fascia: parametri.get("eta"),
+    mese: parametri.get("mese"),
+  };
+  const CHIAVI = { periodo: "periodo", canaleId: "canale", sesso: "sesso", fascia: "eta", mese: "mese" };
+  const imposta = (campo) => (valore) => {
+    const prossimi = new URLSearchParams(parametri);
+    if (valore === null || (campo === "periodo" && valore === "ultimi_12")) prossimi.delete(CHIAVI[campo]);
+    else prossimi.set(CHIAVI[campo], valore);
+    // Cambiando periodo un mese scelto non c'è più.
+    if (campo === "periodo") prossimi.delete("mese");
+    setParametri(prossimi, { replace: true });
+  };
+  const azzera = () => setParametri({}, { replace: true });
 
-  const anni = anniDisponibili(leads);
-  // Il grafico dei mesi ha bisogno di un anno: quello scelto, o il più recente con contatti.
-  const annoGrafico = attivi.anno ? Number(attivi.anno) : (anni[0] ?? new Date().getFullYear());
-  // I mesi si contano con tutti i filtri tranne il mese stesso, che invece si evidenzia:
-  // filtrare anche per mese lascerebbe una colonna sola.
-  const perMese = useMemo(
-    () => contattiPerMese(filtraContatti(leads, { ...attivi, mese: null }), annoGrafico),
-    [leads, attivi, annoGrafico]
-  );
+  const oggi = oggiIso();
+  const conti = useMemo(() => {
+    if (!dati) return null;
+    const { righe, canali } = dati;
+    const { dal, al, mesi, precedente } = intervalloPeriodo(filtri.periodo, oggi);
+    const { canaleId, sesso, fascia, mese } = filtri;
+    const tutti = { dal, al, canaleId, sesso, fascia, mese };
+    const meseAnnoPrima = mese ? `${Number(mese.slice(0, 4)) - 1}${mese.slice(4)}` : null;
+    const senza = (campo) => filtraAndamento(righe, { ...tutti, [campo]: null });
+    return {
+      ora: riepilogoAndamento(filtraAndamento(righe, tutti)),
+      prima: riepilogoAndamento(filtraAndamento(righe, { ...precedente, canaleId, sesso, fascia, mese: meseAnnoPrima })),
+      serie: serieMensile(senza("mese"), mesi, filtraAndamento(righe, { ...precedente, canaleId, sesso, fascia })),
+      canali: esitiPerCanale(senza("canaleId"), canali),
+      stagioni: matriceStagionalita(senza("canaleId"), canali),
+      motivi: motiviPerdita(filtraAndamento(righe, tutti)),
+      sessi: contaInOrdine(senza("sesso"), (r) => r.sesso, SESSI.map((s) => s.valore)),
+      fasce: contaInOrdine(senza("fascia"), fasciaEta, FASCE_ETA.map((f) => f.valore)),
+      anni: anniDisponibili(righe),
+      vuoto: righe.length === 0,
+    };
+    // `filtri` si ricostruisce a ogni render dai parametri: dipende da loro.
+  }, [dati, parametri, oggi]);
 
-  const nomeCanale = new Map(canali.map((c) => [c.id, c.nome]));
-  const perCanale = contaPer(filtrati, "canale_id").map((r) => ({ chiave: r.valore, etichetta: nomeCanale.get(r.valore) ?? "—", totale: r.totale }));
-  const perSesso = contaPer(filtrati, "sesso").map((r) => ({ chiave: r.valore, etichetta: etichettaSesso(r.valore), totale: r.totale }));
-
-  if (loading) return <LoadingState minHeight="h-64" />;
   if (errore) return <ErrorState error={errore} onRetry={carica} />;
+  if (!conti) return <LoadingState minHeight="h-64" />;
 
-  const imposta = (campo) => (valore) => setFiltri({ ...filtri, [campo]: valore });
-  const qualcheFiltro = Object.values(filtri).some((v) => v !== TUTTI);
-  const descrizioneFiltri = [
-    attivi.mese ? MESI[Number(attivi.mese) - 1] : null,
-    attivi.anno,
-    attivi.sesso ? etichettaSesso(attivi.sesso) : null,
-    attivi.annoNascita ? `nati nel ${attivi.annoNascita}` : null,
-    attivi.canaleId ? nomeCanale.get(attivi.canaleId) : null,
-  ].filter(Boolean).join(" · ");
+  const nomeCanale = (id) => dati.canali.find((c) => c.id === id)?.nome ?? "Canale eliminato";
+  const annoCorrente = Number(oggi.slice(0, 4));
+  const vociPeriodo = [
+    { valore: "ultimi_12", etichetta: "Ultimi 12 mesi" },
+    { valore: "anno", etichetta: `Quest'anno (${annoCorrente})` },
+    ...conti.anni.filter((a) => a !== annoCorrente).map((a) => ({ valore: String(a), etichetta: String(a) })),
+  ];
+  const filtriAttivi = [
+    filtri.mese && { campo: "mese", testo: meseLeggibile(filtri.mese) },
+    filtri.canaleId && { campo: "canaleId", testo: nomeCanale(filtri.canaleId) },
+    filtri.sesso && { campo: "sesso", testo: etichettaSesso(filtri.sesso) },
+    filtri.fascia && { campo: "fascia", testo: FASCE_ETA.find((f) => f.valore === filtri.fascia)?.etichetta },
+  ].filter(Boolean);
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 max-w-6xl mx-auto space-y-6">
-      <PageHeader title="Andamento dei contatti" description="Quanti contatti arrivano, quando, da quali canali e di chi." />
+    <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
+      <PageHeader title="Andamento dei contatti" description="Quanti contatti arrivano, da dove e quando — e quanti diventano soci." />
 
-      <div className="flex flex-wrap items-end gap-3" role="group" aria-label="Filtri">
-        <Filtro id="f-anno" etichetta="Anno" valore={filtri.anno} onChange={imposta("anno")} voci={anni.map((a) => ({ valore: a, etichetta: String(a) }))} />
-        <Filtro id="f-mese" etichetta="Mese" valore={filtri.mese} onChange={imposta("mese")} voci={MESI.map((m, i) => ({ valore: i + 1, etichetta: m }))} />
-        <Filtro id="f-sesso" etichetta="Sesso" valore={filtri.sesso} onChange={imposta("sesso")} voci={SESSI} />
-        <Filtro
-          id="f-nascita"
-          etichetta="Anno di nascita"
-          valore={filtri.annoNascita}
-          onChange={imposta("annoNascita")}
-          voci={anniNascitaDisponibili(leads).map((a) => ({ valore: a, etichetta: String(a) }))}
-        />
-        <Filtro id="f-canale" etichetta="Canale" valore={filtri.canaleId} onChange={imposta("canaleId")} voci={canali.map((c) => ({ valore: c.id, etichetta: c.nome }))} />
-        {qualcheFiltro && (
-          <Button variant="ghost" size="sm" className="h-9" onClick={() => setFiltri(FILTRI_VUOTI)}>Azzera filtri</Button>
+      {/* Una riga di filtri sopra a tutto: ogni grafico qui sotto guarda la stessa fetta. */}
+      <div className="space-y-2">
+        <div className="flex flex-wrap items-end gap-3">
+          <Filtro id="f-periodo" etichetta="Periodo" valore={filtri.periodo} onChange={(v) => imposta("periodo")(v ?? "ultimi_12")} voci={vociPeriodo} />
+          <Filtro
+            id="f-canale" etichetta="Canale" valore={filtri.canaleId} onChange={imposta("canaleId")}
+            voci={[{ valore: TUTTI, etichetta: "Tutti" }, ...dati.canali.map((c) => ({ valore: c.id, etichetta: c.nome }))]}
+          />
+          <Filtro
+            id="f-sesso" etichetta="Sesso" valore={filtri.sesso} onChange={imposta("sesso")}
+            voci={[{ valore: TUTTI, etichetta: "Tutti" }, ...SESSI.map((s) => ({ valore: s.valore, etichetta: s.etichetta }))]}
+          />
+          <Filtro
+            id="f-eta" etichetta="Età" valore={filtri.fascia} onChange={imposta("fascia")}
+            voci={[{ valore: TUTTI, etichetta: "Tutte" }, ...FASCE_ETA.map((f) => ({ valore: f.valore, etichetta: f.etichetta }))]}
+          />
+          {(filtriAttivi.length > 0 || filtri.periodo !== "ultimi_12") && (
+            <Button variant="ghost" size="sm" className="h-9" onClick={azzera}>Azzera filtri</Button>
+          )}
+        </div>
+        {filtriAttivi.length > 0 && (
+          <ul className="flex flex-wrap gap-2" aria-label="Filtri attivi">
+            {filtriAttivi.map((f) => (
+              <li key={f.campo}>
+                <button
+                  type="button" onClick={() => imposta(f.campo)(null)}
+                  className="inline-flex items-center gap-1 rounded-full bg-primary/10 text-primary text-xs font-medium px-2.5 py-1 hover:bg-primary/20"
+                  aria-label={`Togli il filtro ${f.testo}`}
+                >
+                  {f.testo} <X className="w-3 h-3" aria-hidden="true" />
+                </button>
+              </li>
+            ))}
+          </ul>
         )}
       </div>
 
-      <Card className="border-0 shadow-sm">
-        <CardContent className="p-5 sm:p-6">
-          <p className="text-sm text-muted-foreground">Contatti</p>
-          <p className="text-5xl font-semibold tracking-tight text-foreground mt-1" data-testid="numero-contatti">{numero.format(filtrati.length)}</p>
-          <p className="text-sm text-muted-foreground mt-2">{descrizioneFiltri || "Tutti i contatti registrati"}</p>
-        </CardContent>
-      </Card>
+      {conti.vuoto ? (
+        <p className="text-sm text-muted-foreground text-center py-16">Nessun contatto registrato: i numeri compariranno con i primi lead.</p>
+      ) : (
+        <>
+          <RiquadriNumeri ora={conti.ora} prima={conti.prima} />
 
-      <Card className="border-0 shadow-sm">
-        <CardHeader className="pb-3 flex flex-row items-center justify-between gap-2">
-          <CardTitle className="text-base font-heading">Contatti per mese — {annoGrafico}</CardTitle>
-          <Button variant="ghost" size="sm" onClick={() => setTabella(!tabella)} aria-pressed={tabella}>
-            {tabella ? "Mostra grafico" : "Mostra tabella"}
-          </Button>
-        </CardHeader>
-        <CardContent>
-          {tabella ? (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-border text-left">
-                    <th className="py-2 pr-4 font-medium text-muted-foreground">Mese</th>
-                    <th className="py-2 font-medium text-muted-foreground text-right">Contatti</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {perMese.map((m) => (
-                    <tr key={m.mese} className="border-b border-border/50">
-                      <td className="py-1.5 pr-4">{m.etichetta}</td>
-                      <td className="py-1.5 text-right tabular-nums">{numero.format(m.totale)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <ColonneMesi serie={perMese} meseEvidenziato={attivi.mese ? Number(attivi.mese) : null} />
-          )}
-        </CardContent>
-      </Card>
+          <GraficoMensile serie={conti.serie} meseScelto={filtri.mese} onScegliMese={imposta("mese")} />
 
-      <div className="grid md:grid-cols-2 gap-6">
-        <Card className="border-0 shadow-sm">
-          <CardHeader className="pb-3"><CardTitle className="text-base font-heading">Per canale</CardTitle></CardHeader>
-          <CardContent>
-            <BarreRipartizione righe={perCanale} totale={filtrati.length} vuoto="Nessun contatto" />
-          </CardContent>
-        </Card>
-        <Card className="border-0 shadow-sm">
-          <CardHeader className="pb-3"><CardTitle className="text-base font-heading">Per sesso</CardTitle></CardHeader>
-          <CardContent>
-            <BarreRipartizione righe={perSesso} totale={filtrati.length} vuoto="Nessun contatto" />
-          </CardContent>
-        </Card>
-      </div>
+          <EsitiCanali canali={conti.canali} canaleScelto={filtri.canaleId} onScegliCanale={imposta("canaleId")} />
+
+          {/* La stagionalità a tutta larghezza: dodici mesi in colonna non stanno in mezza pagina. */}
+          <Stagionalita matrice={conti.stagioni} />
+
+          <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-6">
+            <BarreConteggio
+              titolo="Perché si perdono"
+              sottotitolo="I motivi dei contatti chiusi senza iscrizione"
+              voci={conti.motivi.map((m) => ({ chiave: m.motivo, etichetta: etichettaMotivo(m.motivo), totale: m.totale }))}
+              colore={COLORI.persi}
+              vuoto="Nessun contatto perso nel periodo"
+            />
+            <BarreConteggio
+              titolo="Per sesso" sottotitolo="Clic per filtrare"
+              voci={conti.sessi.map((s) => ({ chiave: s.valore, etichetta: etichettaSesso(s.valore), totale: s.totale }))}
+              colore={COLORI.contatti} scelta={filtri.sesso} onScegli={imposta("sesso")}
+            />
+            <BarreConteggio
+              titolo="Per età" sottotitolo="All'anno del contatto · clic per filtrare"
+              voci={conti.fasce.map((f) => ({ chiave: f.valore, etichetta: FASCE_ETA.find((x) => x.valore === f.valore).etichetta, totale: f.totale }))}
+              colore={COLORI.contatti} scelta={filtri.fascia} onScegli={imposta("fascia")}
+            />
+          </div>
+
+          <p className="text-xs text-muted-foreground">
+            Diventati soci: chi si è iscritto dopo essere stato un contatto, contato nel mese in cui ci ha contattato.
+            La provenienza dei soci si registra dal 7 ottobre 2026: chi è stato trasformato prima non compare fra le conversioni.
+          </p>
+        </>
+      )}
     </div>
   );
 }
