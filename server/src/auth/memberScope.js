@@ -11,13 +11,9 @@
 const LEGGIBILI = new Set([
 	// I propri dati
 	'Member', 'Subscription', 'MemberDocument', 'QRAccesso',
-	'ExercisePlan', 'WorkoutSession', 'WorkoutLog', 'Booking',
+	'Booking',
 	// Il catalogo dei corsi, che serve a prenotare
 	'Course', 'Category', 'Instructor', 'Event', 'Session', 'Room',
-	// Il catalogo degli esercizi: la scheda si porta dietro il nome di ogni esercizio, ma
-	// la spiegazione di come si esegue sta qui, ed è la parte che serve a chi si allena.
-	// Non contiene dati di nessuno — è l'equivalente del catalogo dei corsi.
-	'Exercise',
 	// Intestazione dell'ente, per le schermate
 	'Organization',
 ]);
@@ -28,9 +24,6 @@ const COLONNA_PROPRIETARIO = {
 	Member: 'id',
 	Subscription: 'member_id',
 	MemberDocument: 'member_id',
-	ExercisePlan: 'member_id',
-	WorkoutSession: 'member_id',
-	WorkoutLog: 'member_id',
 	// Nonostante il nome storico, punta al socio.
 	QRAccesso: 'cliente_id',
 };
@@ -72,8 +65,10 @@ const CAMPI_NASCOSTI = {
 	Booking: ['member_name'],
 };
 
-// Le uniche cose che un socio crea da sé: i propri allenamenti — la sessione che avvia e
-// le serie che spunta mentre si allena. Tutto il resto lo registra la palestra.
+// Quello che un socio scrive dall'endpoint generico: oggi niente. Erano i propri allenamenti,
+// usciti dall'applicazione a ottobre 2026; tutto il resto lo registra la palestra, e quello
+// che il socio fa da sé (prenotare, disdire) passa da rotte dedicate. L'insieme resta per la
+// prossima entità che dovesse servire, insieme ai controlli sull'intestatario.
 //
 // **QRAccesso non è qui.** Il codice d'accesso se lo creava il socio, con lo stato che
 // voleva: bastava una richiesta per rifarsi una credenziale attiva dopo essere stato
@@ -85,7 +80,7 @@ const CAMPI_NASCOSTI = {
 // endpoint il socio manderebbe una riga già decisa, con lo stato dentro, e il server la
 // scriverebbe senza guardare — cioè si prenoterebbe su una lezione piena. Si passa da
 // /api/prenotazioni, che conta dentro una transazione.
-const SCRIVIBILI = new Set(['WorkoutSession', 'WorkoutLog']);
+const SCRIVIBILI = new Set();
 
 export function memberPuoLeggere(entityName) {
 	return LEGGIBILI.has(entityName);

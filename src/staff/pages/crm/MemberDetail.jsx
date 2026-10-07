@@ -89,8 +89,8 @@ export default function MemberDetail() {
     setLoading(true);
     setLoadError(null);
     try {
-      // Schede, allenamenti e prenotazioni non stanno più nella scheda: se ne occupano le
-      // sezioni Allenamento e Gestione corsi. Con loro se ne vanno le letture di tutte le
+      // Prenotazioni e lezioni non stanno nella scheda: se ne occupano le
+      // sezioni dedicate, come Gestione corsi. Con loro se ne vanno le letture di tutte le
       // lezioni, gli eventi e i corsi dell'ente, che servivano solo a dare un nome a una
       // prenotazione.
       // I documenti hanno un permesso loro: un ruolo che vede le anagrafiche ma non i

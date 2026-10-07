@@ -14,7 +14,7 @@ import { buildApp } from '../src/app.js';
 import bcrypt from 'bcryptjs';
 import { inArray } from 'drizzle-orm';
 import { db, pool } from '../src/db/client.js';
-import { staffAccounts, exercises } from '../src/db/schema/index.js';
+import { staffAccounts, members, memberDocuments } from '../src/db/schema/index.js';
 import { config } from '../src/config.js';
 import { firmaUrl, togliFirma, firmaValida, nomeFileDa } from '../src/lib/urlFirmati.js';
 
@@ -117,13 +117,16 @@ describe("aprire un file caricato", () => {
 });
 
 // Il giro completo, che è la parte che si rompe davvero: la firma non serve a niente se
-// l'indirizzo che arriva alle schermate non ce l'ha. Le pagine mettono `esercizio.image_url`
-// dentro un `<img src>` così com'è, e se uscisse nudo l'immagine non si vedrebbe più.
+// l'indirizzo che arriva alle schermate non ce l'ha. Le pagine mettono `documento.file_url`
+// dentro un `<a href>` così com'è, e se uscisse nudo il documento non si aprirebbe più.
 describe("l'indirizzo che arriva alle schermate è già firmato", () => {
-	let idEsercizio;
+	let idDocumento;
+	let idSocio;
 	let idAccount;
 	let token;
 	const PASSWORD = 'prova-file-protetti-1234';
+	// Un documento "altro" chiede solo un titolo: il resto del test parla del file.
+	const documento = () => ({ member_id: idSocio, document_type: 'altro', titolo: '__Prova file protetti' });
 
 	before(async () => {
 		// Il test si costruisce il proprio account e lo cancella: non dipende da com'è
@@ -135,6 +138,12 @@ describe("l'indirizzo che arriva alle schermate è già firmato", () => {
 			.returning();
 		idAccount = account.id;
 
+		const [socio] = await db
+			.insert(members)
+			.values({ nome: 'Prova', cognome: 'File Protetti', codiceSocio: `FP${Date.now() % 1e8}` })
+			.returning();
+		idSocio = socio.id;
+
 		token = (await app.inject({
 			method: 'POST',
 			url: '/api/auth/login',
@@ -143,58 +152,61 @@ describe("l'indirizzo che arriva alle schermate è già firmato", () => {
 
 		const creato = await app.inject({
 			method: 'POST',
-			url: '/api/entities/Exercise',
+			url: '/api/entities/MemberDocument',
 			headers: { authorization: `Bearer ${token}` },
-			payload: { name: '__Prova firma file', muscle_group: 'petto', image_url: `https://gripcore.it/uploads/${NOME}` },
+			payload: { ...documento(), file_url: `https://gripcore.it/uploads/${NOME}` },
 		});
 		assert.equal(creato.statusCode, 201, creato.body);
-		idEsercizio = creato.json().id;
+		idDocumento = creato.json().id;
 	});
 
 	after(async () => {
-		if (idEsercizio) await db.delete(exercises).where(inArray(exercises.id, [idEsercizio]));
+		if (idSocio) {
+			await db.delete(memberDocuments).where(inArray(memberDocuments.memberId, [idSocio]));
+			await db.delete(members).where(inArray(members.id, [idSocio]));
+		}
 		if (idAccount) await db.delete(staffAccounts).where(inArray(staffAccounts.id, [idAccount]));
 	});
 
-	test("l'immagine di un esercizio esce firmata e si apre", async () => {
+	test("il file di un documento esce firmato e si apre", async () => {
 		const letto = await app.inject({
 			method: 'GET',
-			url: `/api/entities/Exercise/${idEsercizio}`,
+			url: `/api/entities/MemberDocument/${idDocumento}`,
 			headers: { authorization: `Bearer ${token}` },
 		});
-		const url = letto.json().image_url;
+		const url = letto.json().file_url;
 
-		assert.match(url, /firma=/, "l'indirizzo è uscito senza firma: le immagini non si vedrebbero");
+		assert.match(url, /firma=/, "l'indirizzo è uscito senza firma: i documenti non si aprirebbero");
 		assert.equal((await chiedi(url.replace('https://gripcore.it', ''))).statusCode, 200);
 	});
 
 	test("risalvando non si porta la firma nel database", async () => {
 
 		// È quello che fa il gestionale: rilegge l'indirizzo, lo mette nel modulo e lo
-		// risalva. Se la firma entrasse nel database, l'immagine smetterebbe di vedersi
+		// risalva. Se la firma entrasse nel database, il documento smetterebbe di aprirsi
 		// qualche ora dopo senza che nessuno abbia toccato niente.
 		const letto = (await app.inject({
 			method: 'GET',
-			url: `/api/entities/Exercise/${idEsercizio}`,
+			url: `/api/entities/MemberDocument/${idDocumento}`,
 			headers: { authorization: `Bearer ${token}` },
 		})).json();
 
 		await app.inject({
 			method: 'PUT',
-			url: `/api/entities/Exercise/${idEsercizio}`,
+			url: `/api/entities/MemberDocument/${idDocumento}`,
 			headers: { authorization: `Bearer ${token}` },
-			payload: { name: letto.name, muscle_group: letto.muscle_group, image_url: letto.image_url },
+			payload: { file_url: letto.file_url },
 		});
 
 		const rileggi = (await app.inject({
 			method: 'GET',
-			url: `/api/entities/Exercise/${idEsercizio}`,
+			url: `/api/entities/MemberDocument/${idDocumento}`,
 			headers: { authorization: `Bearer ${token}` },
 		})).json();
 
 		// Una firma sola, non una firma sopra l'altra.
-		assert.equal((rileggi.image_url.match(/firma=/g) ?? []).length, 1);
-		assert.equal(togliFirma(rileggi.image_url), `https://gripcore.it/uploads/${NOME}`);
+		assert.equal((rileggi.file_url.match(/firma=/g) ?? []).length, 1);
+		assert.equal(togliFirma(rileggi.file_url), `https://gripcore.it/uploads/${NOME}`);
 	});
 
 	// Le schermate mettono gli indirizzi dei file in un `<a href>`, e React non blocca
@@ -210,13 +222,13 @@ describe("l'indirizzo che arriva alle schermate è già firmato", () => {
 			'/uploads/../index.html',
 			'/uploads/sotto/file.pdf',
 		];
-		for (const image_url of cattivi) {
-			const creato = await scrivi('POST', '/api/entities/Exercise', { name: '__Prova url cattivo', muscle_group: 'petto', image_url });
-			assert.equal(creato.statusCode, 400, `creazione accettata con ${image_url}`);
-			const bulk = await scrivi('POST', '/api/entities/Exercise/bulk', [{ name: '__Prova url cattivo', muscle_group: 'petto', image_url }]);
-			assert.equal(bulk.statusCode, 400, `creazione multipla accettata con ${image_url}`);
-			const modificato = await scrivi('PUT', `/api/entities/Exercise/${idEsercizio}`, { image_url });
-			assert.equal(modificato.statusCode, 400, `modifica accettata con ${image_url}`);
+		for (const file_url of cattivi) {
+			const creato = await scrivi('POST', '/api/entities/MemberDocument', { ...documento(), file_url });
+			assert.equal(creato.statusCode, 400, `creazione accettata con ${file_url}`);
+			const bulk = await scrivi('POST', '/api/entities/MemberDocument/bulk', [{ ...documento(), file_url }]);
+			assert.equal(bulk.statusCode, 400, `creazione multipla accettata con ${file_url}`);
+			const modificato = await scrivi('PUT', `/api/entities/MemberDocument/${idDocumento}`, { file_url });
+			assert.equal(modificato.statusCode, 400, `modifica accettata con ${file_url}`);
 		}
 	});
 
@@ -229,15 +241,15 @@ describe("l'indirizzo che arriva alle schermate è già firmato", () => {
 		writeFileSync(path.join(UPLOAD_DIR, vecchio), 'x');
 		writeFileSync(path.join(UPLOAD_DIR, nuovo), 'y');
 
-		const creato = await scrivi('POST', '/api/entities/Exercise', { name: '__Prova cancellazione', muscle_group: 'petto', image_url: `/uploads/${vecchio}` });
+		const creato = await scrivi('POST', '/api/entities/MemberDocument', { ...documento(), file_url: `/uploads/${vecchio}` });
 		assert.equal(creato.statusCode, 201, creato.body);
 		const idProva = creato.json().id;
 
-		assert.equal((await scrivi('PUT', `/api/entities/Exercise/${idProva}`, { image_url: `/uploads/${nuovo}` })).statusCode, 200);
+		assert.equal((await scrivi('PUT', `/api/entities/MemberDocument/${idProva}`, { file_url: `/uploads/${nuovo}` })).statusCode, 200);
 		assert.equal(existsSync(path.join(UPLOAD_DIR, vecchio)), false, 'il file sostituito è rimasto');
 		assert.equal(existsSync(path.join(UPLOAD_DIR, nuovo)), true);
 
-		assert.equal((await scrivi('DELETE', `/api/entities/Exercise/${idProva}`)).statusCode, 200);
+		assert.equal((await scrivi('DELETE', `/api/entities/MemberDocument/${idProva}`)).statusCode, 200);
 		assert.equal(existsSync(path.join(UPLOAD_DIR, nuovo)), false, 'il file della riga eliminata è rimasto');
 	});
 
@@ -245,21 +257,21 @@ describe("l'indirizzo che arriva alle schermate è già firmato", () => {
 		const scrivi = (method, url, payload) => app.inject({ method, url, headers: { authorization: `Bearer ${token}` }, payload });
 		const condiviso = `__prova-condiviso-${Date.now()}.png`;
 		writeFileSync(path.join(UPLOAD_DIR, condiviso), 'z');
-		const a = (await scrivi('POST', '/api/entities/Exercise', { name: '__Prova A', muscle_group: 'petto', image_url: `/uploads/${condiviso}` })).json();
-		const b = (await scrivi('POST', '/api/entities/Exercise', { name: '__Prova B', muscle_group: 'petto', image_url: `/uploads/${condiviso}` })).json();
+		const a = (await scrivi('POST', '/api/entities/MemberDocument', { ...documento(), file_url: `/uploads/${condiviso}` })).json();
+		const b = (await scrivi('POST', '/api/entities/MemberDocument', { ...documento(), file_url: `/uploads/${condiviso}` })).json();
 
-		await scrivi('DELETE', `/api/entities/Exercise/${a.id}`);
+		await scrivi('DELETE', `/api/entities/MemberDocument/${a.id}`);
 		assert.equal(existsSync(path.join(UPLOAD_DIR, condiviso)), true, "l'altra riga lo usa ancora");
-		await scrivi('DELETE', `/api/entities/Exercise/${b.id}`);
+		await scrivi('DELETE', `/api/entities/MemberDocument/${b.id}`);
 		assert.equal(existsSync(path.join(UPLOAD_DIR, condiviso)), false);
 	});
 
 	test('un indirizzo vuoto resta ammesso: vuol dire "nessun file"', async () => {
 		const modificato = await app.inject({
 			method: 'PUT',
-			url: `/api/entities/Exercise/${idEsercizio}`,
+			url: `/api/entities/MemberDocument/${idDocumento}`,
 			headers: { authorization: `Bearer ${token}` },
-			payload: { image_url: null },
+			payload: { file_url: null },
 		});
 		assert.equal(modificato.statusCode, 200, modificato.body);
 	});
@@ -268,7 +280,7 @@ describe("l'indirizzo che arriva alle schermate è già firmato", () => {
 describe('la firma, come pezzo a sé', () => {
 	test("lo stesso file ha lo stesso indirizzo per un'ora", () => {
 		// Se cambiasse a ogni lettura, la cache del browser non servirebbe a niente e la
-		// foto di ogni esercizio verrebbe riscaricata a ogni apertura della pagina.
+		// foto di ogni socio verrebbe riscaricata a ogni apertura della pagina.
 		// Un istante fisso a metà dell'ora: la scadenza è arrotondata all'ora, e con
 		// `Date.now()` negli ultimi cinque minuti di ogni ora `adesso + 5 min` cadrebbe
 		// nell'ora dopo e il test fallirebbe senza che il codice sia sbagliato.

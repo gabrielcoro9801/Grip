@@ -33,9 +33,9 @@ describe("l'istruttore non modifica quello che può solo vedere", () => {
 		});
 	}
 
-	test('ma le schede di allenamento sì: quelle sono il suo lavoro', () => {
-		assert.equal(canWriteEntity('istruttore', 'ExercisePlan'), true);
-		assert.equal(canWriteEntity('istruttore', 'Exercise'), true);
+	test('ma il calendario sì: le lezioni sono il suo lavoro', () => {
+		assert.equal(canWriteEntity('istruttore', 'Session'), true);
+		assert.equal(canWriteEntity('istruttore', 'Event'), true);
 	});
 });
 
@@ -46,8 +46,7 @@ describe('la reception fa il suo e non di più', () => {
 		}
 	});
 
-	test('non tocca le schede né gli account', () => {
-		assert.equal(canWriteEntity('reception', 'ExercisePlan'), false);
+	test('non tocca gli account', () => {
 		assert.equal(canWriteEntity('reception', 'StaffAccount'), false);
 	});
 });
@@ -62,15 +61,6 @@ describe('il registro delle azioni si allunga e non si accorcia', () => {
 		// Un registro che chi ci è dentro può ripulire non è un registro.
 		assert.equal(canWriteEntity('admin', 'AuditLog', 'DELETE'), false);
 		assert.equal(canWriteEntity('admin', 'AuditLog', 'PUT'), false);
-	});
-});
-
-describe('gli allenamenti sono di chi li fa', () => {
-	test('nessun ruolo dello staff li scrive', () => {
-		for (const ruolo of ['admin', 'reception', 'istruttore']) {
-			assert.equal(canWriteEntity(ruolo, 'WorkoutSession'), false);
-			assert.equal(canWriteEntity(ruolo, 'WorkoutLog'), false);
-		}
 	});
 });
 

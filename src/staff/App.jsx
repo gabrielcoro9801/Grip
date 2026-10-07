@@ -11,7 +11,7 @@ import { TemaProvider } from '@/ui/tema';
 // d'ingresso (`member.html`). Qui non compare.
 //
 // Ogni pagina è caricata quando la si apre, non prima: le sezioni sono molte e chi lavora in
-// reception non ha ragione di scaricarsi l'editor delle schede.
+// reception non ha ragione di scaricarsi il calendario dei corsi.
 const StaffShell = lazy(() => import('@/staff/StaffShell'));
 const PermissionGate = lazy(() => import('@/staff/components/PermissionGate'));
 const Dashboard = lazy(() => import('@/staff/pages/Dashboard'));
@@ -24,12 +24,6 @@ const LeadLayout = lazy(() => import('@/staff/pages/lead/LeadLayout'));
 const Contatti = lazy(() => import('@/staff/pages/lead/Contatti'));
 const Andamento = lazy(() => import('@/staff/pages/lead/Andamento'));
 const Canali = lazy(() => import('@/staff/pages/lead/Canali'));
-const AllenamentoLayout = lazy(() => import('@/staff/pages/allenamento/AllenamentoLayout'));
-const LibreriaEsercizi = lazy(() => import('@/staff/pages/allenamento/LibreriaEsercizi'));
-const SchedeModello = lazy(() => import('@/staff/pages/allenamento/SchedeModello'));
-const SchedeAssegnate = lazy(() => import('@/staff/pages/allenamento/SchedeAssegnate'));
-const AllenamentiSvolti = lazy(() => import('@/staff/pages/allenamento/AllenamentiSvolti'));
-const EditorScheda = lazy(() => import('@/staff/pages/allenamento/EditorScheda'));
 const CorsiLayout = lazy(() => import('@/staff/pages/corsi/CorsiLayout'));
 const Calendario = lazy(() => import('@/staff/pages/corsi/Calendario'));
 const Prenotazioni = lazy(() => import('@/staff/pages/corsi/Prenotazioni'));
@@ -68,29 +62,15 @@ export default function App() {
                   <Route path="members/:id" element={<RedirectSocio />} />
                   <Route path="plans" element={<Navigate to="/crm/abbonamenti" replace />} />
                   <Route path="subscriptions" element={<Navigate to="/crm/iscrizioni" replace />} />
-                  {/* L'allenamento è uscito dai Soci ed è una sezione sua. I due vecchi
-                      percorsi restano come redirect: possono essere nei preferiti. */}
-                  <Route path="piani-allenamento" element={<Navigate to="/allenamento/assegnate" replace />} />
-                  <Route path="exercise-plans" element={<Navigate to="/allenamento/assegnate" replace />} />
                 </Route>
                 <Route path="/lead" element={<PermissionGate module="crm_leads"><LeadLayout /></PermissionGate>}>
                   <Route index element={<Contatti />} />
                   <Route path="andamento" element={<Andamento />} />
                   <Route path="canali" element={<Canali />} />
                 </Route>
-                <Route path="/allenamento" element={<PermissionGate module="crm_plans"><AllenamentoLayout /></PermissionGate>}>
-                  <Route index element={<LibreriaEsercizi />} />
-                  <Route path="modelli" element={<SchedeModello />} />
-                  <Route path="assegnate" element={<SchedeAssegnate />} />
-                  <Route path="svolti" element={<AllenamentiSvolti />} />
-                  {/* L'editor di una scheda: comporre righe di serie non sta in una finestra
-                      di dialogo, e un percorso proprio rende la scheda un indirizzo che si
-                      può mandare a un collega. */}
-                  <Route path="schede/:id" element={<EditorScheda />} />
-                </Route>
                 {/* I corsi erano una pagina sola con due piani di schede interne. Ora le sei viste
                     sono rotte come nelle altre sezioni: la barra in alto è la stessa di Soci e
-                    Allenamento, e ogni voce ha un indirizzo che si può mandare a un collega. */}
+                    Lead, e ogni voce ha un indirizzo che si può mandare a un collega. */}
                 <Route path="/calendario" element={<PermissionGate module="calendar"><CorsiLayout /></PermissionGate>}>
                   <Route index element={<Calendario />} />
                   <Route path="prenotazioni" element={<Prenotazioni />} />

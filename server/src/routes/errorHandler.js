@@ -26,10 +26,6 @@ const VINCOLI_CON_MESSAGGIO = {
 	canali_contatto_nome_unique: 'Esiste già un canale con questo nome.',
 	staff_accounts_email_lower_idx: 'Esiste già un account con questa email (le maiuscole non contano).',
 	leads_canale_id_canali_contatto_id_fk: 'Il canale è usato da alcuni contatti: disattivalo invece di eliminarlo.',
-	// La schermata controlla prima, ma solo sugli allenamenti che ha caricato: una scheda usata
-	// soltanto in allenamenti più vecchi arrivava fin qui, e il messaggio parlava di foreign key.
-	workout_sessions_plan_id_exercise_plans_id_fk: 'Il socio ha registrato allenamenti con questa scheda: eliminarla ne perderebbe lo storico. Puoi modificarla, o assegnargliene una nuova.',
-	workout_logs_plan_id_exercise_plans_id_fk: 'Il socio ha registrato allenamenti con questa scheda: eliminarla ne perderebbe lo storico. Puoi modificarla, o assegnargliene una nuova.',
 	bookings_attiva_unica_idx: 'Il socio è già prenotato a questa lezione.',
 	qr_accessi_attivo_unico_idx: "Il socio ha già un codice d'accesso attivo: revoca quello prima di crearne un altro.",
 	staff_accounts_linked_member_id_idx: 'Il socio ha già un account per il portale.',
@@ -44,6 +40,8 @@ const CHI_CITA = {
 	member_documents: 'documenti',
 	qr_accessi: "codici d'accesso",
 	staff_accounts: 'un account',
+	// L'allenamento è uscito dall'applicazione (ramo archivio/allenamento), le sue tabelle
+	// no: un socio che aveva schede resta citato da lì.
 	exercise_plans: 'schede di allenamento',
 	workout_sessions: 'allenamenti registrati',
 	workout_logs: 'allenamenti registrati',

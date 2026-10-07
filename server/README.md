@@ -223,7 +223,7 @@ scrittura resti identica.
 dell'applicazione — l'unico punto in cui l'applicazione ha già sbagliato una volta, con i
 cedolini e l'intera contabilità leggibili da un socio. Verifica cosa un socio non deve
 leggere, che veda solo le proprie righe (anche chiedendo per id), che possa creare solo
-codici di accesso e allenamenti intestati a sé, che le rotte contabili e l'upload gli siano
+codici di accesso intestati a sé, che le rotte contabili e l'upload gli siano
 chiusi, e che nulla di tutto questo abbia ristretto lo staff.
 
 Il test si crea i propri soci e i propri account e li cancella alla fine: non dipende da
