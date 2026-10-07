@@ -1,8 +1,9 @@
 import { eq, and, ne, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { bookings, sessions, members, subscriptions } from '../db/schema/index.js';
+import { bookings, sessions, members, subscriptions, events, courses } from '../db/schema/index.js';
 import { abbonamentoCopre, MESSAGGIO_SENZA_ABBONAMENTO } from '../../../shared/abbonamenti.js';
 import { lezioneFinita } from '../../../shared/giorni.js';
+import { motivoDisdettaChiusa } from '../../../shared/corsi.js';
 
 /**
  * Prenotare e disdire: le due regole, in un posto solo.
@@ -147,6 +148,18 @@ export async function disdici({ bookingId, soloDelSocio = null }) {
 		const [lezione] = await tx.select().from(sessions).where(eq(sessions.id, prenotazione.sessionId)).limit(1);
 		if (lezione && lezioneFinita(lezione)) {
 			return { errore: 400, messaggio: 'La lezione è già finita: la prenotazione non si disdice più.' };
+		}
+		// Il termine di disdetta del corso vale per il socio che disdice da sé: la reception, che
+		// risponde al telefono e conosce il motivo, può sempre.
+		if (soloDelSocio && lezione) {
+			const [corso] = await tx
+				.select({ ore: courses.disdettaEntroOre })
+				.from(events)
+				.innerJoin(courses, eq(events.courseId, courses.id))
+				.where(eq(events.id, lezione.eventId))
+				.limit(1);
+			const motivo = motivoDisdettaChiusa(lezione, corso?.ore);
+			if (motivo) return { errore: 400, messaggio: motivo };
 		}
 
 		await tx

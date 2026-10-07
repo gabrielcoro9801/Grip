@@ -4,6 +4,9 @@ import { Badge } from "@/ui/primitivi/badge";
 import { Clock, User, MapPin } from "lucide-react";
 import { formatData } from "@/core/domain/format";
 
+/** "entro le 16:00 di martedì 12 ottobre" da "2026-10-12T16:00". */
+const scadenzaDisdetta = (quando) => `entro le ${quando.slice(11, 16)} di ${formatData(quando.slice(0, 10), "giorno")}`;
+
 export default function CourseSessionCard({
   session,
   available,
@@ -53,8 +56,14 @@ export default function CourseSessionCard({
         <div className="flex gap-2">
           {!memberBooking && !isFull && <Button size="sm" className="w-full" onClick={onBook} disabled={actionLoading}>Prenota</Button>}
           {!memberBooking && isFull && <Button size="sm" variant="outline" className="w-full" onClick={onBook} disabled={actionLoading}>Entra in lista d'attesa</Button>}
-          {memberBooking && <Button size="sm" variant="outline" className="w-full" onClick={onCancel} disabled={actionLoading}>Annulla</Button>}
+          {/* Oltre il termine del corso il pulsante sparisce e resta il perché: un "Annulla" che
+              risponde "non puoi" dopo il clic non aiuta nessuno. */}
+          {memberBooking && !session._motivoDisdettaChiusa && <Button size="sm" variant="outline" className="w-full" onClick={onCancel} disabled={actionLoading}>Annulla</Button>}
+          {memberBooking && session._motivoDisdettaChiusa && <p className="text-xs text-muted-foreground">{session._motivoDisdettaChiusa}</p>}
         </div>
+      )}
+      {memberBooking && !session._finita && !session._motivoDisdettaChiusa && session._disdettaFinoA && (
+        <p className="text-xs text-muted-foreground">Puoi disdire {scadenzaDisdetta(session._disdettaFinoA)}.</p>
       )}
     </div>
   );

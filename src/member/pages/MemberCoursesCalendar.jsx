@@ -60,6 +60,9 @@ export default function MemberCoursesCalendar() {
       _motivoNonPrenotabile: l.motivo_non_prenotabile ?? null,
       // Finita: resta in agenda, ma non si prenota né si disdice più.
       _finita: Boolean(l.finita),
+      // Fino a quando si disdice da sé, e il perché se il termine è passato.
+      _disdettaFinoA: l.disdetta_fino_a ?? null,
+      _motivoDisdettaChiusa: l.motivo_disdetta_chiusa ?? null,
       _miaPrenotazione: l.mia_prenotazione && {
         id: l.mia_prenotazione.id,
         status: l.mia_prenotazione.stato,

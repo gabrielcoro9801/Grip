@@ -13,6 +13,7 @@ import { msResiduiFinestra } from '../../../../shared/qrDinamico.js';
 import { nomeDocumento, conStatoDocumenti } from '../../../../shared/anagrafica.js';
 import { statoIscrizione, abbonamentoCopre, MESSAGGIO_SENZA_ABBONAMENTO } from '../../../../shared/abbonamenti.js';
 import { oggiIso, eUnGiorno, giorniFra, giorniDaOggi, spostaGiorni, lezioneFinita } from '../../../../shared/giorni.js';
+import { limiteDisdetta, motivoDisdettaChiusa } from '../../../../shared/corsi.js';
 
 /**
  * L'API del portale soci.
@@ -269,7 +270,7 @@ export default async function memberRoutes(fastify) {
 			.select({
 				sessione: sessions,
 				evento: { id: events.id },
-				corso: { id: courses.id, nome: courses.name, descrizione: courses.description },
+				corso: { id: courses.id, nome: courses.name, descrizione: courses.description, disdettaEntroOre: courses.disdettaEntroOre },
 				categoria: { id: categories.id, nome: categories.name, colore: categories.color },
 				istruttore: { id: instructors.id, nome: instructors.fullName },
 				sala: { id: rooms.id, nome: rooms.name },
@@ -327,7 +328,7 @@ export default async function memberRoutes(fastify) {
 				data: s.date,
 				inizio: s.startTime,
 				fine: s.endTime,
-				corso: r.corso,
+				corso: { id: r.corso.id, nome: r.corso.nome, descrizione: r.corso.descrizione },
 				categoria: r.categoria?.id ? r.categoria : null,
 				istruttore: r.istruttore?.id ? r.istruttore : null,
 				sala: r.sala?.id ? r.sala : null,
@@ -342,6 +343,13 @@ export default async function memberRoutes(fastify) {
 				// Una lezione di oggi già finita resta in agenda, ma non si prenota né si disdice.
 				motivo_non_prenotabile: lezioneFinita(s) ? 'La lezione è già finita.' : (coperta ? null : MESSAGGIO_SENZA_ABBONAMENTO),
 				finita: lezioneFinita(s),
+				// Fino a quando il socio può disdire da sé ("AAAA-MM-GGTHH:MM", ora di Roma), null se
+				// fino alla fine; e, se il termine è passato, il perché.
+				disdetta_fino_a: (() => {
+					const limite = limiteDisdetta(s, r.corso.disdettaEntroOre);
+					return limite ? `${limite.data}T${limite.ora}` : null;
+				})(),
+				motivo_disdetta_chiusa: motivoDisdettaChiusa(s, r.corso.disdettaEntroOre),
 				mia_prenotazione: miaPrenotazione
 					? {
 						id: miaPrenotazione.id,

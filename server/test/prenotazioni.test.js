@@ -11,6 +11,7 @@ import { eq, inArray } from 'drizzle-orm';
 import { buildApp } from '../src/app.js';
 import { db, pool } from '../src/db/client.js';
 import { members, staffAccounts, rooms, courses, events, sessions, bookings, subscriptions } from '../src/db/schema/index.js';
+import { oggiIso, spostaGiorni } from '../../shared/giorni.js';
 
 const PASSWORD = 'prova-prenotazioni-1234';
 const CAPIENZA = 2;
@@ -329,5 +330,53 @@ describe('il calendario chiede un intervallo, non un numero fisso', () => {
 	test('senza data, o da un socio, non si leggono', async () => {
 		assert.equal((await come(tokenStaff, { method: 'GET', url: '/api/prenotazioni' })).statusCode, 400);
 		assert.equal((await come(tokenSocio[0], { method: 'GET', url: '/api/prenotazioni?dal=2026-01-01' })).statusCode, 403);
+	});
+});
+
+// Il termine di disdetta sta sul corso e vale per il socio che disdice da sé: oltre, la
+// prenotazione resta, e la reception può ancora disdirla.
+describe('il termine di disdetta del corso', () => {
+	test('oltre il termine il socio non disdice, la reception sì; senza termine si disdice', async () => {
+		const tra2Giorni = spostaGiorni(oggiIso(), 2);
+		const [corso] = await db.insert(courses).values({ name: `Corso termine ${Date.now()}`, disdettaEntroOre: 72 }).returning();
+		const [evento] = await db.insert(events).values({
+			courseId: corso.id, roomId: idSala, capacity: 5, recurrenceType: 'single', startDate: tra2Giorni, startTime: '18:00', endTime: '19:00',
+		}).returning();
+		const [lezione] = await db.insert(sessions).values({
+			eventId: evento.id, date: tra2Giorni, startTime: '18:00', endTime: '19:00', roomId: idSala, capacity: 5,
+		}).returning();
+		try {
+			const pren = await come(tokenSocio[0], { method: 'POST', url: '/api/prenotazioni', payload: { session_id: lezione.id } });
+			assert.equal(pren.statusCode, 201, pren.body);
+			const idPren = pren.json().booking.id;
+
+			const rifiutata = await come(tokenSocio[0], { method: 'POST', url: `/api/prenotazioni/${idPren}/disdici` });
+			assert.equal(rifiutata.statusCode, 400);
+			assert.match(rifiutata.json().error, /72 ore prima.*reception/);
+			// Lo stesso dal portale.
+			const portale = await come(tokenSocio[0], { method: 'POST', url: `/api/member/v1/corsi/prenotazioni/${idPren}/disdici` });
+			assert.equal(portale.statusCode, 400);
+
+			assert.equal((await come(tokenStaff, { method: 'POST', url: `/api/prenotazioni/${idPren}/disdici` })).statusCode, 200);
+
+			// Tolto il termine, il socio torna a disdire fino alla fine.
+			await db.update(courses).set({ disdettaEntroOre: null }).where(eq(courses.id, corso.id));
+			const di_nuovo = await come(tokenSocio[1], { method: 'POST', url: '/api/prenotazioni', payload: { session_id: lezione.id } });
+			assert.equal((await come(tokenSocio[1], { method: 'POST', url: `/api/prenotazioni/${di_nuovo.json().booking.id}/disdici` })).statusCode, 200);
+		} finally {
+			await db.delete(bookings).where(eq(bookings.sessionId, lezione.id));
+			await db.delete(sessions).where(eq(sessions.id, lezione.id));
+			await db.delete(events).where(eq(events.id, evento.id));
+			await db.delete(courses).where(eq(courses.id, corso.id));
+		}
+	});
+
+	test('il termine si imposta sul corso fra 0 e 168 ore', async () => {
+		const ok = await come(tokenStaff, { method: 'PUT', url: `/api/entities/Course/${idCorso}`, payload: { disdetta_entro_ore: 12 } });
+		assert.equal(ok.statusCode, 200, ok.body);
+		assert.equal(ok.json().disdetta_entro_ore, 12);
+		assert.equal((await come(tokenStaff, { method: 'PUT', url: `/api/entities/Course/${idCorso}`, payload: { disdetta_entro_ore: 200 } })).statusCode, 400);
+		const vuoto = await come(tokenStaff, { method: 'PUT', url: `/api/entities/Course/${idCorso}`, payload: { disdetta_entro_ore: '' } });
+		assert.equal(vuoto.json().disdetta_entro_ore, null);
 	});
 });
