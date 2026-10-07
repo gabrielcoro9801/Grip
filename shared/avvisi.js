@@ -63,7 +63,7 @@ export function avvisiSocio({ socio, iscrizioni = [], documenti = [], oggi = ogg
     const suoi = conStato.filter((d) => d.document_type === tipo.valore);
     const nome = tipo.etichetta;
     if (suoi.length === 0) {
-      avvisi.push({ codice: `${tipo.valore}_mancante`, gravita: 'giallo', titolo: `${nome} mancante`, testo: `Portalo in reception: serve per allenarti in regola.`, azione: 'documenti' });
+      avvisi.push({ codice: `${tipo.valore}_mancante`, gravita: 'giallo', titolo: `${nome} mancante`, testo: `Portalo in reception per essere in regola.`, azione: 'documenti' });
     } else if (suoi.every((d) => d.stato === 'scaduto')) {
       const scadenza = suoi.map((d) => d.expiry_date).filter(Boolean).sort().pop();
       avvisi.push({ codice: `${tipo.valore}_scaduto`, gravita: 'giallo', titolo: `${nome} scaduto`, testo: `${scadenza ? `È scaduto il ${dataIt(scadenza)}: ` : ''}portane uno nuovo in reception.`, azione: 'documenti' });

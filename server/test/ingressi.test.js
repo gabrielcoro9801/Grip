@@ -150,3 +150,26 @@ describe('le statistiche', () => {
 		assert.ok(!s.rischio.some((r) => r.id === id.soci.rosso), 'senza abbonamento non è a rischio: è già fuori');
 	});
 });
+
+describe('gli stessi avvisi nel portale del socio', () => {
+	test('in regola: nessun avviso; un certificato scaduto compare, e sparisce col nuovo', async () => {
+		const prima = (await come('socio', 'GET', '/api/member/v1/notifiche')).json();
+		assert.deepEqual(prima.avvisi_elenco, []);
+		assert.deepEqual(Object.keys((await come('socio', 'GET', '/api/member/v1/notifiche?solo_conteggio=1')).json()).sort(), ['avvisi', 'avvisi_gravi', 'non_lette']);
+
+		// Il certificato in regola si toglie: resta solo uno scaduto.
+		await db.delete(memberDocuments).where(eq(memberDocuments.memberId, id.soci.verde));
+		await db.insert(memberDocuments).values([
+			{ memberId: id.soci.verde, documentType: 'certificato_medico', expiryDate: spostaGiorni(oggi, -1) },
+			{ memberId: id.soci.verde, documentType: 'documento_identita', expiryDate: spostaGiorni(oggi, 900) },
+		]);
+		const dopo = (await come('socio', 'GET', '/api/member/v1/notifiche')).json();
+		assert.deepEqual(dopo.avvisi_elenco.map((a) => a.codice), ['certificato_medico_scaduto']);
+		assert.equal(dopo.avvisi, 1);
+		assert.equal(dopo.avvisi_gravi, false);
+		assert.equal(dopo.avvisi_elenco[0].azione, 'documenti');
+
+		await db.insert(memberDocuments).values({ memberId: id.soci.verde, documentType: 'certificato_medico', expiryDate: spostaGiorni(oggi, 300) });
+		assert.deepEqual((await come('socio', 'GET', '/api/member/v1/notifiche')).json().avvisi_elenco, []);
+	});
+});

@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { caricaProfilo } from "@/core/api/portale";
 import { useMemberAuth } from "@/member/session/MemberAuthContext";
-import { Link } from "react-router-dom";
+import { Link, useOutletContext } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/ui/primitivi/card";
 import { Button } from "@/ui/primitivi/button";
-import { CreditCard, QrCode, FileText, User, ChevronRight, Calendar, AlertCircle } from "lucide-react";
+import { CreditCard, QrCode, FileText, User, ChevronRight, Calendar, AlertCircle, AlertTriangle } from "lucide-react";
 import StatusBadge from "@/ui/StatusBadge";
 import { LoadingState } from "@/ui/Spinner";
 import { ErrorState } from "@/ui/StateViews";
@@ -12,6 +12,7 @@ import { formatData } from "@/core/domain/format";
 
 export default function MemberDashboard() {
   const { memberUser } = useMemberAuth();
+  const { conteggio } = useOutletContext() ?? {};
   const [profilo, setProfilo] = useState(null);
   const [loading, setLoading] = useState(true);
   const [errore, setErrore] = useState(null);
@@ -48,6 +49,17 @@ export default function MemberDashboard() {
 
   return (
     <div className="max-w-3xl mx-auto p-4 sm:p-6 space-y-5">
+      {/* Se c'è qualcosa da sistemare (documenti, abbonamento) lo si dice in cima, con un link. */}
+      {conteggio?.avvisi > 0 && (
+        <Link
+          to="/member-portal/notifiche"
+          className={`flex items-center gap-2 rounded-lg border px-4 py-3 text-sm font-medium ${conteggio.avvisi_gravi ? "border-destructive/40 bg-destructive/10 text-destructive" : "border-warning/40 bg-warning/10 text-warning"}`}
+        >
+          <AlertTriangle className="w-4 h-4 shrink-0" aria-hidden="true" />
+          <span className="flex-1">{conteggio.avvisi === 1 ? "Hai 1 cosa da sistemare" : `Hai ${conteggio.avvisi} cose da sistemare`}</span>
+          <ChevronRight className="w-4 h-4 shrink-0" aria-hidden="true" />
+        </Link>
+      )}
       {/* Welcome */}
       <div>
         <h1 className="text-2xl font-heading font-bold">

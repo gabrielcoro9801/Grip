@@ -70,7 +70,7 @@ const PAGINE_SOCIO = [
 	['/member-portal/abbonamento', PIANO],
 	['/member-portal/qr', NOME_SOCIO],
 	['/member-portal/anagrafica', CODICE_SOCIO],
-	['/member-portal/notifiche', 'Gli avvisi della palestra'],
+	['/member-portal/notifiche', 'Notifiche e avvisi'],
 ];
 
 const SCHERMATA_ROTTA = /si è bloccata|Torna all'inizio/i;

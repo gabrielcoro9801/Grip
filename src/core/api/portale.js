@@ -91,10 +91,9 @@ export function caricaNotifiche() {
 	return api.richiesta(`${BASE}/notifiche`);
 }
 
-/** Solo quante sono da leggere: lo chiede la campanella a ogni pagina. */
-export async function contaNotificheNonLette() {
-	const { non_lette: n } = await api.richiesta(`${BASE}/notifiche?solo_conteggio=1`);
-	return n;
+/** Quante notifiche da leggere e quanti avvisi aperti: { non_lette, avvisi, avvisi_gravi }. Lo chiede la campanella a ogni pagina. */
+export function contaNotificheEAvvisi() {
+	return api.richiesta(`${BASE}/notifiche?solo_conteggio=1`);
 }
 
 /** Segna come lette tutte le notifiche del socio. */
