@@ -209,6 +209,10 @@ export const api = {
 		trasforma(leadId, anagrafica) {
 			return request(`/api/lead/${leadId}/trasforma`, { method: 'POST', body: anagrafica });
 		},
+		/** Quanti contatti e quanti soci cita ogni canale: { [idCanale]: { contatti, soci } }. */
+		usoCanali() {
+			return request('/api/lead/canali/uso');
+		},
 	},
 
 	/**

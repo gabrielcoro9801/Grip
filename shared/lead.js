@@ -6,6 +6,9 @@
 // Le date sono stringhe `AAAA-MM-GG`, come arrivano dall'API: anno e mese si leggono dal testo,
 // senza passare per `Date` e per i fusi orari.
 
+/** Quanto può essere lunga la nota di un contatto: due righe, non una scheda. */
+export const NOTE_LEAD_MASSIMO = 140;
+
 export const MESI = [
   "Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno",
   "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre",

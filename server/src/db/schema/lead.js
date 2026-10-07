@@ -30,6 +30,9 @@ export const leads = pgTable('leads', {
 	canaleId: uuid('canale_id').notNull().references(() => canaliContatto.id, { onDelete: 'restrict' }),
 	sesso: varchar('sesso', { length: 8 }).notNull(), // M | F | altro
 	annoNascita: integer('anno_nascita'),
+	// Due righe da ricordare al richiamo ("chiamare dopo le 18", "chiede del corso bimbi").
+	// Il limite è in shared/lead.js (NOTE_LEAD_MASSIMO), qui come lunghezza della colonna.
+	note: varchar('note', { length: 140 }),
 	createdDate: timestamp('created_date', { withTimezone: true }).notNull().defaultNow(),
 	updatedDate: timestamp('updated_date', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({

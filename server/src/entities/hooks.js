@@ -26,6 +26,7 @@ import {
 	NOME_MASSIMO as NOME_SALA_MASSIMO, NOTE_MASSIMO as NOTE_SALA_MASSIMO,
 } from '../../../shared/sale.js';
 import { NOTE_CORSO_MASSIMO, RICORRENZE_CREABILI } from '../../../shared/corsi.js';
+import { NOTE_LEAD_MASSIMO } from '../../../shared/lead.js';
 
 // Campi rimossi da ogni risposta, per entità.
 const HIDDEN_FIELDS = {
@@ -287,9 +288,13 @@ const WRITE_TRANSFORMS = {
 	// `full_name` si scarta: è calcolato dal database da nome e cognome, e scriverlo farebbe
 	// fallire l'inserimento.
 	async Member(body, { creazione }) {
-		const { archiviato_il: _archivio, ...corpo } = body ?? {};
+		const {
+			archiviato_il: _archivio, lead_canale_id: _canale, lead_data_contatto: _contatto, ...corpo
+		} = body ?? {};
 		// L'archiviazione passa dalle sue rotte (routes/soci.js), che fanno anche il resto:
-		// disdire le prenotazioni future, lasciarne traccia nel registro.
+		// disdire le prenotazioni future, lasciarne traccia nel registro. La provenienza da un
+		// contatto la scrive solo la trasformazione (routes/lead.js): è un fatto, non un campo
+		// del modulo, e riscriverla falserebbe i conti di Andamento.
 		const rest = anagraficaSocio(corpo, { creazione });
 		// Il codice è la chiave del socio: lo decide sempre il contatore, anche se il modulo ne
 		// manda uno, e non si riscrive in modifica.
@@ -522,6 +527,10 @@ const WRITE_TRANSFORMS = {
 		}
 		for (const campo of ['telefono', 'email']) {
 			if (presente(rest, campo) && vuoto(rest[campo])) rest[campo] = null;
+		}
+		if (presente(rest, 'note')) {
+			rest.note = vuoto(rest.note) ? null : String(rest.note).trim() || null;
+			if (rest.note && rest.note.length > NOTE_LEAD_MASSIMO) throw rifiuta(`Le note stanno in ${NOTE_LEAD_MASSIMO} caratteri.`);
 		}
 		if (presente(rest, 'sesso') && !sessoValido(rest.sesso)) throw rifiuta('Indica il sesso: M, F o Altro.');
 		if ((presente(rest, 'nome') && !rest.nome) || (presente(rest, 'cognome') && !rest.cognome)) {
