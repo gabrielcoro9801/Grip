@@ -316,6 +316,13 @@
       "when": 1791395722970,
       "tag": "0044_note_e_provenienza_lead",
       "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1791400116448,
+      "tag": "0045_notifiche_soci",
+      "breakpoints": true
     }
   ]
 }

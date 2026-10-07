@@ -69,3 +69,19 @@ export function prenotaLezione(idLezione) {
 export function disdiciPrenotazione(idPrenotazione) {
 	return api.richiesta(`${BASE}/corsi/prenotazioni/${idPrenotazione}/disdici`, { method: 'POST' });
 }
+
+/** Gli avvisi del socio, dal più recente: { notifiche, non_lette }. */
+export function caricaNotifiche() {
+	return api.richiesta(`${BASE}/notifiche`);
+}
+
+/** Solo quante sono da leggere: lo chiede la campanella a ogni pagina. */
+export async function contaNotificheNonLette() {
+	const { non_lette: n } = await api.richiesta(`${BASE}/notifiche?solo_conteggio=1`);
+	return n;
+}
+
+/** Segna come lette tutte le notifiche del socio. */
+export function segnaNotificheLette() {
+	return api.richiesta(`${BASE}/notifiche/lette`, { method: 'POST' });
+}

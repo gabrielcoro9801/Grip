@@ -1,23 +1,18 @@
 import React, { useState, useMemo } from "react";
 import { Button } from "@/ui/primitivi/button";
-import { Card, CardContent } from "@/ui/primitivi/card";
 import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { useStaffAuth } from "@/staff/lib/StaffAuthContext";
 import { canEdit } from "@/staff/lib/permissions";
 import EventFormDialog from "@/staff/components/courses/EventFormDialog";
 import RiepilogoLezione from "@/staff/components/courses/RiepilogoLezione";
+import EliminaEventoDialog from "@/staff/components/courses/EliminaEventoDialog";
+import LegendaCorsi from "@/staff/components/courses/LegendaCorsi";
 import { grigliaDelMese } from "@/staff/lib/eventUtils";
 import { hhmm } from "@/staff/lib/modificaEvento";
 import { toIsoDate } from "@/core/domain/format";
 
 const DAY_HEADERS = ["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"];
 const MONTH_NAMES = ["Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno", "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"];
-
-const alterna = (insieme, id) => {
-  const next = new Set(insieme);
-  if (next.has(id)) next.delete(id); else next.add(id);
-  return next;
-};
 
 export default function CalendarView({ data, reload }) {
   const { sessions, events, courses, categories, instructors } = data;
@@ -27,13 +22,12 @@ export default function CalendarView({ data, reload }) {
   // La lezione di cui si guarda il riepilogo, e quella che si sta modificando.
   const [lezioneAperta, setLezioneAperta] = useState(null);
   const [lezioneInModifica, setLezioneInModifica] = useState(null);
+  const [lezioneDaEliminare, setLezioneDaEliminare] = useState(null);
   const [showEventForm, setShowEventForm] = useState(false);
-  // I filtri tengono quello che si è *nascosto*: una categoria o un corso nuovi compaiono da
-  // soli, e il ricaricamento dopo una modifica non rimette in vista quello che si era tolto.
-  const [categorieNascoste, setCategorieNascoste] = useState(new Set());
+  // La legenda tiene quello che si è *nascosto*: un corso nuovo compare da solo, e il
+  // ricaricamento dopo una modifica non rimette in vista quello che si era tolto. Si nasconde per
+  // corso; "Tutti/Nessuno" di una categoria agisce sui suoi corsi.
   const [corsiNascosti, setCorsiNascosti] = useState(new Set());
-  const [categorieAperte, setCategorieAperte] = useState(new Set());
-  const [corsiAperti, setCorsiAperti] = useState(new Set());
 
   const sessionMeta = useMemo(() => {
     const map = new Map();
@@ -50,11 +44,10 @@ export default function CalendarView({ data, reload }) {
     return sessions.filter(s => {
       if (s.status !== "active") return false;
       const meta = sessionMeta.get(s.id);
-      if (meta?.category && categorieNascoste.has(meta.category.id)) return false;
       if (meta?.course && corsiNascosti.has(meta.course.id)) return false;
       return true;
     });
-  }, [sessions, sessionMeta, categorieNascoste, corsiNascosti]);
+  }, [sessions, sessionMeta, corsiNascosti]);
 
   const sessionsByDate = useMemo(() => {
     const map = new Map();
@@ -71,16 +64,9 @@ export default function CalendarView({ data, reload }) {
     [currentMonth]
   );
 
-  const corsiInOrdine = useMemo(
-    () => [...courses].sort((a, b) => a.name.localeCompare(b.name, "it", { sensitivity: "base" })),
-    [courses]
-  );
-
   const monthLabel = `${MONTH_NAMES[currentMonth.getMonth()]} ${currentMonth.getFullYear()}`;
   // Oggi nei campi locali, come le chiavi delle caselle (vedi `grigliaDelMese`).
   const todayStr = toIsoDate(new Date());
-  const categoria = (id) => categories.find(c => c.id === id);
-  const nomeIstruttore = (id) => instructors.find(i => i.id === id)?.full_name || "—";
 
   const chiudiModulo = () => { setShowEventForm(false); setLezioneInModifica(null); };
 
@@ -133,32 +119,11 @@ export default function CalendarView({ data, reload }) {
           </div>
         </div>
 
-        {/* Filtri: le categorie, e subito sotto i corsi, fatti allo stesso modo. */}
-        <div className="lg:w-56 shrink-0 space-y-4 lg:sticky lg:top-4 lg:self-start">
-          <PannelloFiltro
-            titolo="Categorie"
-            vuoto="Nessuna categoria"
-            voci={categories.map(cat => ({
-              id: cat.id, nome: cat.name, colore: cat.color,
-              dettagli: courses.filter(c => c.category_id === cat.id).map(c => c.name),
-              senzaDettagli: "Nessun corso",
-            }))}
-            nascoste={categorieNascoste}
-            onAlterna={id => setCategorieNascoste(prev => alterna(prev, id))}
-            aperte={categorieAperte}
-            onApri={id => setCategorieAperte(prev => alterna(prev, id))}
-          />
-          <PannelloFiltro
-            titolo="Corsi"
-            vuoto="Nessun corso"
-            voci={corsiInOrdine.map(c => ({
-              id: c.id, nome: c.name, colore: categoria(c.category_id)?.color,
-              dettagli: [`Categoria: ${categoria(c.category_id)?.name || "—"}`, `Istruttore: ${nomeIstruttore(c.instructor_id)}`],
-            }))}
-            nascoste={corsiNascosti}
-            onAlterna={id => setCorsiNascosti(prev => alterna(prev, id))}
-            aperte={corsiAperti}
-            onApri={id => setCorsiAperti(prev => alterna(prev, id))}
+        {/* La legenda dei corsi, che è anche il filtro del calendario. */}
+        <div className="lg:w-72 shrink-0 lg:sticky lg:top-4 lg:self-start">
+          <LegendaCorsi
+            courses={courses} categories={categories} instructors={instructors}
+            nascosti={corsiNascosti} onCambia={setCorsiNascosti}
           />
         </div>
       </div>
@@ -169,6 +134,14 @@ export default function CalendarView({ data, reload }) {
         puoModificare={puoModificare}
         onClose={() => setLezioneAperta(null)}
         onModifica={l => { setLezioneAperta(null); setLezioneInModifica(l); }}
+        onElimina={l => { setLezioneAperta(null); setLezioneDaEliminare(l); }}
+      />
+
+      <EliminaEventoDialog
+        lezione={lezioneDaEliminare}
+        data={data}
+        onClose={() => setLezioneDaEliminare(null)}
+        onEliminato={reload}
       />
 
       <EventFormDialog
@@ -182,29 +155,3 @@ export default function CalendarView({ data, reload }) {
   );
 }
 
-/** Un elenco di voci da mostrare o nascondere nel calendario; il nome apre i dettagli. */
-function PannelloFiltro({ titolo, vuoto, voci, nascoste, onAlterna, aperte, onApri }) {
-  return (
-    <Card className="border-0 shadow-sm">
-      <CardContent className="p-3 space-y-1">
-        <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">{titolo}</h4>
-        {voci.map(v => (
-          <div key={v.id}>
-            <div className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-muted/40">
-              <input type="checkbox" checked={!nascoste.has(v.id)} onChange={() => onAlterna(v.id)} aria-label={`Mostra ${v.nome}`} className="accent-primary w-4 h-4" />
-              <div className="w-3 h-3 rounded-full shrink-0" style={{ background: v.colore || "#ccc" }} />
-              <button type="button" onClick={() => onApri(v.id)} aria-expanded={aperte.has(v.id)} className="text-sm flex-1 text-left truncate">{v.nome}</button>
-            </div>
-            {aperte.has(v.id) && (
-              <div className="ml-8 space-y-0.5">
-                {v.dettagli.map((d, i) => <div key={i} className="text-xs text-muted-foreground py-0.5 truncate">• {d}</div>)}
-                {v.dettagli.length === 0 && <div className="text-xs text-muted-foreground/50 py-0.5">{v.senzaDettagli}</div>}
-              </div>
-            )}
-          </div>
-        ))}
-        {voci.length === 0 && <p className="text-xs text-muted-foreground text-center py-4">{vuoto}</p>}
-      </CardContent>
-    </Card>
-  );
-}

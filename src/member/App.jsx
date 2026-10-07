@@ -24,6 +24,7 @@ const MemberSubscription = lazy(() => import('@/member/pages/MemberSubscription'
 const MemberProfile = lazy(() => import('@/member/pages/MemberProfile'));
 const MemberQR = lazy(() => import('@/member/pages/MemberQR'));
 const MemberCoursesCalendar = lazy(() => import('@/member/pages/MemberCoursesCalendar'));
+const MemberNotifiche = lazy(() => import('@/member/pages/MemberNotifiche'));
 
 export default function App() {
   return (
@@ -44,6 +45,7 @@ export default function App() {
                 <Route path="anagrafica" element={<MemberProfile />} />
                 <Route path="qr" element={<MemberQR />} />
                 <Route path="corsi" element={<MemberCoursesCalendar />} />
+                <Route path="notifiche" element={<MemberNotifiche />} />
               </Route>
 
               <Route path="*" element={<PageNotFound />} />

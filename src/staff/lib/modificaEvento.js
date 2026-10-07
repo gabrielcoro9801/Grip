@@ -55,16 +55,47 @@ export function descriviSerie(evento) {
  * Una serie a cui si sposta l'orario non si vede cambiare anche la sala: se una lezione era
  * stata messa a parte in un'altra stanza, ci resta. È ciò che ci si aspetta da un calendario —
  * si cambia la cosa che si è toccata.
+ *
+ * Il corso non c'è: in modifica non si cambia (un evento di Pilates non diventa Yoga — si
+ * elimina e se ne crea un altro). La data fine sì, ma solo di una serie: `end_date` è un cambio
+ * dell'intera serie, e lo applica il server (POST /api/calendario/eventi/:id/data-fine).
  */
 export function campiCambiati(prima, dopo) {
   const cambi = {};
-  if (dopo.course_id !== prima.course_id) cambi.course_id = dopo.course_id;
   if (dopo.room_id !== prima.room_id) cambi.room_id = dopo.room_id;
   if (hhmm(dopo.start_time) !== hhmm(prima.start_time)) cambi.start_time = hhmm(dopo.start_time);
   if (hhmm(dopo.end_time) !== hhmm(prima.end_time)) cambi.end_time = hhmm(dopo.end_time);
   if (Number(dopo.capacity) !== Number(prima.capacity)) cambi.capacity = Number(dopo.capacity);
   if (dopo.date !== prima.date) cambi.date = dopo.date;
+  if (dopo.end_date && dopo.end_date !== prima.end_date) cambi.end_date = dopo.end_date;
   return cambi;
+}
+
+/**
+ * Dove finisce una serie oggi: la data fine se c'è, altrimenti l'ultima lezione che ha in
+ * calendario (una serie contata a occorrenze). È il valore da cui parte il campo "Data fine".
+ */
+export function fineAttualeSerie(evento, lezioni) {
+  return fineEvento(evento)
+    ?? lezioni.filter((l) => l.event_id === evento.id).map((l) => l.date).sort().pop()
+    ?? evento.start_date;
+}
+
+const n = (quante, una, tante) => `${quante} ${quante === 1 ? una : tante}`;
+
+/**
+ * Cosa succederà togliendo delle lezioni, in una frase, dai conti del server:
+ * { eliminate, annullate, soci_avvisati, aggiunte? }.
+ */
+export function descriviRimozione({ eliminate = 0, annullate = 0, soci_avvisati: avvisati = 0, aggiunte = 0 }) {
+  const frasi = [];
+  if (aggiunte) frasi.push(`${aggiunte === 1 ? "Verrà aggiunta" : "Verranno aggiunte"} ${n(aggiunte, "lezione", "lezioni")}.`);
+  if (eliminate) frasi.push(`${eliminate === 1 ? "Verrà eliminata" : "Verranno eliminate"} ${n(eliminate, "lezione", "lezioni")} senza prenotazioni.`);
+  if (annullate) {
+    frasi.push(`${annullate === 1 ? "1 lezione ha prenotazioni: verrà annullata" : `${annullate} lezioni hanno prenotazioni: verranno annullate`}`
+      + (avvisati ? `, e ${avvisati === 1 ? "1 socio riceverà" : `${avvisati} soci riceveranno`} un avviso nel portale.` : "."));
+  }
+  return frasi.join(" ") || "Nessuna lezione cambia.";
 }
 
 /**
