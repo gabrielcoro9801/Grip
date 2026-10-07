@@ -12,7 +12,7 @@ import { Textarea } from "@/ui/primitivi/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/ui/primitivi/select";
 import { Plus, Pencil, Trash2, Power, PowerOff } from "lucide-react";
 import { useToast } from "@/ui/primitivi/use-toast";
-import { NOTE_CORSO_MASSIMO } from "@/core/domain/corsi";
+import { NOTE_CORSO_MASSIMO, DISDETTA_MASSIMA_ORE } from "@/core/domain/corsi";
 
 // Categorie e istruttori si creavano anche da qui, in due finestre appese al catalogo, mentre
 // hanno una pagina ciascuna nella stessa barra in alto. Due porte per la stessa stanza: una
@@ -27,11 +27,11 @@ export default function CoursesTab({ data, reload }) {
   const [conferma, dialogoConferma] = useConfirm();
   const [showCourseForm, setShowCourseForm] = useState(false);
   const [editing, setEditing] = useState(null);
-  const [form, setForm] = useState({ name: "", category_id: "", instructor_id: "", description: "" });
+  const [form, setForm] = useState({ name: "", category_id: "", instructor_id: "", description: "", disdetta_entro_ore: "" });
 
   const openCreate = () => {
     setEditing(null);
-    setForm({ name: "", category_id: "", instructor_id: "", description: "" });
+    setForm({ name: "", category_id: "", instructor_id: "", description: "", disdetta_entro_ore: "" });
     setShowCourseForm(true);
   };
 
@@ -42,6 +42,7 @@ export default function CoursesTab({ data, reload }) {
       category_id: course.category_id || "",
       instructor_id: course.instructor_id || "",
       description: course.description || "",
+      disdetta_entro_ore: course.disdetta_entro_ore ?? "",
     });
     setShowCourseForm(true);
   };
@@ -53,7 +54,11 @@ export default function CoursesTab({ data, reload }) {
   const handleSave = async (e) => {
     e.preventDefault();
     if (!form.name.trim() || !form.category_id || !form.instructor_id || noteTroppoLunghe) return;
-    const payload = { ...form, description: form.description.trim() || null };
+    const payload = {
+      ...form,
+      description: form.description.trim() || null,
+      disdetta_entro_ore: form.disdetta_entro_ore === "" ? null : Number(form.disdetta_entro_ore),
+    };
     try {
       if (editing) {
         await api.entities.Course.update(editing.id, payload);
@@ -148,6 +153,13 @@ export default function CoursesTab({ data, reload }) {
                 <div className="space-y-1 text-xs text-muted-foreground min-w-0">
                   <div className="truncate">Categoria: <span className="text-foreground font-medium">{catName(course.category_id)}</span></div>
                   <div className="truncate">Istruttore: <span className="text-foreground font-medium">{instName(course.instructor_id)}</span></div>
+                  <div className="truncate">
+                    Disdetta: <span className="text-foreground font-medium">
+                      {course.disdetta_entro_ore === null || course.disdetta_entro_ore === undefined
+                        ? "fino alla fine della lezione"
+                        : Number(course.disdetta_entro_ore) === 0 ? "fino all'inizio" : `fino a ${course.disdetta_entro_ore} ${Number(course.disdetta_entro_ore) === 1 ? "ora" : "ore"} prima`}
+                    </span>
+                  </div>
                   {/* Le note stanno in tre righe: una parola lunga va a capo invece di uscire dalla
                       tile, e il testo che c'era prima del limite si legge intero passandoci sopra. */}
                   {course.description && (
@@ -199,6 +211,16 @@ export default function CoursesTab({ data, reload }) {
                 value={form.description} onChange={e => setForm({ ...form, description: e.target.value })}
               />
               {noteTroppoLunghe && <p className="text-xs text-destructive mt-1">Le note sono state scritte prima del limite: accorciale a {NOTE_CORSO_MASSIMO} caratteri per salvare.</p>}
+            </div>
+            <div>
+              <Label htmlFor="corso-disdetta">Disdetta entro (ore prima dell'inizio)</Label>
+              <Input
+                id="corso-disdetta" type="number" inputMode="numeric" min={0} max={DISDETTA_MASSIMA_ORE} placeholder="Nessun termine"
+                value={form.disdetta_entro_ore} onChange={e => setForm({ ...form, disdetta_entro_ore: e.target.value })}
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Fino a quando il socio disdice da sé dal portale. Vuoto: fino alla fine della lezione. La reception disdice sempre.
+              </p>
             </div>
             <Button type="submit" className="w-full" disabled={!form.name.trim() || !form.category_id || !form.instructor_id || noteTroppoLunghe}>
               {editing ? "Salva" : "Crea corso"}

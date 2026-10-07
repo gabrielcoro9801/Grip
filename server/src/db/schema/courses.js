@@ -69,6 +69,9 @@ export const courses = pgTable('courses', {
 	// Un corso andato in calendario non si elimina; disattivato non si programma più, e le
 	// lezioni già fissate restano com'erano.
 	attivo: boolean('attivo').notNull().default(true),
+	// Fino a quante ore prima dell'inizio il socio può disdire da sé (shared/corsi.js). Vuoto:
+	// fino alla fine della lezione. La reception disdice sempre.
+	disdettaEntroOre: integer('disdetta_entro_ore'),
 	createdDate: timestamp('created_date', { withTimezone: true }).notNull().defaultNow(),
 });
 

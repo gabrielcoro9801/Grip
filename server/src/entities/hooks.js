@@ -25,7 +25,7 @@ import {
 	motivoCambioStatoNonValido as motivoCambioStatoSalaNonValido,
 	NOME_MASSIMO as NOME_SALA_MASSIMO, NOTE_MASSIMO as NOTE_SALA_MASSIMO,
 } from '../../../shared/sale.js';
-import { NOTE_CORSO_MASSIMO, RICORRENZE_CREABILI } from '../../../shared/corsi.js';
+import { NOTE_CORSO_MASSIMO, RICORRENZE_CREABILI, DISDETTA_MASSIMA_ORE } from '../../../shared/corsi.js';
 import { NOTE_LEAD_MASSIMO } from '../../../shared/lead.js';
 
 // Campi rimossi da ogni risposta, per entità.
@@ -502,6 +502,16 @@ const WRITE_TRANSFORMS = {
 	// descrizione, non guarda l'istruttore: quello che conta è a chi lo si sta affidando adesso.
 	async Course(body, { creazione }) {
 		const rest = { ...(body ?? {}) };
+		if (presente(rest, 'disdetta_entro_ore')) {
+			if (vuoto(rest.disdetta_entro_ore)) rest.disdetta_entro_ore = null;
+			else {
+				const ore = Number(rest.disdetta_entro_ore);
+				if (!Number.isInteger(ore) || ore < 0 || ore > DISDETTA_MASSIMA_ORE) {
+					throw rifiuta(`Il termine di disdetta va da 0 a ${DISDETTA_MASSIMA_ORE} ore.`);
+				}
+				rest.disdetta_entro_ore = ore;
+			}
+		}
 		if (presente(rest, 'description')) {
 			if (vuoto(rest.description)) rest.description = null;
 			else if (String(rest.description).length > NOTE_CORSO_MASSIMO) throw rifiuta(`Le note stanno in ${NOTE_CORSO_MASSIMO} caratteri.`);
