@@ -532,7 +532,12 @@ const WRITE_TRANSFORMS = {
 	// Un contatto: i campi obbligatori li difende già il database; qui si ripuliscono i vuoti
 	// che i moduli mandano come stringa, perché un'email "" non è un'email.
 	async Lead(body) {
-		const rest = { ...(body ?? {}) };
+		// Lo stato e le sue date li cambiano solo le azioni (routes/lead.js), che ne scrivono
+		// anche il diario: dall'endpoint generico si scrive l'anagrafica, e basta.
+		const {
+			stato: _stato, stato_dal: _dal, tentativi_senza_risposta: _tentativi, ultimo_contatto_il: _contatto,
+			ultima_risposta_il: _risposta, richiamare_il: _richiamo, motivo_chiusura: _motivo, ...rest
+		} = body ?? {};
 		for (const campo of ['nome', 'cognome']) {
 			if (presente(rest, campo)) rest[campo] = String(rest[campo] ?? '').trim();
 		}

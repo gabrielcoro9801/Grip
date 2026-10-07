@@ -9,6 +9,7 @@
 // portale, abbonamenti — non ha senso per un contatto.
 import { sql } from 'drizzle-orm';
 import { pgTable, uuid, varchar, boolean, integer, date, timestamp, check, index } from 'drizzle-orm/pg-core';
+import { staffAccounts } from './hr.js';
 
 // Come ci ha contattato: Instagram, passaparola, in sede. La lista la decide l'ente — ogni
 // palestra ha i suoi canali — e un canale non più usato si disattiva invece di sparire, così
@@ -33,10 +34,41 @@ export const leads = pgTable('leads', {
 	// Due righe da ricordare al richiamo ("chiamare dopo le 18", "chiede del corso bimbi").
 	// Il limite è in shared/lead.js (NOTE_LEAD_MASSIMO), qui come lunghezza della colonna.
 	note: varchar('note', { length: 140 }),
+	// A che punto è il rapporto (shared/lead.js, STATI_LEAD). Lo cambiano solo le azioni di
+	// routes/lead.js, mai l'endpoint generico. Il *da quanto* non si salva: si calcola da queste
+	// date, ed è da lì che nascono i filtri rapidi e, un giorno, le automazioni.
+	stato: varchar('stato', { length: 24 }).notNull().default('nuovo'),
+	statoDal: date('stato_dal').notNull().default(sql`CURRENT_DATE`),
+	// Di fila, senza risposta: una risposta li azzera.
+	tentativiSenzaRisposta: integer('tentativi_senza_risposta').notNull().default(0),
+	ultimoContattoIl: date('ultimo_contatto_il'),
+	ultimaRispostaIl: date('ultima_risposta_il'),
+	richiamareIl: date('richiamare_il'),
+	motivoChiusura: varchar('motivo_chiusura', { length: 32 }),
 	createdDate: timestamp('created_date', { withTimezone: true }).notNull().defaultNow(),
 	updatedDate: timestamp('updated_date', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({
 	sessoValido: check('leads_sesso_valido', sql`${table.sesso} IN ('M', 'F', 'altro')`),
 	annoValido: check('leads_anno_nascita_valido', sql`${table.annoNascita} IS NULL OR ${table.annoNascita} BETWEEN 1900 AND 2100`),
+	statoValido: check('leads_stato_valido', sql`${table.stato} IN ('nuovo', 'in_attesa', 'in_conversazione', 'da_richiamare', 'non_raggiungibile', 'non_interessato')`),
 	perData: index('leads_data_contatto_idx').on(table.dataContatto),
+	perStato: index('leads_stato_idx').on(table.stato),
+}));
+
+// Il diario di un lead: ogni tentativo, risposta, richiamo, chiusura e riapertura, con chi l'ha
+// fatto. `autore_id` vuoto vuol dire "il sistema": oggi il passaggio automatico a non
+// raggiungibile, domani i messaggi mandati dalle automazioni — un invio automatico è un
+// tentativo come un altro, firmato da chi l'ha fatto. Se ne va col lead.
+export const leadAttivita = pgTable('lead_attivita', {
+	id: uuid('id').defaultRandom().primaryKey(),
+	leadId: uuid('lead_id').notNull().references(() => leads.id, { onDelete: 'cascade' }),
+	tipo: varchar('tipo', { length: 24 }).notNull(), // tentativo | risposta | richiamo | chiusura | riapertura | stato_automatico
+	canale: varchar('canale', { length: 16 }), // telefono | whatsapp | email | sms | di_persona
+	esito: varchar('esito', { length: 32 }), // nessuna_risposta | risposto | la data del richiamo | il motivo di chiusura
+	nota: varchar('nota', { length: 140 }),
+	autoreId: uuid('autore_id').references(() => staffAccounts.id, { onDelete: 'set null' }),
+	autoreNome: varchar('autore_nome', { length: 255 }).notNull(),
+	createdDate: timestamp('created_date', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+	perLead: index('lead_attivita_lead_id_idx').on(table.leadId, table.createdDate),
 }));

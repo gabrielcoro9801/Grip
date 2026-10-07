@@ -10,8 +10,9 @@ import { eq, and, inArray } from 'drizzle-orm';
 import { buildApp } from '../src/app.js';
 import { db, pool } from '../src/db/client.js';
 import { enteDellaNumerazione } from '../src/lib/codiceSocio.js';
-import { members, staffAccounts, leads, canaliContatto, numberingCounters, ruoli } from '../src/db/schema/index.js';
+import { members, staffAccounts, leads, canaliContatto, numberingCounters, ruoli, leadAttivita } from '../src/db/schema/index.js';
 import { caricaMatrice, caricaMatriceIniziale } from '../src/lib/ruoli.js';
+import { oggiIso, spostaGiorni } from '../../shared/giorni.js';
 
 const PASSWORD = 'prova-lead-1234';
 const CF = 'RSSMRA85T10A562S';
@@ -270,5 +271,78 @@ describe('la trasformazione in socio', () => {
 			await db.update(ruoli).set({ permessi: originali }).where(eq(ruoli.id, ruolo.id));
 			await caricaMatriceIniziale();
 		}
+	});
+});
+
+describe('gli stati di un lead', () => {
+	const azione = (chi, id, nome, corpo = {}) => post(chi, `/api/lead/${id}/${nome}`, corpo);
+	const diario = async (id) => db.select().from(leadAttivita).where(eq(leadAttivita.leadId, id)).orderBy(leadAttivita.createdDate);
+
+	test('un lead nasce nuovo, e lo stato dall\'endpoint generico non si tocca', async () => {
+		const lead = await nuovoLead();
+		assert.equal(lead.stato, 'nuovo');
+		const res = await come('reception', { method: 'PUT', url: `/api/entities/Lead/${lead.id}`, payload: { stato: 'non_interessato', tentativi_senza_risposta: 9 } });
+		assert.equal(res.statusCode, 200, res.body);
+		assert.equal(res.json().stato, 'nuovo');
+		assert.equal(res.json().tentativi_senza_risposta, 0);
+	});
+
+	test('ogni azione cambia lo stato e lascia una riga nel diario, firmata', async () => {
+		const lead = await nuovoLead();
+		let r = await azione('reception', lead.id, 'contatto', { canale: 'telefono', esito: 'nessuna_risposta' });
+		assert.equal(r.statusCode, 200, r.body);
+		assert.equal(r.json().lead.stato, 'in_attesa');
+		assert.equal(r.json().lead.tentativi_senza_risposta, 1);
+
+		r = await azione('reception', lead.id, 'contatto', { canale: 'whatsapp', esito: 'risposto', nota: 'Chiede gli orari' });
+		assert.equal(r.json().lead.stato, 'in_conversazione');
+		assert.equal(r.json().lead.tentativi_senza_risposta, 0);
+
+		r = await azione('reception', lead.id, 'richiamo', { data: spostaGiorni(oggiIso(), 5) });
+		assert.equal(r.json().lead.stato, 'da_richiamare');
+
+		assert.equal((await azione('reception', lead.id, 'chiudi', { motivo: 'altro' })).statusCode, 400, 'altro senza nota');
+		r = await azione('reception', lead.id, 'chiudi', { motivo: 'prezzo' });
+		assert.equal(r.json().lead.stato, 'non_interessato');
+		assert.equal(r.json().lead.motivo_chiusura, 'prezzo');
+
+		assert.equal((await azione('reception', lead.id, 'contatto', { canale: 'telefono', esito: 'risposto' })).statusCode, 400, 'chiuso non si lavora');
+		r = await azione('reception', lead.id, 'riapri');
+		assert.equal(r.json().lead.stato, 'in_attesa');
+
+		const righe = await diario(lead.id);
+		assert.deepEqual(righe.map((a) => a.tipo), ['tentativo', 'risposta', 'richiamo', 'chiusura', 'riapertura']);
+		assert.equal(righe[1].nota, 'Chiede gli orari');
+		assert.ok(righe.every((a) => a.autoreNome === 'Reception Lead'));
+
+		const letto = await come('reception', { method: 'GET', url: `/api/lead/${lead.id}/attivita` });
+		assert.equal(letto.json().attivita.length, 5);
+	});
+
+	test('troppi tentativi senza risposta, e da tanto: non raggiungibile da solo, una volta sola', async () => {
+		const lead = await nuovoLead();
+		await db.update(leads).set({
+			stato: 'in_attesa', tentativiSenzaRisposta: 3, ultimoContattoIl: spostaGiorni(oggiIso(), -20),
+		}).where(eq(leads.id, lead.id));
+
+		const prima = await come('reception', { method: 'GET', url: '/api/lead/lavoro' });
+		assert.equal(prima.statusCode, 200, prima.body);
+		const chiuso = prima.json().leads.find((l) => l.id === lead.id);
+		assert.equal(chiuso.stato, 'non_raggiungibile');
+		assert.ok(prima.json().conteggi.chiusi >= 1);
+
+		await come('reception', { method: 'GET', url: '/api/lead/lavoro' });
+		const automatici = (await diario(lead.id)).filter((a) => a.tipo === 'stato_automatico');
+		assert.equal(automatici.length, 1);
+		assert.equal(automatici[0].autoreNome, 'Sistema');
+		assert.equal(automatici[0].autoreId, null);
+	});
+
+	test('chi vede i lead legge il lavoro, ma per agire serve poterli modificare', async () => {
+		const lead = await nuovoLead();
+		assert.equal((await come('istruttore', { method: 'GET', url: '/api/lead/lavoro' })).statusCode, 200);
+		assert.equal((await azione('istruttore', lead.id, 'contatto', { canale: 'telefono', esito: 'risposto' })).statusCode, 403);
+		assert.equal((await come('socio', { method: 'GET', url: '/api/lead/lavoro' })).statusCode, 403);
+		assert.equal((await azione('reception', lead.id, 'vola', {})).statusCode, 404);
 	});
 });
