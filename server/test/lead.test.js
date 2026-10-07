@@ -210,12 +210,18 @@ describe('la trasformazione in socio', () => {
 	});
 
 	test('crea il socio col codice e cancella il lead; la seconda volta non trova niente', async () => {
-		const lead = await nuovoLead({ telefono: '333 111', email: 'anna@test.local' });
-		const ok = await post('reception', `/api/lead/${lead.id}/trasforma`, {
+		const lead = await nuovoLead({ telefono: '333 111', email: 'anna@test.local', note: 'Chiede del corso bimbi' });
+		// La finestra precompila le note del socio con quella del lead: arriva nel corpo.
+		const corpo = {
 			nome: 'Anna Maria', cognome: 'Verdi', sesso: 'F', codice_fiscale: CF.toLowerCase(), phone: '333 111',
 			email: 'anna@test.local', gdpr_consent: true, full_name: 'Nome Inventato', codice_socio: '999999',
-		});
+			notes: lead.note,
+		};
+		const lunga = await post('reception', `/api/lead/${lead.id}/trasforma`, { ...corpo, notes: 'x'.repeat(141) });
+		assert.equal(lunga.statusCode, 400, 'anche il socio ha note da 140 caratteri');
+		const ok = await post('reception', `/api/lead/${lead.id}/trasforma`, corpo);
 		assert.equal(ok.statusCode, 201, ok.body);
+		assert.equal(ok.json().member.notes, 'Chiede del corso bimbi');
 		const { member } = ok.json();
 		idSocio.push(member.id);
 

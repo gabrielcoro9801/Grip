@@ -28,6 +28,9 @@ export default function TrasformaInSocio({ lead, onChiudi }) {
       sesso: lead.sesso,
       email: lead.email ?? "",
       phone: lead.telefono ?? "",
+      // La nota del contatto diventa la prima nota del socio: è la stessa segreteria che la
+      // legge, e al socio non arriva. Si può correggere qui prima di confermare.
+      notes: lead.note ?? "",
     });
   }, [lead]);
 

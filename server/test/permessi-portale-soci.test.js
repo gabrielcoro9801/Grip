@@ -181,6 +181,20 @@ describe('cosa un socio legge di sé', () => {
 		assert.equal(res.json().id, idSocio);
 	});
 
+	test('ma non le note che la segreteria scrive su di lui, né da dove è arrivato', async () => {
+		await come(tokenAdmin, { method: 'PUT', url: `/api/entities/Member/${idSocio}`, payload: { notes: 'Richiamare dopo le 18' } });
+		const staff = await come(tokenAdmin, { method: 'GET', url: `/api/entities/Member/${idSocio}` });
+		assert.equal(staff.json().notes, 'Richiamare dopo le 18', 'la segreteria le vede');
+
+		for (const url of [`/api/entities/Member/${idSocio}`, '/api/entities/Member']) {
+			const res = await come(tokenSocio, { method: 'GET', url });
+			const righe = [res.json()].flat();
+			for (const campo of ['notes', 'lead_canale_id', 'lead_data_contatto']) {
+				assert.ok(righe.every((r) => !(campo in r)), `${campo} è arrivato al socio da ${url}`);
+			}
+		}
+	});
+
 	test('il catalogo dei corsi resta leggibile per intero', async () => {
 		for (const entita of ['Course', 'Session', 'Event', 'Room', 'Instructor', 'Organization']) {
 			const res = await come(tokenSocio, { method: 'GET', url: `/api/entities/${entita}` });

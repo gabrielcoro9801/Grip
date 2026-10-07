@@ -13,7 +13,7 @@ import { usoDellaSala } from '../lib/sale.js';
 import { translateToSnakeCase } from './columnMaps.js';
 import {
 	sessoValido, normalizzaCodiceFiscale, codiceFiscaleValido, motivoDocumentoNonValido, tipoDocumentoValido,
-	normalizzaPartitaIva, partitaIvaValida, NOTE_ISTRUTTORE_MASSIMO,
+	normalizzaPartitaIva, partitaIvaValida, NOTE_ISTRUTTORE_MASSIMO, NOTE_SOCIO_MASSIMO,
 } from '../../../shared/anagrafica.js';
 import {
 	unitaDurataValida, statoTipoValido, motivoCambioStatoNonValido, motivoNonVendibile, dataFineAbbonamento,
@@ -247,6 +247,10 @@ export function anagraficaSocio(corpo, { creazione }) {
 		if (vuoto(rest.codice_fiscale)) throw rifiuta('Il codice fiscale è obbligatorio.');
 		rest.codice_fiscale = normalizzaCodiceFiscale(rest.codice_fiscale);
 		if (!codiceFiscaleValido(rest.codice_fiscale)) throw rifiuta('Il codice fiscale non è valido: controlla di averlo scritto bene.');
+	}
+	if (presente(rest, 'notes')) {
+		rest.notes = vuoto(rest.notes) ? null : String(rest.notes).trim() || null;
+		if (rest.notes && rest.notes.length > NOTE_SOCIO_MASSIMO) throw rifiuta(`Le note stanno in ${NOTE_SOCIO_MASSIMO} caratteri.`);
 	}
 	if (!creazione) rest.updated_date = new Date().toISOString();
 	return rest;

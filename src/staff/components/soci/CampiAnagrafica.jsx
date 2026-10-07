@@ -1,8 +1,9 @@
 import React from "react";
 import { Input } from "@/ui/primitivi/input";
 import { Label } from "@/ui/primitivi/label";
+import { Textarea } from "@/ui/primitivi/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/ui/primitivi/select";
-import { SESSI, codiceFiscaleValido, normalizzaCodiceFiscale } from "@/core/domain/anagrafica";
+import { SESSI, codiceFiscaleValido, normalizzaCodiceFiscale, NOTE_SOCIO_MASSIMO } from "@/core/domain/anagrafica";
 
 // Il consenso GDPR non è più fra i campi: non lo dà la segreteria, lo darà il socio dal portale.
 // Toglierlo da qui vuol dire anche che correggere un'anagrafica non lo sovrascrive più.
@@ -17,6 +18,7 @@ export const ANAGRAFICA_VUOTA = {
   address: "",
   emergency_contact_name: "",
   emergency_contact_phone: "",
+  notes: "",
 };
 
 /** Solo i campi dell'anagrafica, a partire da un socio letto dall'API. */
@@ -35,6 +37,7 @@ export function motivoAnagraficaIncompleta(v) {
   if (!v.sesso) return "Indica il sesso.";
   if (!v.codice_fiscale.trim()) return "Il codice fiscale è obbligatorio.";
   if (!codiceFiscaleValido(v.codice_fiscale)) return "Il codice fiscale non è valido.";
+  if ((v.notes ?? "").length > NOTE_SOCIO_MASSIMO) return `Le note stanno in ${NOTE_SOCIO_MASSIMO} caratteri.`;
   return null;
 }
 
@@ -49,6 +52,9 @@ export function motivoAnagraficaIncompleta(v) {
  *
  * `suggerimentoNascita` è un testo accanto alla data di nascita: nella trasformazione ricorda
  * l'anno che il lead aveva indicato.
+ *
+ * Le note chiudono il modulo, a tutta larghezza: sono della segreteria e al socio non arrivano
+ * (né dal portale né dall'endpoint generico).
  */
 export default function CampiAnagrafica({ valori, onChange, suggerimentoNascita }) {
   // Aggiornamenti a funzione, non a partire da `valori`: due modifiche ravvicinate (il sesso
@@ -122,6 +128,21 @@ export default function CampiAnagrafica({ valori, onChange, suggerimentoNascita 
       <div>
         <Label htmlFor="anag-emergenza-tel">Telefono di emergenza</Label>
         <Input id="anag-emergenza-tel" type="tel" value={valori.emergency_contact_phone} onChange={imposta("emergency_contact_phone")} />
+      </div>
+      <div className="sm:col-span-2">
+        <div className="flex items-baseline justify-between">
+          <Label htmlFor="anag-note">Note</Label>
+          <span className={`text-xs tabular-nums ${(valori.notes ?? "").length > NOTE_SOCIO_MASSIMO ? "text-destructive" : "text-muted-foreground"}`}>
+            {(valori.notes ?? "").length}/{NOTE_SOCIO_MASSIMO}
+          </span>
+        </div>
+        <Textarea
+          id="anag-note" rows={2} maxLength={NOTE_SOCIO_MASSIMO} className="resize-none"
+          value={valori.notes ?? ""} onChange={imposta("notes")}
+        />
+        {(valori.notes ?? "").length > NOTE_SOCIO_MASSIMO && (
+          <p className="text-xs text-destructive mt-1">Le note sono state scritte prima del limite: accorciale a {NOTE_SOCIO_MASSIMO} caratteri per salvare.</p>
+        )}
       </div>
     </div>
   );
