@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import StatusBadge from "@/ui/StatusBadge";
 import { ArrowLeft, Plus, CreditCard, QrCode, KeyRound, RefreshCw, Pencil, UserRound, Archive, ArchiveRestore } from "lucide-react";
 import CampiAnagrafica, { anagraficaDi, motivoAnagraficaIncompleta } from "@/staff/components/soci/CampiAnagrafica";
+import FisseSocio from "@/staff/components/soci/FisseSocio";
 import DocumentiSocio from "@/staff/components/soci/DocumentiSocio";
 import { AvatarSocio, SceltaFoto } from "@/staff/components/soci/FotoSocio";
 import { caricaFile } from "@/staff/lib/uploads";
@@ -427,6 +428,11 @@ export default function MemberDetail() {
           <div className="lg:row-span-2">
             <DocumentiSocio socio={member} documenti={documents} puoModificare={puoModificareDocumenti} staffUser={staffUser} onCambio={loadData} />
           </div>
+        )}
+
+        {/* Le prenotazioni fisse: sono prenotazioni, quindi le vede chi vede il calendario. */}
+        {canAccess(staffUser?.ruolo, "calendar", "view") && (
+          <FisseSocio socio={member} puoModificare={canEdit(staffUser?.ruolo, "calendar")} />
         )}
 
         {/* Accesso: il QR per entrare in palestra e la password per entrare nel portale.

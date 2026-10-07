@@ -208,6 +208,23 @@ export const api = {
 		},
 	},
 
+	/** Le prenotazioni fisse viste dal gestionale (routes/prenotazioniFisse.js). */
+	prenotazioniFisse: {
+		/** { member_id?, event_id? } → { fisse } (le attive) */
+		elenco(filtri = {}) {
+			const q = new URLSearchParams(Object.entries(filtri).filter(([, v]) => v)).toString();
+			return request(`/api/prenotazioni-fisse${q ? `?${q}` : ''}`);
+		},
+		/** { member_id, event_id, giorni? } → { fissa, prenotate, in_attesa, senza_abbonamento } */
+		crea(corpo) {
+			return request('/api/prenotazioni-fisse', { method: 'POST', body: corpo });
+		},
+		/** → { disdette, rimaste } */
+		termina(id) {
+			return request(`/api/prenotazioni-fisse/${id}`, { method: 'DELETE' });
+		},
+	},
+
 	/** Quanto è usata ogni sala, contato dal server sull'intero calendario. */
 	sale: {
 		uso() {

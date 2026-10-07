@@ -1,4 +1,5 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
+import { api } from "@/core/api/client";
 import { Button } from "@/ui/primitivi/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/ui/primitivi/dialog";
 import { Clock, MapPin, Users, Pencil, Calendar, UserCog, Repeat, Trash2 } from "lucide-react";
@@ -19,6 +20,13 @@ export default function RiepilogoLezione({ lezione, data, onClose, onModifica, o
   const categoria = categories.find(c => c.id === corso?.category_id);
   const istruttore = instructors.find(i => i.id === corso?.instructor_id);
   const sala = rooms.find(r => r.id === lezione?.room_id);
+  // Quanti soci tengono il posto fisso in questa serie: le loro prenotazioni nascono da sole.
+  const [fissi, setFissi] = useState(null);
+  useEffect(() => {
+    setFissi(null);
+    if (!evento || !eUnaSerie(evento)) return;
+    api.prenotazioniFisse.elenco({ event_id: evento.id }).then((r) => setFissi(r.fisse.length)).catch(() => {});
+  }, [evento]);
 
   return (
     <Dialog open={!!lezione} onOpenChange={v => { if (!v) onClose(); }}>
@@ -51,6 +59,7 @@ export default function RiepilogoLezione({ lezione, data, onClose, onModifica, o
                     <span>
                       {descriviSerie(evento)}
                       <span className="block text-xs">{rimaste === 1 ? "1 lezione" : `${rimaste} lezioni`} da oggi in poi</span>
+                      {fissi > 0 && <span className="block text-xs">{fissi === 1 ? "1 socio la prenota fisso" : `${fissi} soci la prenotano fisso`}</span>}
                     </span>
                   </div>
                 )}

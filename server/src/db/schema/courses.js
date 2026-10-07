@@ -134,3 +134,29 @@ export const bookings = pgTable('bookings', {
 	// lo garantisce già per le rotte dedicate; il vincolo lo garantisce per tutto il resto.
 	unaPerLezione: uniqueIndex('bookings_attiva_unica_idx').on(table.sessionId, table.memberId).where(sql`${table.status} <> 'cancelled'`),
 }));
+
+// Una prenotazione fissa: il socio tiene il suo posto in una serie, ogni settimana, senza
+// prenotare a mano lezione per lezione. Non è un posto riservato: le lezioni si prenotano con le
+// regole di sempre (capienza, lista d'attesa, abbonamento valido quel giorno) da
+// lib/prenotazioniFisse.js, che gira quando la fissa nasce, quando nasce un abbonamento, quando
+// la serie si allunga e quando il socio guarda l'agenda.
+//
+// `giorni`: i giorni della serie scelti (es. solo il martedì di un martedì-giovedì); null =
+// tutti. `avviso_inviato_per`: la prima lezione rimasta senza abbonamento già segnalata al
+// socio, perché l'avviso arrivi una volta sola per ogni scadenza.
+export const prenotazioniFisse = pgTable('prenotazioni_fisse', {
+	id: uuid('id').defaultRandom().primaryKey(),
+	memberId: uuid('member_id').notNull().references(() => members.id, { onDelete: 'cascade' }),
+	eventId: uuid('event_id').notNull().references(() => events.id, { onDelete: 'cascade' }),
+	giorni: jsonb('giorni'),
+	attiva: boolean('attiva').notNull().default(true),
+	creataDa: varchar('creata_da', { length: 255 }),
+	avvisoInviatoPer: date('avviso_inviato_per'),
+	terminataIl: date('terminata_il'),
+	createdDate: timestamp('created_date', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+	socio: index('prenotazioni_fisse_member_id_idx').on(table.memberId),
+	evento: index('prenotazioni_fisse_event_id_idx').on(table.eventId),
+	// Una sola fissa attiva per socio e serie.
+	unaAttiva: uniqueIndex('prenotazioni_fisse_attiva_unica_idx').on(table.memberId, table.eventId).where(sql`${table.attiva}`),
+}));

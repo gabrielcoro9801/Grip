@@ -359,7 +359,7 @@ describe('il contratto resta quello promesso', () => {
 			Object.keys(mia).sort(),
 			// `motivo_non_prenotabile` e `finita` sono aggiunte (null / false quando si può
 			// prenotare): un client che non le conosce le ignora, e il contratto non si rompe.
-			['categoria', 'corso', 'data', 'disdetta_fino_a', 'fine', 'finita', 'id', 'inizio', 'istruttore', 'mia_prenotazione', 'motivo_disdetta_chiusa', 'motivo_non_prenotabile', 'posti', 'sala']
+			['categoria', 'corso', 'data', 'disdetta_fino_a', 'fine', 'finita', 'id', 'inizio', 'istruttore', 'mia_prenotazione', 'motivo_disdetta_chiusa', 'motivo_non_prenotabile', 'posti', 'sala', 'serie']
 		);
 		assert.deepEqual(
 			Object.keys(mia.posti).sort(),
