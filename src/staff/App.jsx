@@ -20,6 +20,7 @@ const MembersList = lazy(() => import('@/staff/pages/crm/MembersList'));
 const MemberDetail = lazy(() => import('@/staff/pages/crm/MemberDetail'));
 const PlansCatalog = lazy(() => import('@/staff/pages/crm/PlansCatalog'));
 const SubscriptionsList = lazy(() => import('@/staff/pages/crm/SubscriptionsList'));
+const Ingressi = lazy(() => import('@/staff/pages/crm/Ingressi'));
 const LeadLayout = lazy(() => import('@/staff/pages/lead/LeadLayout'));
 const Contatti = lazy(() => import('@/staff/pages/lead/Contatti'));
 const Andamento = lazy(() => import('@/staff/pages/lead/Andamento'));
@@ -59,6 +60,7 @@ export default function App() {
                   <Route path="soci/:id" element={<MemberDetail />} />
                   <Route path="abbonamenti" element={<PlansCatalog />} />
                   <Route path="iscrizioni" element={<SubscriptionsList />} />
+                  <Route path="ingressi" element={<Ingressi />} />
                   <Route path="members/:id" element={<RedirectSocio />} />
                   <Route path="plans" element={<Navigate to="/crm/abbonamenti" replace />} />
                   <Route path="subscriptions" element={<Navigate to="/crm/iscrizioni" replace />} />

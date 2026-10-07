@@ -208,6 +208,26 @@ export const api = {
 		},
 	},
 
+	/** Gli ingressi al bancone (routes/ingressi.js). */
+	ingressi: {
+		/** { codice } | { member_id } → { valido, motivo? | socio, semaforo, avvisi, lezioni_oggi, ultimo_ingresso, metodo } */
+		verifica(corpo) {
+			return request('/api/ingressi/verifica', { method: 'POST', body: corpo });
+		},
+		/** { member_id, metodo, deroga? } → { ingresso } */
+		registra(corpo) {
+			return request('/api/ingressi', { method: 'POST', body: corpo });
+		},
+		/** { dal?, al?, member_id? } → { ingressi } (senza date: oggi) */
+		elenco(filtri = {}) {
+			const q = new URLSearchParams(Object.entries(filtri).filter(([, v]) => v)).toString();
+			return request(`/api/ingressi${q ? `?${q}` : ''}`);
+		},
+		statistiche(giorni = 30) {
+			return request(`/api/ingressi/statistiche?giorni=${giorni}`);
+		},
+	},
+
 	/** Le prenotazioni fisse viste dal gestionale (routes/prenotazioniFisse.js). */
 	prenotazioniFisse: {
 		/** { member_id?, event_id? } → { fisse } (le attive) */

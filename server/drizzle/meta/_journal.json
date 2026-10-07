@@ -351,6 +351,13 @@
       "when": 1791408949776,
       "tag": "0049_prenotazioni_fisse",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1791409651576,
+      "tag": "0050_ingressi",
+      "breakpoints": true
     }
   ]
 }
