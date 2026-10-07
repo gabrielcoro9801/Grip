@@ -237,6 +237,10 @@ export const api = {
 		azione(leadId, nome, corpo = {}) {
 			return request(`/api/lead/${leadId}/${nome}`, { method: 'POST', body: corpo });
 		},
+		/** Le righe anonime della pagina Andamento, e i canali: { righe, canali }. */
+		andamento() {
+			return request('/api/lead/andamento');
+		},
 		/** Il diario di un lead, dal più vecchio: { attivita }. */
 		attivita(leadId) {
 			return request(`/api/lead/${leadId}/attivita`);

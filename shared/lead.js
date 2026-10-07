@@ -1,7 +1,8 @@
 // I conti sui contatti: quanti ne arrivano, quando, da dove, di chi.
 //
 // Stanno in `shared/` come le altre regole di dominio, e sono funzioni pure: la pagina
-// "Andamento" scarica i lead e li conta qui, e i test le provano con `node --test`.
+// "Andamento" riceve dal server righe anonime e le conta qui, la pagina Contatti ci legge gli
+// stati, e i test le provano con `node --test`.
 //
 import { giorniFra } from "./giorni.js";
 
@@ -19,59 +20,193 @@ export const MESI = [
 const annoDi = (data) => (data ? Number(String(data).slice(0, 4)) : null);
 const meseDi = (data) => (data ? Number(String(data).slice(5, 7)) : null);
 
-/**
- * I lead che rispettano i filtri. Un filtro assente, o vuoto, non filtra. Il mese va da 1 a 12.
- *
- * @param {Array<Object>} leads
- * @param {{ anno?: number|string|null, mese?: number|string|null, sesso?: string|null, annoNascita?: number|string|null, canaleId?: string|null }} [filtri]
- */
-export function filtraContatti(leads = [], { anno, mese, sesso, annoNascita, canaleId } = {}) {
-  const c = (v) => v !== undefined && v !== null && v !== "";
-  return leads.filter((l) =>
-    (!c(anno) || annoDi(l.data_contatto) === Number(anno))
-    && (!c(mese) || meseDi(l.data_contatto) === Number(mese))
-    && (!c(sesso) || l.sesso === sesso)
-    && (!c(annoNascita) || l.anno_nascita === Number(annoNascita))
-    && (!c(canaleId) || l.canale_id === canaleId)
-  );
+// ---------------------------------------------------------------------------------------
+// Andamento: i conti della pagina, su righe anonime
+// ---------------------------------------------------------------------------------------
+//
+// Una riga è una persona che ci ha contattato, e dove è finita: ancora un lead aperto, un lead
+// chiuso (perso), oppure un socio — il lead si cancella alla trasformazione, ma il socio ricorda
+// canale e giorno del primo contatto. Le righe le prepara il server (GET /api/lead/andamento):
+//   { data_contatto, canale_id, sesso, anno_nascita, esito: 'socio'|'aperto'|'perso',
+//     socio_dal, motivo }
+//
+// Il tasso di conversione è **per coorte**: dei contatti arrivati nel periodo, quanti sono
+// diventati soci (anche dopo). È l'unico che non mescola persone diverse al numeratore e al
+// denominatore. Gli ultimi arrivati abbassano il tasso finché sono aperti: lo si dice accanto.
+
+/** Le fasce d'età, calcolate all'anno del contatto. */
+export const FASCE_ETA = [
+  { valore: "u18", etichetta: "Under 18", da: 0, a: 17 },
+  { valore: "18-24", etichetta: "18–24", da: 18, a: 24 },
+  { valore: "25-34", etichetta: "25–34", da: 25, a: 34 },
+  { valore: "35-44", etichetta: "35–44", da: 35, a: 44 },
+  { valore: "45-54", etichetta: "45–54", da: 45, a: 54 },
+  { valore: "55+", etichetta: "55 e oltre", da: 55, a: 200 },
+  { valore: "nd", etichetta: "Non indicata", da: null, a: null },
+];
+
+/** La fascia d'età di una riga, "nd" se l'anno di nascita non c'è. */
+export function fasciaEta(riga) {
+  const nascita = Number(riga?.anno_nascita);
+  const anno = annoDi(riga?.data_contatto);
+  if (!nascita || !anno) return "nd";
+  const eta = anno - nascita;
+  return FASCE_ETA.find((f) => f.da !== null && eta >= f.da && eta <= f.a)?.valore ?? "nd";
+}
+
+export const ESITI = [
+  { valore: "socio", etichetta: "Diventati soci" },
+  { valore: "aperto", etichetta: "In corso" },
+  { valore: "perso", etichetta: "Persi" },
+];
+
+const iso = (a, m, g) => `${a}-${String(m).padStart(2, "0")}-${String(g).padStart(2, "0")}`;
+const fineMese = (a, m) => iso(a, m, new Date(Date.UTC(a, m, 0)).getUTCDate());
+
+/** "2026-10" e i mesi da `dal` ad `al`, compresi. */
+function mesiFra(dal, al) {
+  const mesi = [];
+  let [a, m] = [Number(dal.slice(0, 4)), Number(dal.slice(5, 7))];
+  const fine = al.slice(0, 7);
+  while (`${a}-${String(m).padStart(2, "0")}` <= fine) {
+    mesi.push(`${a}-${String(m).padStart(2, "0")}`);
+    m += 1;
+    if (m > 12) { m = 1; a += 1; }
+  }
+  return mesi;
 }
 
 /**
- * Quanti lead per valore di un campo, dal più frequente.
- * I lead senza quel dato (es. anno di nascita non indicato) finiscono sotto `null`.
+ * Il periodo scelto, in date: "ultimi_12" (i dodici mesi interi fino a questo), "anno" (da
+ * gennaio a oggi) oppure un anno, "2025". `precedente` è lo stesso periodo un anno prima: il
+ * confronto con l'anno scorso toglie la stagionalità, che per una palestra è tutto.
  */
-export function contaPer(leads = [], campo) {
+export function intervalloPeriodo(periodo, oggi) {
+  const anno = Number(oggi.slice(0, 4));
+  const mese = Number(oggi.slice(5, 7));
+  let dal; let al;
+  if (periodo === "anno") { dal = iso(anno, 1, 1); al = oggi; }
+  else if (/^\d{4}$/.test(String(periodo))) { dal = iso(Number(periodo), 1, 1); al = iso(Number(periodo), 12, 31); }
+  else {
+    const inizio = mese === 12 ? [anno, 1] : [anno - 1, mese + 1];
+    dal = iso(inizio[0], inizio[1], 1);
+    al = fineMese(anno, mese);
+  }
+  const indietro = (d) => `${Number(d.slice(0, 4)) - 1}${d.slice(4)}`.replace(/-02-29$/, "-02-28");
+  return { dal, al, mesi: mesiFra(dal, al), precedente: { dal: indietro(dal), al: indietro(al) } };
+}
+
+/**
+ * Le righe che rispettano i filtri. Un filtro assente non filtra.
+ * @param filtri { dal, al, canaleId, sesso, fascia, mese: "AAAA-MM" }
+ */
+export function filtraAndamento(righe = [], { dal, al, canaleId, sesso, fascia, mese } = {}) {
+  return righe.filter((r) => {
+    const d = String(r.data_contatto ?? "").slice(0, 10);
+    return (!dal || d >= dal) && (!al || d <= al)
+      && (!mese || d.slice(0, 7) === mese)
+      && (!canaleId || r.canale_id === canaleId)
+      && (!sesso || r.sesso === sesso)
+      && (!fascia || fasciaEta(r) === fascia);
+  });
+}
+
+const giorniTra = (da, a) => Math.round((Date.parse(`${String(a).slice(0, 10)}T00:00:00Z`) - Date.parse(`${String(da).slice(0, 10)}T00:00:00Z`)) / 86400000);
+
+/** I numeri in testa alla pagina. `tasso` è fra 0 e 1, null senza contatti. */
+export function riepilogoAndamento(righe = []) {
+  const soci = righe.filter((r) => r.esito === "socio");
+  const giorni = soci.filter((r) => r.socio_dal).map((r) => Math.max(0, giorniTra(r.data_contatto, r.socio_dal)));
+  return {
+    contatti: righe.length,
+    soci: soci.length,
+    aperti: righe.filter((r) => r.esito === "aperto").length,
+    persi: righe.filter((r) => r.esito === "perso").length,
+    tasso: righe.length ? soci.length / righe.length : null,
+    giorniMedi: giorni.length ? Math.round(giorni.reduce((s, g) => s + g, 0) / giorni.length) : null,
+  };
+}
+
+/** Variazione percentuale da `prima` a `ora`, null se prima era zero. */
+export const variazione = (ora, prima) => (prima ? (ora - prima) / prima : null);
+
+/**
+ * Mese per mese: i contatti, quanti di loro sono diventati soci, e i contatti dello stesso mese
+ * dell'anno prima. Ogni mese c'è, anche a zero: un mese vuoto è un dato.
+ */
+export function serieMensile(righe = [], mesi = [], righeAnnoPrima = []) {
+  const conta = (elenco, chiave) => {
+    const m = new Map();
+    for (const r of elenco) {
+      const k = String(r.data_contatto).slice(0, 7);
+      if (!chiave || chiave(r)) m.set(k, (m.get(k) ?? 0) + 1);
+    }
+    return m;
+  };
+  const contatti = conta(righe);
+  const soci = conta(righe, (r) => r.esito === "socio");
+  const prima = conta(righeAnnoPrima);
+  return mesi.map((mese) => {
+    const [a, m] = mese.split("-");
+    return {
+      mese,
+      etichetta: MESI[Number(m) - 1].slice(0, 3),
+      etichettaLunga: `${MESI[Number(m) - 1]} ${a}`,
+      contatti: contatti.get(mese) ?? 0,
+      soci: soci.get(mese) ?? 0,
+      annoPrima: prima.get(`${Number(a) - 1}-${m}`) ?? 0,
+    };
+  });
+}
+
+/** Per canale: contatti, e come sono finiti. Dal canale che ne porta di più. */
+export function esitiPerCanale(righe = [], canali = []) {
+  const per = new Map();
+  for (const r of righe) {
+    if (!per.has(r.canale_id)) per.set(r.canale_id, { canale_id: r.canale_id, contatti: 0, socio: 0, aperto: 0, perso: 0 });
+    const v = per.get(r.canale_id);
+    v.contatti += 1;
+    v[r.esito] = (v[r.esito] ?? 0) + 1;
+  }
+  const nome = new Map(canali.map((c) => [c.id, c.nome]));
+  return [...per.values()]
+    .map((v) => ({ ...v, nome: nome.get(v.canale_id) ?? "Canale eliminato", tasso: v.contatti ? v.socio / v.contatti : null }))
+    .sort((a, b) => b.contatti - a.contatti || a.nome.localeCompare(b.nome, "it"));
+}
+
+/** Stagionalità: per canale, i contatti in ciascun mese dell'anno (gennaio…dicembre), sommando gli anni. */
+export function matriceStagionalita(righe = [], canali = []) {
+  const ordine = esitiPerCanale(righe, canali);
+  const righeMatrice = ordine.map((c) => ({ canale_id: c.canale_id, nome: c.nome, mesi: Array(12).fill(0) }));
+  const indice = new Map(righeMatrice.map((r, i) => [r.canale_id, i]));
+  for (const r of righe) {
+    const m = meseDi(r.data_contatto);
+    if (m) righeMatrice[indice.get(r.canale_id)].mesi[m - 1] += 1;
+  }
+  const massimo = Math.max(0, ...righeMatrice.flatMap((r) => r.mesi));
+  return { righe: righeMatrice, massimo };
+}
+
+/** Perché si perdono: i motivi dei lead chiusi, "non raggiungibile" compreso. */
+export function motiviPerdita(righe = []) {
   const conti = new Map();
-  for (const l of leads) {
-    const chiave = l[campo] ?? null;
-    conti.set(chiave, (conti.get(chiave) ?? 0) + 1);
+  for (const r of righe) if (r.esito === "perso") conti.set(r.motivo ?? "altro", (conti.get(r.motivo ?? "altro") ?? 0) + 1);
+  return [...conti.entries()].map(([motivo, totale]) => ({ motivo, totale })).sort((a, b) => b.totale - a.totale);
+}
+
+/** Quanti per un campo calcolato, in un ordine dato (fasce, sessi): anche gli zeri. */
+export function contaInOrdine(righe = [], chiave, valori) {
+  const conti = new Map(valori.map((v) => [v, 0]));
+  for (const r of righe) {
+    const k = chiave(r);
+    if (conti.has(k)) conti.set(k, conti.get(k) + 1);
   }
-  return [...conti.entries()]
-    .map(([valore, totale]) => ({ valore, totale }))
-    .sort((a, b) => b.totale - a.totale);
+  return valori.map((valore) => ({ valore, totale: conti.get(valore) }));
 }
 
-/** I dodici mesi di un anno, anche quelli senza contatti: un mese a zero è un dato. */
-export function contattiPerMese(leads = [], anno) {
-  const conti = Array(12).fill(0);
-  for (const l of leads) {
-    if (annoDi(l.data_contatto) !== Number(anno)) continue;
-    const m = meseDi(l.data_contatto);
-    if (m >= 1 && m <= 12) conti[m - 1] += 1;
-  }
-  return conti.map((totale, i) => ({ mese: i + 1, etichetta: MESI[i], totale }));
-}
-
-const valoriDistinti = (valori) => [...new Set(valori.filter((v) => v !== null && !Number.isNaN(v)))].sort((a, b) => b - a);
-
-/** Gli anni in cui ci sono contatti, dal più recente: sono le voci del filtro. */
-export function anniDisponibili(leads = []) {
-  return valoriDistinti(leads.map((l) => annoDi(l.data_contatto)));
-}
-
-/** Gli anni di nascita presenti, dal più recente. */
-export function anniNascitaDisponibili(leads = []) {
-  return valoriDistinti(leads.map((l) => l.anno_nascita ?? null));
+/** Gli anni in cui ci sono contatti, dal più recente: le voci del periodo oltre a quelle fisse. */
+export function anniDisponibili(righe = []) {
+  return [...new Set(righe.map((r) => annoDi(r.data_contatto)).filter(Boolean))].sort((a, b) => b - a);
 }
 
 // ---------------------------------------------------------------------------------------

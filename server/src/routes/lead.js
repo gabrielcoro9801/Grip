@@ -10,7 +10,7 @@
 // persona due volte, una da socio e una da contatto ancora da richiamare.
 import { and, asc, count, desc, eq, gte, isNotNull, lte } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { leads, members, leadAttivita, staffAccounts } from '../db/schema/index.js';
+import { leads, members, leadAttivita, staffAccounts, canaliContatto } from '../db/schema/index.js';
 import { getUserFromRequest } from '../auth/tokens.js';
 import { canReadEntity, canWriteEntity } from '../auth/authorize.js';
 import { translateToJs, translateToSnakeCase, translateManyToSnakeCase } from '../entities/columnMaps.js';
@@ -110,6 +110,45 @@ export default async function leadRoutes(fastify) {
 		});
 		const righe = translateManyToSnakeCase(leads, await db.select().from(leads).orderBy(desc(leads.dataContatto)));
 		return { leads: righe, conteggi: contaFiltriLead(righe, oggi) };
+	});
+
+	/**
+	 * GET /api/lead/andamento → { righe, canali }
+	 *
+	 * Le righe di Andamento: una per persona che ci ha contattato, con dove è finita. I lead sono
+	 * aperti o persi; i soci nati da un contatto (che hanno canale e giorno del primo contatto)
+	 * sono le conversioni. Escono solo i campi che servono ai conti — niente nomi, niente
+	 * recapiti: chi guarda i lead non legge per forza l'anagrafica dei soci.
+	 */
+	fastify.get('/api/lead/andamento', { preHandler: puoLeggere }, async () => {
+		const [contatti, soci, elencoCanali] = await Promise.all([
+			db.select({
+				data: leads.dataContatto, canale: leads.canaleId, sesso: leads.sesso, nascita: leads.annoNascita,
+				stato: leads.stato, motivo: leads.motivoChiusura,
+			}).from(leads),
+			db.select({
+				data: members.leadDataContatto, canale: members.leadCanaleId, sesso: members.sesso,
+				nascita: members.dateOfBirth, dal: members.createdDate,
+			}).from(members).where(isNotNull(members.leadCanaleId)),
+			db.select({ id: canaliContatto.id, nome: canaliContatto.nome, attivo: canaliContatto.attivo }).from(canaliContatto),
+		]);
+		const righe = [
+			...contatti.map((l) => {
+				const aperto = statoLead(l.stato).aperto;
+				return {
+					data_contatto: l.data, canale_id: l.canale, sesso: l.sesso, anno_nascita: l.nascita,
+					esito: aperto ? 'aperto' : 'perso',
+					motivo: aperto ? null : (l.stato === 'non_raggiungibile' ? 'non_raggiungibile' : l.motivo),
+					socio_dal: null,
+				};
+			}),
+			...soci.filter((s) => s.data).map((s) => ({
+				data_contatto: s.data, canale_id: s.canale, sesso: s.sesso,
+				anno_nascita: s.nascita ? Number(String(s.nascita).slice(0, 4)) : null,
+				esito: 'socio', motivo: null, socio_dal: new Date(s.dal).toISOString().slice(0, 10),
+			})),
+		];
+		return { righe, canali: elencoCanali };
 	});
 
 	/** GET /api/lead/:id/attivita → { attivita }: il diario, dal più vecchio. */
