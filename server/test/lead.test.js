@@ -166,7 +166,8 @@ describe('i canali', () => {
 		await nuovoLead({ canale_id: nuovo.id });
 		await nuovoLead({ canale_id: nuovo.id });
 		const [socio] = await db.insert(members).values({
-			nome: 'Da', cognome: 'Canale', codiceSocio: `UC${Date.now() % 1e8}`, leadCanaleId: nuovo.id, leadDataContatto: '2026-09-01',
+			// Codici di prova senza cifre: il contatore dei codici veri prende il massimo delle cifre.
+			nome: 'Da', cognome: 'Canale', codiceSocio: `UC${String(Date.now()).replace(/\d/g, (c) => 'ABCDEFGHIJ'[c])}`, leadCanaleId: nuovo.id, leadDataContatto: '2026-09-01',
 		}).returning();
 		idSocio.push(socio.id);
 
@@ -183,7 +184,7 @@ describe('i canali', () => {
 		const [canaleSocio] = await db.insert(canaliContatto).values({ nome: `Di un socio ${Date.now()}` }).returning();
 		idCanali.push(canaleSocio.id);
 		const [socio] = await db.insert(members).values({
-			nome: 'Gia', cognome: 'Socio', codiceSocio: `CS${Date.now() % 1e8}`, leadCanaleId: canaleSocio.id,
+			nome: 'Gia', cognome: 'Socio', codiceSocio: `CS${String(Date.now()).replace(/\d/g, (c) => 'ABCDEFGHIJ'[c])}`, leadCanaleId: canaleSocio.id,
 		}).returning();
 		idSocio.push(socio.id);
 

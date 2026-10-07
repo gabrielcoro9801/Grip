@@ -1,8 +1,8 @@
-import { eq, and, gte, lte, inArray, ne, desc } from 'drizzle-orm';
+import { eq, and, gte, lte, inArray, ne, desc, isNull, count } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import {
 	members, subscriptions, memberDocuments, qrAccessi,
-	courses, categories, instructors, rooms, events, sessions, bookings,
+	courses, categories, instructors, rooms, events, sessions, bookings, notifiche,
 } from '../../db/schema/index.js';
 import { getUserFromRequest } from '../../auth/tokens.js';
 import { socioDiAccount } from '../../auth/socioCorrente.js';
@@ -398,6 +398,40 @@ export default async function memberRoutes(fastify) {
 		// Chi è stato promosso dalla lista d'attesa non lo diciamo: è un altro socio, e al
 		// portale non serve saperlo. Al gestionale sì, e infatti la sua rotta lo restituisce.
 		return { disdetta: true };
+	});
+
+	// --- Le notifiche -------------------------------------------------------------------
+
+	/**
+	 * Gli avvisi del socio, dal più recente, e quanti sono da leggere.
+	 *
+	 * Le ultime cinquanta bastano: sono avvisi, non un archivio. `non_lette` è un conto a parte,
+	 * perché la campanella lo chiede a ogni pagina e non deve scaricarsi l'elenco per saperlo.
+	 * Con `?solo_conteggio=1` arriva soltanto quello.
+	 */
+	fastify.get('/notifiche', async (request) => {
+		const [{ n }] = await db.select({ n: count() }).from(notifiche)
+			.where(and(eq(notifiche.memberId, request.idSocio), isNull(notifiche.lettaIl)));
+		if (request.query?.solo_conteggio) return { non_lette: Number(n) };
+		const righe = await db.select().from(notifiche)
+			.where(eq(notifiche.memberId, request.idSocio))
+			.orderBy(desc(notifiche.createdDate))
+			.limit(50);
+		return {
+			non_lette: Number(n),
+			notifiche: righe.map((r) => ({
+				id: r.id, tipo: r.tipo, titolo: r.titolo, testo: r.testo,
+				letta: Boolean(r.lettaIl), creata_il: r.createdDate,
+			})),
+		};
+	});
+
+	/** Segna come lette tutte le notifiche del socio: è ciò che succede aprendo la pagina. */
+	fastify.post('/notifiche/lette', async (request) => {
+		const lette = await db.update(notifiche).set({ lettaIl: new Date() })
+			.where(and(eq(notifiche.memberId, request.idSocio), isNull(notifiche.lettaIl)))
+			.returning({ id: notifiche.id });
+		return { lette: lette.length };
 	});
 }
 

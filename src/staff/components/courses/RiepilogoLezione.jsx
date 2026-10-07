@@ -1,7 +1,7 @@
 import React from "react";
 import { Button } from "@/ui/primitivi/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/ui/primitivi/dialog";
-import { Clock, MapPin, Users, Pencil, Calendar, UserCog, Repeat } from "lucide-react";
+import { Clock, MapPin, Users, Pencil, Calendar, UserCog, Repeat, Trash2 } from "lucide-react";
 import { getSessionAvailability } from "@/core/domain/bookingUtils";
 import { formatData } from "@/core/domain/format";
 import { oggiIso } from "@/core/domain/giorni";
@@ -9,9 +9,10 @@ import { hhmm, eUnaSerie, descriviSerie, lezioniDellaSerie } from "@/staff/lib/m
 
 /**
  * Il riepilogo di una lezione, come si apre cliccandola nel calendario: cosa, quando, dove, chi
- * la tiene, quanti sono iscritti, e se fa parte di una serie. Da qui si passa alla modifica.
+ * la tiene, quanti sono iscritti, e se fa parte di una serie. Da qui si passa alla modifica o
+ * all'eliminazione.
  */
-export default function RiepilogoLezione({ lezione, data, onClose, onModifica, puoModificare }) {
+export default function RiepilogoLezione({ lezione, data, onClose, onModifica, onElimina, puoModificare }) {
   const { events, courses, categories, instructors, rooms, sessions, bookings } = data;
   const evento = lezione ? events.find(e => e.id === lezione.event_id) : null;
   const corso = courses.find(c => c.id === evento?.course_id);
@@ -58,9 +59,14 @@ export default function RiepilogoLezione({ lezione, data, onClose, onModifica, p
                 )}
               </div>
               {puoModificare && evento && (
-                <Button className="w-full" variant="outline" onClick={() => onModifica(lezione)}>
-                  <Pencil className="w-4 h-4 mr-1" /> Modifica
-                </Button>
+                <div className="grid grid-cols-2 gap-2">
+                  <Button variant="outline" className="text-destructive hover:text-destructive" onClick={() => onElimina(lezione)}>
+                    <Trash2 className="w-4 h-4 mr-1" /> Elimina
+                  </Button>
+                  <Button variant="outline" onClick={() => onModifica(lezione)}>
+                    <Pencil className="w-4 h-4 mr-1" /> Modifica
+                  </Button>
+                </div>
               )}
             </>
           );

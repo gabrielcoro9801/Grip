@@ -4,7 +4,7 @@ process.env.TZ = 'Europe/Rome';
 import test, { describe } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-	campiCambiati, lezioniDellaSerie, pianificaModifica, descriviSerie, divergeDalModello,
+	campiCambiati, lezioniDellaSerie, pianificaModifica, descriviSerie, divergeDalModello, descriviRimozione, fineAttualeSerie,
 } from './modificaEvento.js';
 
 // Pilates il martedì e il giovedì alle 18, in sala A: ottobre 2026.
@@ -33,6 +33,34 @@ describe('quello che è cambiato', () => {
 		const prima = { course_id: 'pilates', room_id: 'salaA', start_time: '18:00:00', end_time: '19:00:00', capacity: '10', date: '2026-10-06' };
 		const dopo = { ...prima, start_time: '18:00', end_time: '19:30', capacity: '10' };
 		assert.deepEqual(campiCambiati(prima, dopo), { end_time: '19:30' });
+	});
+
+	test('il corso non si cambia più in modifica; la data fine sì', () => {
+		const prima = { course_id: 'pilates', room_id: 'salaA', start_time: '18:00', end_time: '19:00', capacity: 10, date: '2026-10-06', end_date: '2026-10-22' };
+		assert.deepEqual(campiCambiati(prima, { ...prima, course_id: 'yoga' }), {});
+		assert.deepEqual(campiCambiati(prima, { ...prima, end_date: '2026-11-30' }), { end_date: '2026-11-30' });
+	});
+});
+
+describe('togliere lezioni, raccontato prima di farlo', () => {
+	test('solo eliminate, solo annullate, entrambe, e aggiunte', () => {
+		assert.equal(descriviRimozione({ eliminate: 1 }), 'Verrà eliminata 1 lezione senza prenotazioni.');
+		assert.equal(
+			descriviRimozione({ annullate: 2, soci_avvisati: 5 }),
+			'2 lezioni hanno prenotazioni: verranno annullate, e 5 soci riceveranno un avviso nel portale.',
+		);
+		assert.equal(
+			descriviRimozione({ eliminate: 3, annullate: 1, soci_avvisati: 1, aggiunte: 0 }),
+			'Verranno eliminate 3 lezioni senza prenotazioni. 1 lezione ha prenotazioni: verrà annullata, e 1 socio riceverà un avviso nel portale.',
+		);
+		assert.equal(descriviRimozione({ aggiunte: 4 }), 'Verranno aggiunte 4 lezioni.');
+		assert.equal(descriviRimozione({}), 'Nessuna lezione cambia.');
+	});
+
+	test('una serie a occorrenze finisce con la sua ultima lezione', () => {
+		const aOccorrenze = { ...evento, end_condition: 'by_count', end_date: null, occurrence_count: 6 };
+		assert.equal(fineAttualeSerie(aOccorrenze, serie), '2026-10-22');
+		assert.equal(fineAttualeSerie(evento, []), '2026-10-22');
 	});
 });
 

@@ -13,6 +13,7 @@ import { generateSessionDates, checkEventConflicts } from "@/staff/lib/eventUtil
 import { validateSessionsBulk } from "@/staff/lib/sessionValidation";
 import {
   hhmm, eUnaSerie, fineEvento, campiCambiati, lezioniDellaSerie, pianificaModifica, elencoGiorni, giorniInOrdine, CAMPI_MODELLO,
+  fineAttualeSerie, descriviRimozione,
 } from "@/staff/lib/modificaEvento";
 import { toIsoDate, formatData } from "@/core/domain/format";
 import { oggiIso } from "@/core/domain/giorni";
@@ -76,10 +77,12 @@ function RigaConflitto({ testo }) {
  * Le date personalizzate non si creano più: un evento è una data singola o una regola
  * settimanale. Gli eventi a date scelte già in calendario si modificano come serie.
  *
- * In modifica, di una serie si cambiano corso, sala, orario e capienza; giorni e periodo restano
- * quelli. Cambiarli vorrebbe dire aggiungere o togliere lezioni con soci già prenotati, e come
- * si annulla una lezione è ancora da decidere. Al salvataggio si sceglie se cambiare solo la
- * lezione cliccata o tutta la serie da oggi in poi — e, di una serie settimanale, in quali giorni.
+ * In modifica il corso non si cambia: un evento di Pilates non diventa Yoga, si elimina e se ne
+ * crea un altro. Di una serie si cambiano sala, orario e capienza — al salvataggio si sceglie se
+ * solo la lezione cliccata o tutta la serie da oggi in poi, e di una settimanale in quali giorni —
+ * e, di una settimanale, la data fine. Quella vale per tutta la serie: allungandola nascono le
+ * lezioni mancanti, accorciandola si tolgono quelle oltre, con le regole dell'eliminazione (chi
+ * era prenotato riceve un avviso). Prima di farlo la finestra mostra i conti del server.
  */
 export default function EventFormDialog({ open, onClose, data, reload, lezione = null }) {
   const { courses, events, sessions, rooms, bookings } = data;
@@ -96,6 +99,9 @@ export default function EventFormDialog({ open, onClose, data, reload, lezione =
   const evento = lezione ? events.find(e => e.id === lezione.event_id) : null;
   const inModifica = !!(lezione && evento);
   const serie = inModifica && eUnaSerie(evento);
+  // La data fine si cambia solo nelle serie settimanali: quelle a date scelte non hanno una regola
+  // da cui generare le lezioni mancanti.
+  const fineModificabile = serie && evento.recurrence_type === "weekly";
 
   useEffect(() => {
     if (!open) return;
@@ -104,6 +110,7 @@ export default function EventFormDialog({ open, onClose, data, reload, lezione =
     if (lezione) {
       const ev = events.find(e => e.id === lezione.event_id);
       if (!ev) return;
+      const settimanale = ev.recurrence_type === "weekly";
       const valori = {
         course_id: ev.course_id,
         room_id: lezione.room_id,
@@ -111,8 +118,10 @@ export default function EventFormDialog({ open, onClose, data, reload, lezione =
         recurrence_type: ev.recurrence_type,
         days_of_week: ev.days_of_week || [],
         start_date: eUnaSerie(ev) ? ev.start_date : lezione.date,
-        end_condition: ev.end_condition || "by_date",
-        end_date: ev.end_date || "",
+        // In modifica una settimanale si legge sempre "fino a una data": anche quella contata a
+        // occorrenze ha un'ultima lezione, ed è da lì che si sposta la fine.
+        end_condition: settimanale ? "by_date" : (ev.end_condition || "by_date"),
+        end_date: settimanale ? fineAttualeSerie(ev, sessions) : (ev.end_date || ""),
         occurrence_count: ev.occurrence_count ? String(ev.occurrence_count) : "",
         start_time: hhmm(lezione.start_time),
         end_time: hhmm(lezione.end_time),
@@ -299,7 +308,7 @@ export default function EventFormDialog({ open, onClose, data, reload, lezione =
     // Il modello dell'evento cambia quando cambia tutto l'evento: un evento singolo, o la serie
     // in tutti i suoi giorni. Cambiando solo il martedì, il modello resta quello del giovedì.
     const cambiaModello = ambito === "evento" || (ambito === "serie" && tuttiIGiorni);
-    const datiEvento = cambiaModello ? scegli(cambi, ["course_id", ...CAMPI_MODELLO]) : {};
+    const datiEvento = cambiaModello ? scegli(cambi, CAMPI_MODELLO) : {};
     if (ambito === "evento" && cambi.date) datiEvento.start_date = cambi.date;
     // Il server controlla la sala sull'intero periodo della serie, passato compreso: se la
     // nuova sala in quel periodo è stata chiusa, il modello resta sulla vecchia e le lezioni
@@ -310,12 +319,13 @@ export default function EventFormDialog({ open, onClose, data, reload, lezione =
     }
     const modello = { ...scegli(evento, CAMPI_MODELLO), ...scegli(datiEvento, CAMPI_MODELLO) };
     const lezioni = ambito === "serie" ? lezioniSerie : [lezione];
-    const corso = courses.find(c => c.id === (cambi.course_id ?? evento.course_id));
+    const corso = courses.find(c => c.id === evento.course_id);
     const piano = pianificaModifica(lezioni, cambi, modello, { sessions, events, courses, rooms, bookings, corso });
     return { ...piano, datiEvento, quante: lezioni.length };
   };
 
-  const scrivi = async ({ datiEvento, daScrivere, daSegnare }, messaggio) => {
+  // `seguito`: cosa fare dopo, se la modifica continua (la data fine). Senza, la finestra si chiude.
+  const scrivi = async ({ datiEvento, daScrivere, daSegnare }, messaggio, seguito = null) => {
     setSaving(true);
     let fatte = 0;
     try {
@@ -327,6 +337,11 @@ export default function EventFormDialog({ open, onClose, data, reload, lezione =
       }
       for (const l of daSegnare) await api.entities.Session.update(l.id, { modified_manually: true });
       toast({ title: "Modifica salvata", description: messaggio });
+      if (seguito) {
+        setSaving(false);
+        await seguito();
+        return;
+      }
       chiudi();
     } catch (err) {
       setPasso(null);
@@ -338,7 +353,11 @@ export default function EventFormDialog({ open, onClose, data, reload, lezione =
     reload();
   };
 
-  const esegui = (ambito, cambi) => {
+  const esegui = (ambito, cambi, nuovaFine = null) => {
+    // Con la data fine cambiata, finita la modifica delle lezioni si passa a quella; se non c'è
+    // altro da cambiare, direttamente a quella.
+    const seguito = nuovaFine ? () => avviaDataFine(nuovaFine, { giaSalvato: true }) : null;
+    if (Object.keys(cambi).length === 0) { avviaDataFine(nuovaFine); return; }
     const piano = pianifica(ambito, cambi);
     const { problemi, quante } = piano;
     const elenco = problemi.map(p => p.messaggio);
@@ -347,14 +366,11 @@ export default function EventFormDialog({ open, onClose, data, reload, lezione =
       : "La lezione è aggiornata";
 
     if (problemi.length > 0) {
-      // Il corso vale per tutto l'evento: non si cambia a metà, lasciando fuori le lezioni in conflitto.
-      if (ambito !== "serie" || problemi.length === quante || cambi.course_id) {
+      if (ambito !== "serie" || problemi.length === quante) {
         setPasso({
           tipo: "conflitti",
           titolo: "Modifica non possibile",
-          testo: cambi.course_id && ambito === "serie" && problemi.length < quante
-            ? "Il corso vale per tutta la serie: con queste lezioni in conflitto non si può cambiare."
-            : "Cambia orario, sala o capienza e riprova.",
+          testo: "Cambia orario, sala o capienza e riprova.",
           problemi: elenco,
           onChiudi: () => setPasso(null),
         });
@@ -366,24 +382,83 @@ export default function EventFormDialog({ open, onClose, data, reload, lezione =
         testo: `${frase(quante - problemi.length, "lezione su", "lezioni su")} ${quante} ${quante - problemi.length === 1 ? "verrà modificata" : "verranno modificate"}: quelle in conflitto resteranno come sono.`,
         problemi: elenco,
         conferma: "Prosegui comunque",
-        onConferma: () => scrivi(piano, descrizione),
+        onConferma: () => scrivi(piano, descrizione, seguito),
         onChiudi: () => setPasso(null),
       });
       return;
     }
-    scrivi(piano, descrizione);
+    scrivi(piano, descrizione, seguito);
+  };
+
+  /**
+   * La data fine di una serie: prima i conti del server (lezioni da aggiungere, da togliere, soci
+   * da avvisare), poi le sovrapposizioni delle lezioni nuove con il resto del calendario — le
+   * controlla la finestra, come in creazione — e una conferma che racconta tutto. Le date in
+   * conflitto si saltano; quelle in cui la sala è chiusa le salta già il server.
+   *
+   * `giaSalvato`: le altre modifiche sono già scritte, quindi "Annulla" chiude invece di tornare
+   * al modulo (che mostrerebbe i valori di prima).
+   */
+  const avviaDataFine = async (nuovaFine, { giaSalvato = false } = {}) => {
+    const annulla = giaSalvato ? () => { chiudi(); reload(); } : () => setPasso(null);
+    setSaving(true);
+    try {
+      const a = await api.calendario.dataFine(evento.id, { end_date: nuovaFine, anteprima: true });
+      const corso = courses.find(c => c.id === evento.course_id);
+      const { conflicts } = a.nuove.length
+        ? checkEventConflicts(a.nuove, a.modello, corso, sessions, events, courses)
+        : { conflicts: [] };
+      const salta = conflicts.map(c => c.date);
+      const conti = { ...a, aggiunte: a.nuove.length - salta.length };
+      const problemi = [
+        ...a.saltate_sala.map(s => `${formatData(s.date, "breve").slice(0, 5)}: ${s.motivo}`),
+        ...conflicts.map(c => c.message),
+      ];
+      const prima = fineAttualeSerie(evento, sessions);
+      setPasso({
+        tipo: "conflitti",
+        titolo: "Cambiare la data fine?",
+        testo: `Dal ${formatData(prima, "breve")} al ${formatData(nuovaFine, "breve")}. ${descriviRimozione(conti)}`
+          + (problemi.length ? ` ${problemi.length === 1 ? "Questa data verrà saltata:" : "Queste date verranno saltate:"}` : ""),
+        problemi,
+        conferma: "Conferma",
+        onConferma: () => applicaDataFine(nuovaFine, salta),
+        onChiudi: annulla,
+      });
+    } catch (err) {
+      setPasso(null);
+      setError(err.message);
+      if (giaSalvato) reload();
+    }
+    setSaving(false);
+  };
+
+  const applicaDataFine = async (nuovaFine, salta) => {
+    setSaving(true);
+    try {
+      const esito = await api.calendario.dataFine(evento.id, { end_date: nuovaFine, salta });
+      toast({ title: "Data fine cambiata", description: descriviRimozione(esito) });
+      chiudi();
+    } catch (err) {
+      setPasso(null);
+      setError(err.message);
+    }
+    setSaving(false);
+    reload();
   };
 
   const handleEdit = () => {
-    const dopo = { ...form, date: serie ? lezione.date : form.start_date };
-    const cambi = campiCambiati(iniziali, dopo);
-    if (Object.keys(cambi).length === 0) {
+    const dopo = { ...form, date: serie ? lezione.date : form.start_date, end_date: fineModificabile ? form.end_date : iniziali.end_date };
+    const { end_date: nuovaFine, ...cambi } = campiCambiati(iniziali, dopo);
+    if (Object.keys(cambi).length === 0 && !nuovaFine) {
       toast({ title: "Nessuna modifica da salvare" });
       chiudi();
       return;
     }
     if (!serie) { esegui("evento", cambi); return; }
-    setPasso({ tipo: "ambito", cambi });
+    // Solo la data fine: vale per tutta la serie, non c'è niente da scegliere.
+    if (Object.keys(cambi).length === 0) { avviaDataFine(nuovaFine); return; }
+    setPasso({ tipo: "ambito", cambi, nuovaFine });
   };
 
   const handleSave = (e) => {
@@ -393,10 +468,15 @@ export default function EventFormDialog({ open, onClose, data, reload, lezione =
     if (salaBloccante) { setError(motivoSalaScelta); return; }
     if (form.start_time >= form.end_time) { setError("L'orario di inizio deve precedere quello di fine."); return; }
     if (!(Number(form.capacity) > 0)) { setError("La capienza è di almeno una persona."); return; }
+    if (fineModificabile && form.end_date !== iniziali.end_date) {
+      if (!form.end_date) { setError("La data fine è obbligatoria."); return; }
+      if (form.end_date < oggi) { setError("La data fine non può essere nel passato: per togliere le lezioni rimaste usa Elimina."); return; }
+      if (form.end_date < evento.start_date) { setError("La data fine non può precedere l'inizio della serie."); return; }
+    }
     if (inModifica) handleEdit(); else handleCreate();
   };
 
-  const corsoCambiato = passo?.tipo === "ambito" && "course_id" in passo.cambi;
+  const fineCambiata = passo?.tipo === "ambito" && !!passo.nuovaFine;
   const tuttiIGiorni = !serie || evento.recurrence_type !== "weekly" || giorniDaModificare.length === giorniInOrdine(evento.days_of_week).length;
   const perLaSerie = evento?.recurrence_type === "weekly" && !tuttiIGiorni
     ? ` del ${elencoGiorni(giorniDaModificare)}` : "";
@@ -409,7 +489,7 @@ export default function EventFormDialog({ open, onClose, data, reload, lezione =
           <form onSubmit={handleSave} className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
               <div><Label>Corso *</Label>
-                <Select value={form.course_id} onValueChange={v => setForm({ ...form, course_id: v })}>
+                <Select value={form.course_id} disabled={inModifica} onValueChange={v => setForm({ ...form, course_id: v })}>
                   <SelectTrigger><SelectValue placeholder="Seleziona" /></SelectTrigger>
                   <SelectContent>{corsiInElenco.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
                 </Select>
@@ -479,14 +559,26 @@ export default function EventFormDialog({ open, onClose, data, reload, lezione =
                   )}
                 </div>
                 <div><Label>Data inizio *</Label><Input type="date" required disabled={inModifica} value={form.start_date} onChange={e => setForm({ ...form, start_date: e.target.value })} /></div>
-                <div><Label>Fine ricorrenza *</Label>
+                {!inModifica && <div><Label>Fine ricorrenza *</Label>
                   <Select value={form.end_condition} disabled={inModifica} onValueChange={v => setForm({ ...form, end_condition: v })}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent><SelectItem value="by_date">Fino a una data</SelectItem><SelectItem value="by_count">Per numero di occorrenze</SelectItem></SelectContent>
                   </Select>
-                </div>
+                </div>}
                 {form.end_condition === "by_date" ? (
-                  <div><Label>Data fine *</Label><Input type="date" required disabled={inModifica} value={form.end_date} onChange={e => setForm({ ...form, end_date: e.target.value })} /></div>
+                  <div>
+                    <Label htmlFor="evento-fine">Data fine *</Label>
+                    <Input
+                      id="evento-fine" type="date" required disabled={inModifica && !fineModificabile}
+                      min={inModifica ? oggi : form.start_date || undefined}
+                      value={form.end_date} onChange={e => setForm({ ...form, end_date: e.target.value })}
+                    />
+                    {fineModificabile && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Vale per tutta la serie: spostandola avanti si aggiungono le lezioni mancanti, indietro si tolgono quelle oltre.
+                      </p>
+                    )}
+                  </div>
                 ) : (
                   <div><Label>Numero occorrenze totali *</Label><Input type="number" min="1" required disabled={inModifica} value={form.occurrence_count} onChange={e => setForm({ ...form, occurrence_count: e.target.value })} placeholder="Es. 12 = 12 sessioni totali" /></div>
                 )}
@@ -494,7 +586,7 @@ export default function EventFormDialog({ open, onClose, data, reload, lezione =
             )}
             {serie && (
               <p className="text-xs text-muted-foreground bg-muted/40 p-2 rounded">
-                Giorni e periodo della serie restano quelli: qui si cambiano corso, sala, orario e capienza.
+                Corso, giorni e inizio della serie restano quelli: qui si cambiano sala, orario e capienza{fineModificabile ? ", e la data fine" : ""}.
                 {evento.recurrence_type === "custom" && ` È una serie a date scelte (${lezioniSerie.length} lezioni da oggi in poi).`}
               </p>
             )}
@@ -547,20 +639,20 @@ export default function EventFormDialog({ open, onClose, data, reload, lezione =
             <div className="space-y-2">
               <SceltaAmbito
                 titolo="Solo questa lezione"
-                dettaglio={corsoCambiato ? "Il corso vale per tutta la serie: da una lezione sola non si cambia." : formatData(lezione.date, "estesa")}
-                disabled={saving || corsoCambiato}
+                dettaglio={fineCambiata ? "Hai cambiato anche la data fine, che vale per tutta la serie." : formatData(lezione.date, "estesa")}
+                disabled={saving || fineCambiata}
                 onClick={() => esegui("lezione", passo.cambi)}
               />
               <SceltaAmbito
                 titolo="Tutta la serie"
                 dettaglio={
-                  corsoCambiato && !tuttiIGiorni ? "Per cambiare il corso scegli tutti i giorni della serie."
-                    : lezioniSerie.length === 0 ? "Nella serie non ci sono lezioni da oggi in poi" + (perLaSerie ? ` il ${elencoGiorni(giorniDaModificare)}.` : ".")
+                  (lezioniSerie.length === 0 ? "Nella serie non ci sono lezioni da oggi in poi" + (perLaSerie ? ` il ${elencoGiorni(giorniDaModificare)}.` : ".")
                     : `${lezioniSerie.length} ${lezioniSerie.length === 1 ? "lezione" : "lezioni"}${perLaSerie}, da oggi in poi`
-                    + (lezioniSerie.some(l => l.id === lezione.id) ? "" : " (questa esclusa)")
+                    + (lezioniSerie.some(l => l.id === lezione.id) ? "" : " (questa esclusa)"))
+                  + (fineCambiata ? ". Poi la data fine, su tutti i giorni." : "")
                 }
-                disabled={saving || lezioniSerie.length === 0 || (corsoCambiato && !tuttiIGiorni)}
-                onClick={() => esegui("serie", passo.cambi)}
+                disabled={saving || (lezioniSerie.length === 0 && !fineCambiata)}
+                onClick={() => esegui("serie", passo.cambi, passo.nuovaFine)}
               />
               <Button variant="ghost" className="w-full" onClick={() => setPasso(null)} disabled={saving}>Annulla</Button>
             </div>
@@ -580,9 +672,11 @@ export default function EventFormDialog({ open, onClose, data, reload, lezione =
           </DialogHeader>
           {passo?.tipo === "conflitti" && (
             <>
-              <ul className="max-h-64 overflow-y-auto rounded-lg border border-border divide-y divide-border">
-                {passo.problemi.map((r, i) => <RigaConflitto key={i} testo={r} />)}
-              </ul>
+              {passo.problemi.length > 0 && (
+                <ul className="max-h-64 overflow-y-auto rounded-lg border border-border divide-y divide-border">
+                  {passo.problemi.map((r, i) => <RigaConflitto key={i} testo={r} />)}
+                </ul>
+              )}
               <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
                 {passo.onConferma ? (
                   <>

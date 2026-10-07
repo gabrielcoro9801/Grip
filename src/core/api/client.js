@@ -192,6 +192,22 @@ export const api = {
 		return request('/api/dashboard');
 	},
 
+	/**
+	 * Togliere lezioni e cambiare la data fine di una serie: molte righe insieme — lezioni,
+	 * prenotazioni, evento, avvisi ai soci — in una transazione sul server. Con
+	 * `anteprima: true` si hanno i conti senza scrivere niente.
+	 */
+	calendario: {
+		/** { lezione_id, ambito: 'lezione' | 'serie', giorni?, anteprima? } → { eliminate, annullate, soci_avvisati, evento_eliminato } */
+		elimina(corpo) {
+			return request('/api/calendario/elimina', { method: 'POST', body: corpo });
+		},
+		/** { end_date, salta?, anteprima? } → { aggiunte, eliminate, annullate, soci_avvisati, nuove?, saltate_sala?, modello? } */
+		dataFine(idEvento, corpo) {
+			return request(`/api/calendario/eventi/${idEvento}/data-fine`, { method: 'POST', body: corpo });
+		},
+	},
+
 	/** Quanto è usata ogni sala, contato dal server sull'intero calendario. */
 	sale: {
 		uso() {

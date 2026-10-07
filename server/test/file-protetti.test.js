@@ -140,7 +140,7 @@ describe("l'indirizzo che arriva alle schermate è già firmato", () => {
 
 		const [socio] = await db
 			.insert(members)
-			.values({ nome: 'Prova', cognome: 'File Protetti', codiceSocio: `FP${Date.now() % 1e8}` })
+			.values({ nome: 'Prova', cognome: 'File Protetti', codiceSocio: `FP${String(Date.now()).replace(/\d/g, (c) => 'ABCDEFGHIJ'[c])}` })
 			.returning();
 		idSocio = socio.id;
 
