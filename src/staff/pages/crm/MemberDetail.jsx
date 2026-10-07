@@ -17,7 +17,7 @@ import { AvatarSocio, SceltaFoto } from "@/staff/components/soci/FotoSocio";
 import { caricaFile } from "@/staff/lib/uploads";
 import { canAccess, canEdit } from "@/staff/lib/permissions";
 import { motivoPasswordNonValida, LUNGHEZZA_MINIMA_PASSWORD } from "@/core/domain/password";
-import { etichettaSesso, etaA, eMinorenne } from "@/core/domain/anagrafica";
+import { etichettaSesso, etaA } from "@/core/domain/anagrafica";
 import { generateQRCode, generaPasswordTemporanea } from "@/staff/lib/qrUtils";
 import { qrDataUrl } from "@/ui/qr/qrImmagine";
 import { useQrDinamico } from "@/ui/hooks/useQrDinamico";
@@ -322,10 +322,6 @@ export default function MemberDetail() {
 
   if (!member) return <div className="p-8 text-center text-muted-foreground">Socio non trovato</div>;
 
-  // Un minorenne si iscrive con il consenso di chi ne è responsabile: se manca lo si dice
-  // subito, sotto il nome, oltre che nella sezione dei documenti.
-  const minorenne = eMinorenne(member.date_of_birth);
-  const haConsenso = documents.some((d) => d.document_type === "consenso_genitori");
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-5xl mx-auto space-y-6">
@@ -344,11 +340,7 @@ export default function MemberDetail() {
           {member.archiviato_il && (
             <StatusBadge status="archiviato" label={`Archiviato il ${formatData(member.archiviato_il, "breve")}`} tone="neutro" />
           )}
-          {minorenne && <StatusBadge status="minorenne" label="Minorenne" tone="info" />}
-          {/* Si dice solo a chi vede i documenti: per gli altri la lista è vuota, non mancante. */}
-          {minorenne && puoVedereDocumenti && !haConsenso && (
-            <StatusBadge status="consenso_mancante" label="Consenso dei genitori mancante" tone="negativo" />
-          )}
+
         </div>
       </div>
 
