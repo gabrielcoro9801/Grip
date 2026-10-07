@@ -1,7 +1,6 @@
 # Grip — Gestione Palestra
 
-Gestionale per palestre: CRM soci, corsi e prenotazioni, schede di allenamento e portale
-soci.
+Gestionale per palestre: CRM soci, contatti (lead), corsi e prenotazioni, e portale soci.
 
 - **Frontend**: React 18 + Vite 6, Tailwind CSS, Radix UI, React Router (cartella `src/`)
 - **Backend**: Fastify + PostgreSQL con Drizzle ORM (cartella `server/`)
@@ -75,7 +74,7 @@ dai diversi punti di vista.
 |---|---|---|---|
 | `admin@grip.local` | `admin1234` | Admin | Vede tutto |
 | `reception@grip.local` | `reception1234` | Reception | Gestione membri e corsi, non il log audit né gli account |
-| `giulia@grip.local` | `socio1234` | Socio | Portale soci, con abbonamento e scheda di allenamento |
+| `giulia@grip.local` | `socio1234` | Socio | Portale soci, con abbonamento |
 
 La *Reception* è utile per due prove: che il menu si riduca davvero secondo i permessi, e che
 un ruolo senza gestione utenti non possa concedersi niente.
@@ -104,6 +103,19 @@ Tre punti che si sbagliano quasi sempre, spiegati lì per esteso:
   redirect, con un errore che non dice perché.
 
 ## Stato del progetto
+
+### 7 ottobre 2026 — l'allenamento esce dall'applicazione
+
+Sono stati tolti dal gestionale e dal portale soci **libreria esercizi, schede modello e
+assegnate, allenamenti svolti, la sessione di allenamento e i progressi**. Con loro se ne
+vanno le rotte `/api/member/v1/allenamento/*`, le entità `Exercise`, `ExercisePlan`,
+`WorkoutSession` e `WorkoutLog` dall'endpoint generico e il modulo di permesso `crm_plans`.
+
+Come per la contabilità, il codice non è perduto: sta nel tag
+**`archivio/allenamento-2026-10`** e nel branch `archivio/allenamento`, sul commit precedente
+alla rimozione. **Le tabelle restano** (`exercises`, `exercise_plans`, `workout_sessions`,
+`workout_logs`) con i loro dati, e restano dichiarate in `server/src/db/schema/fitness.js`
+perché drizzle-kit non proponga di eliminarle: toglierle sarà una migrazione a sé.
 
 ### 10 settembre 2026 (notte) — quindici difetti da una revisione del codice
 

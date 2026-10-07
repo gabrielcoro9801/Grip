@@ -586,7 +586,7 @@ export function conCampiCalcolatiMolte(entityName, righe) {
  * `/uploads/*` non è più aperto a chiunque (vedi `lib/urlFirmati.js`): per aprire un file
  * serve una firma nell'indirizzo. Applicarla qui — nel punto unico da cui passano tutte le
  * letture delle entità — vuol dire che nessuna schermata deve saperlo: continua a mettere
- * `esercizio.image_url` dentro un `<img src>` come ha sempre fatto.
+ * `socio.foto_url` dentro un `<img src>` come ha sempre fatto.
  *
  * Il verso opposto conta quanto questo. Le schermate del gestionale rileggono l'indirizzo
  * di un'immagine, lo mettono in un campo del modulo e lo risalvano com'è: senza toglierla,

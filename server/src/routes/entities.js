@@ -171,7 +171,6 @@ export default async function entityRoutes(fastify) {
 		const table = entityRegistry[entityName];
 		const ricevuto = togliFirmaInScrittura(togliCampiDiSistema(request.body));
 		verificaCampiFile(ricevuto);
-		if (await riferimentoAltrui(request, entityName, ricevuto)) return reply.code(404).send({ error: 'Non trovato' });
 		let body = await applyWriteTransform(entityName, ricevuto, { utente: request.utente });
 		// Un socio crea solo record intestati a sé: l'appartenenza la impone il server,
 		// altrimenti basterebbe cambiare un identificativo nella richiesta.
@@ -201,7 +200,6 @@ export default async function entityRoutes(fastify) {
 		for (const item of source) {
 			const ricevuto = togliFirmaInScrittura(togliCampiDiSistema(item));
 			verificaCampiFile(ricevuto);
-			if (await riferimentoAltrui(request, entityName, ricevuto)) return reply.code(404).send({ error: 'Non trovato' });
 			let riga = await applyWriteTransform(entityName, ricevuto, { utente: request.utente });
 			// L'appartenenza va imposta anche qui, non solo sulla creazione singola: finché
 			// mancava, bastava passare da /bulk invece che dalla rotta normale per creare
@@ -226,10 +224,8 @@ export default async function entityRoutes(fastify) {
 	 * Se la riga che un socio sta per modificare o cancellare è davvero sua.
 	 *
 	 * La lettura era già filtrata, la creazione già intestata d'ufficio, ma modifica e
-	 * cancellazione no: bastava l'identificativo di una riga altrui — e per un socio che
-	 * legge i propri allenamenti gli identificativi altrui non sono nemmeno difficili da
-	 * indovinare — per riscrivere l'allenamento di un altro. Serve da quando il portale
-	 * chiude una sessione aggiornandola, ma il buco c'era già.
+	 * cancellazione no: bastava l'identificativo di una riga altrui per riscrivere quella di un
+	 * altro socio.
 	 *
 	 * Risponde "non trovato" e non "vietato": a chi non deve vedere una riga non si
 	 * conferma nemmeno che esista.
@@ -267,32 +263,6 @@ export default async function entityRoutes(fastify) {
 		return sale;
 	}
 
-	/**
-	 * Se un socio sta citando la scheda o l'allenamento di un altro.
-	 *
-	 * L'intestazione della riga la impone `forzaProprietario`, ma i riferimenti no: un socio
-	 * avviava un allenamento con il `plan_id` della scheda di un altro, e poi il portale gli
-	 * restituiva le routine di quella scheda. Serve conoscere l'id, ma resta un accesso ai dati
-	 * di un altro. Risponde come `rigaNonSua`: a chi non deve vedere una riga non si conferma
-	 * nemmeno che esista.
-	 */
-	async function riferimentoAltrui(request, entityName, corpo) {
-		if (!request.memberId || !corpo) return false;
-		const controlli = [];
-		if ((entityName === 'WorkoutSession' || entityName === 'WorkoutLog') && corpo.plan_id) {
-			controlli.push([entityRegistry.ExercisePlan, corpo.plan_id]);
-		}
-		if (entityName === 'WorkoutLog' && corpo.session_id) {
-			controlli.push([entityRegistry.WorkoutSession, corpo.session_id]);
-		}
-		for (const [tabella, id] of controlli) {
-			const { dbNameToColumn, dbNameToJsKey } = getColumnMaps(tabella);
-			const [riga] = await db.select().from(tabella).where(eq(dbNameToColumn.id, id)).limit(1);
-			if (!riga || String(riga[dbNameToJsKey.member_id]) !== String(request.memberId)) return true;
-		}
-		return false;
-	}
-
 	// PUT /api/entities/:name/:id
 	fastify.put('/api/entities/:name/:id', async (request, reply) => conSaleBloccate(await saleCoinvolte(request), async () => {
 		const entityName = request.params.name;
@@ -308,7 +278,6 @@ export default async function entityRoutes(fastify) {
 		const { dbNameToColumn } = getColumnMaps(table);
 		const ricevuto = togliFirmaInScrittura(togliCampiDiSistema(request.body));
 		verificaCampiFile(ricevuto);
-		if (await riferimentoAltrui(request, entityName, ricevuto)) return reply.code(404).send({ error: 'Non trovato' });
 		let body = await applyWriteTransform(entityName, ricevuto, { creazione: false, utente: request.utente, id: request.params.id });
 		// Nemmeno con una modifica si cambia intestatario: senza, un socio potrebbe
 		// spostare a un altro una riga sua, o prendersi la riga di qualcun altro in due passi.

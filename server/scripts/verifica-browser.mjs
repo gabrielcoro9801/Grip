@@ -30,7 +30,7 @@ const emailStaff = `verifica.staff.${suffisso}@test.local`;
 const emailSocio = `verifica.socio.${suffisso}@test.local`;
 
 // Quello che si vede quando si è dentro, da una parte e dall'altra.
-const DENTRO_GESTIONALE = /Dashboard|Gestione membri|Allenamento/i;
+const DENTRO_GESTIONALE = /Dashboard|Gestione membri|Gestione corsi/i;
 const DENTRO_PORTALE = /Abbonamento|QR accesso|Corsi/i;
 // Il pulsante "Accedi", non la parola "password": da quando il menu ha "Cambia password",
 // anche una pagina a sessione aperta la contiene.

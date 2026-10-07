@@ -1,4 +1,10 @@
 // Dominio fitness: Exercise, ExercisePlan, WorkoutLog.
+//
+// ⚠️ L'allenamento è uscito dall'applicazione a ottobre 2026: il codice è sul ramo e sul tag
+// `archivio/allenamento`. Le tabelle restano nel database con i dati di chi le ha usate, e
+// restano dichiarate qui perché drizzle-kit non proponga di eliminarle a ogni migrazione.
+// Nessuna rotta e nessuna entità le usa più. Toglierle sarà una migrazione a sé, come la 0020
+// per la contabilità.
 import { pgTable, uuid, varchar, text, integer, numeric, date, jsonb, boolean, timestamp, index } from 'drizzle-orm/pg-core';
 import { members } from './crm.js';
 

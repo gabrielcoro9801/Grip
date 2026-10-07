@@ -86,7 +86,7 @@ describe('le intestazioni delle pagine servite', () => {
 		});
 
 		test('anche su un percorso profondo', { skip: !existsSync(DIST_DIR) && 'dist/ non compilata' }, async () => {
-			assert.match(await daGuscio('/member-portal/allenamento/sessione/abc'), /src\/member\/main|assets\/member-/);
+			assert.match(await daGuscio('/member-portal/corsi/settimana/abc'), /src\/member\/main|assets\/member-/);
 		});
 
 		// Il router non distingue le maiuscole, e questo non deve distinguerle di meno: se lo

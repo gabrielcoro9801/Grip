@@ -24,8 +24,6 @@ const MemberSubscription = lazy(() => import('@/member/pages/MemberSubscription'
 const MemberProfile = lazy(() => import('@/member/pages/MemberProfile'));
 const MemberQR = lazy(() => import('@/member/pages/MemberQR'));
 const MemberCoursesCalendar = lazy(() => import('@/member/pages/MemberCoursesCalendar'));
-const MemberWorkoutPlans = lazy(() => import('@/member/pages/MemberWorkoutPlans'));
-const SessioneAllenamento = lazy(() => import('@/member/pages/SessioneAllenamento'));
 
 export default function App() {
   return (
@@ -46,10 +44,6 @@ export default function App() {
                 <Route path="anagrafica" element={<MemberProfile />} />
                 <Route path="qr" element={<MemberQR />} />
                 <Route path="corsi" element={<MemberCoursesCalendar />} />
-                <Route path="allenamento" element={<MemberWorkoutPlans />} />
-                {/* L'allenamento mentre lo si fa: a schermo intero, senza le barre del
-                    portale — MemberLayout le toglie su questo percorso. */}
-                <Route path="allenamento/sessione/:id" element={<SessioneAllenamento />} />
               </Route>
 
               <Route path="*" element={<PageNotFound />} />

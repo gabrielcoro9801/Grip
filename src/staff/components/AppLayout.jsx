@@ -24,10 +24,6 @@ const navItems = [
   // I lead sono contatti, non soci: non hanno scheda, abbonamento né accesso. Stanno in una
   // sezione loro per non mescolarsi con chi è già iscritto.
   { label: "Lead", path: "/lead", icon: UserPlus },
-  // L'allenamento era una scheda dentro i Soci, ma non parla di un socio: il catalogo
-  // degli esercizi e le schede modello non appartengono a nessuno, e ci si lavora per
-  // conto proprio. Da qui in poi è una sezione sua.
-  { label: "Allenamento", path: "/allenamento", icon: Dumbbell },
   { label: "Gestione corsi", path: "/calendario", icon: Calendar },
   { label: "Utenti e ruoli", path: "/admin", icon: ShieldCheck },
   { label: "Log audit", path: "/log-audit", icon: ScrollText },

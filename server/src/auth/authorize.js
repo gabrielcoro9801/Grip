@@ -40,12 +40,6 @@ const ENTITY_MODULES = {
 	Room: 'calendar',
 	Booking: 'calendar',
 
-	// Catalogo esercizi e schede di allenamento. La matrice dice già che la reception le
-	// vede e non le tocca ("crm_plans": ["view"]): finché mancavano da qui, quel limite
-	// valeva solo per i pulsanti nascosti, e la stessa richiesta fatta a mano passava.
-	Exercise: 'crm_plans',
-	ExercisePlan: 'crm_plans',
-
 	// L'intestazione dell'ente: nome, logo, recapiti. Si tocca da Admin & Utenti, che è
 	// dove sta chi amministra l'installazione.
 	Organization: 'admin_users',
@@ -60,17 +54,6 @@ const ENTITY_MODULES = {
  * client, e chiunque poteva aggiungerne di attribuite ad altri.
  */
 const SOLO_AGGIUNTA = new Set(['AuditLog']);
-
-// Gli allenamenti svolti: lo staff li **legge** per seguire i soci, ma non li scrive.
-//
-// Sono il diario di quello che una persona ha fatto in sala, e correggerlo dall'esterno
-// significherebbe cambiare il suo storico senza che se ne accorga. Chi si allena sistema i
-// propri errori — cancellare una seduta creata per sbaglio, correggere un carico battuto
-// male — e l'istruttore, se vede un numero strano, glielo fa notare.
-//
-// Il socio non passa da qui: le proprie sessioni e le proprie serie le scrive comunque,
-// attraverso memberPuoScrivere.
-const SOLO_IL_PROPRIETARIO = new Set(['WorkoutSession', 'WorkoutLog']);
 
 // Entità che solo un amministratore può modificare, a prescindere dalla matrice:
 // da qui si creano gli account e si assegnano i ruoli, cioè si decide chi può fare cosa.
@@ -90,7 +73,6 @@ const SOLA_LETTURA = new Set(['ParametroFiscale']);
 export function canWriteEntity(role, entityName, metodo = 'POST') {
 	if (role === 'member') return false;
 	if (SOLA_LETTURA.has(entityName)) return false;
-	if (SOLO_IL_PROPRIETARIO.has(entityName)) return false;
 	if (SOLO_AGGIUNTA.has(entityName)) return false;
 	if (ADMIN_ONLY_WRITE.has(entityName)) return role === 'admin';
 
@@ -114,7 +96,6 @@ export function canWriteEntity(role, entityName, metodo = 'POST') {
 export function haRegolaDiScrittura(entityName) {
 	return (
 		entityName in ENTITY_MODULES ||
-		SOLO_IL_PROPRIETARIO.has(entityName) ||
 		ADMIN_ONLY_WRITE.has(entityName) ||
 		SOLA_LETTURA.has(entityName) ||
 		SOLO_AGGIUNTA.has(entityName)
@@ -133,7 +114,7 @@ export function haRegolaDiScrittura(entityName) {
  * `null` = un catalogo: serve a tutti per lavorare, e dentro non ci sono persone.
  * Un elenco = basta uno di quei moduli in visione. I dati di una persona restano del modulo
  * che li governa; l'anagrafica dei soci si apre anche ai moduli le cui schermate mostrano i
- * nomi dei soci (calendario, schede, account), finché quelle schermate non riceveranno i
+ * nomi dei soci (calendario, account), finché quelle schermate non riceveranno i
  * nomi già pronti dal server invece della tabella intera.
  *
  * **Ogni entità del registro deve comparire qui**, come per la scrittura: una dimenticata è
@@ -148,20 +129,16 @@ const LETTURA = {
 	Event: null,
 	Session: null,
 	Plan: null,
-	Exercise: null,
 	Organization: null,
 
 	// Dati delle persone.
-	Member: ['crm_members', 'calendar', 'crm_plans', 'admin_users'],
+	Member: ['crm_members', 'calendar', 'admin_users'],
 	Subscription: ['crm_members'],
 	QRAccesso: ['crm_members'],
 	MemberDocument: ['crm_documents'],
 	Lead: ['crm_leads'],
 	CanaleContatto: ['crm_leads'],
 	Booking: ['calendar'],
-	ExercisePlan: ['crm_plans'],
-	WorkoutSession: ['crm_plans'],
-	WorkoutLog: ['crm_plans'],
 	StaffAccount: ['admin_users'],
 	AuditLog: ['audit_log'],
 };

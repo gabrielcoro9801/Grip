@@ -5,7 +5,7 @@ import MemberLogin from "./MemberLogin";
 import { LoadingState } from "@/ui/Spinner";
 import SelettoreTema from "@/ui/SelettoreTema";
 import { CambioPasswordObbligatorio } from "@/ui/CambioPassword";
-import { Dumbbell, Home, FileText, CreditCard, User, QrCode, LogOut, LayoutGrid, ClipboardList } from "lucide-react";
+import { Dumbbell, Home, FileText, CreditCard, User, QrCode, LogOut, LayoutGrid } from "lucide-react";
 
 // Una sola lista di destinazioni. Le barre erano due, con nomi diversi per lo
 // stesso posto ("QR Accesso" nella sidebar, "QR" in fondo allo schermo):
@@ -13,7 +13,6 @@ import { Dumbbell, Home, FileText, CreditCard, User, QrCode, LogOut, LayoutGrid,
 const navItems = [
   { label: "Home", path: "/member-portal", icon: Home, end: true, inBasso: true },
   { label: "Corsi", path: "/member-portal/corsi", icon: LayoutGrid, inBasso: true },
-  { label: "Allenamento", path: "/member-portal/allenamento", icon: ClipboardList, inBasso: true },
   { label: "Documenti", path: "/member-portal/documenti", icon: FileText },
   { label: "Abbonamento", path: "/member-portal/abbonamento", icon: CreditCard },
   { label: "QR accesso", path: "/member-portal/qr", icon: QrCode, inBasso: true },
@@ -44,15 +43,6 @@ export default function MemberLayout() {
     if (end) return location.pathname === path;
     return location.pathname.startsWith(path);
   };
-
-  // L'allenamento in corso prende tutto lo schermo: ha una sua intestazione con durata,
-  // volume e "Termina", e il timer del recupero sta ancorato in fondo — proprio dove
-  // starebbe la barra di navigazione. Sono due cose che si contendono lo stesso posto, e
-  // fra un menu e il cronometro di chi ha il bilanciere in mano vince il cronometro.
-  const allenamentoInCorso = location.pathname.startsWith("/member-portal/allenamento/sessione/");
-  if (allenamentoInCorso) {
-    return <Outlet />;
-  }
 
   return (
     <div className="min-h-screen bg-background flex">
