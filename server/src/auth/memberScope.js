@@ -63,6 +63,11 @@ export function colonnaProprietarioScrittura(entityName) {
 // prenotato, quindi il nome viene rimosso dalla risposta.
 const CAMPI_NASCOSTI = {
 	Booking: ['member_name'],
+	// La propria anagrafica sì, ma non quello che la segreteria scrive *sul* socio: le note
+	// ("richiamare dopo le 18", arrivate magari da quando era un contatto) e da quale canale
+	// è arrivato. Il portale le toglieva già (vedi /api/member/v1/profilo); l'endpoint generico,
+	// che resta aperto in lettura sulla propria riga, le restituiva.
+	Member: ['notes', 'lead_canale_id', 'lead_data_contatto'],
 };
 
 // Quello che un socio scrive dall'endpoint generico: oggi niente. Erano i propri allenamenti,

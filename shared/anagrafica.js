@@ -76,6 +76,9 @@ export function codiceFiscaleValido(valoreGrezzo) {
 /** Le note di un istruttore stanno in tre righe della sua tile. */
 export const NOTE_ISTRUTTORE_MASSIMO = 140;
 
+/** Le note della segreteria su un socio: due righe, come quelle di un contatto o di un corso. */
+export const NOTE_SOCIO_MASSIMO = 140;
+
 /** Solo le cifre, senza spazi né prefisso "IT": "IT 012 345 67890" → "01234567890". */
 export function normalizzaPartitaIva(valore) {
   return String(valore ?? "").replace(/\s+/g, "").toUpperCase().replace(/^IT/, "");
