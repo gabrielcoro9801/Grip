@@ -43,7 +43,10 @@ function mezzanotte(giorno) {
 	const testo = String(giorno ?? '');
 	if (!E_UNA_DATA.test(testo)) return null;
 	const ms = Date.parse(`${testo.slice(0, 10)}T00:00:00Z`);
-	return Number.isNaN(ms) ? null : ms;
+	if (Number.isNaN(ms)) return null;
+	// `Date.parse` accetta anche il 30 febbraio, e lo fa diventare il 2 marzo: un giorno esiste
+	// solo se tornando indietro si ritrova lo stesso testo.
+	return new Date(ms).toISOString().slice(0, 10) === testo.slice(0, 10) ? ms : null;
 }
 
 /** Vera se è un giorno YYYY-MM-DD che esiste. */

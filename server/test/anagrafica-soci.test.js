@@ -59,8 +59,8 @@ after(async () => {
 });
 
 describe('creare un socio', () => {
-	test('nome, cognome, sesso e codice fiscale valido sono obbligatori', async () => {
-		const completo = { nome: 'Matteo', cognome: 'Moretti', sesso: 'M', codice_fiscale: CF };
+	test('nome, cognome, sesso, codice fiscale valido e data di nascita sono obbligatori', async () => {
+		const completo = { nome: 'Matteo', cognome: 'Moretti', sesso: 'M', codice_fiscale: CF, date_of_birth: '1985-12-10' };
 		for (const manca of Object.keys(completo)) {
 			const { [manca]: _tolto, ...corpo } = completo;
 			assert.equal((await crea(corpo)).statusCode, 400, `senza ${manca}`);
@@ -70,8 +70,16 @@ describe('creare un socio', () => {
 		assert.match(sbagliato.json().error, /codice fiscale/i);
 	});
 
+	test('la data di nascita va scritta e non può essere nel futuro', async () => {
+		const base = { nome: 'Matteo', cognome: 'Moretti', sesso: 'M', codice_fiscale: CF };
+		const futura = await crea({ ...base, date_of_birth: '2999-01-01' });
+		assert.equal(futura.statusCode, 400);
+		assert.match(futura.json().error, /futuro/);
+		assert.match((await crea({ ...base, date_of_birth: '2001-02-30' })).json().error, /non è valida/);
+	});
+
 	test('il nome completo non si scrive: lo calcola il database', async () => {
-		const res = await crea({ nome: 'Matteo', cognome: 'Moretti', sesso: 'M', codice_fiscale: CF, full_name: 'Altro Nome' });
+		const res = await crea({ nome: 'Matteo', cognome: 'Moretti', sesso: 'M', codice_fiscale: CF, date_of_birth: '1985-12-10', full_name: 'Altro Nome' });
 		assert.equal(res.statusCode, 201, res.body);
 		idSoci.push(res.json().id);
 		assert.equal(res.json().full_name, 'Matteo Moretti');
@@ -83,7 +91,7 @@ describe('creare un socio', () => {
 	});
 
 	test('lo stesso codice fiscale non vale per due soci, maiuscole o no', async () => {
-		const res = await crea({ nome: 'Altro', cognome: 'Socio', sesso: 'M', codice_fiscale: CF.toLowerCase() });
+		const res = await crea({ nome: 'Altro', cognome: 'Socio', sesso: 'M', codice_fiscale: CF.toLowerCase(), date_of_birth: '1990-01-01' });
 		assert.equal(res.statusCode, 400);
 		assert.match(res.json().error, /già un socio con questo codice fiscale/);
 	});
@@ -108,6 +116,11 @@ describe('modificare un socio', () => {
 		assert.equal((await modifica(idSoci[0], { codice_fiscale: 'NONVALIDO' })).statusCode, 400);
 	});
 
+	test('nemmeno la data di nascita si svuota', async () => {
+		assert.equal((await modifica(idSoci[0], { date_of_birth: '' })).statusCode, 400);
+		assert.equal((await modifica(idSoci[0], { date_of_birth: null })).statusCode, 400);
+	});
+
 	test('un socio di prima, senza codice fiscale, resta modificabile nel resto', async () => {
 		const [vecchio] = await db.insert(members).values({ nome: 'Socio', cognome: 'Storico', codiceSocio: `ST${String(Date.now()).replace(/\d/g, (c) => 'ABCDEFGHIJ'[c])}` }).returning();
 		idSoci.push(vecchio.id);
@@ -120,8 +133,9 @@ describe('modificare un socio', () => {
 describe('i documenti', () => {
 	const carica = (payload) => come({ method: 'POST', url: '/api/entities/MemberDocument', payload: { member_id: idSoci[0], ...payload } });
 
-	test('tre tipi, e ognuno con quello che gli serve', async () => {
+	test('quattro tipi, e ognuno con quello che gli serve', async () => {
 		assert.equal((await carica({ document_type: 'Certificato Medico', expiry_date: '2027-01-01' })).statusCode, 400, 'tipo non ammesso');
+		assert.equal((await carica({ document_type: 'xyz' })).statusCode, 400, 'tipo inventato');
 		assert.equal((await carica({ document_type: 'certificato_medico' })).statusCode, 400, 'certificato senza scadenza');
 		assert.equal((await carica({ document_type: 'documento_identita' })).statusCode, 400, 'identità senza scadenza');
 		assert.equal((await carica({ document_type: 'altro' })).statusCode, 400, 'altro senza titolo');
@@ -129,8 +143,10 @@ describe('i documenti', () => {
 		assert.equal((await carica({ document_type: 'certificato_medico', expiry_date: '2027-01-01' })).statusCode, 201);
 		assert.equal((await carica({ document_type: 'documento_identita', expiry_date: '2030-05-20' })).statusCode, 201);
 		assert.equal((await carica({ document_type: 'altro', titolo: 'Contratto' })).statusCode, 201);
+		// Il consenso dei genitori non scade: si carica senza data di scadenza.
+		assert.equal((await carica({ document_type: 'consenso_genitori' })).statusCode, 201);
 
 		const righe = await db.select().from(memberDocuments).where(eq(memberDocuments.memberId, idSoci[0]));
-		assert.equal(righe.length, 3);
+		assert.equal(righe.length, 4);
 	});
 });

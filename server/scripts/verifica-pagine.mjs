@@ -228,6 +228,8 @@ try {
 	if (await trasforma.count()) {
 		await trasforma.click();
 		await pagStaff.locator('#anag-cf').fill(CF_LEAD);
+		// Il lead aveva solo l'anno: per il socio la data intera è obbligatoria.
+		await pagStaff.locator('#anag-nascita').fill('1994-03-02');
 		await pagStaff.getByRole('button', { name: /^Crea il socio$/ }).click();
 		await pagStaff.waitForTimeout(2500);
 		[socioCreato] = await db.select().from(members).where(eq(members.codiceFiscale, CF_LEAD));

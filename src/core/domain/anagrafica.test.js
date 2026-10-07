@@ -13,6 +13,11 @@ import {
 	nomeDocumento,
 	motivoDocumentoNonValido,
 	conStatoDocumenti,
+	motivoDataNascitaNonValida,
+	etaA,
+	eMinorenne,
+	tipoAtteso,
+	tipoDocumentoValido,
 } from './anagrafica.js';
 
 describe('il codice fiscale', () => {
@@ -185,4 +190,56 @@ test("la partita IVA: undici cifre e l'ultima di controllo", () => {
   assert.equal(partitaIvaValida("01234567890"), false, "cifra di controllo sbagliata");
   assert.equal(partitaIvaValida("1234567897"), false, "dieci cifre");
   assert.equal(partitaIvaValida(""), false);
+});
+
+describe('la data di nascita e l\'età', () => {
+	test('obbligatoria, vera, non nel futuro e non prima del 1900', () => {
+		const oggi = '2026-10-07';
+		assert.match(motivoDataNascitaNonValida('', oggi), /obbligatoria/);
+		assert.match(motivoDataNascitaNonValida(null, oggi), /obbligatoria/);
+		assert.match(motivoDataNascitaNonValida('2026-02-30', oggi), /non è valida/);
+		assert.match(motivoDataNascitaNonValida('2026-10-08', oggi), /futuro/);
+		assert.match(motivoDataNascitaNonValida('1899-12-31', oggi), /1900/);
+		assert.equal(motivoDataNascitaNonValida('2026-10-07', oggi), null, 'nato oggi va bene');
+		assert.equal(motivoDataNascitaNonValida('1985-12-10', oggi), null);
+	});
+
+	test('gli anni si compiono il giorno del compleanno, non prima', () => {
+		assert.equal(etaA('2008-10-07', '2026-10-07'), 18);
+		assert.equal(etaA('2008-10-08', '2026-10-07'), 17);
+		assert.equal(etaA('2008-02-29', '2026-02-28'), 17, 'il 29 febbraio si compie il 1° marzo');
+		assert.equal(etaA('2008-02-29', '2026-03-01'), 18);
+		assert.equal(etaA(null, '2026-10-07'), null);
+	});
+
+	test('minorenne fino al giorno prima dei 18 anni; senza data non lo si sa', () => {
+		assert.equal(eMinorenne('2008-10-08', '2026-10-07'), true);
+		assert.equal(eMinorenne('2008-10-07', '2026-10-07'), false);
+		assert.equal(eMinorenne(null, '2026-10-07'), false);
+	});
+});
+
+describe('il consenso dei genitori', () => {
+	const minore = { date_of_birth: '2012-05-01' };
+	const adulto = { date_of_birth: '1990-05-01' };
+
+	test('è un tipo di documento a sé, atteso solo per i minorenni', () => {
+		assert.equal(tipoDocumentoValido('consenso_genitori'), true);
+		assert.equal(nomeDocumento({ document_type: 'consenso_genitori' }), 'Consenso dei genitori');
+		assert.equal(tipoAtteso('consenso_genitori', minore, '2026-10-07'), true);
+		assert.equal(tipoAtteso('consenso_genitori', adulto, '2026-10-07'), false);
+		assert.equal(tipoAtteso('consenso_genitori', {}, '2026-10-07'), false);
+		// Gli altri non cambiano con l'età.
+		assert.equal(tipoAtteso('certificato_medico', adulto), true);
+		assert.equal(tipoAtteso('altro', minore), false);
+	});
+
+	test('non chiede la scadenza, e non va mai in archivio da solo', () => {
+		assert.equal(motivoDocumentoNonValido({ document_type: 'consenso_genitori' }), null);
+		const [consenso] = conStatoDocumenti(
+			[{ id: 'c', document_type: 'consenso_genitori', created_date: '2020-01-01', expiry_date: null }],
+			() => null,
+		);
+		assert.equal(consenso.stato, 'valido');
+	});
 });

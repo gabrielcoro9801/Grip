@@ -105,7 +105,7 @@ export const memberDocuments = pgTable('member_documents', {
 	// Tre tipi, vincolati: prima era testo libero, e la Dashboard cercava "Medical Certificate"
 	// mentre il modulo scriveva "Certificato Medico" — l'avviso delle scadenze non è mai
 	// scattato. Le etichette sono in shared/anagrafica.js.
-	documentType: varchar('document_type', { length: 32 }).notNull(), // certificato_medico | documento_identita | altro
+	documentType: varchar('document_type', { length: 32 }).notNull(), // certificato_medico | documento_identita | consenso_genitori | altro
 	// Il nome di un documento "altro" (es. "Contratto"): per gli altri due il tipo basta.
 	titolo: varchar('titolo', { length: 255 }),
 	fileName: varchar('file_name', { length: 255 }),
@@ -115,7 +115,7 @@ export const memberDocuments = pgTable('member_documents', {
 	caricatoDa: varchar('caricato_da', { length: 255 }),
 	createdDate: timestamp('created_date', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({
-	tipoValido: check('member_documents_tipo_valido', sql`${table.documentType} IN ('certificato_medico', 'documento_identita', 'altro')`),
+	tipoValido: check('member_documents_tipo_valido', sql`${table.documentType} IN ('certificato_medico', 'documento_identita', 'consenso_genitori', 'altro')`),
 	socio: index('member_documents_member_id_idx').on(table.memberId),
 }));
 

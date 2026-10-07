@@ -323,6 +323,13 @@
       "when": 1791400116448,
       "tag": "0045_notifiche_soci",
       "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1791402857270,
+      "tag": "0046_consenso_genitori",
+      "breakpoints": true
     }
   ]
 }
