@@ -344,6 +344,13 @@
       "when": 1791408759373,
       "tag": "0048_disdetta_corso",
       "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1791408949776,
+      "tag": "0049_prenotazioni_fisse",
+      "breakpoints": true
     }
   ]
 }

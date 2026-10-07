@@ -14,6 +14,7 @@ import { nomeDocumento, conStatoDocumenti } from '../../../../shared/anagrafica.
 import { statoIscrizione, abbonamentoCopre, MESSAGGIO_SENZA_ABBONAMENTO } from '../../../../shared/abbonamenti.js';
 import { oggiIso, eUnGiorno, giorniFra, giorniDaOggi, spostaGiorni, lezioneFinita } from '../../../../shared/giorni.js';
 import { limiteDisdetta, motivoDisdettaChiusa } from '../../../../shared/corsi.js';
+import { applicaFisse, creaFissa, terminaFissa, elencoFisse } from '../../lib/prenotazioniFisse.js';
 
 /**
  * L'API del portale soci.
@@ -266,10 +267,15 @@ export default async function memberRoutes(fastify) {
 		const motivo = motivoIntervalloNonValido(dal, al);
 		if (motivo) return reply.code(400).send({ error: motivo });
 
+		// Prima di mostrare l'agenda, le fisse del socio prenotano quello che devono: è il
+		// momento in cui lui guarda, e l'operazione è idempotente.
+		await applicaFisse({ memberId: request.idSocio });
+		const mieFisse = new Set((await elencoFisse({ memberId: request.idSocio })).map((f) => f.event_id));
+
 		const righe = await db
 			.select({
 				sessione: sessions,
-				evento: { id: events.id },
+				evento: { id: events.id, ricorrenza: events.recurrenceType },
 				corso: { id: courses.id, nome: courses.name, descrizione: courses.description, disdettaEntroOre: courses.disdettaEntroOre },
 				categoria: { id: categories.id, nome: categories.name, colore: categories.color },
 				istruttore: { id: instructors.id, nome: instructors.fullName },
@@ -350,6 +356,10 @@ export default async function memberRoutes(fastify) {
 					return limite ? `${limite.data}T${limite.ora}` : null;
 				})(),
 				motivo_disdetta_chiusa: motivoDisdettaChiusa(s, r.corso.disdettaEntroOre),
+				// La serie della lezione, se è una serie: è ciò su cui si prenota fisso.
+				serie: r.evento.ricorrenza === 'weekly' || r.evento.ricorrenza === 'custom'
+					? { id: r.evento.id, mia_fissa: mieFisse.has(r.evento.id) }
+					: null,
 				mia_prenotazione: miaPrenotazione
 					? {
 						id: miaPrenotazione.id,
@@ -406,6 +416,39 @@ export default async function memberRoutes(fastify) {
 		// Chi è stato promosso dalla lista d'attesa non lo diciamo: è un altro socio, e al
 		// portale non serve saperlo. Al gestionale sì, e infatti la sua rotta lo restituisce.
 		return { disdetta: true };
+	});
+
+	// --- Le prenotazioni fisse ------------------------------------------------------------
+
+	/** Le prenotazioni fisse attive del socio. */
+	fastify.get('/corsi/fisse', async (request) => {
+		const fisse = await elencoFisse({ memberId: request.idSocio });
+		return {
+			fisse: fisse.map((f) => ({
+				id: f.id, serie_id: f.event_id, corso: f.corso, giorni: f.giorni ?? f.giorni_serie ?? [],
+				inizio: String(f.inizio).slice(0, 5), fine: String(f.fine).slice(0, 5), creata_il: f.creata_il,
+			})),
+		};
+	});
+
+	/**
+	 * Prenota fisso in una serie: { giorni? } (i giorni della serie da tenere; assenti = tutti).
+	 * Risponde con quante lezioni ha prenotato subito, quante in lista d'attesa e quante sono
+	 * rimaste senza abbonamento.
+	 */
+	fastify.post('/corsi/serie/:id/fissa', async (request, reply) => {
+		const [socio] = await db.select({ nome: members.fullName }).from(members).where(eq(members.id, request.idSocio)).limit(1);
+		const esito = await creaFissa({ memberId: request.idSocio, eventId: request.params.id, giorni: request.body?.giorni, creataDa: socio?.nome ?? '' });
+		if (esito.errore) return reply.code(esito.errore).send({ error: esito.messaggio });
+		reply.code(201);
+		return { fissa: { id: esito.fissa.id }, prenotate: esito.esito.prenotate, in_attesa: esito.esito.inAttesa, senza_abbonamento: esito.esito.scoperte };
+	});
+
+	/** Termina una propria fissa: le prenotazioni future si disdicono, nel rispetto del termine di disdetta. */
+	fastify.delete('/corsi/fisse/:id', async (request, reply) => {
+		const esito = await terminaFissa({ fissaId: request.params.id, soloDelSocio: request.idSocio });
+		if (esito.errore) return reply.code(esito.errore).send({ error: esito.messaggio });
+		return esito;
 	});
 
 	// --- Le notifiche -------------------------------------------------------------------

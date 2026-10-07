@@ -20,6 +20,7 @@ import {
 	giornoDellaSettimana, daTenere, pianoRimozione, contiRimozione, applicaRimozione, descriviConti, hhmm,
 } from '../lib/calendario.js';
 import { oggiIso, eUnGiorno, lezioneFinita } from '../../../shared/giorni.js';
+import { applicaFisse } from '../lib/prenotazioniFisse.js';
 import { motivoSalaNonPrenotabile, dataIt } from '../../../shared/sale.js';
 
 // Lo stesso tetto della creazione (EventFormDialog): una serie allungata di colpo di due anni è
@@ -221,6 +222,8 @@ export default async function calendarioRoutes(fastify) {
 		await registra(request.utente, {
 			tipoAzione: 'update', entitaTipo: 'event', entitaNome: esito.nomeCorso, entitaId: esito.evento.id, dettagli,
 		}, request.log);
+		// Le lezioni nuove di una serie allungata entrano nelle prenotazioni fisse di chi le ha.
+		if (esito.conti.aggiunte) await applicaFisse({ eventId: esito.evento.id });
 		return esito.conti;
 	}));
 }

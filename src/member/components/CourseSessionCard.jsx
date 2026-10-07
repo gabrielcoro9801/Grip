@@ -3,6 +3,7 @@ import { Button } from "@/ui/primitivi/button";
 import { Badge } from "@/ui/primitivi/badge";
 import { Clock, User, MapPin } from "lucide-react";
 import { formatData } from "@/core/domain/format";
+import { AzioneFissa } from "@/member/components/fisse";
 
 /** "entro le 16:00 di martedì 12 ottobre" da "2026-10-12T16:00". */
 const scadenzaDisdetta = (quando) => `entro le ${quando.slice(11, 16)} di ${formatData(quando.slice(0, 10), "giorno")}`;
@@ -65,6 +66,7 @@ export default function CourseSessionCard({
       {memberBooking && !session._finita && !session._motivoDisdettaChiusa && session._disdettaFinoA && (
         <p className="text-xs text-muted-foreground">Puoi disdire {scadenzaDisdetta(session._disdettaFinoA)}.</p>
       )}
+      <AzioneFissa session={session} />
     </div>
   );
 }

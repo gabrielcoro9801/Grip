@@ -19,6 +19,7 @@ import { registerPgErrorHandler } from './errorHandler.js';
 import { colonneFile, cancellaFileNonPiuUsati } from '../lib/fileCaricati.js';
 import { promuoviFinoACapienza } from '../lib/prenotazioni.js';
 import { conSaleBloccate } from '../lib/sale.js';
+import { applicaFisse } from '../lib/prenotazioniFisse.js';
 import { registra, tipoEntita, nomeLeggibile, descriviModifica } from '../lib/registro.js';
 
 const WRITE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
@@ -180,6 +181,9 @@ export default async function entityRoutes(fastify) {
 		await registra(request.utente, {
 			tipoAzione: 'create', entitaTipo: tipoEntita(entityName), entitaNome: nomeLeggibile(creata), entitaId: row.id,
 		}, request.log);
+		// Un abbonamento nuovo (un rinnovo) fa ripartire le prenotazioni fisse del socio: le
+		// lezioni rimaste scoperte ora hanno un abbonamento, e si prenotano da sole.
+		if (entityName === 'Subscription') await applicaFisse({ memberId: row.memberId });
 		reply.code(201);
 		return conCampiCalcolati(entityName, firmaFileInLettura(stripHiddenFields(entityName, creata)));
 	}));

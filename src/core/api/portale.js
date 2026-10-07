@@ -70,6 +70,22 @@ export function disdiciPrenotazione(idPrenotazione) {
 	return api.richiesta(`${BASE}/corsi/prenotazioni/${idPrenotazione}/disdici`, { method: 'POST' });
 }
 
+/** Le proprie prenotazioni fisse attive. */
+export async function caricaFisse() {
+	const { fisse } = await api.richiesta(`${BASE}/corsi/fisse`);
+	return fisse;
+}
+
+/** Prenota fisso in una serie, nei giorni scelti: { prenotate, in_attesa, senza_abbonamento }. */
+export function prenotaFisso(idSerie, giorni) {
+	return api.richiesta(`${BASE}/corsi/serie/${idSerie}/fissa`, { method: 'POST', body: { giorni } });
+}
+
+/** Termina una propria prenotazione fissa: { disdette, rimaste }. */
+export function terminaFissa(idFissa) {
+	return api.richiesta(`${BASE}/corsi/fisse/${idFissa}`, { method: 'DELETE' });
+}
+
 /** Gli avvisi del socio, dal più recente: { notifiche, non_lette }. */
 export function caricaNotifiche() {
 	return api.richiesta(`${BASE}/notifiche`);

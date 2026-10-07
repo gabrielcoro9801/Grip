@@ -19,6 +19,7 @@ import leadRoutes from './routes/lead.js';
 import sociRoutes from './routes/soci.js';
 import saleRoutes from './routes/sale.js';
 import calendarioRoutes from './routes/calendario.js';
+import prenotazioniFisseRoutes from './routes/prenotazioniFisse.js';
 import dashboardRoutes from './routes/dashboard.js';
 import memberRoutes from './routes/member/index.js';
 import { firmaValida } from './lib/urlFirmati.js';
@@ -168,6 +169,7 @@ export function buildApp({ publicBaseUrl = 'http://localhost:3001', logger = tru
 	app.register(sociRoutes);
 	app.register(saleRoutes);
 	app.register(calendarioRoutes);
+	app.register(prenotazioniFisseRoutes);
 	app.register(dashboardRoutes);
 	// L'API del portale soci, sotto un prefisso suo e con una versione nel percorso: è il
 	// contratto che un domani reggerà un'app installata, che non si aggiorna a comando.

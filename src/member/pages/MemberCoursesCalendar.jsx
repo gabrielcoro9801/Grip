@@ -2,7 +2,8 @@ import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/ui/primitivi/tabs";
 import CoursesByCategory from "@/member/components/CoursesByCategory";
 import CoursesByCalendar from "@/member/components/CoursesByCalendar";
-import { caricaAgenda, prenotaLezione, disdiciPrenotazione } from "@/core/api/portale";
+import { caricaAgenda, prenotaLezione, disdiciPrenotazione, caricaFisse, prenotaFisso, terminaFissa } from "@/core/api/portale";
+import { FisseContext, LeMieFisse } from "@/member/components/fisse";
 import { useToast } from "@/ui/primitivi/use-toast";
 import { LoadingState } from "@/ui/Spinner";
 import { oggiIso, spostaGiorni } from "@/core/domain/giorni";
@@ -22,6 +23,7 @@ import { oggiIso, spostaGiorni } from "@/core/domain/giorni";
 export default function MemberCoursesCalendar() {
   const { toast } = useToast();
   const [lezioni, setLezioni] = useState([]);
+  const [fisse, setFisse] = useState([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
 
@@ -33,8 +35,9 @@ export default function MemberCoursesCalendar() {
       // "Oggi" è quello di Roma, lo stesso del server: con `toISOString()` (UTC), fra
       // mezzanotte e le due l'agenda partiva da ieri.
       const oggi = oggiIso();
-      const agenda = await caricaAgenda({ dal: oggi, al: spostaGiorni(oggi, 60) });
+      const [agenda, mieFisse] = await Promise.all([caricaAgenda({ dal: oggi, al: spostaGiorni(oggi, 60) }), caricaFisse()]);
       setLezioni(agenda.giorni.flatMap((g) => g.lezioni));
+      setFisse(mieFisse);
     } catch {
       // La schermata resta vuota con il suo messaggio: un errore qui non deve far cadere
       // l'intera pagina.
@@ -48,8 +51,8 @@ export default function MemberCoursesCalendar() {
     () => lezioni.map((l) => ({
       id: l.id,
       date: l.data,
-      start_time: l.inizio,
-      end_time: l.fine,
+      start_time: String(l.inizio ?? "").slice(0, 5),
+      end_time: String(l.fine ?? "").slice(0, 5),
       capacity: l.posti.capienza,
       _course: l.corso && { id: l.corso.id, name: l.corso.nome, description: l.corso.descrizione },
       _category: l.categoria && { id: l.categoria.id, name: l.categoria.nome, color: l.categoria.colore },
@@ -63,6 +66,8 @@ export default function MemberCoursesCalendar() {
       // Fino a quando si disdice da sé, e il perché se il termine è passato.
       _disdettaFinoA: l.disdetta_fino_a ?? null,
       _motivoDisdettaChiusa: l.motivo_disdetta_chiusa ?? null,
+      // La serie della lezione, se lo è: { id, mia_fissa }.
+      _serie: l.serie ?? null,
       _miaPrenotazione: l.mia_prenotazione && {
         id: l.mia_prenotazione.id,
         status: l.mia_prenotazione.stato,
@@ -139,6 +144,40 @@ export default function MemberCoursesCalendar() {
     return { ok: falliti.length === 0, cancelled: disdette, errors: falliti };
   };
 
+  // Prenota fisso nel giorno della lezione cliccata. Il server dice quante ne ha prenotate, quante
+  // in lista d'attesa e quante sono rimaste senza abbonamento: il socio lo legge subito.
+  const handlePrenotaFisso = async (session, giorno) => {
+    setActionLoading(true);
+    try {
+      const esito = await prenotaFisso(session._serie.id, [giorno]);
+      const parti = [`${esito.prenotate} ${esito.prenotate === 1 ? "lezione prenotata" : "lezioni prenotate"}`];
+      if (esito.in_attesa) parti.push(`${esito.in_attesa} in lista d'attesa`);
+      if (esito.senza_abbonamento) parti.push(`${esito.senza_abbonamento} oltre il tuo abbonamento`);
+      toast({ title: `Prenotazione fissa: ${session._course?.name}`, description: parti.join(", ") });
+      loadData();
+    } catch (err) {
+      toast({ title: "Prenotazione fissa non riuscita", description: err.message, variant: "destructive" });
+    }
+    setActionLoading(false);
+  };
+
+  const handleTermina = async (fissa) => {
+    setActionLoading(true);
+    try {
+      const esito = await terminaFissa(fissa.id);
+      toast({
+        title: `Prenotazione fissa terminata: ${fissa.corso}`,
+        description: esito.rimaste
+          ? `${esito.disdette} lezioni disdette; ${esito.rimaste} sono oltre il termine di disdetta e restano prenotate.`
+          : `${esito.disdette} ${esito.disdette === 1 ? "lezione disdetta" : "lezioni disdette"}.`,
+      });
+      loadData();
+    } catch (err) {
+      toast({ title: "Non è stato possibile terminarla", description: err.message, variant: "destructive" });
+    }
+    setActionLoading(false);
+  };
+
   if (loading) {
     return (
       <LoadingState minHeight="h-64" />
@@ -151,6 +190,8 @@ export default function MemberCoursesCalendar() {
         <h1 className="text-xl font-heading font-bold">Corsi</h1>
         <p className="text-sm text-muted-foreground">Prenota i tuoi corsi</p>
       </div>
+      <LeMieFisse fisse={fisse} onTermina={handleTermina} />
+      <FisseContext.Provider value={{ prenotaFisso: handlePrenotaFisso, inCorso: actionLoading }}>
       <Tabs defaultValue="categorie">
         <TabsList className="w-full">
           <TabsTrigger value="categorie" className="flex-1">Categorie</TabsTrigger>
@@ -175,6 +216,7 @@ export default function MemberCoursesCalendar() {
           />
         </TabsContent>
       </Tabs>
+      </FisseContext.Provider>
     </div>
   );
 }
