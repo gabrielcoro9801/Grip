@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { api } from "@/core/api/client";
 import { Button } from "@/ui/primitivi/button";
 import { Input } from "@/ui/primitivi/input";
@@ -9,6 +9,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/ui/primitivi
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/ui/primitivi/select";
 import PageHeader from "@/staff/components/PageHeader";
 import TrasformaInSocio from "@/staff/components/lead/TrasformaInSocio";
+import AzioneLead from "@/staff/components/lead/AzioneLead";
+import DiarioLead from "@/staff/components/lead/DiarioLead";
+import StatusBadge from "@/ui/StatusBadge";
 import { LoadingState } from "@/ui/Spinner";
 import { EmptyState, ErrorState } from "@/ui/StateViews";
 import { useConfirm } from "@/ui/ConfirmDialog";
@@ -16,9 +19,12 @@ import { useToast } from "@/ui/primitivi/use-toast";
 import { useStaffAuth } from "@/staff/lib/StaffAuthContext";
 import { canEdit } from "@/staff/lib/permissions";
 import { formatData, toIsoDate } from "@/core/domain/format";
-import { SESSI, etichettaSesso } from "@/core/domain/anagrafica";
-import { NOTE_LEAD_MASSIMO } from "@/core/domain/lead";
-import { Plus, Search, Contact, Pencil, Trash2, UserCheck, StickyNote } from "lucide-react";
+import { SESSI } from "@/core/domain/anagrafica";
+import { oggiIso } from "@/core/domain/giorni";
+import {
+  NOTE_LEAD_MASSIMO, FILTRI_LEAD, condizioniLead, statoLead, statoAperto, descriviTempoLead,
+} from "@/core/domain/lead";
+import { Plus, Search, Contact, Pencil, Trash2, UserCheck, StickyNote, Phone, CalendarClock, XCircle, RotateCcw } from "lucide-react";
 
 const nuovoLead = () => ({
   nome: "",
@@ -50,11 +56,19 @@ export default function Contatti() {
   const [modulo, setModulo] = useState(null); // { id?, ...campi }
   const [salvando, setSalvando] = useState(false);
   const [daTrasformare, setDaTrasformare] = useState(null);
+  const [azione, setAzione] = useState(null); // { lead, tipo }
+  const [inDiario, setInDiario] = useState(null);
+  const [conteggi, setConteggi] = useState({});
+  // Il filtro rapido sta nell'indirizzo: "Richiami di oggi" si può tenere nei preferiti.
+  const [parametri, setParametri] = useSearchParams();
+  const vista = FILTRI_LEAD.some((f) => f.valore === parametri.get("vista")) ? parametri.get("vista") : "aperti";
+  const scegliVista = (v) => setParametri(v === "aperti" ? {} : { vista: v }, { replace: true });
 
+  // `lavoro` chiude prima i lead diventati non raggiungibili, e porta i conteggi dei filtri.
   const carica = useCallback(() => {
     setErrore(null);
-    Promise.all([api.entities.Lead.list("-data_contatto"), api.entities.CanaleContatto.list("nome")])
-      .then(([l, c]) => { setLeads(l); setCanali(c); })
+    Promise.all([api.lead.lavoro(), api.entities.CanaleContatto.list("nome")])
+      .then(([l, c]) => { setLeads(l.leads); setConteggi(l.conteggi); setCanali(c); })
       .catch(setErrore)
       .finally(() => setLoading(false));
   }, []);
@@ -63,17 +77,21 @@ export default function Contatti() {
 
   const nomeCanale = useMemo(() => new Map(canali.map((c) => [c.id, c.nome])), [canali]);
 
+  const oggi = oggiIso();
   const visibili = useMemo(() => {
     const t = cerca.trim().toLowerCase();
-    if (!t) return leads;
-    return leads.filter((l) =>
+    const nellaVista = leads.filter((l) => condizioniLead(l, oggi).has(vista));
+    // I richiami si leggono in ordine di data: il più urgente in cima.
+    if (vista === "richiami_oggi") nellaVista.sort((a, b) => String(a.richiamare_il).localeCompare(String(b.richiamare_il)));
+    if (!t) return nellaVista;
+    return nellaVista.filter((l) =>
       `${l.nome} ${l.cognome}`.toLowerCase().includes(t)
       || `${l.cognome} ${l.nome}`.toLowerCase().includes(t)
       || (l.telefono ?? "").includes(t)
       || (l.email ?? "").toLowerCase().includes(t)
       || (l.note ?? "").toLowerCase().includes(t)
     );
-  }, [leads, cerca]);
+  }, [leads, cerca, vista, oggi]);
 
   // Nel modulo si propongono solo i canali attivi, più quello del lead che si sta modificando
   // se nel frattempo è stato disattivato: altrimenti il campo resterebbe vuoto.
@@ -143,6 +161,27 @@ export default function Contatti() {
         </p>
       )}
 
+      {/* I filtri rapidi: la lista del lavoro del giorno. Un filtro vuoto si vede lo stesso,
+          spento: sapere che non c'è niente da richiamare è un'informazione. */}
+      <div className="flex flex-wrap gap-2" role="group" aria-label="Filtri rapidi">
+        {FILTRI_LEAD.map((f) => {
+          const attivo = vista === f.valore;
+          const n = conteggi[f.valore] ?? 0;
+          return (
+            <button
+              key={f.valore} type="button" aria-pressed={attivo} onClick={() => scegliVista(f.valore)}
+              className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm border transition-colors ${
+                attivo ? "bg-primary text-primary-foreground border-primary"
+                  : n > 0 ? "border-border hover:bg-muted/50" : "border-border text-muted-foreground hover:bg-muted/50"
+              }`}
+            >
+              {f.etichetta}
+              <span className={`min-w-[1.25rem] px-1 rounded-full text-xs tabular-nums ${attivo ? "bg-primary-foreground/20" : "bg-muted"}`}>{n}</span>
+            </button>
+          );
+        })}
+      </div>
+
       <div className="relative max-w-sm">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" aria-hidden="true" />
         <Input placeholder="Nome, telefono, email o nota..." value={cerca} onChange={(e) => setCerca(e.target.value)} className="pl-9" aria-label="Cerca contatti" />
@@ -151,51 +190,74 @@ export default function Contatti() {
       {visibili.length === 0 ? (
         <EmptyState
           icon={Contact}
-          title={leads.length === 0 ? "Nessun contatto" : "Nessun contatto corrisponde"}
+          title={leads.length === 0 ? "Nessun contatto" : cerca ? "Nessun contatto corrisponde" : "Niente qui"}
           description={leads.length === 0
             ? "Chi chiede informazioni, in sede, al telefono o sui social, si registra qui."
-            : `Nessun risultato per «${cerca}».`}
+            : cerca ? `Nessun risultato per «${cerca}».` : "In questo filtro non c'è nessun contatto, oggi."}
         />
       ) : (
         <div className="overflow-x-auto border border-border rounded-lg">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border text-left bg-muted/30">
-                <th className="py-3 px-4 font-medium text-muted-foreground">Cognome e nome</th>
-                <th className="py-3 px-4 font-medium text-muted-foreground">Contatto il</th>
-                <th className="py-3 px-4 font-medium text-muted-foreground">Canale</th>
-                <th className="py-3 px-4 font-medium text-muted-foreground">Telefono</th>
-                <th className="py-3 px-4 font-medium text-muted-foreground">Email</th>
-                <th className="py-3 px-4 font-medium text-muted-foreground">Sesso</th>
-                <th className="py-3 px-4 font-medium text-muted-foreground">Anno di nascita</th>
+                <th className="py-3 px-4 font-medium text-muted-foreground">Contatto</th>
+                <th className="py-3 px-4 font-medium text-muted-foreground">Stato</th>
+                <th className="py-3 px-4 font-medium text-muted-foreground">Arrivato da</th>
                 <th className="py-3 px-4"><span className="sr-only">Azioni</span></th>
               </tr>
             </thead>
             <tbody>
-              {visibili.map((l) => (
+              {visibili.map((l) => {
+                const stato = statoLead(l.stato);
+                const aperto = statoAperto(l.stato);
+                const nome = `${l.nome} ${l.cognome}`;
+                return (
                 <tr key={l.id} className="border-b border-border/50 hover:bg-muted/30">
-                  <td className="py-3 px-4 font-medium whitespace-nowrap">
-                    {l.cognome} {l.nome}
-                    {/* La nota non ha una colonna sua: è rara e corta, e una colonna quasi sempre
-                        vuota allargherebbe la tabella per niente. Si legge al passaggio del mouse. */}
+                  <td className="py-3 px-4">
+                    {/* Il nome apre il diario: stato, contatti e tutto quello che è successo. */}
+                    <button type="button" onClick={() => setInDiario(l)} className="font-medium text-left hover:text-primary hover:underline">
+                      {l.cognome} {l.nome}
+                    </button>
+                    {/* La nota non ha una colonna sua: è rara e corta. Si legge al passaggio del mouse. */}
                     {l.note && (
                       <span title={l.note} className="inline-flex align-middle ml-1.5 text-muted-foreground">
                         <StickyNote className="w-3.5 h-3.5" aria-hidden="true" />
                         <span className="sr-only">Nota: {l.note}</span>
                       </span>
                     )}
+                    <p className="text-xs text-muted-foreground">{[l.telefono, l.email].filter(Boolean).join(" · ") || "Nessun recapito"}</p>
                   </td>
-                  <td className="py-3 px-4 text-muted-foreground whitespace-nowrap">{formatData(l.data_contatto, "breve")}</td>
-                  <td className="py-3 px-4">{nomeCanale.get(l.canale_id) ?? "—"}</td>
-                  <td className="py-3 px-4 text-muted-foreground whitespace-nowrap">{l.telefono || "—"}</td>
-                  <td className="py-3 px-4 text-muted-foreground">{l.email || "—"}</td>
-                  <td className="py-3 px-4">{etichettaSesso(l.sesso)}</td>
-                  <td className="py-3 px-4 text-muted-foreground">{l.anno_nascita ?? "—"}</td>
+                  <td className="py-3 px-4">
+                    <StatusBadge status={l.stato} label={stato.etichetta} tone={stato.tono} />
+                    <p className="text-xs text-muted-foreground mt-1">{descriviTempoLead(l, oggi)}</p>
+                  </td>
+                  <td className="py-3 px-4 whitespace-nowrap">
+                    {nomeCanale.get(l.canale_id) ?? "—"}
+                    <p className="text-xs text-muted-foreground">{formatData(l.data_contatto, "breve")}</p>
+                  </td>
                   <td className="py-3 px-4">
                     <div className="flex items-center justify-end gap-1">
-                      {puoTrasformare && (
-                        <Button size="sm" variant="outline" className="h-8 whitespace-nowrap" onClick={() => setDaTrasformare(l)}>
-                          <UserCheck className="w-3.5 h-3.5 mr-1" /> Trasforma in socio
+                      {puoModificare && aperto && (
+                        <>
+                          <Button size="sm" variant="outline" className="h-8 whitespace-nowrap" onClick={() => setAzione({ lead: l, tipo: "contatto" })}>
+                            <Phone className="w-3.5 h-3.5 mr-1" /> Contattato
+                          </Button>
+                          <Button size="icon" variant="ghost" className="h-8 w-8" title="Da richiamare" aria-label={`Richiama ${nome}`} onClick={() => setAzione({ lead: l, tipo: "richiamo" })}>
+                            <CalendarClock className="w-3.5 h-3.5" />
+                          </Button>
+                          <Button size="icon" variant="ghost" className="h-8 w-8" title="Non interessato" aria-label={`${nome} non è interessato`} onClick={() => setAzione({ lead: l, tipo: "chiudi" })}>
+                            <XCircle className="w-3.5 h-3.5" />
+                          </Button>
+                        </>
+                      )}
+                      {puoModificare && !aperto && (
+                        <Button size="sm" variant="outline" className="h-8" onClick={() => setInDiario(l)}>
+                          <RotateCcw className="w-3.5 h-3.5 mr-1" /> Riapri
+                        </Button>
+                      )}
+                      {puoTrasformare && aperto && (
+                        <Button size="icon" variant="ghost" className="h-8 w-8 text-primary" title="Trasforma in socio" aria-label={`Trasforma in socio ${nome}`} onClick={() => setDaTrasformare(l)}>
+                          <UserCheck className="w-3.5 h-3.5" />
                         </Button>
                       )}
                       {puoModificare && (
@@ -217,7 +279,8 @@ export default function Contatti() {
                     </div>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -306,6 +369,15 @@ export default function Contatti() {
           )}
         </DialogContent>
       </Dialog>
+
+      <AzioneLead richiesta={azione} onChiudi={() => setAzione(null)} onFatto={carica} />
+      <DiarioLead
+        lead={inDiario}
+        nomeCanale={inDiario ? nomeCanale.get(inDiario.canale_id) : null}
+        puoModificare={puoModificare}
+        onChiudi={() => setInDiario(null)}
+        onCambio={carica}
+      />
 
       <TrasformaInSocio
         lead={daTrasformare}

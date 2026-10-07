@@ -229,6 +229,18 @@ export const api = {
 		usoCanali() {
 			return request('/api/lead/canali/uso');
 		},
+		/** I lead col loro stato e i conteggi dei filtri rapidi: { leads, conteggi }. */
+		lavoro() {
+			return request('/api/lead/lavoro');
+		},
+		/** Un'azione che cambia lo stato: 'contatto' | 'richiamo' | 'chiudi' | 'riapri'. → { lead } */
+		azione(leadId, nome, corpo = {}) {
+			return request(`/api/lead/${leadId}/${nome}`, { method: 'POST', body: corpo });
+		},
+		/** Il diario di un lead, dal più vecchio: { attivita }. */
+		attivita(leadId) {
+			return request(`/api/lead/${leadId}/attivita`);
+		},
 	},
 
 	/**

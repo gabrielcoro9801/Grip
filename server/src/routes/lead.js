@@ -1,20 +1,51 @@
-// Un lead diventa socio, e quanto è usato ogni canale.
+// Il lavoro sui lead: le azioni che ne cambiano lo stato, il loro diario, la trasformazione in
+// socio, e quanto è usato ogni canale.
+//
+// Lo stato di un lead (shared/lead.js) non si scrive dall'endpoint generico: lo cambiano solo le
+// azioni qui sotto, ognuna in una transazione che aggiorna il lead e ne scrive il diario.
 //
 // L'anagrafica dei lead si scrive dall'endpoint generico come ogni altra. La trasformazione no:
 // sono due scritture che devono succedere insieme — nasce il socio, sparisce il contatto — e
 // fatte dal browser in due chiamate basterebbe che la seconda fallisca per avere la stessa
 // persona due volte, una da socio e una da contatto ancora da richiamare.
-import { count, eq, isNotNull } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gte, isNotNull, lte } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { leads, members } from '../db/schema/index.js';
+import { leads, members, leadAttivita, staffAccounts } from '../db/schema/index.js';
 import { getUserFromRequest } from '../auth/tokens.js';
 import { canReadEntity, canWriteEntity } from '../auth/authorize.js';
-import { translateToJs, translateToSnakeCase } from '../entities/columnMaps.js';
+import { translateToJs, translateToSnakeCase, translateManyToSnakeCase } from '../entities/columnMaps.js';
 import { anagraficaSocio } from '../entities/hooks.js';
 import { assegnaCodiceSocio } from '../lib/codiceSocio.js';
 import { registerPgErrorHandler } from './errorHandler.js';
 import { oggiIso } from '../../../shared/abbonamenti.js';
 import { registra } from '../lib/registro.js';
+import { spostaGiorni } from '../../../shared/giorni.js';
+import {
+	applicaAzione, contaFiltriLead, SOGLIE_LEAD, statoLead, etichettaCanaleContatto, etichettaMotivoChiusura,
+	NOTE_LEAD_MASSIMO,
+} from '../../../shared/lead.js';
+
+const AUTORE_SISTEMA = 'Sistema';
+
+// Le azioni con cui si lavora un lead, e cosa prendono dal corpo della richiesta.
+const AZIONI = {
+	contatto: (c) => ({ tipo: 'contatto', canale: c.canale, esito: c.esito }),
+	richiamo: (c) => ({ tipo: 'richiamo', data: c.data }),
+	chiudi: (c) => ({ tipo: 'chiudi', motivo: c.motivo, nota: c.nota }),
+	riapri: () => ({ tipo: 'riapri' }),
+};
+
+/** Una riga del registro per un'azione: "Contattato via Telefono: non ha risposto". */
+function descriviAzione(attivita) {
+	switch (attivita.tipo) {
+		case 'tentativo': return `Contattato via ${etichettaCanaleContatto(attivita.canale)}: non ha risposto`;
+		case 'risposta': return `Contattato via ${etichettaCanaleContatto(attivita.canale)}: ha risposto`;
+		case 'richiamo': return `Da richiamare il ${attivita.esito}`;
+		case 'chiusura': return `Non interessato: ${etichettaMotivoChiusura(attivita.esito)}`;
+		case 'riapertura': return 'Riaperto';
+		default: return attivita.tipo;
+	}
+}
 
 // Quello che la finestra di trasformazione può scrivere sul socio. Il codice socio, i consensi
 // marketing e le date di sistema restano fuori: il codice lo assegna il contatore, e il
@@ -41,6 +72,97 @@ export default async function leadRoutes(fastify) {
 			return reply.code(403).send({ error: 'Il tuo ruolo non consente questa operazione.' });
 		}
 	};
+
+	const puoLeggere = async (request, reply) => {
+		if (!canReadEntity(request.utente.ruolo, 'Lead')) return reply.code(403).send({ error: 'Non consentito.' });
+	};
+	const puoLavorare = async (request, reply) => {
+		if (!canWriteEntity(request.utente.ruolo, 'Lead')) return reply.code(403).send({ error: 'Il tuo ruolo non consente questa operazione.' });
+	};
+
+	/**
+	 * GET /api/lead/lavoro → { leads, conteggi }
+	 *
+	 * I lead con il loro stato, e quanti ce ne sono per ogni filtro rapido. Prima di rispondere
+	 * chiude come *non raggiungibili* quelli che hanno superato le soglie (troppi tentativi di
+	 * fila senza risposta, e l'ultimo abbastanza lontano): è il primo automatismo, e gira qui —
+	 * alla lettura — invece che in un processo programmato che prima o poi non parte. È
+	 * idempotente: un lead già chiuso non rientra nella condizione.
+	 */
+	fastify.get('/api/lead/lavoro', { preHandler: puoLeggere }, async () => {
+		const oggi = oggiIso();
+		const limite = spostaGiorni(oggi, -SOGLIE_LEAD.nonRaggiungibileGiorni);
+		await db.transaction(async (tx) => {
+			const chiusi = await tx.update(leads)
+				.set({ stato: 'non_raggiungibile', statoDal: oggi, updatedDate: new Date() })
+				.where(and(
+					eq(leads.stato, 'in_attesa'),
+					gte(leads.tentativiSenzaRisposta, SOGLIE_LEAD.tentativiMassimi),
+					lte(leads.ultimoContattoIl, limite),
+				))
+				.returning({ id: leads.id, tentativi: leads.tentativiSenzaRisposta });
+			if (chiusi.length) {
+				await tx.insert(leadAttivita).values(chiusi.map((l) => ({
+					leadId: l.id, tipo: 'stato_automatico', esito: 'non_raggiungibile', autoreNome: AUTORE_SISTEMA,
+					nota: `${l.tentativi} tentativi senza risposta, l'ultimo da almeno ${SOGLIE_LEAD.nonRaggiungibileGiorni} giorni`,
+				})));
+			}
+		});
+		const righe = translateManyToSnakeCase(leads, await db.select().from(leads).orderBy(desc(leads.dataContatto)));
+		return { leads: righe, conteggi: contaFiltriLead(righe, oggi) };
+	});
+
+	/** GET /api/lead/:id/attivita → { attivita }: il diario, dal più vecchio. */
+	fastify.get('/api/lead/:id/attivita', { preHandler: puoLeggere }, async (request) => {
+		const righe = await db.select().from(leadAttivita)
+			.where(eq(leadAttivita.leadId, request.params.id))
+			.orderBy(asc(leadAttivita.createdDate));
+		return { attivita: translateManyToSnakeCase(leadAttivita, righe) };
+	});
+
+	/**
+	 * POST /api/lead/:id/:azione  (contatto | richiamo | chiudi | riapri) → { lead }
+	 *
+	 *   contatto { canale, esito: 'risposto' | 'nessuna_risposta', nota? }
+	 *   richiamo { data, nota? }
+	 *   chiudi   { motivo, nota? }
+	 *   riapri   { nota? }
+	 *
+	 * Le regole — da quale stato a quale, cosa serve — stanno in `applicaAzione` (shared/lead.js).
+	 */
+	fastify.post('/api/lead/:id/:azione', { preHandler: puoLavorare }, async (request, reply) => {
+		const leggi = AZIONI[request.params.azione];
+		if (!leggi) return reply.code(404).send({ error: 'Azione sconosciuta.' });
+		const corpo = request.body ?? {};
+		const nota = String(corpo.nota ?? '').trim() || null;
+		if (nota && nota.length > NOTE_LEAD_MASSIMO) return reply.code(400).send({ error: `La nota sta in ${NOTE_LEAD_MASSIMO} caratteri.` });
+
+		const [autore] = await db.select({ nome: staffAccounts.nome }).from(staffAccounts).where(eq(staffAccounts.id, request.utente.sub)).limit(1);
+		const esito = await db.transaction(async (tx) => {
+			const [riga] = await tx.select().from(leads).where(eq(leads.id, request.params.id)).limit(1).for('update');
+			if (!riga) return { errore: 404, messaggio: 'Il contatto non esiste più.' };
+			const lead = translateToSnakeCase(leads, riga);
+			const risultato = applicaAzione(lead, { ...leggi(corpo), nota }, oggiIso());
+			if (risultato.errore) return { errore: 400, messaggio: risultato.errore };
+
+			const [aggiornato] = await tx.update(leads)
+				.set({ ...translateToJs(leads, risultato.campi), updatedDate: new Date() })
+				.where(eq(leads.id, riga.id))
+				.returning();
+			await tx.insert(leadAttivita).values({
+				leadId: riga.id, ...translateToJs(leadAttivita, risultato.attivita), nota,
+				autoreId: request.utente.sub, autoreNome: autore?.nome ?? '',
+			});
+			return { lead: translateToSnakeCase(leads, aggiornato), attivita: risultato.attivita, nome: riga.nome, cognome: riga.cognome };
+		});
+		if (esito.errore) return reply.code(esito.errore).send({ error: esito.messaggio });
+
+		await registra(request.utente, {
+			tipoAzione: 'update', entitaTipo: 'lead', entitaNome: `${esito.nome} ${esito.cognome}`, entitaId: esito.lead.id,
+			dettagli: `${descriviAzione(esito.attivita)} → ${statoLead(esito.lead.stato).etichetta}`,
+		}, request.log);
+		return { lead: esito.lead };
+	});
 
 	/**
 	 * GET /api/lead/canali/uso → { [idCanale]: { contatti, soci } }
