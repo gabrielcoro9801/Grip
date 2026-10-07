@@ -4,6 +4,7 @@
 // carattere sbagliato non si nota finché non serve — al tesseramento, su una ricevuta. Il
 // controllo va fatto mentre lo si digita (schermate) e di nuovo quando arriva (server): con
 // due copie della regola, prima o poi una delle due accetterebbe un codice che l'altra rifiuta.
+import { oggiIso, eUnGiorno } from "./giorni.js";
 
 export const SESSI = [
   { valore: "M", etichetta: "Maschio" },
@@ -22,6 +23,48 @@ export const etichettaSesso = (v) => ETICHETTE_SESSO[v] ?? "";
  */
 export function nomeCompleto({ nome, cognome } = {}) {
   return `${nome ?? ""} ${cognome ?? ""}`.trim();
+}
+
+// ---------------------------------------------------------------------------------------
+// Data di nascita ed età
+// ---------------------------------------------------------------------------------------
+
+/** Da quando un socio è maggiorenne. */
+export const MAGGIORE_ETA = 18;
+
+/**
+ * Perché una data di nascita non va bene, o null.
+ *
+ * È obbligatoria per ogni socio: da lei dipende se è minorenne, e quindi se servono il consenso
+ * dei genitori e chi firma per lui. Per i lead no: lì basta l'anno, e nemmeno quello è richiesto.
+ */
+export function motivoDataNascitaNonValida(data, oggi = oggiIso()) {
+  if (data === undefined || data === null || String(data).trim() === "") return "La data di nascita è obbligatoria.";
+  const giorno = String(data).slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(giorno) || !eUnGiorno(giorno)) return "La data di nascita non è valida.";
+  if (giorno > oggi) return "La data di nascita non può essere nel futuro.";
+  if (giorno < "1900-01-01") return "La data di nascita non può essere prima del 1900.";
+  return null;
+}
+
+/**
+ * Gli anni compiuti a `oggi`, o null senza una data valida.
+ *
+ * Il conto si fa sulle stringhe `AAAA-MM-GG`, senza passare per `Date`: un compleanno è un
+ * giorno del calendario, e a mezzanotte in Italia `Date` in UTC è ancora il giorno prima.
+ * Chi è nato il 29 febbraio compie gli anni il 1° marzo negli anni non bisestili.
+ */
+export function etaA(dataNascita, oggi = oggiIso()) {
+  const nascita = String(dataNascita ?? "").slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(nascita) || !eUnGiorno(nascita)) return null;
+  const anni = Number(oggi.slice(0, 4)) - Number(nascita.slice(0, 4));
+  return oggi.slice(5) < nascita.slice(5) ? anni - 1 : anni;
+}
+
+/** Se chi è nato in quella data oggi è minorenne. Senza data non lo si sa: false. */
+export function eMinorenne(dataNascita, oggi = oggiIso()) {
+  const anni = etaA(dataNascita, oggi);
+  return anni !== null && anni < MAGGIORE_ETA;
 }
 
 // ---------------------------------------------------------------------------------------
@@ -109,13 +152,17 @@ export function partitaIvaValida(valoreGrezzo) {
  * I tipi di documento.
  *
  * `atteso` dice che la scheda del socio segnala quando manca: il certificato medico serve per
- * allenarsi, il documento di identità per il tesseramento. Gli altri si caricano se servono.
+ * allenarsi, il documento di identità per il tesseramento, il consenso dei genitori — solo per
+ * i minorenni (`"minorenni"`) — perché un minore si iscrive con la firma di chi ne è
+ * responsabile. Gli altri si caricano se servono.
  * `scadenza` dice se la data di scadenza è obbligatoria: certificato e documento di identità
- * scadono entrambi, e senza la data la scheda non sa dire quando il socio va richiamato.
+ * scadono entrambi, e senza la data la scheda non sa dire quando il socio va richiamato. Il
+ * consenso non scade: vale finché il socio è minorenne, e poi resta nello storico.
  */
 export const TIPI_DOCUMENTO = [
   { valore: "certificato_medico", etichetta: "Certificato medico", atteso: true, scadenza: true },
   { valore: "documento_identita", etichetta: "Documento di identità", atteso: true, scadenza: true },
+  { valore: "consenso_genitori", etichetta: "Consenso dei genitori", atteso: "minorenni", scadenza: false },
   { valore: "altro", etichetta: "Altri documenti", atteso: false, scadenza: false },
 ];
 
@@ -123,6 +170,17 @@ const PER_TIPO = Object.fromEntries(TIPI_DOCUMENTO.map((t) => [t.valore, t]));
 
 export const tipoDocumentoValido = (v) => v in PER_TIPO;
 export const infoTipoDocumento = (v) => PER_TIPO[v] ?? null;
+
+/**
+ * Se per questo socio un tipo di documento va segnalato quando manca.
+ * @param tipo  una voce di TIPI_DOCUMENTO, o il suo valore
+ * @param socio { date_of_birth }
+ */
+export function tipoAtteso(tipo, socio, oggi = oggiIso()) {
+  const voce = typeof tipo === "string" ? PER_TIPO[tipo] : tipo;
+  if (voce?.atteso === "minorenni") return eMinorenne(socio?.date_of_birth, oggi);
+  return Boolean(voce?.atteso);
+}
 
 /** Come chiamare un documento: il titolo per gli "altri", altrimenti il tipo. */
 export function nomeDocumento(doc) {

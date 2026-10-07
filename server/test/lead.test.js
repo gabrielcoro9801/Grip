@@ -201,11 +201,15 @@ describe('i canali', () => {
 });
 
 describe('la trasformazione in socio', () => {
-	test('senza codice fiscale valido non si fa, e il lead resta', async () => {
+	test('senza codice fiscale valido o senza data di nascita non si fa, e il lead resta', async () => {
+		// Il lead l'anno di nascita può non averlo: la data diventa obbligatoria qui, quando nasce il socio.
 		const lead = await nuovoLead();
-		const base = { nome: 'Anna', cognome: 'Verdi', sesso: 'F' };
+		const base = { nome: 'Anna', cognome: 'Verdi', sesso: 'F', date_of_birth: '1994-03-02' };
 		assert.equal((await post('reception', `/api/lead/${lead.id}/trasforma`, base)).statusCode, 400);
 		assert.equal((await post('reception', `/api/lead/${lead.id}/trasforma`, { ...base, codice_fiscale: 'RSSMRA85T10A562T' })).statusCode, 400);
+		const senzaData = await post('reception', `/api/lead/${lead.id}/trasforma`, { nome: 'Anna', cognome: 'Verdi', sesso: 'F', codice_fiscale: CF });
+		assert.equal(senzaData.statusCode, 400);
+		assert.match(senzaData.json().error, /data di nascita/);
 		const [ancora] = await db.select().from(leads).where(eq(leads.id, lead.id));
 		assert.ok(ancora);
 	});
@@ -214,7 +218,7 @@ describe('la trasformazione in socio', () => {
 		const lead = await nuovoLead({ telefono: '333 111', email: 'anna@test.local', note: 'Chiede del corso bimbi' });
 		// La finestra precompila le note del socio con quella del lead: arriva nel corpo.
 		const corpo = {
-			nome: 'Anna Maria', cognome: 'Verdi', sesso: 'F', codice_fiscale: CF.toLowerCase(), phone: '333 111',
+			nome: 'Anna Maria', cognome: 'Verdi', sesso: 'F', codice_fiscale: CF.toLowerCase(), date_of_birth: '1985-12-10', phone: '333 111',
 			email: 'anna@test.local', gdpr_consent: true, full_name: 'Nome Inventato', codice_socio: '999999',
 			notes: lead.note,
 		};
@@ -248,7 +252,7 @@ describe('la trasformazione in socio', () => {
 		const [dopo] = await db.select().from(members).where(eq(members.id, member.id));
 		assert.equal(dopo.leadCanaleId, canale.id);
 		assert.equal(dopo.leadDataContatto, '2026-09-10');
-		assert.equal((await post('reception', `/api/lead/${lead.id}/trasforma`, { nome: 'A', cognome: 'B', sesso: 'F', codice_fiscale: CF })).statusCode, 404);
+		assert.equal((await post('reception', `/api/lead/${lead.id}/trasforma`, { nome: 'A', cognome: 'B', sesso: 'F', codice_fiscale: CF, date_of_birth: '1985-12-10' })).statusCode, 404);
 	});
 
 	test('chi gestisce i lead ma non i soci non trasforma', async () => {
@@ -260,7 +264,7 @@ describe('la trasformazione in socio', () => {
 			await db.update(ruoli).set({ permessi: { ...originali, crm_members: ['view'], crm_leads: ['view', 'edit'] } }).where(eq(ruoli.id, ruolo.id));
 			await caricaMatrice(ruolo.organizationId);
 			const lead = await nuovoLead();
-			const res = await post('reception', `/api/lead/${lead.id}/trasforma`, { nome: 'A', cognome: 'B', sesso: 'F', codice_fiscale: CF });
+			const res = await post('reception', `/api/lead/${lead.id}/trasforma`, { nome: 'A', cognome: 'B', sesso: 'F', codice_fiscale: CF, date_of_birth: '1985-12-10' });
 			assert.equal(res.statusCode, 403);
 		} finally {
 			await db.update(ruoli).set({ permessi: originali }).where(eq(ruoli.id, ruolo.id));

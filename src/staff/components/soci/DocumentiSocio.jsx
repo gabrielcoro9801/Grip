@@ -14,6 +14,7 @@ import { giorniDaOggi } from "@/core/domain/giorni";
 import { hrefSicuro } from "@/ui/utils";
 import {
   TIPI_DOCUMENTO,
+  tipoAtteso,
   nomeDocumento,
   motivoDocumentoNonValido,
   conStatoDocumenti,
@@ -119,11 +120,14 @@ function IntestazioneOrdinabile({ campo, ordine, onOrdina }) {
 }
 
 /**
- * I documenti di un socio, in tre sezioni: certificato medico, documento di identità, altri.
+ * I documenti di un socio, una sezione per tipo: certificato medico, documento di identità,
+ * consenso dei genitori, altri.
  *
- * I primi due si aspettano: se mancano la sezione lo dice, perché senza certificato non ci si
- * allena e senza documento non si tessera. Gli altri si caricano quando servono, e una sezione
- * vuota non segnala niente.
+ * I primi due si aspettano sempre: se mancano la sezione lo dice, perché senza certificato non
+ * ci si allena e senza documento non si tessera. Il consenso dei genitori si aspetta solo per i
+ * minorenni, e la sua sezione compare solo per loro — o per chi ne ha già uno, che compiuti i 18
+ * anni resta lì come storico. Gli altri si caricano quando servono, e una sezione vuota non
+ * segnala niente.
  *
  * Quello che è scaduto e sostituito esce di qui e finisce in archivio, dietro il pulsante in
  * alto: la regola sta in `shared/anagrafica.js`, insieme al motivo per cui certificato e
@@ -208,6 +212,9 @@ export default function DocumentiSocio({ socio, documenti, puoModificare, staffU
           const elenco = inVista
             .filter((d) => d.document_type === tipo.valore)
             .sort((a, b) => String(b.created_date).localeCompare(String(a.created_date)));
+          const atteso = tipoAtteso(tipo, socio);
+          // Una sezione che vale solo per alcuni soci (il consenso) non si mostra a chi non la riguarda.
+          if (tipo.atteso === "minorenni" && !atteso && elenco.length === 0) return null;
           return (
             <section key={tipo.valore} aria-labelledby={`doc-${tipo.valore}`}>
               <div className="flex items-center justify-between gap-2 mb-2">
@@ -221,7 +228,7 @@ export default function DocumentiSocio({ socio, documenti, puoModificare, staffU
                 )}
               </div>
               {elenco.length === 0 ? (
-                tipo.atteso
+                atteso
                   ? <p className="text-sm text-destructive bg-destructive/10 rounded-lg px-3 py-2">Mancante</p>
                   : <p className="text-sm text-muted-foreground">Nessun documento</p>
               ) : (

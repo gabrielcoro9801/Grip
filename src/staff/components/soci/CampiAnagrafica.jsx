@@ -3,7 +3,8 @@ import { Input } from "@/ui/primitivi/input";
 import { Label } from "@/ui/primitivi/label";
 import { Textarea } from "@/ui/primitivi/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/ui/primitivi/select";
-import { SESSI, codiceFiscaleValido, normalizzaCodiceFiscale, NOTE_SOCIO_MASSIMO } from "@/core/domain/anagrafica";
+import { SESSI, codiceFiscaleValido, normalizzaCodiceFiscale, NOTE_SOCIO_MASSIMO, motivoDataNascitaNonValida } from "@/core/domain/anagrafica";
+import { oggiIso } from "@/core/domain/giorni";
 
 // Il consenso GDPR non è più fra i campi: non lo dà la segreteria, lo darà il socio dal portale.
 // Toglierlo da qui vuol dire anche che correggere un'anagrafica non lo sovrascrive più.
@@ -37,6 +38,8 @@ export function motivoAnagraficaIncompleta(v) {
   if (!v.sesso) return "Indica il sesso.";
   if (!v.codice_fiscale.trim()) return "Il codice fiscale è obbligatorio.";
   if (!codiceFiscaleValido(v.codice_fiscale)) return "Il codice fiscale non è valido.";
+  const nascita = motivoDataNascitaNonValida(v.date_of_birth);
+  if (nascita) return nascita;
   if ((v.notes ?? "").length > NOTE_SOCIO_MASSIMO) return `Le note stanno in ${NOTE_SOCIO_MASSIMO} caratteri.`;
   return null;
 }
@@ -95,8 +98,9 @@ export default function CampiAnagrafica({ valori, onChange, suggerimentoNascita 
         )}
       </div>
       <div>
-        <Label htmlFor="anag-nascita">Data di nascita</Label>
-        <Input id="anag-nascita" type="date" value={valori.date_of_birth ?? ""} onChange={imposta("date_of_birth")} />
+        {/* Obbligatoria: dice se il socio è minorenne, e quindi se serve il consenso dei genitori. */}
+        <Label htmlFor="anag-nascita">Data di nascita *</Label>
+        <Input id="anag-nascita" type="date" required max={oggiIso()} value={valori.date_of_birth ?? ""} onChange={imposta("date_of_birth")} />
         {suggerimentoNascita && <p className="text-xs text-muted-foreground mt-1">{suggerimentoNascita}</p>}
       </div>
       <div>
