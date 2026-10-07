@@ -5,7 +5,7 @@ import MemberLogin from "./MemberLogin";
 import { LoadingState } from "@/ui/Spinner";
 import SelettoreTema from "@/ui/SelettoreTema";
 import { CambioPasswordObbligatorio } from "@/ui/CambioPassword";
-import { contaNotificheNonLette } from "@/core/api/portale";
+import { contaNotificheEAvvisi } from "@/core/api/portale";
 import { Dumbbell, Home, FileText, CreditCard, User, QrCode, LogOut, LayoutGrid, Bell } from "lucide-react";
 
 // Una sola lista di destinazioni. Le barre erano due, con nomi diversi per lo
@@ -16,7 +16,7 @@ const navItems = [
   { label: "Corsi", path: "/member-portal/corsi", icon: LayoutGrid, inBasso: true },
   { label: "Documenti", path: "/member-portal/documenti", icon: FileText },
   { label: "Abbonamento", path: "/member-portal/abbonamento", icon: CreditCard },
-  { label: "Notifiche", path: "/member-portal/notifiche", icon: Bell, notifiche: true },
+  { label: "Notifiche e avvisi", path: "/member-portal/notifiche", icon: Bell, notifiche: true },
   { label: "QR accesso", path: "/member-portal/qr", icon: QrCode, inBasso: true },
   { label: "Anagrafica", path: "/member-portal/anagrafica", icon: User, inBasso: true },
 ];
@@ -37,17 +37,20 @@ function Contatore({ n, className = "" }) {
 export default function MemberLayout() {
   const location = useLocation();
   const { memberUser, loading, logout, aggiornaUtente } = useMemberAuth();
-  // Quante notifiche sono da leggere: si richiede a ogni cambio di pagina, che per un portale
-  // aperto dal telefono è il momento in cui il socio guarda. La pagina delle notifiche lo
-  // azzera da sé quando le segna lette (via contesto dell'Outlet).
-  const [nonLette, setNonLette] = useState(0);
+  // Quante cose aspettano il socio: notifiche da leggere più avvisi aperti (documenti,
+  // abbonamento). Si richiede a ogni cambio di pagina, che per un portale aperto dal telefono è
+  // il momento in cui il socio guarda. La pagina delle notifiche azzera le non lette quando le
+  // segna lette; gli avvisi restano finché non si sistemano. Contesto dell'Outlet: la home ne
+  // legge gli avvisi, la pagina azzera le non lette.
+  const [conteggio, setConteggio] = useState({ non_lette: 0, avvisi: 0, avvisi_gravi: false });
   const puoChiedere = Boolean(memberUser && !memberUser.password_da_cambiare);
   useEffect(() => {
     if (!puoChiedere) return;
     let attivo = true;
-    contaNotificheNonLette().then((n) => { if (attivo) setNonLette(n); }).catch(() => {});
+    contaNotificheEAvvisi().then((c) => { if (attivo) setConteggio(c); }).catch(() => {});
     return () => { attivo = false; };
   }, [puoChiedere, location.pathname]);
+  const nonLette = conteggio.non_lette + conteggio.avvisi;
 
   if (loading) {
     return <LoadingState minHeight="min-h-screen" label="Caricamento del portale in corso" />;
@@ -94,7 +97,7 @@ export default function MemberLayout() {
               <item.icon className="w-5 h-5" aria-hidden="true" />
               <span className="flex-1">{item.label}</span>
               {item.notifiche && <Contatore n={nonLette} />}
-              {item.notifiche && nonLette > 0 && <span className="sr-only">, {nonLette} da leggere</span>}
+              {item.notifiche && nonLette > 0 && <span className="sr-only">, {nonLette} da vedere</span>}
             </Link>
           ))}
         </nav>
@@ -126,7 +129,7 @@ export default function MemberLayout() {
               in alto, dove la si cerca in ogni app. */}
           <Link
             to={PERCORSO_NOTIFICHE}
-            aria-label={nonLette > 0 ? `Notifiche, ${nonLette} da leggere` : "Notifiche"}
+            aria-label={nonLette > 0 ? `Notifiche e avvisi, ${nonLette} da vedere` : "Notifiche e avvisi"}
             aria-current={isActive(PERCORSO_NOTIFICHE) ? "page" : undefined}
             className={`relative ml-auto mr-3 p-2 rounded-lg ${isActive(PERCORSO_NOTIFICHE) ? "text-primary" : "text-muted-foreground hover:text-foreground"}`}
           >
@@ -146,7 +149,7 @@ export default function MemberLayout() {
           {/* Come nel gestionale: cambiando scheda resta la barra in basso, invece di
               sparire tutto per il tempo di caricare la pagina. */}
           <Suspense fallback={<LoadingState minHeight="min-h-[60vh]" label="Caricamento della pagina" />}>
-            <Outlet context={{ impostaNonLette: setNonLette }} />
+            <Outlet context={{ conteggio, azzeraNonLette: () => setConteggio((c) => ({ ...c, non_lette: 0 })) }} />
           </Suspense>
         </main>
 

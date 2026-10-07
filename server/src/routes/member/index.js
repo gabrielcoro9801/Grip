@@ -15,6 +15,7 @@ import { statoIscrizione, abbonamentoCopre, MESSAGGIO_SENZA_ABBONAMENTO } from '
 import { oggiIso, eUnGiorno, giorniFra, giorniDaOggi, spostaGiorni, lezioneFinita } from '../../../../shared/giorni.js';
 import { limiteDisdetta, motivoDisdettaChiusa } from '../../../../shared/corsi.js';
 import { applicaFisse, creaFissa, terminaFissa, elencoFisse } from '../../lib/prenotazioniFisse.js';
+import { avvisiSocio } from '../../../../shared/avvisi.js';
 
 /**
  * L'API del portale soci.
@@ -461,15 +462,21 @@ export default async function memberRoutes(fastify) {
 	 * Con `?solo_conteggio=1` arriva soltanto quello.
 	 */
 	fastify.get('/notifiche', async (request) => {
-		const [{ n }] = await db.select({ n: count() }).from(notifiche)
-			.where(and(eq(notifiche.memberId, request.idSocio), isNull(notifiche.lettaIl)));
-		if (request.query?.solo_conteggio) return { non_lette: Number(n) };
+		const [[{ n }], avvisi] = await Promise.all([
+			db.select({ n: count() }).from(notifiche).where(and(eq(notifiche.memberId, request.idSocio), isNull(notifiche.lettaIl))),
+			avvisiDelSocio(request.idSocio),
+		]);
+		// Gli avvisi (da sistemare adesso) si contano insieme alle notifiche non lette: la
+		// campanella dice quante cose aspettano il socio, e se ce n'è una grave.
+		const conteggio = { non_lette: Number(n), avvisi: avvisi.length, avvisi_gravi: avvisi.some((a) => a.gravita === 'rosso') };
+		if (request.query?.solo_conteggio) return conteggio;
 		const righe = await db.select().from(notifiche)
 			.where(eq(notifiche.memberId, request.idSocio))
 			.orderBy(desc(notifiche.createdDate))
 			.limit(50);
 		return {
-			non_lette: Number(n),
+			...conteggio,
+			avvisi_elenco: avvisi,
 			notifiche: righe.map((r) => ({
 				id: r.id, tipo: r.tipo, titolo: r.titolo, testo: r.testo,
 				letta: Boolean(r.lettaIl), creata_il: r.createdDate,
@@ -484,6 +491,22 @@ export default async function memberRoutes(fastify) {
 			.returning({ id: notifiche.id });
 		return { lette: lette.length };
 	});
+}
+
+/**
+ * Che cosa c'è da sistemare per il socio adesso: abbonamento e documenti, con la stessa regola
+ * del bancone degli ingressi (shared/avvisi.js). Si calcola a ogni lettura e non si salva: un
+ * avviso sparisce da solo quando il socio rinnova o porta il documento.
+ */
+async function avvisiDelSocio(memberId) {
+	const [[socio], iscrizioni, documenti] = await Promise.all([
+		db.select({ dateOfBirth: members.dateOfBirth, archiviatoIl: members.archiviatoIl }).from(members).where(eq(members.id, memberId)).limit(1),
+		db.select({ start_date: subscriptions.startDate, end_date: subscriptions.endDate }).from(subscriptions).where(eq(subscriptions.memberId, memberId)),
+		db.select({ document_type: memberDocuments.documentType, created_date: memberDocuments.createdDate, expiry_date: memberDocuments.expiryDate })
+			.from(memberDocuments).where(eq(memberDocuments.memberId, memberId)),
+	]);
+	return avvisiSocio({ socio: { date_of_birth: socio?.dateOfBirth, archiviato_il: socio?.archiviatoIl }, iscrizioni, documenti })
+		.map(({ codice, gravita, titolo, testo, azione }) => ({ codice, gravita, titolo, testo, azione }));
 }
 
 // --- Le date ------------------------------------------------------------------------
