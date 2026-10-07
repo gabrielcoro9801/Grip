@@ -4,6 +4,7 @@ import { api } from "@/core/api/client";
 import { Button } from "@/ui/primitivi/button";
 import { Input } from "@/ui/primitivi/input";
 import { Label } from "@/ui/primitivi/label";
+import { Textarea } from "@/ui/primitivi/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/ui/primitivi/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/ui/primitivi/select";
 import PageHeader from "@/staff/components/PageHeader";
@@ -16,7 +17,8 @@ import { useStaffAuth } from "@/staff/lib/StaffAuthContext";
 import { canEdit } from "@/staff/lib/permissions";
 import { formatData, toIsoDate } from "@/core/domain/format";
 import { SESSI, etichettaSesso } from "@/core/domain/anagrafica";
-import { Plus, Search, Contact, Pencil, Trash2, UserCheck } from "lucide-react";
+import { NOTE_LEAD_MASSIMO } from "@/core/domain/lead";
+import { Plus, Search, Contact, Pencil, Trash2, UserCheck, StickyNote } from "lucide-react";
 
 const nuovoLead = () => ({
   nome: "",
@@ -27,6 +29,7 @@ const nuovoLead = () => ({
   canale_id: "",
   sesso: "",
   anno_nascita: "",
+  note: "",
 });
 
 const ANNO_CORRENTE = new Date().getFullYear();
@@ -68,6 +71,7 @@ export default function Contatti() {
       || `${l.cognome} ${l.nome}`.toLowerCase().includes(t)
       || (l.telefono ?? "").includes(t)
       || (l.email ?? "").toLowerCase().includes(t)
+      || (l.note ?? "").toLowerCase().includes(t)
     );
   }, [leads, cerca]);
 
@@ -141,7 +145,7 @@ export default function Contatti() {
 
       <div className="relative max-w-sm">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" aria-hidden="true" />
-        <Input placeholder="Nome, telefono o email..." value={cerca} onChange={(e) => setCerca(e.target.value)} className="pl-9" aria-label="Cerca contatti" />
+        <Input placeholder="Nome, telefono, email o nota..." value={cerca} onChange={(e) => setCerca(e.target.value)} className="pl-9" aria-label="Cerca contatti" />
       </div>
 
       {visibili.length === 0 ? (
@@ -170,7 +174,17 @@ export default function Contatti() {
             <tbody>
               {visibili.map((l) => (
                 <tr key={l.id} className="border-b border-border/50 hover:bg-muted/30">
-                  <td className="py-3 px-4 font-medium whitespace-nowrap">{l.cognome} {l.nome}</td>
+                  <td className="py-3 px-4 font-medium whitespace-nowrap">
+                    {l.cognome} {l.nome}
+                    {/* La nota non ha una colonna sua: è rara e corta, e una colonna quasi sempre
+                        vuota allargherebbe la tabella per niente. Si legge al passaggio del mouse. */}
+                    {l.note && (
+                      <span title={l.note} className="inline-flex align-middle ml-1.5 text-muted-foreground">
+                        <StickyNote className="w-3.5 h-3.5" aria-hidden="true" />
+                        <span className="sr-only">Nota: {l.note}</span>
+                      </span>
+                    )}
+                  </td>
                   <td className="py-3 px-4 text-muted-foreground whitespace-nowrap">{formatData(l.data_contatto, "breve")}</td>
                   <td className="py-3 px-4">{nomeCanale.get(l.canale_id) ?? "—"}</td>
                   <td className="py-3 px-4 text-muted-foreground whitespace-nowrap">{l.telefono || "—"}</td>
@@ -191,7 +205,7 @@ export default function Contatti() {
                             variant="ghost"
                             className="h-8 w-8"
                             aria-label={`Modifica ${l.nome} ${l.cognome}`}
-                            onClick={() => setModulo({ ...l, telefono: l.telefono ?? "", email: l.email ?? "", anno_nascita: l.anno_nascita ?? "" })}
+                            onClick={() => setModulo({ ...l, telefono: l.telefono ?? "", email: l.email ?? "", anno_nascita: l.anno_nascita ?? "", note: l.note ?? "" })}
                           >
                             <Pencil className="w-3.5 h-3.5" />
                           </Button>
@@ -273,6 +287,17 @@ export default function Contatti() {
                   <Label htmlFor="lead-email">Email</Label>
                   <Input id="lead-email" type="email" value={modulo.email} onChange={(e) => setModulo({ ...modulo, email: e.target.value })} />
                 </div>
+              </div>
+              <div>
+                <div className="flex items-baseline justify-between">
+                  <Label htmlFor="lead-note">Note</Label>
+                  <span className="text-xs tabular-nums text-muted-foreground">{modulo.note.length}/{NOTE_LEAD_MASSIMO}</span>
+                </div>
+                <Textarea
+                  id="lead-note" rows={2} maxLength={NOTE_LEAD_MASSIMO} className="resize-none"
+                  placeholder="Es. richiamare dopo le 18, chiede del corso bimbi"
+                  value={modulo.note} onChange={(e) => setModulo({ ...modulo, note: e.target.value })}
+                />
               </div>
               <Button type="submit" className="w-full" disabled={Boolean(mancaQualcosa) || salvando}>
                 {salvando ? "Salvataggio..." : "Salva"}

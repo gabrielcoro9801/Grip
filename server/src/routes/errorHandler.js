@@ -26,6 +26,7 @@ const VINCOLI_CON_MESSAGGIO = {
 	canali_contatto_nome_unique: 'Esiste già un canale con questo nome.',
 	staff_accounts_email_lower_idx: 'Esiste già un account con questa email (le maiuscole non contano).',
 	leads_canale_id_canali_contatto_id_fk: 'Il canale è usato da alcuni contatti: disattivalo invece di eliminarlo.',
+	members_lead_canale_id_canali_contatto_id_fk: 'Da questo canale sono arrivati dei soci: disattivalo invece di eliminarlo.',
 	bookings_attiva_unica_idx: 'Il socio è già prenotato a questa lezione.',
 	qr_accessi_attivo_unico_idx: "Il socio ha già un codice d'accesso attivo: revoca quello prima di crearne un altro.",
 	staff_accounts_linked_member_id_idx: 'Il socio ha già un account per il portale.',

@@ -2,6 +2,7 @@
 // Campi dedotti dall'uso reale nel codice (il datastore precedente non aveva schema).
 import { sql } from 'drizzle-orm';
 import { pgTable, uuid, varchar, text, boolean, integer, numeric, date, timestamp, check, uniqueIndex, index } from 'drizzle-orm/pg-core';
+import { canaliContatto } from './lead.js';
 
 // Anagrafica "socio" applicativo (login member, prenotazioni, documenti, QR).
 export const members = pgTable('members', {
@@ -45,6 +46,13 @@ export const members = pgTable('members', {
 	// QR non lo fanno entrare. Si riattiva quando torna. Lo scrivono solo le rotte dedicate
 	// (routes/soci.js), non l'endpoint generico.
 	archiviatoIl: date('archiviato_il'),
+	// Da dove è arrivato, se è nato da un contatto (lead): il canale e il giorno del primo
+	// contatto. Il lead si cancella quando diventa socio, e senza queste due colonne non si
+	// saprebbe più quale canale porta iscritti e non solo telefonate. Le scrive soltanto la
+	// trasformazione (routes/lead.js); vuote per chi si è iscritto direttamente, e per chi è
+	// stato trasformato prima che esistessero. Un canale citato da qui non si elimina.
+	leadCanaleId: uuid('lead_canale_id').references(() => canaliContatto.id, { onDelete: 'restrict' }),
+	leadDataContatto: date('lead_data_contatto'),
 	createdDate: timestamp('created_date', { withTimezone: true }).notNull().defaultNow(),
 	updatedDate: timestamp('updated_date', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({

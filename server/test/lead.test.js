@@ -82,10 +82,11 @@ before(async () => {
 });
 
 after(async () => {
+	// I soci nati da un contatto citano il canale: vanno via prima dei canali.
 	if (idLead.length) await db.delete(leads).where(inArray(leads.id, idLead));
-	if (idCanali.length) await db.delete(canaliContatto).where(inArray(canaliContatto.id, idCanali));
 	await db.delete(staffAccounts).where(inArray(staffAccounts.id, idAccount));
 	await db.delete(members).where(inArray(members.id, idSocio));
+	if (idCanali.length) await db.delete(canaliContatto).where(inArray(canaliContatto.id, idCanali));
 	if (idEnte) {
 		const dove = and(eq(numberingCounters.organizationId, idEnte), eq(numberingCounters.scope, 'codice_socio'));
 		if (contatoreIniziale === null) await db.delete(numberingCounters).where(dove);
@@ -127,6 +128,21 @@ describe("l'anagrafica di un lead", () => {
 		const lead = await nuovoLead({ telefono: '', email: '' });
 		assert.equal(lead.telefono, null, 'un campo lasciato vuoto non è un numero');
 		assert.equal(lead.email, null);
+		assert.equal(lead.note, null);
+	});
+
+	test('la nota sta in 140 caratteri, e una di soli spazi è nessuna nota', async () => {
+		const completo = { nome: 'A', cognome: 'B', data_contatto: '2026-09-10', canale_id: canale.id, sesso: 'M' };
+		const lunga = await post('reception', '/api/entities/Lead', { ...completo, note: 'x'.repeat(141) });
+		assert.equal(lunga.statusCode, 400);
+		assert.match(lunga.json().error, /140 caratteri/);
+
+		const giusta = await nuovoLead({ note: `  ${'x'.repeat(140)}  ` });
+		assert.equal(giusta.note, 'x'.repeat(140), 'gli spazi attorno non contano');
+
+		const vuota = await come('reception', { method: 'PUT', url: `/api/entities/Lead/${giusta.id}`, payload: { note: '   ' } });
+		assert.equal(vuota.statusCode, 200, vuota.body);
+		assert.equal(vuota.json().note, null);
 	});
 });
 
@@ -142,6 +158,38 @@ describe('i canali', () => {
 
 		const disattiva = await come('reception', { method: 'PUT', url: `/api/entities/CanaleContatto/${usato.id}`, payload: { attivo: false } });
 		assert.equal(disattiva.json().attivo, false);
+	});
+
+	test("l'uso di ogni canale conta i contatti e i soci arrivati da lì", async () => {
+		const [nuovo] = await db.insert(canaliContatto).values({ nome: `Uso ${Date.now()}` }).returning();
+		idCanali.push(nuovo.id);
+		await nuovoLead({ canale_id: nuovo.id });
+		await nuovoLead({ canale_id: nuovo.id });
+		const [socio] = await db.insert(members).values({
+			nome: 'Da', cognome: 'Canale', codiceSocio: `UC${Date.now() % 1e8}`, leadCanaleId: nuovo.id, leadDataContatto: '2026-09-01',
+		}).returning();
+		idSocio.push(socio.id);
+
+		const uso = await come('reception', { method: 'GET', url: '/api/lead/canali/uso' });
+		assert.equal(uso.statusCode, 200, uso.body);
+		assert.deepEqual(uso.json()[nuovo.id], { contatti: 2, soci: 1 });
+
+		// Chi vede i lead in sola lettura vede anche i conti; il socio no.
+		assert.equal((await come('istruttore', { method: 'GET', url: '/api/lead/canali/uso' })).statusCode, 200);
+		assert.equal((await come('socio', { method: 'GET', url: '/api/lead/canali/uso' })).statusCode, 403);
+	});
+
+	test('un canale da cui è arrivato un socio non si elimina', async () => {
+		const [canaleSocio] = await db.insert(canaliContatto).values({ nome: `Di un socio ${Date.now()}` }).returning();
+		idCanali.push(canaleSocio.id);
+		const [socio] = await db.insert(members).values({
+			nome: 'Gia', cognome: 'Socio', codiceSocio: `CS${Date.now() % 1e8}`, leadCanaleId: canaleSocio.id,
+		}).returning();
+		idSocio.push(socio.id);
+
+		const elimina = await come('reception', { method: 'DELETE', url: `/api/entities/CanaleContatto/${canaleSocio.id}` });
+		assert.equal(elimina.statusCode, 400);
+		assert.match(elimina.json().error, /arrivati dei soci.*disattivalo/);
 	});
 
 	test('due canali con lo stesso nome no', async () => {
@@ -179,6 +227,20 @@ describe('la trasformazione in socio', () => {
 		assert.notEqual(member.codice_socio, '999999', 'il codice lo assegna il contatore');
 
 		assert.equal((await db.select().from(leads).where(eq(leads.id, lead.id))).length, 0, 'il lead non c\'è più');
+
+		// Il lead è sparito, ma il socio ricorda da dove veniva: è ciò che Andamento conta.
+		const [riga] = await db.select().from(members).where(eq(members.id, member.id));
+		assert.equal(riga.leadCanaleId, canale.id);
+		assert.equal(riga.leadDataContatto, '2026-09-10');
+
+		// E dall'endpoint generico la provenienza non si riscrive.
+		await come('reception', {
+			method: 'PUT', url: `/api/entities/Member/${member.id}`,
+			payload: { lead_canale_id: null, lead_data_contatto: '2020-01-01' },
+		});
+		const [dopo] = await db.select().from(members).where(eq(members.id, member.id));
+		assert.equal(dopo.leadCanaleId, canale.id);
+		assert.equal(dopo.leadDataContatto, '2026-09-10');
 		assert.equal((await post('reception', `/api/lead/${lead.id}/trasforma`, { nome: 'A', cognome: 'B', sesso: 'F', codice_fiscale: CF })).statusCode, 404);
 	});
 

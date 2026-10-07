@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { api } from "@/core/api/client";
 import { Button } from "@/ui/primitivi/button";
 import { Input } from "@/ui/primitivi/input";
@@ -17,8 +17,9 @@ import { Plus, Check, X, Pencil, Trash2 } from "lucide-react";
  * I canali da cui arrivano i contatti.
  *
  * Li decide la palestra: una usa Instagram, un'altra il volantino in farmacia. Un canale che
- * qualche contatto usa non si elimina — quei contatti resterebbero senza provenienza e i conti
- * dell'andamento sbaglierebbero — ma si disattiva: sparisce dal modulo, resta sui contatti vecchi.
+ * qualche contatto usa — o da cui è arrivato un socio — non si elimina: quei contatti
+ * resterebbero senza provenienza e i conti dell'andamento sbaglierebbero. Si disattiva: sparisce
+ * dal modulo, resta su chi è già registrato.
  */
 export default function Canali() {
   const { staffUser } = useStaffAuth();
@@ -27,7 +28,8 @@ export default function Canali() {
   const puoModificare = canEdit(staffUser?.ruolo, "crm_leads");
 
   const [canali, setCanali] = useState([]);
-  const [leads, setLeads] = useState([]);
+  // { [idCanale]: { contatti, soci } }, contato dal server: i soci la pagina non li legge.
+  const [usi, setUsi] = useState({});
   const [loading, setLoading] = useState(true);
   const [errore, setErrore] = useState(null);
   const [nuovo, setNuovo] = useState("");
@@ -35,19 +37,13 @@ export default function Canali() {
 
   const carica = useCallback(() => {
     setErrore(null);
-    Promise.all([api.entities.CanaleContatto.list("nome"), api.entities.Lead.list()])
-      .then(([c, l]) => { setCanali(c); setLeads(l); })
+    Promise.all([api.entities.CanaleContatto.list("nome"), api.lead.usoCanali()])
+      .then(([c, u]) => { setCanali(c); setUsi(u); })
       .catch(setErrore)
       .finally(() => setLoading(false));
   }, []);
 
   useEffect(() => { carica(); }, [carica]);
-
-  const usi = useMemo(() => {
-    const conti = new Map();
-    for (const l of leads) conti.set(l.canale_id, (conti.get(l.canale_id) ?? 0) + 1);
-    return conti;
-  }, [leads]);
 
   const esegui = async (operazione, messaggio) => {
     try {
@@ -101,7 +97,8 @@ export default function Canali() {
       <ul className="divide-y divide-border border border-border rounded-lg">
         {canali.length === 0 && <li className="p-4 text-sm text-muted-foreground text-center">Nessun canale</li>}
         {canali.map((c) => {
-          const usato = usi.get(c.id) ?? 0;
+          const { contatti = 0, soci = 0 } = usi[c.id] ?? {};
+          const usato = contatti + soci;
           const modifica = inModifica?.id === c.id;
           return (
             <li key={c.id} className="flex flex-wrap items-center gap-3 p-3">
@@ -120,16 +117,24 @@ export default function Canali() {
               ) : (
                 <div className="flex-1 min-w-0">
                   <p className={`text-sm font-medium ${c.attivo ? "" : "text-muted-foreground"}`}>{c.nome}</p>
-                  <p className="text-xs text-muted-foreground">{usato} {usato === 1 ? "contatto" : "contatti"}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {contatti} {contatti === 1 ? "contatto" : "contatti"}
+                    {soci > 0 && <> · {soci} {soci === 1 ? "diventato socio" : "diventati soci"}</>}
+                  </p>
                 </div>
               )}
-              <StatusBadge status={c.attivo ? "attivo" : "disattivato"} label={c.attivo ? "Attivo" : "Disattivato"} tone={c.attivo ? "positivo" : "neutro"} />
+              {/* Larghezze fisse per badge e "Disattiva/Riattiva": le righe si allineano in colonna
+                  qualunque sia lo stato del canale. */}
+              <StatusBadge
+                status={c.attivo ? "attivo" : "disattivato"} label={c.attivo ? "Attivo" : "Disattivato"} tone={c.attivo ? "positivo" : "neutro"}
+                className="w-24 justify-center"
+              />
               {puoModificare && !modifica && (
                 <div className="flex items-center gap-1">
                   <Button
                     size="sm"
                     variant="outline"
-                    className="h-8"
+                    className="h-8 w-20"
                     onClick={() => esegui(() => api.entities.CanaleContatto.update(c.id, { attivo: !c.attivo }), c.attivo ? "Canale disattivato" : "Canale riattivato")}
                   >
                     {c.attivo ? "Disattiva" : "Riattiva"}
@@ -137,13 +142,20 @@ export default function Canali() {
                   <Button size="icon" variant="ghost" className="h-8 w-8" aria-label={`Rinomina ${c.nome}`} onClick={() => setInModifica({ id: c.id, nome: c.nome })}>
                     <Pencil className="w-3.5 h-3.5" />
                   </Button>
-                  {/* Un canale usato non si elimina: si disattiva. Il pulsante non compare
-                      nemmeno, invece di comparire e rispondere con un errore. */}
-                  {usato === 0 && (
-                    <Button size="icon" variant="ghost" className="h-8 w-8 text-destructive" aria-label={`Elimina ${c.nome}`} onClick={() => elimina(c)}>
+                  {/* Un canale usato non si elimina: si disattiva. Il cestino c'è sempre, così le
+                      righe restano allineate, ma su un canale usato è spento e dice perché. Il
+                      motivo sta sullo span: un pulsante disattivato non riceve il passaggio del
+                      mouse, e il suggerimento non comparirebbe. */}
+                  <span title={usato > 0 ? "Canale in uso: disattivalo invece di eliminarlo" : undefined}>
+                    <Button
+                      size="icon" variant="ghost" className="h-8 w-8 text-destructive"
+                      disabled={usato > 0}
+                      aria-label={usato > 0 ? `${c.nome} è in uso e non si può eliminare: disattivalo` : `Elimina ${c.nome}`}
+                      onClick={() => elimina(c)}
+                    >
                       <Trash2 className="w-3.5 h-3.5" />
                     </Button>
-                  )}
+                  </span>
                 </div>
               )}
             </li>
