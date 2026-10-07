@@ -13,6 +13,7 @@ import StatusBadge from "@/ui/StatusBadge";
 import { ArrowLeft, Plus, CreditCard, QrCode, KeyRound, RefreshCw, Pencil, UserRound, Archive, ArchiveRestore } from "lucide-react";
 import CampiAnagrafica, { anagraficaDi, motivoAnagraficaIncompleta } from "@/staff/components/soci/CampiAnagrafica";
 import FisseSocio from "@/staff/components/soci/FisseSocio";
+import IngressiSocio from "@/staff/components/soci/IngressiSocio";
 import DocumentiSocio from "@/staff/components/soci/DocumentiSocio";
 import { AvatarSocio, SceltaFoto } from "@/staff/components/soci/FotoSocio";
 import { caricaFile } from "@/staff/lib/uploads";
@@ -442,6 +443,7 @@ export default function MemberDetail() {
             <CardTitle className="text-sm font-heading flex items-center gap-2"><QrCode className="w-4 h-4" /> Accesso e portale</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
+            <IngressiSocio socioId={member.id} />
             <section aria-label="QR accesso">
               {qrAccess ? (
                 <div className="flex items-center gap-4">

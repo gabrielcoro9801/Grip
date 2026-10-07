@@ -1,6 +1,6 @@
 import React from "react";
 import { Outlet, useLocation } from "react-router-dom";
-import { Users, BookOpen, CreditCard } from "lucide-react";
+import { Users, BookOpen, CreditCard, DoorOpen } from "lucide-react";
 import SectionTabs from "@/staff/components/SectionTabs";
 import PageContainer from "@/staff/components/PageContainer";
 
@@ -10,6 +10,7 @@ const tabs = [
   { label: "Elenco soci", path: "/crm", icon: Users, end: true },
   { label: "Abbonamenti", path: "/crm/abbonamenti", icon: BookOpen },
   { label: "Iscrizioni", path: "/crm/iscrizioni", icon: CreditCard },
+  { label: "Ingressi", path: "/crm/ingressi", icon: DoorOpen },
 ];
 
 export default function CrmLayout() {

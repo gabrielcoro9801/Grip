@@ -55,7 +55,7 @@ const COGNOME_LEAD = `Contatto${suffisso}`;
 const CF_LEAD = 'RSSMRA85T10A562S';
 
 const PAGINE_STAFF = [
-	['/', null], ['/crm', null], ['/crm/abbonamenti', null], ['/crm/iscrizioni', null],
+	['/', null], ['/crm', null], ['/crm/abbonamenti', null], ['/crm/iscrizioni', null], ['/crm/ingressi', null],
 	['/lead', COGNOME_LEAD], ['/lead/andamento', CANALE], ['/lead/canali', CANALE],
 	['/calendario', null], ['/calendario/prenotazioni', null], ['/calendario/corsi', null],
 	['/calendario/sale', null], ['/calendario/istruttori', null], ['/calendario/categorie', null],

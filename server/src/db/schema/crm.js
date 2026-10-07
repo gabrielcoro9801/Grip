@@ -1,7 +1,7 @@
 // Dominio CRM/membership: Member, Subscription, Plan, MemberDocument, QRAccesso.
 // Campi dedotti dall'uso reale nel codice (il datastore precedente non aveva schema).
 import { sql } from 'drizzle-orm';
-import { pgTable, uuid, varchar, text, boolean, integer, numeric, date, timestamp, check, uniqueIndex, index } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, text, boolean, integer, numeric, date, timestamp, jsonb, check, uniqueIndex, index } from 'drizzle-orm/pg-core';
 import { canaliContatto } from './lead.js';
 
 // Anagrafica "socio" applicativo (login member, prenotazioni, documenti, QR).
@@ -132,4 +132,26 @@ export const qrAccessi = pgTable('qr_accessi', {
 	// Un socio ha un codice attivo alla volta: con due, la porta e il telefono potevano
 	// sceglierne ognuno uno diverso (`limit(1)` senza ordine), e revocarne uno lasciava l'altro.
 	unAttivo: uniqueIndex('qr_accessi_attivo_unico_idx').on(table.clienteId).where(sql`${table.stato} = 'attivo'`),
+}));
+
+// Gli ingressi in palestra, registrati al bancone dopo il controllo del QR (routes/ingressi.js).
+// Non sono presenze alle lezioni: dicono chi è entrato e quando, e con quale esito — servono a
+// controllare l'accesso e alle statistiche (affluenza, frequenza, soci che non vengono più).
+//
+// `esito`: ammesso (tutto in regola), ammesso_con_avvisi (documenti da sistemare),
+// ammesso_in_deroga (abbonamento non valido, fatto entrare lo stesso dalla reception: finisce
+// anche nel registro delle azioni). `avvisi`: i codici di shared/avvisi.js di quel momento.
+export const ingressi = pgTable('ingressi', {
+	id: uuid('id').defaultRandom().primaryKey(),
+	memberId: uuid('member_id').notNull().references(() => members.id, { onDelete: 'cascade' }),
+	entratoAlle: timestamp('entrato_alle', { withTimezone: true }).notNull().defaultNow(),
+	esito: varchar('esito', { length: 24 }).notNull(),
+	avvisi: jsonb('avvisi'),
+	metodo: varchar('metodo', { length: 12 }).notNull(), // qr | manuale
+	registratoDaId: uuid('registrato_da_id'),
+	registratoDaNome: varchar('registrato_da_nome', { length: 255 }),
+}, (table) => ({
+	esitoValido: check('ingressi_esito_valido', sql`${table.esito} IN ('ammesso', 'ammesso_con_avvisi', 'ammesso_in_deroga')`),
+	perSocio: index('ingressi_member_id_entrato_alle_idx').on(table.memberId, table.entratoAlle),
+	perData: index('ingressi_entrato_alle_idx').on(table.entratoAlle),
 }));
