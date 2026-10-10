@@ -9,6 +9,7 @@ import { getUserFromRequest } from '../auth/tokens.js';
 import { canAccess } from '../../../shared/permissions.js';
 import { situazioni } from '../lib/segnali.js';
 import { registerPgErrorHandler } from './errorHandler.js';
+import { firmaUrl } from '../lib/urlFirmati.js';
 import { daFare, perche, FASI } from '../../../shared/segnali.js';
 
 const PUBBLICI = ['staff', 'socio', 'bancone'];
@@ -23,7 +24,9 @@ function perLoSchermo(p, pubblico) {
 	// Chi è già entrato oggi (dal tornello, o registrato a mano) porta anche quello che gli va detto:
 	// il rinnovo da proporre, il bentornato, gli auguri, il traguardo.
 	const bancone = p.entrato_oggi ? daFare(p.segnali, 'bancone').map(({ codice, motivo, azioni }) => ({ codice, motivo, azioni })) : [];
-	return { ...p, segnali, da_fare: fare.map((s) => s.codice), perche: perche(fare), priorita: fare[0]?.priorita ?? 0, bancone };
+	// La foto esce firmata, come ogni file caricato: senza firma il browser riceve un 404.
+	const foto_url = p.foto_url ? firmaUrl(p.foto_url) : null;
+	return { ...p, foto_url, segnali, da_fare: fare.map((s) => s.codice), perche: perche(fare), priorita: fare[0]?.priorita ?? 0, bancone };
 }
 
 export default async function segnaliRoutes(fastify) {
