@@ -8,6 +8,7 @@
 import { getUserFromRequest } from '../auth/tokens.js';
 import { canAccess } from '../../../shared/permissions.js';
 import { situazioni } from '../lib/segnali.js';
+import { registerPgErrorHandler } from './errorHandler.js';
 import { daFare, perche, FASI } from '../../../shared/segnali.js';
 
 const PUBBLICI = ['staff', 'socio', 'bancone'];
@@ -23,6 +24,9 @@ function perLoSchermo(p, pubblico) {
 }
 
 export default async function segnaliRoutes(fastify) {
+	// Un `persona` che non è un id diventa un 400 leggibile, non un 500.
+	registerPgErrorHandler(fastify);
+
 	fastify.addHook('preHandler', async (request, reply) => {
 		const utente = getUserFromRequest(request);
 		if (!utente) return reply.code(401).send({ error: 'Non autenticato.' });

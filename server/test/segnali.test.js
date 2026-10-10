@@ -159,6 +159,7 @@ describe('filtri dell\'elenco', () => {
 		assert.ok(riga(perSegnale, 'saltalezioni'));
 		assert.ok(!riga(perSegnale, 'scade'));
 		assert.equal((await come('reception', 'GET', '/api/segnali?fase=boh')).statusCode, 400);
+		assert.equal((await come('reception', 'GET', '/api/segnali?persona=boh')).statusCode, 400);
 	});
 });
 
