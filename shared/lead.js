@@ -4,6 +4,7 @@
 // "Andamento" riceve dal server righe anonime e le conta qui, la pagina Contatti ci legge gli
 // stati, e i test le provano con `node --test`.
 //
+import { playbook, etichettaCanale } from "./comunicazioni.js";
 import { giorniFra } from "./giorni.js";
 import { SOGLIE } from "./soglie.js";
 import { normalizzaTelefono } from "./anagrafica.js";
@@ -478,6 +479,8 @@ export function descriviAttivita(a) {
     case "fine_sospensione": return `Sospensione finita: riprende il ${dataBreve(a.esito)}`;
     case "abbandono": return `Ha lasciato la palestra: ${etichettaMotivoAbbandono(a.esito)}`;
     case "riattivazione": return "Tornato socio";
+    // Un messaggio automatico di un playbook (lib/invii.js), partito davvero.
+    case "messaggio": return `Messaggio automatico «${playbook(a.esito)?.titolo ?? a.esito}»: ${etichettaCanale(a.canale)}`;
     case "ingresso_dopo_contatto": {
       const n = Number(a.esito);
       return `Tornato in palestra ${n === 0 ? "il giorno stesso del contatto" : n === 1 ? "il giorno dopo il contatto" : `${n} giorni dopo il contatto`}`;

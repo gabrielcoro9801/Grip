@@ -15,8 +15,11 @@ export const TIPI_CONSENSO = [
 
 export const tipoConsensoValido = (v) => TIPI_CONSENSO.some((t) => t.valore === v);
 
-/** Da dove arriva un consenso: dal portale (il socio), dalla reception (modulo firmato), da un form pubblico. */
-export const FONTI_CONSENSO = ["portale", "reception", "form"];
+/**
+ * Da dove arriva un consenso: dal portale (il socio), dalla reception (modulo firmato), da un form
+ * pubblico, o dal link di disiscrizione in fondo a un messaggio (che lo toglie soltanto).
+ */
+export const FONTI_CONSENSO = ["portale", "reception", "form", "disiscrizione"];
 
 /**
  * Il valore attuale di ogni consenso, dalle righe del registro: l'ultima per tipo. Senza righe
