@@ -24,13 +24,12 @@ const colonne = {
 export async function iscrizioniPerSocio(memberIds = null, { conn = db, fineDal = null } = {}) {
 	if (memberIds && !memberIds.length) return new Map();
 	const diChi = (colonna) => (memberIds ? inArray(colonna, memberIds) : undefined);
-	const [righe, ferme] = await Promise.all([
-		conn.select(colonne).from(subscriptions)
-			.where(and(diChi(subscriptions.memberId), fineDal ? or(isNull(subscriptions.endDate), gte(subscriptions.endDate, fineDal)) : undefined))
-			.orderBy(asc(subscriptions.startDate)),
-		conn.select({ id: sospensioni.id, member_id: sospensioni.memberId, dal: sospensioni.dal, al: sospensioni.al, nota: sospensioni.nota })
-			.from(sospensioni).where(diChi(sospensioni.memberId)),
-	]);
+	// Una dopo l'altra, non insieme: `conn` può essere una transazione, cioè una connessione sola.
+	const righe = await conn.select(colonne).from(subscriptions)
+		.where(and(diChi(subscriptions.memberId), fineDal ? or(isNull(subscriptions.endDate), gte(subscriptions.endDate, fineDal)) : undefined))
+		.orderBy(asc(subscriptions.startDate));
+	const ferme = await conn.select({ id: sospensioni.id, member_id: sospensioni.memberId, dal: sospensioni.dal, al: sospensioni.al, nota: sospensioni.nota })
+		.from(sospensioni).where(diChi(sospensioni.memberId));
 	const per = (elenco) => {
 		const m = new Map();
 		for (const r of elenco) m.set(r.member_id, [...(m.get(r.member_id) ?? []), r]);

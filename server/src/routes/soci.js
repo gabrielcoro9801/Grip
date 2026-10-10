@@ -226,7 +226,8 @@ export default async function sociRoutes(fastify) {
 				.from(members).where(eq(members.id, request.params.id)).limit(1).for('update');
 			if (!socio) return { errore: 404, messaggio: 'Socio non trovato.' };
 			if (socio.archiviatoIl) return { errore: 400, messaggio: 'Il socio è archiviato: riattivalo prima.' };
-			const [iscrizioni, esistenti] = await Promise.all([iscrizioniDelSocio(socio.id, tx), sospensioniDelSocio(socio.id, tx)]);
+			const iscrizioni = await iscrizioniDelSocio(socio.id, tx);
+			const esistenti = await sospensioniDelSocio(socio.id, tx);
 			if (esistenti.some((s) => s.dal <= al && dal <= s.al)) return { errore: 409, messaggio: "Si accavalla a un'altra sospensione." };
 			if (!abbonamentoCopre(iscrizioni, dal)) return { errore: 400, messaggio: "Quel giorno non c'è un abbonamento da sospendere." };
 			const [sospensione] = await tx.insert(sospensioni).values({ memberId: socio.id, dal, al, nota, autoreNome }).returning();

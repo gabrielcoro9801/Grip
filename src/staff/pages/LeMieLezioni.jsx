@@ -14,8 +14,14 @@ import { useStaffAuth } from "@/staff/lib/StaffAuthContext";
 import { canEdit } from "@/staff/lib/permissions";
 import { formatData, formatDataOra } from "@/core/domain/format";
 import { NOTA_DIARIO_MASSIMO } from "@/core/domain/lead";
-import { oggiIso } from "@/core/domain/giorni";
+import { oggiIso, spostaGiorni } from "@/core/domain/giorni";
 import { GraduationCap, NotebookPen } from "lucide-react";
+
+// Le prossime lezioni, o le ultime: è lì che si vede chi è venuto e chi no.
+const VISTE = [
+  { valore: "prossime", etichetta: "Prossime", intervallo: (oggi) => ({ dal: oggi, al: spostaGiorni(oggi, 6) }) },
+  { valore: "passate", etichetta: "Ultimi 7 giorni", intervallo: (oggi) => ({ dal: spostaGiorni(oggi, -7), al: oggi }) },
+];
 
 const ESITI = {
   presente: { etichetta: "Presente", tono: "positivo" },
@@ -92,12 +98,13 @@ export default function LeMieLezioni() {
   const [dati, setDati] = useState(null);
   const [errore, setErrore] = useState(null);
   const [aperto, setAperto] = useState(null);
+  const [vista, setVista] = useState(VISTE[0]);
   const puoScrivere = canEdit(staffUser?.ruolo, "lezioni_istruttore");
 
   const carica = useCallback(() => {
     setErrore(null);
-    api.istruttore.lezioni().then(setDati).catch(setErrore);
-  }, []);
+    api.istruttore.lezioni(vista.intervallo(oggiIso())).then(setDati).catch(setErrore);
+  }, [vista]);
   useEffect(() => { carica(); }, [carica]);
 
   if (errore) return <ErrorState error={errore} onRetry={carica} />;
@@ -114,7 +121,18 @@ export default function LeMieLezioni() {
   const oggi = oggiIso();
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-3xl mx-auto space-y-6">
-      <PageHeader title="Le mie lezioni" description={`${dati.istruttore.nome} · da oggi a ${formatData(dati.al, "breve")}`} />
+      <PageHeader title="Le mie lezioni" description={`${dati.istruttore.nome} · dal ${formatData(dati.dal, "breve")} al ${formatData(dati.al, "breve")}`} />
+
+      <div className="flex gap-2" role="tablist" aria-label="Quali lezioni">
+        {VISTE.map((v) => (
+          <button
+            key={v.valore} type="button" role="tab" aria-selected={vista.valore === v.valore} onClick={() => setVista(v)}
+            className={`px-4 py-1.5 rounded-full text-sm border ${vista.valore === v.valore ? "bg-primary text-primary-foreground border-primary" : "border-border hover:bg-muted/50"}`}
+          >
+            {v.etichetta}
+          </button>
+        ))}
+      </div>
 
       {dati.spesso.length > 0 && (
         <section aria-labelledby="salta-spesso">
@@ -132,10 +150,10 @@ export default function LeMieLezioni() {
       )}
 
       {dati.lezioni.length === 0 ? (
-        <EmptyState icon={GraduationCap} title="Nessuna lezione" description="Non hai lezioni in calendario nei prossimi giorni." />
+        <EmptyState icon={GraduationCap} title="Nessuna lezione" description={vista.valore === "prossime" ? "Non hai lezioni in calendario nei prossimi giorni." : "Nessuna lezione negli ultimi sette giorni."} />
       ) : (
         <ol className="space-y-3">
-          {dati.lezioni.map((l) => {
+          {(vista.valore === "passate" ? [...dati.lezioni].reverse() : dati.lezioni).map((l) => {
             const venuti = l.prenotati.filter((p) => p.esito === "presente").length;
             const attesi = l.prenotati.filter((p) => p.stato === "confirmed").length;
             return (

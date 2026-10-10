@@ -104,6 +104,43 @@ Tre punti che si sbagliano quasi sempre, spiegati lì per esteso:
 
 ## Stato del progetto
 
+### 10 ottobre 2026 — CRM, fase 3: iscrivere in un passo, e non perdere chi sta per andare
+
+- **Iscrivi**, una finestra a passi — anagrafica, abbonamento, certificato (foto o file),
+  informativa privacy e consensi, credenziali del portale — e un salvataggio solo alla fine, in
+  una transazione: o nasce tutto, o niente (`POST /api/iscrivi`). Si apre da un contatto e da
+  "Aggiungi socio"; un ex socio ritrova la sua scheda, anche entrando direttamente (dal codice
+  fiscale). Abbonamento, certificato e portale si saltano; l'informativa firmata no.
+- **Richiedi il rinnovo** dal portale (Abbonamento): il socio tocca un pulsante e vede che la
+  richiesta è arrivata; in Oggi va in cima ("Chiede di rinnovare") finché la reception non vende
+  un abbonamento o non lo sente. Niente pagamenti, nessun messaggio.
+- **Sospensione dell'abbonamento** dalla scheda (Abbonamenti → Sospendi): fino alla ripresa il
+  socio non entra e non prenota, le prenotazioni di quei giorni si liberano, e la scadenza slitta
+  di altrettanto — anche quella del rinnovo già comprato. La scadenza non si riscrive: si calcola
+  (`conSospensioni` in `shared/abbonamenti.js`). Da sospeso non è "assente" né "in calo", e il
+  semaforo dice "Abbonamento sospeso". Senza limiti di durata o di numero; il motivo è facoltativo.
+- **Perché se ne vanno**: archiviando un socio si sceglie il motivo da un elenco; uno "scaduto da
+  recuperare" che non torna si chiude da Oggi con "Non torna". La dashboard li conta.
+- **Le mie lezioni**, la vista dell'istruttore: le sue lezioni, chi è prenotato, presenti e
+  no-show (dagli ingressi), chi salta spesso, e una nota nel diario del socio. Vede solo i soci
+  delle sue lezioni. L'account si collega all'istruttore in Utenti e ruoli.
+- **Entrati oggi**: chi passa dal tornello con qualcosa da sentirsi dire — il rinnovo, il
+  bentornato, gli auguri, il traguardo — sta in cima a Oggi e nella scheda.
+- **Il giro misura i contatti**: chi, contattato perché assente o in calo, rientra entro 14 giorni
+  lascia una riga nel diario (`ingresso_dopo_contatto`). Sarà il "26 su 40 sono tornati" della fase 5.
+- Verifica nel browser: `cd server && npm run verifica:fase3` (dopo `npx vite build`).
+
+Tre avvertenze:
+
+- **L'istruttore predefinito non legge più soci, documenti e contatti.** La migrazione 0055
+  aggiorna il ruolo di sistema solo se aveva ancora i permessi predefiniti. Tiene il calendario,
+  e dal calendario l'endpoint generico gli apre ancora l'elenco dei soci (un punto aperto
+  dell'audit di sicurezza): per chiuderlo subito, togli "Calendario" all'istruttore in
+  Utenti e ruoli → Ruoli e permessi.
+- Un account istruttore senza collegamento vede "Account non collegato": va collegato a mano.
+- I file di un'iscrizione si caricano prima del salvataggio: se l'iscrizione poi fallisce
+  restano orfani, e li toglie `npm run manutenzione:file-orfani`.
+
 ### 10 ottobre 2026 — Ingressi: il registro al posto del bancone
 
 Alle palestre interessa un controllo accessi **passivo**: un lettore QR collegato al tornello.
