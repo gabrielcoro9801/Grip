@@ -50,7 +50,7 @@ export async function situazioni({ personaId = null, conn = db, adesso = new Dat
 	const anagrafiche = await conn.select({
 		persona_id: persone.id, nome: persone.fullName, nome_proprio: persone.nome, telefono: persone.telefono, email: persone.email,
 		socio_id: members.id, codice_socio: members.codiceSocio, archiviato_il: members.archiviatoIl,
-		date_of_birth: members.dateOfBirth, created_date: members.createdDate,
+		date_of_birth: members.dateOfBirth, created_date: members.createdDate, foto_url: members.fotoUrl,
 	}).from(persone).leftJoin(members, eq(members.personaId, persone.id))
 		.where(personaId ? eq(persone.id, personaId) : undefined);
 	const idSoci = anagrafiche.map((a) => a.socio_id).filter(Boolean);
@@ -149,6 +149,10 @@ export async function situazioni({ personaId = null, conn = db, adesso = new Dat
 			ingressi_4: ingressiSocio ? ingressiSocio.quattro : null,
 			media_4: ingressiSocio ? Math.round((ingressiSocio.dodici / 3) * 10) / 10 : null,
 			scadenza: copertura?.scadenza ?? null,
+			// L'ultima scadenza passata: le tile dell'elenco mostrano "scaduto il…" a chi non ha rinnovato.
+			ultima_fine: copertura?.ultimaFine ?? null,
+			// Non firmata: la firma la mette la rotta che la manda al browser (routes/segnali.js).
+			foto_url: a.foto_url ?? null,
 			abbonamento: copertura?.riferimento?.plan_name ?? null,
 			valido: Boolean(copertura?.valido),
 			sospensione: copertura?.sospensione ? { dal: copertura.sospensione.dal, al: copertura.sospensione.al } : null,
