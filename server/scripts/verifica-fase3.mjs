@@ -196,7 +196,7 @@ try {
 	controlla('Oggi: "Entrati oggi" con il bentornato per chi è passato dal tornello', /Bentornato: non veniva da 31 giorni/.test(await entrati.innerText().catch(() => '')), await entrati.innerText().catch(() => 'assente'));
 	await senzaScorrimento(telefono, 'Oggi');
 	await telefono.screenshot({ path: schermata('oggi-telefono'), fullPage: true });
-	await primo.getByRole('button', { name: 'Fatto' }).click();
+	await primo.getByRole('button', { name: 'Registra contatto' }).click();
 	const dialogo = telefono.getByRole('dialog');
 	await dialogo.getByRole('button', { name: 'Ha risposto', exact: true }).click();
 	await dialogo.getByRole('button', { name: 'Registra' }).click();
