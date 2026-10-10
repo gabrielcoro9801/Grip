@@ -19,7 +19,8 @@
     "db:ripara-date-settimanali": "node src/ripara-date-settimanali.js",
     "manutenzione:file-orfani": "node src/pulisci-file-orfani.js",
     "verifica:browser": "node scripts/verifica-browser.mjs",
-    "verifica:pagine": "node scripts/verifica-pagine.mjs"
+    "verifica:pagine": "node scripts/verifica-pagine.mjs",
+    "verifica:oggi": "node scripts/verifica-oggi.mjs"
   },
   "dependencies": {
     "@fastify/cors": "^10.0.1",

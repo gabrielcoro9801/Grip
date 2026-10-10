@@ -232,6 +232,33 @@ su Cloudflare (passo 4).
 forzi a un valore diverso da quello su cui Railway instrada — per esempio copiando il
 `PORT=3001` del `.env` locale — il dominio risponde *"application failed to respond"*.
 
+### 2.7 Il giro quotidiano (Railway Cron)
+
+Alcune cose il CRM le fa da solo una volta al giorno, anche se nessuno apre GRIP: oggi chiude
+come *non raggiungibili* i contatti con troppi tentativi senza risposta. Le fa
+[`server/src/giro.js`](../server/src/giro.js), che **non invia niente** ed è idempotente:
+lanciato due volte nello stesso giorno, la seconda non trova nulla da fare. A mano, da
+`server/`: `npm run giro`.
+
+Su Railway gira come un **servizio a parte**, nello stesso progetto, che parte all'ora
+stabilita, fa il giro ed esce:
+
+1. **+ New → GitHub Repo**, lo stesso repository del backend. Chiamalo `giro`.
+2. **Settings → Build**: builder **Dockerfile**, Root Directory vuoto, come il backend (2.3).
+3. **Settings → Deploy → Custom Start Command**: `node server/src/giro.js`.
+4. **Settings → Deploy → Cron Schedule**: `0 3 * * *`. L'ora è in **UTC**: le 3 UTC sono le
+   4 o le 5 a Roma, quando nessuno lavora.
+5. **Variables**: basta `DATABASE_URL`, come riferimento a quella del database
+   (`${{Postgres.DATABASE_URL}}`). Il giro non serve pagine e non usa le altre variabili.
+6. Il giro non apre una porta: se il rilascio resta in attesa del controllo di salute
+   (`/health`, che `railway.json` chiede per il backend), svuota **Healthcheck Path** nelle
+   impostazioni di questo servizio.
+
+Per sapere se ha girato: **Deployments** del servizio `giro`, una riga al giorno; nei log c'è
+il resoconto, per esempio `La mia associazione: 2 lead chiusi come non raggiungibili.` Se il
+processo non esce, Railway salta le esecuzioni successive: il giro chiude sempre la
+connessione al database ed esce, anche quando fallisce (codice d'uscita 1).
+
 ---
 
 ## 3. Il frontend (non serve fare niente)

@@ -374,8 +374,8 @@ export default function MemberDetail() {
             <CardTitle className="text-sm font-heading flex items-center gap-2"><UserRound className="w-4 h-4" /> Anagrafica</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="flex flex-col sm:flex-row gap-6">
-              <AvatarSocio socio={member} size="lg" className="self-center sm:self-start" />
+            <div className="flex flex-col sm:flex-row lg:flex-col gap-6">
+              <AvatarSocio socio={member} size="lg" className="self-center sm:self-start lg:self-center" />
               <dl className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
                 <DatoAnagrafico etichetta="Nome">{member.nome}</DatoAnagrafico>
                 <DatoAnagrafico etichetta="Cognome">{member.cognome}</DatoAnagrafico>

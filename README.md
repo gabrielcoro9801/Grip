@@ -104,6 +104,40 @@ Tre punti che si sbagliano quasi sempre, spiegati lì per esteso:
 
 ## Stato del progetto
 
+### 10 ottobre 2026 — CRM, fase 2: chi seguire oggi, e perché
+
+Un **solo motore** decide chi va seguito (`shared/segnali.js`), e tutte le schermate lo leggono:
+Oggi, l'elenco dei soci, la scheda, la dashboard, il bancone e le statistiche degli ingressi.
+Prima c'erano quattro conti separati, con soglie diverse.
+
+- **Fase di ogni persona**, calcolata e mai salvata: contatto, nuovo (primi 30 giorni),
+  ambientamento (fino a 90), attivo, in calo, assente (14 giorni senza ingressi), in scadenza,
+  scaduto recuperabile (fino a 60 giorni), ex socio. Le soglie stanno in `shared/soglie.js`
+  (`segnali`) e la palestra le può cambiare.
+- **Il perché, in parole**: "scade tra 9 giorni · 3 ingressi in 4 settimane contro 9 di media ·
+  2 no-show in 4 settimane". Nessun punteggio da interpretare.
+- **Presenze e no-show** calcolati dagli ingressi: una prenotazione con un ingresso da un'ora
+  prima dell'inizio alla fine della lezione è una presenza; senza, a lezione finita, un no-show.
+- **Oggi**, prima voce del menu e pensata per il telefono: chi seguire, dal più prezioso, con
+  chiama, WhatsApp (un link), email, "fatto, com'è andata" e "rimanda". Un contatto registrato
+  nasconde i segnali per 7 giorni; "rimanda" fino al giorno scelto. Tutto finisce nel diario.
+- **Elenco dei soci** filtrato dal server per fase e per cosa c'è da fare (il filtro sta
+  nell'indirizzo), con ultimo ingresso, frequenza e scadenza. Non scarica più tutti i soci e
+  tutti gli abbonamenti nel browser.
+- **Scheda del socio**: in testa la fase, i segnali e le azioni; il diario al centro.
+- **Ctrl+K** da ogni pagina: nome, telefono scritto come capita, codice fiscale o codice socio.
+- **Il bancone**: accanto al semaforo, "scade tra 3 giorni: proponi il rinnovo", "bentornato",
+  gli auguri, il 50° ingresso; un tocco lo segna nel diario.
+- **Il giro quotidiano** (`server/src/giro.js`, `npm run giro`, un Railway Cron: vedi
+  [`docs/deploy.md`](docs/deploy.md), 2.7) chiude i contatti non raggiungibili. Prima lo faceva
+  la lettura dei contatti: una GET non scrive più.
+- Verifica nel browser: `cd server && npm run verifica:oggi` (dopo `npx vite build`).
+
+Una correzione all'avvertenza della fase 1: le migrazioni **costruiscono** un database vuoto
+fino in fondo. L'errore sulla 0023 veniva da un database creato con la codifica WIN1252 (quella
+che PostgreSQL sceglie su un Windows italiano), che non accetta i caratteri della migrazione:
+il database va creato in UTF8.
+
 ### 10 ottobre 2026 — CRM, fase 1: una persona, una storia
 
 Lead, soci ed ex soci sono ora **la stessa persona** (`persone`). Un lead è una **trattativa**
@@ -131,9 +165,8 @@ Due avvertenze:
 - **Lo schema va avanti solo con le migrazioni** (`npm run db:deploy`), non con `db:push`: la
   persona di un socio la crea e la aggiorna un trigger del database (`socio_su_persona`, migrazione
   0051), che `push` non conosce. Senza trigger un socio nuovo non si salva.
-- **Le migrazioni non ricostruiscono un database vuoto**: la 0023 inserisce in `exercises`, che
-  nessuna migrazione precedente crea (il database storico è nato con `push`). Va sistemato prima di
-  creare nuovi ambienti, e comunque prima del multi-tenant.
+- ~~Le migrazioni non ricostruiscono un database vuoto~~: falso allarme, chiarito nella fase 2.
+  Ricostruiscono tutto, purché il database sia in UTF8.
 
 ### 7 ottobre 2026 — l'allenamento esce dall'applicazione
 

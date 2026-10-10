@@ -120,7 +120,7 @@ export default function MembersList() {
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
-      <PageHeader title="Gestione membri" description={`${frequentano} soci${exSoci ? ` · ${exSoci} ex soci` : ""}`}>
+      <PageHeader title="Gestione membri" description={`${frequentano} ${frequentano === 1 ? "socio" : "soci"}${exSoci ? ` · ${exSoci} ex soci` : ""}`}>
         <Button onClick={() => setShowForm(true)} size="sm">
           <Plus className="w-4 h-4 mr-1" /> Aggiungi socio
         </Button>
