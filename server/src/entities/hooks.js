@@ -14,6 +14,7 @@ import { translateToSnakeCase } from './columnMaps.js';
 import {
 	sessoValido, normalizzaCodiceFiscale, codiceFiscaleValido, motivoDocumentoNonValido, tipoDocumentoValido,
 	normalizzaPartitaIva, partitaIvaValida, NOTE_ISTRUTTORE_MASSIMO, NOTE_SOCIO_MASSIMO, motivoDataNascitaNonValida,
+	normalizzaTelefono,
 } from '../../../shared/anagrafica.js';
 import {
 	unitaDurataValida, statoTipoValido, motivoCambioStatoNonValido, motivoNonVendibile, dataFineAbbonamento,
@@ -26,7 +27,6 @@ import {
 	NOME_MASSIMO as NOME_SALA_MASSIMO, NOTE_MASSIMO as NOTE_SALA_MASSIMO,
 } from '../../../shared/sale.js';
 import { NOTE_CORSO_MASSIMO, RICORRENZE_CREABILI, DISDETTA_MASSIMA_ORE } from '../../../shared/corsi.js';
-import { NOTE_LEAD_MASSIMO } from '../../../shared/lead.js';
 
 // Campi rimossi da ogni risposta, per entità.
 const HIDDEN_FIELDS = {
@@ -259,8 +259,23 @@ export function anagraficaSocio(corpo, { creazione }) {
 		rest.notes = vuoto(rest.notes) ? null : String(rest.notes).trim() || null;
 		if (rest.notes && rest.notes.length > NOTE_SOCIO_MASSIMO) throw rifiuta(`Le note stanno in ${NOTE_SOCIO_MASSIMO} caratteri.`);
 	}
+	for (const campo of ['phone', 'emergency_contact_phone']) {
+		if (presente(rest, campo)) rest[campo] = telefonoNormalizzato(rest[campo]);
+	}
+	if (presente(rest, 'email')) rest.email = vuoto(rest.email) ? null : String(rest.email).trim();
 	if (!creazione) rest.updated_date = new Date().toISOString();
 	return rest;
+}
+
+/**
+ * Un telefono come si salva: in formato internazionale (shared/anagrafica.js), null se vuoto.
+ * Uno che non è un numero si rifiuta: salvato com'è, non si ritroverebbe e non riceverebbe niente.
+ */
+export function telefonoNormalizzato(valore) {
+	if (vuoto(valore)) return null;
+	const numero = normalizzaTelefono(valore);
+	if (!numero) throw rifiuta(`Il numero «${String(valore).trim()}» non è un telefono valido.`);
+	return numero;
 }
 
 // Trasformazioni in scrittura: il frontend continua a inviare `password` in chiaro
@@ -299,13 +314,11 @@ const WRITE_TRANSFORMS = {
 	// `full_name` si scarta: è calcolato dal database da nome e cognome, e scriverlo farebbe
 	// fallire l'inserimento.
 	async Member(body, { creazione }) {
-		const {
-			archiviato_il: _archivio, lead_canale_id: _canale, lead_data_contatto: _contatto, ...corpo
-		} = body ?? {};
+		const { archiviato_il: _archivio, persona_id: _persona, ...corpo } = body ?? {};
 		// L'archiviazione passa dalle sue rotte (routes/soci.js), che fanno anche il resto:
-		// disdire le prenotazioni future, lasciarne traccia nel registro. La provenienza da un
-		// contatto la scrive solo la trasformazione (routes/lead.js): è un fatto, non un campo
-		// del modulo, e riscriverla falserebbe i conti di Andamento.
+		// disdire le prenotazioni future, lasciarne traccia nel registro. La persona la sceglie
+		// solo l'iscrizione di un contatto (routes/lead.js); per gli altri la crea il database:
+		// spostare un socio su un'altra persona gli darebbe il diario di qualcun altro.
 		const rest = anagraficaSocio(corpo, { creazione });
 		// Il codice è la chiave del socio: lo decide sempre il contatore, anche se il modulo ne
 		// manda uno, e non si riscrive in modifica.
@@ -536,33 +549,6 @@ const WRITE_TRANSFORMS = {
 			const motivo = await motivoSalaNonDisponibile(rest.room_id, rest.date, rest.date);
 			if (motivo) throw rifiuta(motivo);
 		}
-		return rest;
-	},
-
-	// Un contatto: i campi obbligatori li difende già il database; qui si ripuliscono i vuoti
-	// che i moduli mandano come stringa, perché un'email "" non è un'email.
-	async Lead(body) {
-		// Lo stato e le sue date li cambiano solo le azioni (routes/lead.js), che ne scrivono
-		// anche il diario: dall'endpoint generico si scrive l'anagrafica, e basta.
-		const {
-			stato: _stato, stato_dal: _dal, tentativi_senza_risposta: _tentativi, ultimo_contatto_il: _contatto,
-			ultima_risposta_il: _risposta, richiamare_il: _richiamo, motivo_chiusura: _motivo, ...rest
-		} = body ?? {};
-		for (const campo of ['nome', 'cognome']) {
-			if (presente(rest, campo)) rest[campo] = String(rest[campo] ?? '').trim();
-		}
-		for (const campo of ['telefono', 'email']) {
-			if (presente(rest, campo) && vuoto(rest[campo])) rest[campo] = null;
-		}
-		if (presente(rest, 'note')) {
-			rest.note = vuoto(rest.note) ? null : String(rest.note).trim() || null;
-			if (rest.note && rest.note.length > NOTE_LEAD_MASSIMO) throw rifiuta(`Le note stanno in ${NOTE_LEAD_MASSIMO} caratteri.`);
-		}
-		if (presente(rest, 'sesso') && !sessoValido(rest.sesso)) throw rifiuta('Indica il sesso: M, F o Altro.');
-		if ((presente(rest, 'nome') && !rest.nome) || (presente(rest, 'cognome') && !rest.cognome)) {
-			throw rifiuta('Nome e cognome sono obbligatori.');
-		}
-		rest.updated_date = new Date().toISOString();
 		return rest;
 	},
 };

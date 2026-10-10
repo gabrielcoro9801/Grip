@@ -8,7 +8,7 @@ import bcrypt from 'bcryptjs';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { buildApp } from '../src/app.js';
 import { db, pool } from '../src/db/client.js';
-import { members, staffAccounts, memberDocuments, numberingCounters } from '../src/db/schema/index.js';
+import { members, staffAccounts, memberDocuments, numberingCounters, persone } from '../src/db/schema/index.js';
 import { enteDellaNumerazione } from '../src/lib/codiceSocio.js';
 
 const PASSWORD = 'prova-anagrafica-1234';
@@ -124,9 +124,32 @@ describe('modificare un socio', () => {
 	test('un socio di prima, senza codice fiscale, resta modificabile nel resto', async () => {
 		const [vecchio] = await db.insert(members).values({ nome: 'Socio', cognome: 'Storico', codiceSocio: `ST${String(Date.now()).replace(/\d/g, (c) => 'ABCDEFGHIJ'[c])}` }).returning();
 		idSoci.push(vecchio.id);
-		const res = await modifica(vecchio.id, { phone: '333 000' });
+		const res = await modifica(vecchio.id, { phone: '333 000 1111' });
 		assert.equal(res.statusCode, 200, res.body);
-		assert.equal(res.json().phone, '333 000');
+		assert.equal(res.json().phone, '+393330001111');
+	});
+
+	test('i telefoni si salvano in formato internazionale, e uno che non è un numero si rifiuta', async () => {
+		const ok = await modifica(idSoci[0], { phone: '0039 347.123.4567', emergency_contact_phone: '06 1234567' });
+		assert.equal(ok.statusCode, 200, ok.body);
+		assert.equal(ok.json().phone, '+393471234567');
+		assert.equal(ok.json().emergency_contact_phone, '+39061234567');
+		const sbagliato = await modifica(idSoci[0], { phone: '333 000' });
+		assert.equal(sbagliato.statusCode, 400);
+		assert.match(sbagliato.json().error, /non è un telefono valido/);
+		assert.equal((await modifica(idSoci[0], { phone: '' })).json().phone, null, 'vuoto vuol dire nessun numero');
+	});
+
+	test('la persona del socio segue la sua anagrafica', async () => {
+		await modifica(idSoci[0], { email: 'segue@test.local', notes: 'Nota da seguire' });
+		const [socio] = await db.select().from(members).where(eq(members.id, idSoci[0]));
+		const [persona] = await db.select().from(persone).where(eq(persone.id, socio.personaId));
+		assert.equal(persona.email, 'segue@test.local');
+		assert.equal(persona.nota, 'Nota da seguire');
+		assert.equal(persona.fullName, socio.fullName);
+		const spostato = await modifica(idSoci[0], { persona_id: '00000000-0000-0000-0000-000000000000' });
+		assert.equal(spostato.statusCode, 200, spostato.body);
+		assert.equal(spostato.json().persona_id, socio.personaId, 'la persona non si cambia dal modulo');
 	});
 });
 

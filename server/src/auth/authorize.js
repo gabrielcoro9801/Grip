@@ -27,7 +27,9 @@ const ENTITY_MODULES = {
 	QRAccesso: 'crm_members',
 	MemberDocument: 'crm_documents',
 
-	// I contatti di chi non è ancora socio, e i canali da cui arrivano.
+	// I contatti di chi non è ancora socio, e i canali da cui arrivano. `Lead` non passa
+	// dall'endpoint generico (una persona e la sua trattativa si scrivono insieme, in
+	// routes/lead.js): il nome resta qui perché è con questo che quelle rotte chiedono il permesso.
 	Lead: 'crm_leads',
 	CanaleContatto: 'crm_leads',
 

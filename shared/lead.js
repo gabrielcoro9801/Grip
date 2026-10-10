@@ -5,6 +5,8 @@
 // stati, e i test le provano con `node --test`.
 //
 import { giorniFra } from "./giorni.js";
+import { SOGLIE } from "./soglie.js";
+import { normalizzaTelefono } from "./anagrafica.js";
 
 // Le date sono stringhe `AAAA-MM-GG`, come arrivano dall'API: anno e mese si leggono dal testo,
 // senza passare per `Date` e per i fusi orari.
@@ -106,7 +108,7 @@ export function filtraAndamento(righe = [], { dal, al, canaleId, sesso, fascia, 
     return (!dal || d >= dal) && (!al || d <= al)
       && (!mese || d.slice(0, 7) === mese)
       && (!canaleId || r.canale_id === canaleId)
-      && (!sesso || r.sesso === sesso)
+      && (!sesso || (r.sesso ?? "nd") === sesso)
       && (!fascia || fasciaEta(r) === fascia);
   });
 }
@@ -220,8 +222,10 @@ export function anniDisponibili(righe = []) {
 // fanno i filtri rapidi della pagina Contatti: la lista del lavoro del giorno.
 //
 // Lo stato non lo sceglie nessuno da un menu: lo cambiano le azioni (`applicaAzione`).
-// *Iscritto* non è uno stato: trasformato in socio, il lead si cancella e la provenienza resta
-// sul socio.
+//
+// Un lead è una *trattativa* di una persona: la persona resta (con il suo diario) e può averne
+// più d'una nel tempo — chi ha lasciato la palestra e ci richiama ne apre una nuova. *Iscritto*
+// chiude la trattativa vinta: la persona è diventata socia, o è tornata a esserlo.
 
 export const STATI_LEAD = [
   { valore: "nuovo", etichetta: "Nuovo", aperto: true, tono: "info" },
@@ -230,10 +234,32 @@ export const STATI_LEAD = [
   { valore: "da_richiamare", etichetta: "Da richiamare", aperto: true, tono: "attesa" },
   { valore: "non_raggiungibile", etichetta: "Non raggiungibile", aperto: false, tono: "neutro" },
   { valore: "non_interessato", etichetta: "Non interessato", aperto: false, tono: "negativo" },
+  { valore: "iscritto", etichetta: "Iscritto", aperto: false, tono: "positivo" },
 ];
 const PER_STATO = Object.fromEntries(STATI_LEAD.map((s) => [s.valore, s]));
 export const statoLead = (v) => PER_STATO[v] ?? PER_STATO.nuovo;
 export const statoAperto = (v) => Boolean(PER_STATO[v]?.aperto);
+/** Gli stati di una trattativa ancora in corso: una persona ne ha al massimo una. */
+export const STATI_APERTI = STATI_LEAD.filter((s) => s.aperto).map((s) => s.valore);
+
+/**
+ * Perché un contatto non si può registrare, o null.
+ *
+ * Il minimo per poterlo richiamare e contare: un nome, un recapito, da dove è arrivato e quando.
+ * Cognome, sesso e anno di nascita aiutano, ma al telefono o su Instagram spesso non ci sono:
+ * chiederli obbligatori voleva dire contatti non registrati, e un contatto non registrato non
+ * si richiama e non si conta.
+ */
+export function motivoLeadIncompleto(c = {}) {
+  if (!String(c.nome ?? "").trim()) return "Il nome è obbligatorio.";
+  const telefono = String(c.telefono ?? "").trim();
+  if (!telefono && !String(c.email ?? "").trim()) return "Serve un recapito: telefono o email.";
+  if (telefono && !normalizzaTelefono(telefono)) return "Il telefono non è valido.";
+  if (!c.canale_id) return "Indica il canale da cui è arrivato.";
+  if (!c.data_contatto) return "Indica il giorno del contatto.";
+  if (String(c.note ?? "").trim().length > NOTE_LEAD_MASSIMO) return `Le note stanno in ${NOTE_LEAD_MASSIMO} caratteri.`;
+  return null;
+}
 
 /** Con che mezzo lo si è cercato: non è il canale da cui è arrivato. */
 export const CANALI_CONTATTO = [
@@ -256,18 +282,8 @@ const etichetta = (elenco, v) => elenco.find((x) => x.valore === v)?.etichetta ?
 export const etichettaCanaleContatto = (v) => etichetta(CANALI_CONTATTO, v);
 export const etichettaMotivoChiusura = (v) => etichetta(MOTIVI_CHIUSURA, v);
 
-/**
- * Le soglie, in giorni. Oggi sono le stesse per tutti; quando l'ente vorrà deciderle, si
- * leggeranno dalla sua configurazione invece che da qui.
- */
-export const SOGLIE_LEAD = {
-  sollecitoGiorni: 3, // in attesa da tanto: "Da ricontattare"
-  ultimoTentativoGiorni: 10, // in attesa da tanto: "Ultimo tentativo"
-  tentativiMassimi: 3, // tentativi di fila senza risposta prima di arrendersi
-  nonRaggiungibileGiorni: 14, // …e da quanto dev'essere l'ultimo, per chiuderlo da solo
-  fermaGiorni: 7, // una conversazione senza novità da tanto: "Conversazioni ferme"
-  recuperoGiorni: 90, // un "non interessato" da tanto: si può riprovare
-};
+/** Le soglie predefinite, in giorni (shared/soglie.js); quelle della palestra le dà `soglieDi`. */
+export const SOGLIE_LEAD = SOGLIE.lead;
 
 const giorniDa = (data, oggi) => (data ? giorniFra(String(data).slice(0, 10), oggi) : null);
 
@@ -283,6 +299,8 @@ const giorniDa = (data, oggi) => (data ? giorniFra(String(data).slice(0, 10), og
  *   `campi`: le colonne del lead in snake_case; `attivita`: la riga del diario.
  */
 export function applicaAzione(lead, azione, oggi) {
+  // Una trattativa vinta è storia: chi è già socio e richiama apre una trattativa nuova.
+  if (lead.stato === "iscritto") return { errore: "Questo contatto è diventato socio: non si lavora più da qui." };
   const aperto = statoAperto(lead.stato);
   const nuovoStato = (stato) => (stato === lead.stato ? {} : { stato, stato_dal: oggi });
 
@@ -400,6 +418,27 @@ export function contaFiltriLead(leads = [], oggi, soglie = SOGLIE_LEAD) {
 
 const quanto = (giorni) => (giorni <= 0 ? "oggi" : giorni === 1 ? "ieri" : `${giorni} giorni fa`);
 const dataBreve = (iso) => { const [a, m, g] = String(iso).slice(0, 10).split("-"); return `${g}/${m}/${a}`; };
+
+/** Il massimo di una nota scritta nel diario di una persona. */
+export const NOTA_DIARIO_MASSIMO = 500;
+
+/**
+ * Una riga del diario di una persona, in parole: "Contattato via Telefono: non ha risposto".
+ * La stessa frase nel diario della scheda e nel registro delle azioni.
+ */
+export function descriviAttivita(a) {
+  switch (a.tipo) {
+    case "tentativo": return `Contattato via ${etichettaCanaleContatto(a.canale)}: non ha risposto`;
+    case "risposta": return `Contattato via ${etichettaCanaleContatto(a.canale)}: ha risposto`;
+    case "richiamo": return `Da richiamare il ${dataBreve(a.esito)}`;
+    case "chiusura": return `Non interessato: ${etichettaMotivoChiusura(a.esito)}`;
+    case "riapertura": return "Riaperto";
+    case "stato_automatico": return `Passato a «${statoLead(a.esito).etichetta}»`;
+    case "iscrizione": return a.esito === "riattivato" ? "Tornato socio" : "Diventato socio";
+    case "nota": return "Nota";
+    default: return a.tipo;
+  }
+}
 
 /** Il tempo dello stato, in una riga: "contattato 10 giorni fa · 2 tentativi senza risposta", "richiamare il 12/10/2026". */
 export function descriviTempoLead(lead, oggi) {

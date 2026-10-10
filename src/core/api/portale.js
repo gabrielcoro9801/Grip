@@ -100,3 +100,13 @@ export function contaNotificheEAvvisi() {
 export function segnaNotificheLette() {
 	return api.richiesta(`${BASE}/notifiche/lette`, { method: 'POST' });
 }
+
+/** I consensi alle comunicazioni promozionali: { consensi: { marketing_email: { valore, … }, … } }. */
+export function caricaConsensi() {
+	return api.richiesta(`${BASE}/consensi`);
+}
+
+/** Dà o toglie un consenso. → { consensi } */
+export function scegliConsenso(tipo, valore) {
+	return api.richiesta(`${BASE}/consensi`, { method: 'PUT', body: { tipo, valore } });
+}

@@ -22,7 +22,7 @@ import { formatData, toIsoDate } from "@/core/domain/format";
 import { SESSI } from "@/core/domain/anagrafica";
 import { oggiIso } from "@/core/domain/giorni";
 import {
-  NOTE_LEAD_MASSIMO, FILTRI_LEAD, condizioniLead, statoLead, statoAperto, descriviTempoLead,
+  NOTE_LEAD_MASSIMO, FILTRI_LEAD, SOGLIE_LEAD, condizioniLead, statoLead, statoAperto, descriviTempoLead, motivoLeadIncompleto,
 } from "@/core/domain/lead";
 import { Plus, Search, Contact, Pencil, Trash2, UserCheck, StickyNote, Phone, CalendarClock, XCircle, RotateCcw } from "lucide-react";
 
@@ -39,6 +39,13 @@ const nuovoLead = () => ({
 });
 
 const ANNO_CORRENTE = new Date().getFullYear();
+
+const TIPO_DOPPIONE = {
+  socio: "socio",
+  ex_socio: "ex socio",
+  contatto_aperto: "contatto già aperto",
+  contatto: "contatto chiuso",
+};
 
 export default function Contatti() {
   const { staffUser } = useStaffAuth();
@@ -59,6 +66,10 @@ export default function Contatti() {
   const [azione, setAzione] = useState(null); // { lead, tipo }
   const [inDiario, setInDiario] = useState(null);
   const [conteggi, setConteggi] = useState({});
+  // Le soglie della palestra con cui il server ha contato i filtri: la pagina filtra con le stesse.
+  const [soglie, setSoglie] = useState(SOGLIE_LEAD);
+  // Le persone già note con il telefono o l'email che si sta scrivendo (GET /api/lead/doppioni).
+  const [doppioni, setDoppioni] = useState([]);
   // Il filtro rapido sta nell'indirizzo: "Richiami di oggi" si può tenere nei preferiti.
   const [parametri, setParametri] = useSearchParams();
   const vista = FILTRI_LEAD.some((f) => f.valore === parametri.get("vista")) ? parametri.get("vista") : "aperti";
@@ -68,7 +79,7 @@ export default function Contatti() {
   const carica = useCallback(() => {
     setErrore(null);
     Promise.all([api.lead.lavoro(), api.entities.CanaleContatto.list("nome")])
-      .then(([l, c]) => { setLeads(l.leads); setConteggi(l.conteggi); setCanali(c); })
+      .then(([l, c]) => { setLeads(l.leads); setConteggi(l.conteggi); setSoglie(l.soglie ?? SOGLIE_LEAD); setCanali(c); })
       .catch(setErrore)
       .finally(() => setLoading(false));
   }, []);
@@ -80,35 +91,62 @@ export default function Contatti() {
   const oggi = oggiIso();
   const visibili = useMemo(() => {
     const t = cerca.trim().toLowerCase();
-    const nellaVista = leads.filter((l) => condizioniLead(l, oggi).has(vista));
+    const nellaVista = leads.filter((l) => condizioniLead(l, oggi, soglie).has(vista));
     // I richiami si leggono in ordine di data: il più urgente in cima.
     if (vista === "richiami_oggi") nellaVista.sort((a, b) => String(a.richiamare_il).localeCompare(String(b.richiamare_il)));
     if (!t) return nellaVista;
+    // Il telefono è salvato come +39…: si confrontano solo le cifre, comunque lo si scriva.
+    const cifre = t.replace(/\D/g, "").replace(/^(00)?39(?=[03])/, "");
     return nellaVista.filter((l) =>
-      `${l.nome} ${l.cognome}`.toLowerCase().includes(t)
-      || `${l.cognome} ${l.nome}`.toLowerCase().includes(t)
-      || (l.telefono ?? "").includes(t)
+      `${l.nome} ${l.cognome ?? ""}`.toLowerCase().includes(t)
+      || `${l.cognome ?? ""} ${l.nome}`.toLowerCase().includes(t)
+      || (cifre.length >= 3 && (l.telefono ?? "").replace(/\D/g, "").includes(cifre))
       || (l.email ?? "").toLowerCase().includes(t)
       || (l.note ?? "").toLowerCase().includes(t)
     );
-  }, [leads, cerca, vista, oggi]);
+  }, [leads, cerca, vista, oggi, soglie]);
 
   // Nel modulo si propongono solo i canali attivi, più quello del lead che si sta modificando
   // se nel frattempo è stato disattivato: altrimenti il campo resterebbe vuoto.
   const canaliSceglibili = canali.filter((c) => c.attivo || c.id === modulo?.canale_id);
+
+  // Di chi è (o è stato) socio, o di una persona già nota che si sta collegando, il modulo
+  // tocca solo la trattativa: i dati della persona stanno sulla sua scheda.
+  const soloTrattativa = Boolean(modulo?.socio_id || modulo?.persona_collegata);
+
+  const apriModulo = (valori) => { setDoppioni([]); setModulo(valori); };
+
+  // Mentre si scrive un recapito: è già di qualcuno? Si chiede uscendo dal campo, non a ogni tasto.
+  const cercaDoppioni = async () => {
+    if (!modulo || soloTrattativa) return;
+    const { telefono, email, persona_id } = modulo;
+    if (!telefono.trim() && !email.trim()) { setDoppioni([]); return; }
+    try {
+      setDoppioni((await api.lead.doppioni({ telefono, email, escludi: persona_id })).doppioni);
+    } catch {
+      setDoppioni([]); // un avviso che non arriva non deve bloccare la registrazione
+    }
+  };
+
+  const collega = (d) => {
+    setModulo({ ...nuovoLead(), data_contatto: modulo.data_contatto, canale_id: modulo.canale_id, persona_id: d.persona_id, persona_collegata: d });
+    setDoppioni([]);
+  };
 
   const salva = async (e) => {
     e.preventDefault();
     const { id } = modulo;
     // Solo i campi del modulo: il lead letto dall'API si porta dietro anche le date di sistema.
     const campi = Object.fromEntries(Object.keys(nuovoLead()).map((k) => [k, modulo[k]]));
-    const dati = { ...campi, anno_nascita: campi.anno_nascita === "" ? null : Number(campi.anno_nascita) };
+    const dati = soloTrattativa
+      ? { data_contatto: campi.data_contatto, canale_id: campi.canale_id, ...(id ? {} : { persona_id: modulo.persona_id }) }
+      : { ...campi, anno_nascita: campi.anno_nascita === "" ? null : Number(campi.anno_nascita) };
     setSalvando(true);
     try {
       if (id) {
-        await api.entities.Lead.update(id, dati);
+        await api.lead.aggiorna(id, dati);
       } else {
-        await api.entities.Lead.create(dati);
+        await api.lead.crea(dati);
       }
       toast({ title: id ? "Contatto aggiornato" : "Contatto registrato" });
       setModulo(null);
@@ -128,7 +166,7 @@ export default function Contatti() {
     });
     if (!ok) return;
     try {
-      await api.entities.Lead.delete(lead.id);
+      await api.lead.elimina(lead.id);
       toast({ title: "Contatto eliminato" });
       carica();
     } catch (err) {
@@ -139,9 +177,9 @@ export default function Contatti() {
   if (loading) return <LoadingState minHeight="h-64" />;
   if (errore) return <ErrorState error={errore} onRetry={carica} />;
 
-  const mancaQualcosa = modulo && (
-    !modulo.nome.trim() || !modulo.cognome.trim() || !modulo.data_contatto || !modulo.canale_id || !modulo.sesso
-  );
+  const mancaQualcosa = modulo && (soloTrattativa
+    ? (!modulo.data_contatto || !modulo.canale_id ? "Indica giorno e canale del contatto." : null)
+    : motivoLeadIncompleto(modulo));
   const nessunCanaleAttivo = !canali.some((c) => c.attivo);
 
   return (
@@ -149,7 +187,7 @@ export default function Contatti() {
       {dialogoConferma}
       <PageHeader title="Contatti" description={`${leads.length} ${leads.length === 1 ? "contatto" : "contatti"}`}>
         {puoModificare && (
-          <Button size="sm" onClick={() => setModulo(nuovoLead())} disabled={nessunCanaleAttivo}>
+          <Button size="sm" onClick={() => apriModulo(nuovoLead())} disabled={nessunCanaleAttivo}>
             <Plus className="w-4 h-4 mr-1" /> Nuovo contatto
           </Button>
         )}
@@ -218,6 +256,9 @@ export default function Contatti() {
                     <button type="button" onClick={() => setInDiario(l)} className="font-medium text-left hover:text-primary hover:underline">
                       {l.cognome} {l.nome}
                     </button>
+                    {l.socio_id && (
+                      <StatusBadge status="socio" label={l.socio_archiviato_il ? "Ex socio" : "Socio"} tone="neutro" className="ml-1.5 py-0" />
+                    )}
                     {/* La nota non ha una colonna sua: è rara e corta. Si legge al passaggio del mouse. */}
                     {l.note && (
                       <span title={l.note} className="inline-flex align-middle ml-1.5 text-muted-foreground">
@@ -256,7 +297,7 @@ export default function Contatti() {
                         </Button>
                       )}
                       {puoTrasformare && aperto && (
-                        <Button size="icon" variant="ghost" className="h-8 w-8 text-primary" title="Trasforma in socio" aria-label={`Trasforma in socio ${nome}`} onClick={() => setDaTrasformare(l)}>
+                        <Button size="icon" variant="ghost" className="h-8 w-8 text-primary" title="Iscrivi" aria-label={`Iscrivi ${nome}`} onClick={() => setDaTrasformare(l)}>
                           <UserCheck className="w-3.5 h-3.5" />
                         </Button>
                       )}
@@ -267,7 +308,7 @@ export default function Contatti() {
                             variant="ghost"
                             className="h-8 w-8"
                             aria-label={`Modifica ${l.nome} ${l.cognome}`}
-                            onClick={() => setModulo({ ...l, telefono: l.telefono ?? "", email: l.email ?? "", anno_nascita: l.anno_nascita ?? "", note: l.note ?? "" })}
+                            onClick={() => apriModulo({ ...l, cognome: l.cognome ?? "", sesso: l.sesso ?? "", telefono: l.telefono ?? "", email: l.email ?? "", anno_nascita: l.anno_nascita ?? "", note: l.note ?? "" })}
                           >
                             <Pencil className="w-3.5 h-3.5" />
                           </Button>
@@ -286,21 +327,30 @@ export default function Contatti() {
         </div>
       )}
 
-      <Dialog open={!!modulo} onOpenChange={(aperto) => !aperto && setModulo(null)}>
+      <Dialog open={!!modulo} onOpenChange={(aperto) => !aperto && apriModulo(null)}>
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle>{modulo?.id ? "Modifica contatto" : "Nuovo contatto"}</DialogTitle></DialogHeader>
           {modulo && (
             <form onSubmit={salva} className="space-y-3">
+              {soloTrattativa && (
+                <p className="text-sm rounded-lg bg-muted/50 px-3 py-2">
+                  {modulo.persona_collegata
+                    ? <>Contatto di <strong>{modulo.persona_collegata.nome}</strong>, già nota alla palestra: i suoi dati restano quelli che ha. <button type="button" className="text-primary hover:underline" onClick={() => apriModulo(nuovoLead())}>Annulla</button></>
+                    : <>I dati di {modulo.nome} si cambiano dalla <Link to={`/crm/soci/${modulo.socio_id}`} className="text-primary hover:underline">sua scheda da socio</Link>; qui solo il contatto.</>}
+                </p>
+              )}
+              {!soloTrattativa && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <Label htmlFor="lead-nome">Nome *</Label>
                   <Input id="lead-nome" required value={modulo.nome} onChange={(e) => setModulo({ ...modulo, nome: e.target.value })} />
                 </div>
                 <div>
-                  <Label htmlFor="lead-cognome">Cognome *</Label>
-                  <Input id="lead-cognome" required value={modulo.cognome} onChange={(e) => setModulo({ ...modulo, cognome: e.target.value })} />
+                  <Label htmlFor="lead-cognome">Cognome</Label>
+                  <Input id="lead-cognome" value={modulo.cognome} onChange={(e) => setModulo({ ...modulo, cognome: e.target.value })} />
                 </div>
               </div>
+              )}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <Label htmlFor="lead-data">Giornata di contatto *</Label>
@@ -318,12 +368,14 @@ export default function Contatti() {
                   </Select>
                 </div>
               </div>
+              {!soloTrattativa && (<>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <Label>Sesso *</Label>
-                  <Select value={modulo.sesso || undefined} onValueChange={(sesso) => setModulo({ ...modulo, sesso })}>
+                  <Label>Sesso</Label>
+                  <Select value={modulo.sesso || "nd"} onValueChange={(sesso) => setModulo({ ...modulo, sesso: sesso === "nd" ? "" : sesso })}>
                     <SelectTrigger aria-label="Sesso"><SelectValue placeholder="Scegli" /></SelectTrigger>
                     <SelectContent>
+                      <SelectItem value="nd">Non indicato</SelectItem>
                       {SESSI.map((s) => <SelectItem key={s.valore} value={s.valore}>{s.etichetta}</SelectItem>)}
                     </SelectContent>
                   </Select>
@@ -344,13 +396,34 @@ export default function Contatti() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <Label htmlFor="lead-telefono">Telefono</Label>
-                  <Input id="lead-telefono" type="tel" value={modulo.telefono} onChange={(e) => setModulo({ ...modulo, telefono: e.target.value })} />
+                  <Input id="lead-telefono" type="tel" value={modulo.telefono} onBlur={cercaDoppioni} onChange={(e) => setModulo({ ...modulo, telefono: e.target.value })} />
                 </div>
                 <div>
                   <Label htmlFor="lead-email">Email</Label>
-                  <Input id="lead-email" type="email" value={modulo.email} onChange={(e) => setModulo({ ...modulo, email: e.target.value })} />
+                  <Input id="lead-email" type="email" value={modulo.email} onBlur={cercaDoppioni} onChange={(e) => setModulo({ ...modulo, email: e.target.value })} />
                 </div>
               </div>
+              <p className="text-xs text-muted-foreground -mt-1">Serve almeno un recapito: telefono o email.</p>
+              {doppioni.length > 0 && (
+                <div className="rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-sm space-y-1.5" role="status">
+                  <p className="font-medium">Questo recapito è già di:</p>
+                  {doppioni.map((d) => (
+                    <div key={d.persona_id} className="flex items-center justify-between gap-2">
+                      <span>{d.nome} <span className="text-muted-foreground">· {TIPO_DOPPIONE[d.tipo]}</span></span>
+                      {d.trattativa_aperta_id ? (
+                        <Button
+                          type="button" size="sm" variant="outline" className="h-7"
+                          onClick={() => { const l = leads.find((x) => x.id === d.trattativa_aperta_id); apriModulo(null); if (l) setInDiario(l); }}
+                        >
+                          Apri il suo contatto
+                        </Button>
+                      ) : (
+                        <Button type="button" size="sm" variant="outline" className="h-7" onClick={() => collega(d)}>È questa persona</Button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
               <div>
                 <div className="flex items-baseline justify-between">
                   <Label htmlFor="lead-note">Note</Label>
@@ -362,6 +435,8 @@ export default function Contatti() {
                   value={modulo.note} onChange={(e) => setModulo({ ...modulo, note: e.target.value })}
                 />
               </div>
+              </>)}
+              {mancaQualcosa && <p className="text-xs text-muted-foreground">{mancaQualcosa}</p>}
               <Button type="submit" className="w-full" disabled={Boolean(mancaQualcosa) || salvando}>
                 {salvando ? "Salvataggio..." : "Salva"}
               </Button>
