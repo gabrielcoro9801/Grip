@@ -47,6 +47,7 @@ before(async () => {
 	app = buildApp({ logger: false });
 	await app.ready();
 	config.chiaveSegreti = 'chiave-dei-test-comunicazioni';
+	config.publicBaseUrl ??= 'https://palestra.test';
 	const [p] = await db.select().from(organizations).limit(1);
 	impostazioniPrima = p.impostazioni ?? {};
 	await impostaComunicazioni(undefined);

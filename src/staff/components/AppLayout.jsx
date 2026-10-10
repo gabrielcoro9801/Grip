@@ -6,7 +6,7 @@ import StaffLogin from "@/staff/pages/StaffLogin";
 import {
   LayoutDashboard, Users, Calendar,
   ChevronLeft, ChevronRight, LogOut, Menu, Dumbbell,
-  ShieldCheck, ScrollText, UserPlus, KeyRound, ListChecks, Search, GraduationCap
+  ShieldCheck, ScrollText, UserPlus, KeyRound, ListChecks, Search, GraduationCap, Send
 } from "lucide-react";
 import RicercaGlobale from "@/staff/components/RicercaGlobale";
 import { CambioPasswordObbligatorio, DialogCambioPassword } from "@/ui/CambioPassword";
@@ -31,6 +31,8 @@ const navItems = [
   // L'istruttore: le sue lezioni, chi viene e chi no.
   { label: "Le mie lezioni", path: "/istruttore", icon: GraduationCap },
   { label: "Utenti e ruoli", path: "/admin", icon: ShieldCheck },
+  // Le comunicazioni automatiche ai soci: arrivano spente, le accende l'amministratore da qui.
+  { label: "Comunicazioni", path: "/admin/comunicazioni", icon: Send },
   { label: "Log audit", path: "/log-audit", icon: ScrollText },
 ];
 
@@ -55,9 +57,11 @@ export default function AppLayout() {
     return <CambioPasswordObbligatorio nome={staffUser.nome} onCambiata={aggiornaUtente} onEsci={logout} />;
   }
 
+  // La voce più specifica vince: "/admin/comunicazioni" non accende anche "Utenti e ruoli".
   const isActive = (path) => {
     if (path === "/") return location.pathname === "/";
-    return location.pathname.startsWith(path);
+    const suo = (p) => location.pathname === p || location.pathname.startsWith(`${p}/`);
+    return suo(path) && !navItems.some((i) => i.path.length > path.length && i.path.startsWith(path) && suo(i.path));
   };
 
   const handleLogout = () => {

@@ -21,7 +21,8 @@
     "verifica:browser": "node scripts/verifica-browser.mjs",
     "verifica:pagine": "node scripts/verifica-pagine.mjs",
     "verifica:oggi": "node scripts/verifica-oggi.mjs",
-    "verifica:fase3": "node scripts/verifica-fase3.mjs"
+    "verifica:fase3": "node scripts/verifica-fase3.mjs",
+    "verifica:fase4": "node scripts/verifica-fase4.mjs"
   },
   "dependencies": {
     "@fastify/cors": "^10.0.1",

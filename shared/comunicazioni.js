@@ -389,8 +389,10 @@ export function statoCanale(canale, conf = {}, { segreto = null, inviiReali = fa
  * La lista di controllo prima dell'interruttore generale. Finché non è tutta spuntata, le
  * comunicazioni non si accendono.
  */
-export function listaDiControllo({ statiCanali = {}, informativa = null, testiRivisti = null }) {
+export function listaDiControllo({ statiCanali = {}, informativa = null, testiRivisti = null, indirizzoPubblico = true }) {
   const voci = [
+    // Senza l'indirizzo pubblico del sito i link nei messaggi (rinnovo, disiscrizione) non portano da nessuna parte.
+    ...(indirizzoPubblico ? [] : [{ codice: "indirizzo", etichetta: "Indirizzo pubblico del sito impostato sul server (PUBLIC_BASE_URL)", fatta: false }]),
     { codice: "canale", etichetta: "Almeno un canale pronto", fatta: Object.values(statiCanali).includes("pronto") },
     { codice: "informativa", etichetta: "Informativa privacy aggiornata con le comunicazioni ai soci", fatta: Boolean(informativa) },
     { codice: "testi", etichetta: "Testi dei playbook riletti", fatta: Boolean(testiRivisti) },

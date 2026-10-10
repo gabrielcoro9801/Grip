@@ -61,7 +61,7 @@ async function vista() {
 	const ctx = await contesto(db);
 	const p = await palestra();
 	const { com, statiCanali, segreti } = ctx;
-	const lista = listaDiControllo({ statiCanali, informativa: com.informativa, testiRivisti: com.testi_rivisti });
+	const lista = listaDiControllo({ statiCanali, informativa: com.informativa, testiRivisti: com.testi_rivisti, indirizzoPubblico: Boolean(config.publicBaseUrl) });
 	return {
 		invii_reali: config.inviiReali,
 		cifratura: cifraturaDisponibile(),

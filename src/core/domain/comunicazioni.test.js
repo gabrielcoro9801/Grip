@@ -173,6 +173,8 @@ describe('impostazioni e canali', () => {
 		assert.equal(listaDiControllo({ statiCanali: { app: 'pronto' }, informativa: { il: 'x' } }).completa, false);
 		assert.equal(listaDiControllo({ statiCanali: { email: 'da_verificare' }, informativa: {}, testiRivisti: {} }).completa, false);
 		assert.equal(listaDiControllo({ statiCanali: { email: 'pronto' }, informativa: {}, testiRivisti: {} }).completa, true);
+		// Senza l'indirizzo pubblico i link non funzionerebbero: resta chiusa.
+		assert.equal(listaDiControllo({ statiCanali: { email: 'pronto' }, informativa: {}, testiRivisti: {}, indirizzoPubblico: false }).completa, false);
 	});
 });
 
