@@ -1,7 +1,8 @@
 import { eq, and, ne, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { bookings, sessions, members, subscriptions, events, courses } from '../db/schema/index.js';
-import { abbonamentoCopre, MESSAGGIO_SENZA_ABBONAMENTO } from '../../../shared/abbonamenti.js';
+import { bookings, sessions, members, events, courses } from '../db/schema/index.js';
+import { motivoSenzaCopertura } from '../../../shared/abbonamenti.js';
+import { iscrizioniDelSocio } from './iscrizioni.js';
 import { lezioneFinita } from '../../../shared/giorni.js';
 import { motivoDisdettaChiusa } from '../../../shared/corsi.js';
 
@@ -40,12 +41,9 @@ async function motivoNonPrenotabile(tx, lezione, memberId, { escludi = null } = 
 	if (socio.archiviatoIl) return { errore: 400, messaggio: 'Il socio è archiviato: riattivalo dalla sua scheda per prenotare.' };
 
 	// Senza un abbonamento che copra il giorno della lezione non si prenota: dal portale come
-	// dalla reception, perché la regola sta qui e non nei pulsanti.
-	const iscrizioni = await tx
-		.select({ start_date: subscriptions.startDate, end_date: subscriptions.endDate })
-		.from(subscriptions)
-		.where(eq(subscriptions.memberId, memberId));
-	if (!abbonamentoCopre(iscrizioni, lezione.date)) return { errore: 400, messaggio: MESSAGGIO_SENZA_ABBONAMENTO };
+	// dalla reception, perché la regola sta qui e non nei pulsanti. Nemmeno in un giorno sospeso.
+	const senza = motivoSenzaCopertura(await iscrizioniDelSocio(memberId, tx), lezione.date);
+	if (senza) return { errore: 400, messaggio: senza };
 
 	const [gia] = await tx
 		.select({ id: bookings.id })

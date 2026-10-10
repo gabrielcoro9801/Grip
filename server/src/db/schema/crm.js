@@ -92,6 +92,24 @@ export const subscriptions = pgTable('subscriptions', {
 	socio: index('subscriptions_member_id_idx').on(table.memberId),
 }));
 
+// Le sospensioni dell'abbonamento di un socio (un congelamento, con la data di ripresa): dal primo
+// all'ultimo giorno fermo, compresi. Non riscrivono niente: la scadenza allungata si calcola a
+// ogni lettura (shared/abbonamenti.js, conSospensioni), come lo stato. Sono del socio e non di
+// un'iscrizione, perché fermano anche il rinnovo già comprato che viene dopo. Le scrivono solo
+// le rotte dedicate (routes/soci.js), che disdicono anche le prenotazioni di quei giorni.
+export const sospensioni = pgTable('sospensioni', {
+	id: uuid('id').defaultRandom().primaryKey(),
+	memberId: uuid('member_id').notNull().references(() => members.id, { onDelete: 'cascade' }),
+	dal: date('dal').notNull(),
+	al: date('al').notNull(),
+	nota: varchar('nota', { length: 500 }),
+	autoreNome: varchar('autore_nome', { length: 255 }).notNull(),
+	createdDate: timestamp('created_date', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+	periodoValido: check('sospensioni_periodo_valido', sql`${table.al} >= ${table.dal}`),
+	socio: index('sospensioni_member_id_idx').on(table.memberId),
+}));
+
 export const memberDocuments = pgTable('member_documents', {
 	id: uuid('id').defaultRandom().primaryKey(),
 	memberId: uuid('member_id').notNull().references(() => members.id),

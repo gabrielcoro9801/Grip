@@ -12,6 +12,7 @@ import { eq, inArray } from 'drizzle-orm';
 import { buildApp } from '../src/app.js';
 import { db, pool } from '../src/db/client.js';
 import { members, staffAccounts } from '../src/db/schema/index.js';
+import { impostaMatrice, ripristinaMatricePredefinita, PERMESSI_PREDEFINITI } from '../../shared/permissions.js';
 
 const PASSWORD = 'prova-sessioni-1234';
 const suffisso = Date.now();
@@ -31,7 +32,13 @@ const accedi = async (chi, password = PASSWORD) => {
 const come = (token, opzioni) => app.inject({ ...opzioni, headers: { authorization: `Bearer ${token}` } });
 const chiSono = (token) => come(token, { method: 'GET', url: '/api/auth/me' });
 
+// "Vede ma non modifica": fino alla fase 3 del CRM era l'istruttore predefinito, e questi test lo
+// usano così. Oggi l'istruttore ha la sua vista e non le anagrafiche: gli si ridà qui la sola lettura.
+const SOLA_LETTURA = { ...PERMESSI_PREDEFINITI, istruttore: { crm_members: ['view'], crm_documents: ['view'], crm_leads: ['view'], calendar: ['view', 'edit'] } };
+const matriceDiProva = () => impostaMatrice({ permessi: SOLA_LETTURA, capacita: {} });
+
 before(async () => {
+	matriceDiProva();
 	app = buildApp({ logger: false });
 	await app.ready();
 	const passwordHash = await bcrypt.hash(PASSWORD, 4);
@@ -52,6 +59,7 @@ before(async () => {
 });
 
 after(async () => {
+	ripristinaMatricePredefinita();
 	await db.delete(staffAccounts).where(inArray(staffAccounts.linkedMemberId, idSoci));
 	await db.delete(staffAccounts).where(inArray(staffAccounts.id, idAccount));
 	await db.delete(members).where(inArray(members.id, idSoci));

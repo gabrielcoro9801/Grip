@@ -8,11 +8,12 @@
 // passo è idempotente — lanciato due volte nello stesso giorno, la seconda non trova nulla da
 // fare — così un cron ripetuto o un lancio a mano in più non fanno danni.
 //
-// Oggi fa una cosa: chiude come *non raggiungibili* i lead con troppi tentativi senza risposta,
-// l'ultimo da tanto. Prima lo faceva GET /api/lead/lavoro alla lettura: una GET non deve scrivere.
+// Oggi fa due cose: chiude come *non raggiungibili* i lead con troppi tentativi senza risposta,
+// l'ultimo da tanto (prima lo faceva GET /api/lead/lavoro alla lettura: una GET non deve
+// scrivere); e registra chi è rientrato in palestra dopo essere stato contattato perché assente.
 import 'dotenv/config';
 import { pathToFileURL } from 'node:url';
-import { and, eq, gte, lte } from 'drizzle-orm';
+import { and, eq, gte, lte, sql } from 'drizzle-orm';
 import { db, pool } from './db/client.js';
 import { organizations, trattative, attivita } from './db/schema/index.js';
 import { soglieDi } from '../../shared/soglie.js';
@@ -42,19 +43,55 @@ async function chiudiNonRaggiungibili(conn, oggi, soglie) {
 	});
 }
 
+// Entro quanti giorni da un contatto un ingresso conta come "è tornato".
+const GIORNI_RIENTRO = 14;
+// Di quanto si guarda indietro: un giro saltato per qualche giorno non perde i rientri.
+const GIORNI_RECUPERO = 30;
+
 /**
- * Un giro su tutte le palestre. → [{ palestra, non_raggiungibili }]
+ * Chi, contattato perché assente o in calo, è rientrato entro 14 giorni: una riga
+ * `ingresso_dopo_contatto` nel diario, con il contatto e il primo ingresso dopo. È la base di
+ * "dei 40 soci contattati, 26 sono tornati" (Fase 5). Una riga per contatto (indice unico):
+ * rilanciato, il giro non ne crea altre. → quante ne ha scritte
+ */
+async function registraRientri(conn, adesso) {
+	const righe = await conn.execute(sql`
+		insert into attivita (persona_id, tipo, esito, autore_nome, riferimento, created_date)
+		select c.persona_id, 'ingresso_dopo_contatto',
+			((i.entrato_alle at time zone 'Europe/Rome')::date - (c.created_date at time zone 'Europe/Rome')::date)::text,
+			${AUTORE_SISTEMA}, jsonb_build_object('contatto', c.id, 'ingresso', i.id), i.entrato_alle
+		from attivita c
+		join members m on m.persona_id = c.persona_id
+		cross join lateral (
+			select id, entrato_alle from ingressi
+			where member_id = m.id and entrato_alle > c.created_date and entrato_alle <= c.created_date + make_interval(days => ${GIORNI_RIENTRO})
+			order by entrato_alle limit 1
+		) i
+		where c.tipo = 'contatto'
+			and c.riferimento->'segnali' ?| array['assente', 'in_calo']
+			and c.created_date >= ${adesso}::timestamptz - make_interval(days => ${GIORNI_RECUPERO})
+		on conflict do nothing
+		returning id`);
+	return righe.rows?.length ?? righe.length ?? 0;
+}
+
+/**
+ * Un giro su tutte le palestre. → [{ palestra, non_raggiungibili, rientri }]
  *
  * ponytail: oggi c'è una palestra per installazione e le trattative non hanno ancora la loro
  * palestra: il giro scorre le palestre, ma ogni passo lavora sul database intero. Con il
  * multi-tenant ogni passo riceverà la palestra e filtrerà per lei.
  */
-export async function giro({ oggi = oggiIso(), conn = db } = {}) {
+export async function giro({ oggi = oggiIso(), conn = db, adesso = new Date() } = {}) {
 	const palestre = await conn.select({ nome: organizations.nome, impostazioni: organizations.impostazioni }).from(organizations);
 	const esiti = [];
 	for (const palestra of palestre) {
 		const soglie = soglieDi(palestra.impostazioni);
-		esiti.push({ palestra: palestra.nome, non_raggiungibili: await chiudiNonRaggiungibili(conn, oggi, soglie.lead) });
+		esiti.push({
+			palestra: palestra.nome,
+			non_raggiungibili: await chiudiNonRaggiungibili(conn, oggi, soglie.lead),
+			rientri: await registraRientri(conn, adesso),
+		});
 	}
 	return esiti;
 }
@@ -62,7 +99,7 @@ export async function giro({ oggi = oggiIso(), conn = db } = {}) {
 // Lanciato da riga di comando (non importato dai test): un giro, il resoconto, e l'uscita.
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
 	try {
-		for (const e of await giro()) console.log(`${e.palestra}: ${e.non_raggiungibili} lead chiusi come non raggiungibili.`);
+		for (const e of await giro()) console.log(`${e.palestra}: ${e.non_raggiungibili} lead chiusi come non raggiungibili, ${e.rientri} soci rientrati dopo un contatto.`);
 		await pool.end();
 		process.exit(0);
 	} catch (errore) {

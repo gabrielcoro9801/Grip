@@ -10,6 +10,7 @@ import {
 } from '../db/schema/index.js';
 import { motivoPasswordNonValida } from '../../../shared/password.js';
 import { usoDellaSala } from '../lib/sale.js';
+import { iscrizioniPerSocio } from '../lib/iscrizioni.js';
 import { translateToSnakeCase } from './columnMaps.js';
 import {
 	sessoValido, normalizzaCodiceFiscale, codiceFiscaleValido, motivoDocumentoNonValido, tipoDocumentoValido,
@@ -295,6 +296,16 @@ const WRITE_TRANSFORMS = {
 			password, password_hash: _hash, token_version: _versione, password_da_cambiare: _obbligo, ...rest
 		} = body ?? {};
 		if (creazione && !password) throw rifiuta('La password è obbligatoria.');
+		// L'istruttore collegato (la vista "Le mie lezioni"): uno che esiste, o nessuno. Un account
+		// del portale è un socio, non un istruttore.
+		if (presente(rest, 'instructor_id')) {
+			if (vuoto(rest.instructor_id)) rest.instructor_id = null;
+			else {
+				if (rest.ruolo === 'member') throw rifiuta("Un account del portale non si collega a un istruttore.");
+				const [istruttore] = await db.select({ id: instructors.id }).from(instructors).where(eq(instructors.id, rest.instructor_id)).limit(1);
+				if (!istruttore) throw rifiuta("L'istruttore scelto non esiste più.");
+			}
+		}
 		if (password) {
 			const nonValida = motivoPasswordNonValida(password);
 			if (nonValida) throw rifiuta(nonValida);
@@ -362,7 +373,7 @@ const WRITE_TRANSFORMS = {
 	// di un'iscrizione già venduta. Ora un'iscrizione nasce sempre da un tipo, e dopo si correggono
 	// solo la data d'inizio (la scadenza segue, ricalcolata dal tipo) e l'importo pagato.
 	// Lo stato non si scrive: si calcola dalle date a ogni lettura.
-	async Subscription(body, { creazione, id }) {
+	async Subscription(body, { creazione, id, conn = db }) {
 		const { status: _calcolato, ...rest } = body ?? {};
 		if (presente(rest, 'price_paid') && !vuoto(rest.price_paid)) {
 			const importo = Number(rest.price_paid);
@@ -389,9 +400,9 @@ const WRITE_TRANSFORMS = {
 		}
 		if (vuoto(rest.member_id)) throw rifiuta('Manca il socio.');
 		if (vuoto(rest.plan_id)) throw rifiuta("Scegli il tipo di abbonamento.");
-		const [socio] = await db.select({ archiviatoIl: members.archiviatoIl }).from(members).where(eq(members.id, rest.member_id)).limit(1);
+		const [socio] = await conn.select({ archiviatoIl: members.archiviatoIl }).from(members).where(eq(members.id, rest.member_id)).limit(1);
 		if (socio?.archiviatoIl) throw rifiuta(SOCIO_ARCHIVIATO);
-		const [tipo] = await db.select().from(plans).where(eq(plans.id, rest.plan_id)).limit(1);
+		const [tipo] = await conn.select().from(plans).where(eq(plans.id, rest.plan_id)).limit(1);
 		const motivo = motivoNonVendibile(tipo && { name: tipo.name, stato: tipo.stato, vendibile_fino_al: tipo.vendibileFinoAl });
 		if (motivo) throw rifiuta(motivo);
 		if (vuoto(rest.start_date)) rest.start_date = oggiIso();
@@ -557,9 +568,11 @@ const WRITE_TRANSFORMS = {
  * @param opzioni { creazione, utente, id } — alcune regole valgono solo quando la riga nasce,
  *                 altre dipendono da chi scrive e su quale riga.
  */
-export async function applyWriteTransform(entityName, body, { creazione = true, utente = null, id = null } = {}) {
+// `conn`: la transazione di chi chiama, se ce n'è una (routes/iscrizioni.js): le letture devono
+// vedere quello che ha già scritto, come il socio appena riattivato.
+export async function applyWriteTransform(entityName, body, { creazione = true, utente = null, id = null, conn = db } = {}) {
 	const transform = WRITE_TRANSFORMS[entityName];
-	return transform ? transform(body, { creazione, utente, id }) : body;
+	return transform ? transform(body, { creazione, utente, id, conn }) : body;
 }
 
 export function stripHiddenFields(entityName, row) {
@@ -582,23 +595,35 @@ export function stripHiddenFieldsMany(entityName, rows) {
  * Lo stato di un'iscrizione dipende dalle date e nessun processo aggiorna la colonna: si
  * calcola qui, nel punto da cui passano tutte le letture, e così dashboard, elenchi, filtri e
  * scheda del socio si correggono insieme senza che nessuna schermata debba saperlo.
+ *
+ * Lo stesso per le date dopo le sospensioni (lib/iscrizioni.js): un'iscrizione sospesa esce con
+ * la scadenza allungata e `giorni_sospesi`. Si calcolano su tutte le iscrizioni dei soci delle
+ * righe, non solo su quelle chieste: una sospensione fa slittare anche il rinnovo che segue.
  */
 const CAMPI_CALCOLATI = {
-	Subscription: (riga) => ({ ...riga, status: statoIscrizione(riga) }),
+	async Subscription(righe) {
+		const effettive = new Map();
+		const perSocio = await iscrizioniPerSocio([...new Set(righe.map((r) => r.member_id).filter(Boolean))]);
+		for (const elenco of perSocio.values()) for (const i of elenco) effettive.set(i.id, i);
+		return righe.map((riga) => {
+			const e = effettive.get(riga.id);
+			const r = e ? { ...riga, start_date: e.start_date, end_date: e.end_date, giorni_sospesi: e.giorni_sospesi } : riga;
+			return { ...r, status: statoIscrizione(r) };
+		});
+	},
 };
 const NOMI_CAMPI_CALCOLATI = { Subscription: ['status'] };
 
 /** I campi di un'entità che escono calcolati: un filtro su questi non si fa sulla colonna. */
 export const campiCalcolati = (entityName) => NOMI_CAMPI_CALCOLATI[entityName] ?? [];
 
-export function conCampiCalcolati(entityName, riga) {
-	const calcola = CAMPI_CALCOLATI[entityName];
-	return calcola && riga ? calcola(riga) : riga;
+export async function conCampiCalcolati(entityName, riga) {
+	return riga ? (await conCampiCalcolatiMolte(entityName, [riga]))[0] : riga;
 }
 
-export function conCampiCalcolatiMolte(entityName, righe) {
+export async function conCampiCalcolatiMolte(entityName, righe) {
 	const calcola = CAMPI_CALCOLATI[entityName];
-	return calcola && Array.isArray(righe) ? righe.map(calcola) : righe;
+	return calcola && Array.isArray(righe) && righe.length ? calcola(righe) : righe;
 }
 
 /**

@@ -6,7 +6,7 @@ import StaffLogin from "@/staff/pages/StaffLogin";
 import {
   LayoutDashboard, Users, Calendar,
   ChevronLeft, ChevronRight, LogOut, Menu, Dumbbell,
-  ShieldCheck, ScrollText, UserPlus, KeyRound, ListChecks, Search
+  ShieldCheck, ScrollText, UserPlus, KeyRound, ListChecks, Search, GraduationCap
 } from "lucide-react";
 import RicercaGlobale from "@/staff/components/RicercaGlobale";
 import { CambioPasswordObbligatorio, DialogCambioPassword } from "@/ui/CambioPassword";
@@ -28,6 +28,8 @@ const navItems = [
   // sezione loro per non mescolarsi con chi è già iscritto.
   { label: "Lead", path: "/lead", icon: UserPlus },
   { label: "Gestione corsi", path: "/calendario", icon: Calendar },
+  // L'istruttore: le sue lezioni, chi viene e chi no.
+  { label: "Le mie lezioni", path: "/istruttore", icon: GraduationCap },
   { label: "Utenti e ruoli", path: "/admin", icon: ShieldCheck },
   { label: "Log audit", path: "/log-audit", icon: ScrollText },
 ];

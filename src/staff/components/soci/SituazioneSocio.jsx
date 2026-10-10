@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { api } from "@/core/api/client";
 import StatusBadge from "@/ui/StatusBadge";
 import AzioniPersona from "@/staff/components/segnali/AzioniPersona";
+import SegnaliBancone from "@/staff/components/ingressi/SegnaliBancone";
 import { formatData } from "@/core/domain/format";
 import { fase as faseDi } from "@/core/domain/segnali";
 
@@ -40,6 +41,8 @@ export default function SituazioneSocio({ personaId, puoModificare, onFatto }) {
           ))}
         </ul>
       )}
+      {/* È entrato oggi: quello che gli va detto, come in cima a Oggi. */}
+      <SegnaliBancone personaId={persona.persona_id} segnali={persona.bancone ?? []} puoRegistrare={puoModificare} />
       <AzioniPersona persona={persona} puoModificare={puoModificare} onFatto={fatto} />
     </section>
   );

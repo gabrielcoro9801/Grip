@@ -1,5 +1,5 @@
 // Il lavoro sui contatti (i lead): registrarli, le azioni che ne cambiano lo stato, il loro
-// diario, l'iscrizione a socio, e quanto è usato ogni canale.
+// diario, e quanto è usato ogni canale. L'iscrizione a socio sta in routes/iscrizioni.js.
 //
 // Un lead è una trattativa (`trattative`) di una persona (`persone`): la persona resta, con il
 // suo diario, anche quando la trattativa si chiude o quando diventa socia. Persona e trattativa
@@ -15,8 +15,7 @@ import { trattative, persone, members, attivita, staffAccounts, canaliContatto }
 import { getUserFromRequest } from '../auth/tokens.js';
 import { canReadEntity, canWriteEntity } from '../auth/authorize.js';
 import { translateToJs, translateToSnakeCase } from '../entities/columnMaps.js';
-import { anagraficaSocio, rifiuta, telefonoNormalizzato } from '../entities/hooks.js';
-import { assegnaCodiceSocio } from '../lib/codiceSocio.js';
+import { rifiuta, telefonoNormalizzato } from '../entities/hooks.js';
 import { soglieEnte } from '../lib/impostazioni.js';
 import { registerPgErrorHandler } from './errorHandler.js';
 import { oggiIso } from '../../../shared/abbonamenti.js';
@@ -33,13 +32,6 @@ const AZIONI = {
 	chiudi: (c) => ({ tipo: 'chiudi', motivo: c.motivo, nota: c.nota }),
 	riapri: () => ({ tipo: 'riapri' }),
 };
-
-// Quello che la finestra di iscrizione può scrivere sul socio. Il codice socio e le date di
-// sistema restano fuori: il codice lo assegna il contatore.
-const CAMPI_SOCIO = [
-	'nome', 'cognome', 'sesso', 'codice_fiscale', 'email', 'phone', 'date_of_birth', 'address',
-	'emergency_contact_name', 'emergency_contact_phone', 'gdpr_consent', 'notes',
-];
 
 // I campi della persona e quelli della trattativa che si scrivono registrando o correggendo un lead.
 const CAMPI_PERSONA = ['nome', 'cognome', 'telefono', 'email', 'sesso', 'anno_nascita', 'note'];
@@ -113,15 +105,6 @@ export default async function leadRoutes(fastify) {
 		if (!utente) return reply.code(401).send({ error: 'Non autenticato.' });
 		request.utente = utente;
 	});
-
-	// L'iscrizione tocca due aree: chiude un contatto e crea (o riattiva) un socio. Serve poterle
-	// scrivere entrambe, altrimenti la reception che gestisce i contatti ma non i soci potrebbe
-	// creare soci passando di qui. Il socio non ha nessuna delle due, per costruzione.
-	const puoTrasformare = async (request, reply) => {
-		if (!canWriteEntity(request.utente.ruolo, 'Lead') || !canWriteEntity(request.utente.ruolo, 'Member')) {
-			return reply.code(403).send({ error: 'Il tuo ruolo non consente questa operazione.' });
-		}
-	};
 
 	const puoLeggere = async (request, reply) => {
 		if (!canReadEntity(request.utente.ruolo, 'Lead')) return reply.code(403).send({ error: 'Non consentito.' });
@@ -367,59 +350,5 @@ export default async function leadRoutes(fastify) {
 			uso[r.id][r.stato === 'iscritto' ? 'soci' : 'contatti'] += Number(r.n);
 		}
 		return uso;
-	});
-
-	/**
-	 * POST /api/lead/:id/trasforma  { nome, cognome, sesso, codice_fiscale, … } → 201 { member, riattivato }
-	 *
-	 * Il contatto si iscrive. Il corpo è l'anagrafica del socio così come la finestra l'ha
-	 * completata: vale la stessa regola del modulo dei soci (`anagraficaSocio`), CF obbligatorio
-	 * compreso. Se la persona era già stata socia (un ex socio che torna) si riattiva la sua
-	 * scheda, con il suo codice e la sua storia; altrimenti nasce un socio nuovo sulla persona.
-	 * In entrambi i casi la trattativa si chiude come *iscritto* e il diario resta.
-	 */
-	fastify.post('/api/lead/:id/trasforma', { preHandler: puoTrasformare }, async (request, reply) => {
-		const corpo = Object.fromEntries(
-			CAMPI_SOCIO.filter((c) => c in (request.body ?? {})).map((c) => [c, request.body[c]])
-		);
-		const anagrafica = anagraficaSocio(corpo, { creazione: true });
-		if (anagrafica.gdpr_consent === true) anagrafica.gdpr_consent_date = oggiIso();
-		const autoreNome = await nomeAutore(request);
-
-		const esito = await db.transaction(async (tx) => {
-			const [trattativa] = await tx.select().from(trattative).where(eq(trattative.id, request.params.id)).limit(1).for('update');
-			// Già iscritto — da un collega, o da un doppio clic — oppure eliminato.
-			if (!trattativa || trattativa.stato === 'iscritto') return null;
-
-			const [giaSocio] = await tx.select({ id: members.id }).from(members)
-				.where(eq(members.personaId, trattativa.personaId)).limit(1).for('update');
-			let socio;
-			if (giaSocio) {
-				[socio] = await tx.update(members)
-					.set({ ...translateToJs(members, anagrafica), archiviatoIl: null, updatedDate: new Date() })
-					.where(eq(members.id, giaSocio.id))
-					.returning();
-			} else {
-				[socio] = await tx.insert(members)
-					.values({ ...translateToJs(members, anagrafica), codiceSocio: await assegnaCodiceSocio(tx), personaId: trattativa.personaId })
-					.returning();
-			}
-			await tx.update(trattative)
-				.set({ stato: 'iscritto', statoDal: oggiIso(), richiamareIl: null, updatedDate: new Date() })
-				.where(eq(trattative.id, trattativa.id));
-			await tx.insert(attivita).values({
-				personaId: trattativa.personaId, trattativaId: trattativa.id, tipo: 'iscrizione',
-				esito: giaSocio ? 'riattivato' : 'nuovo', autoreId: request.utente.sub, autoreNome,
-			});
-			return { socio, riattivato: Boolean(giaSocio) };
-		});
-
-		if (!esito) return reply.code(404).send({ error: 'Il contatto non esiste più: forse è già stato iscritto.' });
-		await registra(request.utente, {
-			tipoAzione: esito.riattivato ? 'activate' : 'create', entitaTipo: 'member', entitaNome: esito.socio.fullName, entitaId: esito.socio.id,
-			dettagli: esito.riattivato ? 'Tornato socio da un contatto (lead)' : 'Socio nato da un contatto (lead)',
-		}, request.log);
-		reply.code(201);
-		return { member: translateToSnakeCase(members, esito.socio), riattivato: esito.riattivato };
 	});
 }

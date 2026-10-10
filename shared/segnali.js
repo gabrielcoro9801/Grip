@@ -14,7 +14,7 @@
 // media · scade tra 9 giorni · 2 no-show". Chi chiama deve sapere perché sta chiamando.
 // ponytail: regole esplicite; un modello statistico solo quando ci saranno i dati di molte palestre.
 import { oggiIso, oraIso, giorniFra, spostaGiorni, lezioneFinita } from './giorni.js';
-import { abbonamentoCopre } from './abbonamenti.js';
+import { abbonamentoCopre, sospensioneIl } from './abbonamenti.js';
 import { avvisiSocio } from './avvisi.js';
 import { conStatoDocumenti } from './anagrafica.js';
 import { condizioniLead, descriviTempoLead, FILTRI_LEAD, SOGLIE_LEAD } from './lead.js';
@@ -26,6 +26,8 @@ export const FASI = [
 	{ valore: 'nuovo', etichetta: 'Nuovo', tono: 'info' },
 	{ valore: 'ambientamento', etichetta: 'Ambientamento', tono: 'info' },
 	{ valore: 'attivo', etichetta: 'Attivo', tono: 'positivo' },
+	// L'abbonamento è fermo fino alla ripresa: non entra, non prenota, e non va cercato.
+	{ valore: 'sospeso', etichetta: 'Sospeso', tono: 'neutro' },
 	{ valore: 'in_calo', etichetta: 'In calo', tono: 'attesa' },
 	{ valore: 'assente', etichetta: 'Assente', tono: 'attesa' },
 	{ valore: 'in_scadenza', etichetta: 'In scadenza', tono: 'attesa' },
@@ -39,6 +41,8 @@ export const fase = (v) => PER_FASE[v] ?? PER_FASE.attivo;
 // resto. La priorità ordina la lista di Oggi.
 const ETICHETTA_LEAD = Object.fromEntries(FILTRI_LEAD.map((f) => [f.valore, f.etichetta]));
 export const SEGNALI = [
+	// L'ha chiesto lui, dal portale: è il rinnovo più facile che ci sia, e non va lasciato aspettare.
+	{ valore: 'rinnovo_richiesto', etichetta: 'Chiede di rinnovare', priorita: 100 },
 	{ valore: 'scaduto_recuperabile', etichetta: 'Scaduto, da recuperare', priorita: 90 },
 	{ valore: 'in_scadenza', etichetta: 'Abbonamento in scadenza', priorita: 80 },
 	{ valore: 'assente', etichetta: 'Non viene da un po\'', priorita: 70 },
@@ -121,19 +125,24 @@ const piuTardi = (a, b) => (!a ? b : !b ? a : a > b ? a : b);
  * - `fine`: l'ultimo giorno coperto da quella di oggi (null se senza fine);
  * - `scadenza`: la data più lontana fra quelle non ancora scadute, quella da mostrare;
  * - `ultimaFine`: l'ultima scadenza passata; `inizio`: da quando è socio senza interruzioni
- *   lunghe (un rinnovo fatto con qualche settimana di ritardo non lo fa tornare "nuovo").
+ *   lunghe (un rinnovo fatto con qualche settimana di ritardo non lo fa tornare "nuovo");
+ * - `sospensione`: quella in corso oggi (le iscrizioni passate da `conSospensioni`), o null;
+ *   `ripresa`: il giorno in cui è finita l'ultima già finita, o null.
  */
 export function coperturaAbbonamento(iscrizioni = [], oggi, soglie = SOGLIE.segnali) {
 	const righe = iscrizioni.map((i) => ({ ...i, inizio: giorno(i.start_date), fine: giorno(i.end_date) }));
-	const diOggi = righe.filter((i) => abbonamentoCopre([i], oggi));
-	const valido = diOggi.length > 0;
+	const sospensione = sospensioneIl(righe, oggi);
+	// Sospeso non vuol dire scaduto: l'iscrizione ferma conta come quella di oggi, ma non è valida.
+	const diOggi = righe.filter((i) => abbonamentoCopre([i], oggi) || (sospensione && i.sospensioni?.includes(sospensione)));
+	const valido = !sospensione && diOggi.length > 0;
 	const rinnovato = righe.some((i) => i.inizio && i.inizio > oggi);
-	const fine = valido ? (diOggi.some((i) => !i.fine) ? null : diOggi.map((i) => i.fine).sort().pop()) : null;
+	const fine = diOggi.length ? (diOggi.some((i) => !i.fine) ? null : diOggi.map((i) => i.fine).sort().pop()) : null;
 	const correnti = righe.filter((i) => !i.fine || i.fine >= oggi);
 	const scadenza = correnti.some((i) => !i.fine) ? null : correnti.map((i) => i.fine).sort().pop() ?? null;
 	const ultimaFine = righe.map((i) => i.fine).filter((f) => f && f < oggi).sort().pop() ?? null;
+	const ripresa = righe.flatMap((i) => i.sospensioni ?? []).map((s) => spostaGiorni(s.al, 1)).filter((r) => r <= oggi).sort().pop() ?? null;
 	// L'iscrizione di riferimento: quella di oggi che dura di più, o l'ultima finita.
-	const riferimento = valido
+	const riferimento = diOggi.length
 		? [...diOggi].sort((a, b) => String(b.fine ?? '9999').localeCompare(String(a.fine ?? '9999')))[0]
 		: righe.find((i) => i.fine === ultimaFine) ?? null;
 
@@ -146,7 +155,23 @@ export function coperturaAbbonamento(iscrizioni = [], oggi, soglie = SOGLIE.segn
 			if (i.inizio && i.inizio < inizio && (!i.fine || i.fine >= limite)) { inizio = i.inizio; cambiato = true; }
 		}
 	}
-	return { valido, rinnovato, fine, scadenza, ultimaFine, inizio, riferimento };
+	return { valido, rinnovato, fine, scadenza, ultimaFine, inizio, riferimento, sospensione, ripresa };
+}
+
+/**
+ * Vera se la richiesta di rinnovo fatta dal portale aspetta ancora la reception: nessun
+ * abbonamento venduto dopo, e nessun contatto riuscito dopo (un "non ha risposto" non conta: il
+ * socio aspetta ancora). Le date sono istanti: richiesta e telefonata possono essere dello stesso giorno.
+ *
+ * @param richiesta      quando l'ha chiesto (Date o ISO), o null
+ * @param ultimoContatto l'ultimo contatto riuscito (Date o ISO), o null
+ * @param iscrizioni     [{ created_date }]
+ */
+export function richiestaRinnovoAperta(richiesta, { ultimoContatto = null, iscrizioni = [] } = {}) {
+	if (!richiesta) return false;
+	const il = new Date(richiesta).getTime();
+	if (ultimoContatto && new Date(ultimoContatto).getTime() >= il) return false;
+	return !iscrizioni.some((i) => i.created_date && new Date(i.created_date).getTime() >= il);
 }
 
 /** Vera se oggi è il compleanno di chi è nato in quel giorno (il 29 febbraio, il 28 negli anni normali). */
@@ -164,11 +189,16 @@ export function eCompleanno(nascita, oggi) {
  * @param p.trattativa   la trattativa attuale (aperta, o l'ultima chiusa), come in shared/lead.js | null
  * @param p.iscrizioni   [{ id?, plan_name?, start_date, end_date }]
  * @param p.documenti    [{ id?, file_name?, document_type, created_date, expiry_date }]
- * @param p.ingressi     { ultimo: 'AAAA-MM-GG'|null, quattro, dodici, totale } — ingressi nelle
- *                       ultime 4 e 12 settimane e in tutto; null se la palestra non li registra
- *                       (senza ingressi, tutti sembrerebbero assenti)
+ * @param p.ingressi     { ultimo: 'AAAA-MM-GG'|null, quattro, dodici, totale, prima?, oggi? } — ingressi
+ *                       nelle ultime 4 e 12 settimane e in tutto; `prima` l'ultimo giorno di ingresso
+ *                       prima di oggi, `oggi` quanti oggi (per i segnali del bancone di chi è già
+ *                       entrato dal tornello). null se la palestra non li registra (senza
+ *                       ingressi, tutti sembrerebbero assenti)
  * @param p.noShow       quante prenotazioni senza ingresso nelle ultime 4 settimane (esitoPrenotazione)
- * @param p.contatti     { ultimo: 'AAAA-MM-GG'|null, rimandatoAl: 'AAAA-MM-GG'|null }, dal diario
+ * @param p.contatti     { ultimo: 'AAAA-MM-GG'|null, rimandatoAl: 'AAAA-MM-GG'|null, riscontro, richiestaRinnovo },
+ *                       dal diario; gli ultimi due sono istanti: l'ultimo contatto riuscito e
+ *                       l'ultima richiesta di rinnovo dal portale
+ * @param p.iscrizioni   passate da `conSospensioni` (shared/abbonamenti.js), con `created_date`
  * @returns {{ fase, segnali: [{ codice, titolo, priorita, motivo, azioni, pubblico, nascostoFino, dati }], copertura }}
  *   `pubblico`: 'staff' (Oggi, la scheda), 'socio' (il portale), 'bancone' (chi entra adesso).
  *   `nascostoFino`: il segnale c'è ma non va riproposto prima di quel giorno; null se è da fare.
@@ -204,8 +234,9 @@ export function segnaliPersona({
 	let laFase;
 	const giorniScaduto = copertura.ultimaFine ? giorniFra(copertura.ultimaFine, oggi) : null;
 	const giorniAllaFine = copertura.fine ? giorniFra(oggi, copertura.fine) : null;
-	const inScadenza = copertura.valido && !copertura.rinnovato && giorniAllaFine !== null && giorniAllaFine <= tutte.abbonamentoInScadenzaGiorni;
+	const inScadenza = !socio.archiviato_il && copertura.valido && !copertura.rinnovato && giorniAllaFine !== null && giorniAllaFine <= tutte.abbonamentoInScadenzaGiorni;
 	if (socio.archiviato_il) laFase = 'ex_socio';
+	else if (copertura.sospensione) laFase = 'sospeso';
 	else if (!copertura.valido && !copertura.rinnovato) {
 		if (giorniScaduto !== null && giorniScaduto <= soglie.recuperabileGiorni) laFase = 'scaduto_recuperabile';
 		// Appena iscritto, l'abbonamento ancora da fare: è nuovo, non ex.
@@ -217,7 +248,8 @@ export function segnaliPersona({
 	// Quanto viene: assenza e calo, solo se la palestra registra gli ingressi.
 	let assente = false; let inCalo = false;
 	if (frequenta && ingressi) {
-		const daQuando = piuTardi(giorno(ingressi.ultimo), inizio);
+		// I giorni di una sospensione non sono un'assenza: si conta dalla ripresa.
+		const daQuando = piuTardi(piuTardi(giorno(ingressi.ultimo), inizio), copertura.ripresa);
 		const giorniSenza = giorniFra(daQuando, oggi) ?? 0;
 		if (giorniSenza >= soglie.assenzaGiorni) {
 			assente = true;
@@ -225,7 +257,9 @@ export function segnaliPersona({
 		}
 		const media = (Number(ingressi.dodici) || 0) / 3;
 		const quattro = Number(ingressi.quattro) || 0;
-		if (!assente && giorniSocio >= 84 && media >= MEDIA_MINIMA_PER_IL_CALO && quattro < (media * soglie.caloPercentuale) / 100) {
+		// Dopo una ripresa le 4 e le 12 settimane contengono la sospensione: il confronto non dice niente.
+		const ripresoDaPoco = copertura.ripresa && giorniFra(copertura.ripresa, oggi) < 84;
+		if (!assente && !ripresoDaPoco && giorniSocio >= 84 && media >= MEDIA_MINIMA_PER_IL_CALO && quattro < (media * soglie.caloPercentuale) / 100) {
 			inCalo = true;
 			aggiungi('in_calo', `${plurale(quattro, 'ingresso', 'ingressi')} in 4 settimane contro ${Math.round(media)} di media`);
 		}
@@ -240,6 +274,12 @@ export function segnaliPersona({
 		else laFase = 'attivo';
 	}
 
+	// Chi chiede di rinnovare va richiamato in qualunque fase: anche un ex socio che vuole tornare.
+	if (!socio.archiviato_il && richiestaRinnovoAperta(contatti.richiestaRinnovo, { ultimoContatto: contatti.riscontro, iscrizioni })) {
+		const quando = giorniFra(oggiIso(new Date(contatti.richiestaRinnovo)), oggi);
+		aggiungi('rinnovo_richiesto', `l'ha chiesto dal portale ${quando === 0 ? 'oggi' : quando === 1 ? 'ieri' : `${quando} giorni fa`}${piano ? ` (${piano})` : ''}`,
+			{ dati: datiAbbonamento(null) });
+	}
 	if (laFase === 'scaduto_recuperabile') {
 		aggiungi('scaduto_recuperabile', `scaduto da ${plurale(giorniScaduto, 'giorno', 'giorni')}${piano ? ` (${piano})` : ''}`, { dati: datiAbbonamento(-giorniScaduto) });
 	}
@@ -271,13 +311,16 @@ export function segnaliPersona({
 			aggiungi('compleanno', 'Oggi compie gli anni: fagli gli auguri', { pubblico: 'bancone', azioni: ['saluto'] });
 		}
 
-		// Al bancone, prima di registrare l'ingresso: chi torna dopo tanto, e i traguardi.
-		if (ingressi?.ultimo && giorno(ingressi.ultimo) < oggi) {
-			const via = giorniFra(giorno(ingressi.ultimo), oggi);
+		// Al bancone: chi torna dopo tanto, e i traguardi. Valgono prima di registrare l'ingresso
+		// di oggi e anche dopo, per chi è già entrato dal tornello: si guarda a prima di oggi.
+		const entratoOggi = Number(ingressi?.oggi ?? (giorno(ingressi?.ultimo) === oggi ? 1 : 0));
+		const ultimoPrima = ingressi?.prima !== undefined ? giorno(ingressi.prima) : (entratoOggi ? null : giorno(ingressi?.ultimo));
+		if (ultimoPrima) {
+			const via = giorniFra(ultimoPrima, oggi);
 			if (via >= soglie.assenzaGiorni) aggiungi('bentornato', `Bentornato: non veniva da ${via} giorni`, { pubblico: 'bancone', azioni: ['saluto'] });
 		}
-		const prossimo = (Number(ingressi?.totale) || 0) + 1;
-		if (ingressi && prossimo % OGNI_TRAGUARDO === 0 && giorno(ingressi.ultimo) !== oggi) {
+		const prossimo = (Number(ingressi?.totale) || 0) - entratoOggi + 1;
+		if (ingressi && prossimo % OGNI_TRAGUARDO === 0) {
 			aggiungi('traguardo', `Oggi è il suo ${prossimo}° ingresso!`, { pubblico: 'bancone', azioni: ['saluto'] });
 		}
 	}
@@ -303,7 +346,10 @@ function nascondi(segnali, { ultimo = null, rimandatoAl = null } = {}, oggi, sog
 	const dopoContatto = ultimo ? spostaGiorni(giorno(ultimo), soglie.contattoNascondeGiorni) : null;
 	return segnali.map((s) => {
 		let fino = null;
-		if (s.pubblico === 'staff') fino = socio ? piuTardi(dopoContatto, giorno(rimandatoAl)) : giorno(rimandatoAl);
+		// La richiesta di rinnovo la chiude il contatto stesso (richiestaRinnovoAperta): un
+		// contatto di prima, per un'altra ragione, non deve nasconderla.
+		if (s.codice === 'rinnovo_richiesto') fino = null;
+		else if (s.pubblico === 'staff') fino = socio ? piuTardi(dopoContatto, giorno(rimandatoAl)) : giorno(rimandatoAl);
 		if (s.pubblico === 'bancone') fino = s.codice === 'in_scadenza' ? dopoContatto : (ultimo ? spostaGiorni(giorno(ultimo), 1) : null);
 		return { ...s, nascostoFino: fino && fino > oggi ? fino : null };
 	});
@@ -323,6 +369,7 @@ export function perche(segnali = []) {
 export function testoMessaggio(nome, codice) {
 	const ciao = `Ciao ${nome}!`;
 	switch (codice) {
+		case 'rinnovo_richiesto': return `${ciao} Abbiamo ricevuto la tua richiesta di rinnovo: quando passi in reception lo sistemiamo.`;
 		case 'in_scadenza': return `${ciao} Il tuo abbonamento sta per scadere: passa in reception per rinnovarlo.`;
 		case 'scaduto_recuperabile': return `${ciao} Ci manchi in palestra: ti va di ripartire? Passa a trovarci.`;
 		case 'assente': case 'in_calo': return `${ciao} È un po' che non ti vediamo: va tutto bene?`;

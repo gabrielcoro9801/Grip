@@ -15,8 +15,9 @@
 // guarda l'agenda. Nessun processo programmato da tenere in vita.
 import { and, eq, gte, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { prenotazioniFisse, sessions, bookings, subscriptions, events, courses } from '../db/schema/index.js';
-import { abbonamentoCopre } from '../../../shared/abbonamenti.js';
+import { prenotazioniFisse, sessions, bookings, events, courses } from '../db/schema/index.js';
+import { abbonamentoCopre, sospensioneIl } from '../../../shared/abbonamenti.js';
+import { iscrizioniDelSocio } from './iscrizioni.js';
 import { oggiIso, lezioneFinita } from '../../../shared/giorni.js';
 import { motivoDisdettaChiusa } from '../../../shared/corsi.js';
 import { prenota, disdici } from './prenotazioni.js';
@@ -55,14 +56,15 @@ export async function applicaFisse({ memberId = null, eventId = null } = {}) {
 		const [esistenti, iscrizioni] = await Promise.all([
 			db.select({ sessionId: bookings.sessionId }).from(bookings)
 				.where(and(eq(bookings.memberId, fissa.memberId), inArray(bookings.sessionId, lezioni.map((l) => l.id)))),
-			db.select({ start_date: subscriptions.startDate, end_date: subscriptions.endDate }).from(subscriptions)
-				.where(eq(subscriptions.memberId, fissa.memberId)),
+			iscrizioniDelSocio(fissa.memberId),
 		]);
 		const giaPrenotate = new Set(esistenti.map((e) => e.sessionId));
 
 		let primaScoperta = null;
 		for (const lezione of lezioni) {
 			if (giaPrenotate.has(lezione.id)) continue;
+			// Un giorno sospeso non è scoperto: si salta, e alla ripresa la fissa riprende da sola.
+			if (sospensioneIl(iscrizioni, lezione.date)) continue;
 			if (!abbonamentoCopre(iscrizioni, lezione.date)) {
 				primaScoperta ??= lezione.date;
 				totale.scoperte += 1;

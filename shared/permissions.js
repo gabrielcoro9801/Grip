@@ -10,6 +10,10 @@ export const MODULES = {
   crm_documents: { label: "Gestione membri — Documenti/certificati" },
   crm_leads: { label: "Lead — Contatti e canali" },
   calendar: { label: "Calendario & Prenotazioni" },
+  // La vista dell'istruttore: le sue lezioni, chi è prenotato, presenti e no-show, le sue note.
+  // Vede solo i soci delle sue lezioni, e solo con un account collegato a un istruttore. Di base
+  // ce l'ha l'istruttore; un titolare che insegna se la dà dai ruoli.
+  lezioni_istruttore: { label: "Le mie lezioni (istruttore)" },
   admin_users: { label: "Admin & Profili" },
   audit_log: { label: "Log accessi / azioni" },
 };
@@ -39,11 +43,14 @@ export const PERMESSI_PREDEFINITI = {
     admin_users: [],
     audit_log: [],
   },
+  // L'istruttore vede i soci delle sue lezioni dalla sua vista, non le anagrafiche di tutti: fino
+  // alla fase 3 del CRM aveva in lettura soci, documenti e contatti (migrazione 0055).
   istruttore: {
-    crm_members: ["view"],
-    crm_documents: ["view"],
-    crm_leads: ["view"],
+    crm_members: [],
+    crm_documents: [],
+    crm_leads: [],
     calendar: ["view", "edit"],
+    lezioni_istruttore: ["view", "edit"],
     admin_users: [],
     audit_log: [],
   },
@@ -188,6 +195,7 @@ export const SIDEBAR_PERMISSIONS = {
   "/crm": "crm_members",
   "/lead": "crm_leads",
   "/calendario": "calendar",
+  "/istruttore": "lezioni_istruttore",
   "/admin": "admin_users",
   "/log-audit": "audit_log",
 };

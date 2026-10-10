@@ -133,7 +133,7 @@ export default async function entityRoutes(fastify) {
 		if (rows.length >= MASSIMO_RIGHE) {
 			request.log.warn({ entita: entityName, righe: rows.length }, 'lista troncata al tetto massimo');
 		}
-		let risultato =conCampiCalcolatiMolte(entityName, firmaFileInLetturaMolte(stripHiddenFieldsMany(entityName, translateManyToSnakeCase(table, rows))));
+		let risultato = await conCampiCalcolatiMolte(entityName, firmaFileInLetturaMolte(stripHiddenFieldsMany(entityName, translateManyToSnakeCase(table, rows))));
 		// Un filtro su un campo calcolato va applicato al valore calcolato, non alla colonna:
 		// `?status=expired` sulla colonna non troverebbe mai niente.
 		for (const campo of campiCalcolati(entityName)) {
@@ -159,7 +159,7 @@ export default async function entityRoutes(fastify) {
 			}
 		}
 
-		const risultato = conCampiCalcolati(entityName, firmaFileInLettura(stripHiddenFields(entityName, translateToSnakeCase(table, row))));
+		const risultato = await conCampiCalcolati(entityName, firmaFileInLettura(stripHiddenFields(entityName, translateToSnakeCase(table, row))));
 		return request.memberId ? nascondiCampiPerSocio(entityName, risultato) : risultato;
 	});
 
@@ -185,7 +185,7 @@ export default async function entityRoutes(fastify) {
 		// lezioni rimaste scoperte ora hanno un abbonamento, e si prenotano da sole.
 		if (entityName === 'Subscription') await applicaFisse({ memberId: row.memberId });
 		reply.code(201);
-		return conCampiCalcolati(entityName, firmaFileInLettura(stripHiddenFields(entityName, creata)));
+		return await conCampiCalcolati(entityName, firmaFileInLettura(stripHiddenFields(entityName, creata)));
 	}));
 
 	// POST /api/entities/:name/bulk  (bulkCreate)
@@ -221,7 +221,7 @@ export default async function entityRoutes(fastify) {
 			dettagli: `Creazione multipla: ${rows.length}`,
 		}, request.log);
 		reply.code(201);
-		return conCampiCalcolatiMolte(entityName, firmaFileInLetturaMolte(stripHiddenFieldsMany(entityName, translateManyToSnakeCase(table, rows))));
+		return await conCampiCalcolatiMolte(entityName, firmaFileInLetturaMolte(stripHiddenFieldsMany(entityName, translateManyToSnakeCase(table, rows))));
 	}));
 
 	/**
@@ -309,7 +309,7 @@ export default async function entityRoutes(fastify) {
 			...descriviModifica(vecchia, { ...body, ...(ricevuto?.password ? { password: true } : {}) }),
 			entitaTipo: tipoEntita(entityName), entitaNome: nomeLeggibile(nuova), entitaId: row.id,
 		}, request.log);
-		return conCampiCalcolati(entityName, firmaFileInLettura(stripHiddenFields(entityName, nuova)));
+		return await conCampiCalcolati(entityName, firmaFileInLettura(stripHiddenFields(entityName, nuova)));
 	}));
 
 	// DELETE /api/entities/:name/:id

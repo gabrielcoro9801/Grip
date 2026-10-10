@@ -174,14 +174,50 @@ export const api = {
 		impostaAccessoPortale(memberId, password) {
 			return request(`/api/soci/${encodeURIComponent(memberId)}/accesso-portale`, { method: 'POST', body: { password } });
 		},
-		/** Archivia un socio che ha lasciato la palestra. → { socio, prenotazioni_disdette } */
-		archivia(memberId) {
-			return request(`/api/soci/${encodeURIComponent(memberId)}/archivia`, { method: 'POST' });
+		/** Archivia un socio che ha lasciato la palestra: { motivo, nota? } → { socio, prenotazioni_disdette } */
+		archivia(memberId, corpo) {
+			return request(`/api/soci/${encodeURIComponent(memberId)}/archivia`, { method: 'POST', body: corpo });
+		},
+		/** Le sospensioni dell'abbonamento: { sospensioni: [{ id, dal, al, riprende_il, nota, stato }] } */
+		sospensioni(memberId) {
+			return request(`/api/soci/${encodeURIComponent(memberId)}/sospensioni`);
+		},
+		/** { dal, riprende_il, nota? } → { sospensione, prenotazioni_disdette } */
+		sospendi(memberId, corpo) {
+			return request(`/api/soci/${encodeURIComponent(memberId)}/sospensioni`, { method: 'POST', body: corpo });
+		},
+		/** Fa riprendere prima (oggi, o `riprende_il`). → { sospensione | null } */
+		terminaSospensione(memberId, idSospensione, riprendeIl) {
+			return request(`/api/soci/${encodeURIComponent(memberId)}/sospensioni/${idSospensione}/termina`, { method: 'POST', body: riprendeIl ? { riprende_il: riprendeIl } : {} });
 		},
 		/** Riattiva un socio archiviato. → { socio } */
 		riattiva(memberId) {
 			return request(`/api/soci/${encodeURIComponent(memberId)}/riattiva`, { method: 'POST' });
 		},
+	},
+
+	/** La vista dell'istruttore (routes/istruttore.js): le sue lezioni e i soci che ci vengono. */
+	istruttore: {
+		/** { dal?, al? } → { collegato, istruttore, dal, al, lezioni, spesso } */
+		lezioni(filtri = {}) {
+			const q = new URLSearchParams(Object.entries(filtri).filter(([, v]) => v)).toString();
+			return request(`/api/istruttore/lezioni${q ? `?${q}` : ''}`);
+		},
+		/** → { socio, note } */
+		socio(memberId) {
+			return request(`/api/istruttore/soci/${encodeURIComponent(memberId)}`);
+		},
+		nota(memberId, nota) {
+			return request(`/api/istruttore/soci/${encodeURIComponent(memberId)}/note`, { method: 'POST', body: { nota } });
+		},
+	},
+
+	/**
+	 * Iscrivi, in un passo: { lead_id?, anagrafica, abbonamento?, certificato?, informativa_privacy,
+	 * consensi?, portale? } → { member, riattivato, accesso_portale }. Tutto in una transazione.
+	 */
+	iscrivi(corpo) {
+		return request('/api/iscrivi', { method: 'POST', body: corpo });
 	},
 
 	/**
@@ -276,10 +312,6 @@ export const api = {
 		doppioni({ telefono, email, escludi }) {
 			const q = new URLSearchParams(Object.entries({ telefono, email, escludi }).filter(([, v]) => v));
 			return request(`/api/lead/doppioni?${q}`);
-		},
-		/** Il contatto si iscrive: nasce il socio, o torna quello di prima. → { member, riattivato } */
-		trasforma(leadId, anagrafica) {
-			return request(`/api/lead/${leadId}/trasforma`, { method: 'POST', body: anagrafica });
 		},
 		/** Quanti contatti e quanti soci cita ogni canale: { [idCanale]: { contatti, soci } }. */
 		usoCanali() {
