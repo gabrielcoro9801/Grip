@@ -5,9 +5,13 @@
 // Non sono presenze alle lezioni: dicono chi è entrato e quando, e servono a controllare
 // l'accesso e alle statistiche della palestra.
 //
+// Il bancone è anche il momento migliore per tenere un socio: la verifica porta i segnali del
+// motore (shared/segnali.js) con pubblico "bancone" — il rinnovo da proporre, il bentornato, gli
+// auguri, il traguardo — e chi non viene più lo dice lo stesso motore, non un conto a parte.
+//
 // Permessi: chi vede le anagrafiche dei soci verifica e legge il registro; chi le modifica
 // registra gli ingressi. Il socio non passa di qui.
-import { and, desc, eq, gte, isNull, lte, max, ne } from 'drizzle-orm';
+import { and, desc, eq, gte, lte, ne } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
 	members, subscriptions, memberDocuments, qrAccessi, ingressi, bookings, sessions, events, courses, staffAccounts,
@@ -18,12 +22,11 @@ import { registerPgErrorHandler } from './errorHandler.js';
 import { registra } from '../lib/registro.js';
 import { semeDelCodice, verificaCodice } from '../lib/qrDinamico.js';
 import { firmaUrl } from '../lib/urlFirmati.js';
+import { situazioni } from '../lib/segnali.js';
 import { avvisiSocio, semaforo } from '../../../shared/avvisi.js';
-import { abbonamentoCopre } from '../../../shared/abbonamenti.js';
+import { daFare } from '../../../shared/segnali.js';
 import { oggiIso, oraIso, spostaGiorni, eUnGiorno, giorniFra } from '../../../shared/giorni.js';
 
-// Un socio che non entra da tanto, con un abbonamento valido: è a rischio di non rinnovare.
-export const GIORNI_RISCHIO_ABBANDONO = 14;
 // Le fasce orarie della mappa di affluenza, di due ore.
 const FASCE = [6, 8, 10, 12, 14, 16, 18, 20];
 const GIORNI_SETTIMANA = ['Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab', 'Dom'];
@@ -56,13 +59,16 @@ async function schedaIngresso(memberId) {
 	const avvisi = avvisiSocio({
 		socio: { date_of_birth: socio.dateOfBirth, archiviato_il: socio.archiviatoIl }, iscrizioni, documenti, oggi,
 	});
+	const [situazione] = (await situazioni({ personaId: socio.personaId })).persone;
 	return {
 		socio: {
-			id: socio.id, nome: socio.fullName, codice_socio: socio.codiceSocio,
+			id: socio.id, persona_id: socio.personaId, nome: socio.fullName, codice_socio: socio.codiceSocio,
 			foto_url: socio.fotoUrl ? firmaUrl(socio.fotoUrl) : null, telefono: socio.phone,
 		},
 		semaforo: semaforo(avvisi),
 		avvisi,
+		// Prima di registrare l'ingresso: "scade tra 3 giorni: proponi il rinnovo", "bentornato".
+		segnali: daFare(situazione?.segnali ?? [], 'bancone').map((s) => ({ codice: s.codice, motivo: s.motivo, azioni: s.azioni })),
 		lezioni_oggi: lezioni.map((l) => ({ corso: l.corso, inizio: String(l.inizio).slice(0, 5), fine: String(l.fine).slice(0, 5), stato: l.stato })),
 		ultimo_ingresso: ultimo?.alle ?? null,
 	};
@@ -197,27 +203,15 @@ export default async function ingressiRoutes(fastify) {
 		}
 		const soci = new Set(nelPeriodo.map((r) => r.memberId)).size;
 
-		// Chi ha un abbonamento valido oggi, iniziato da almeno la soglia, e non entra da tanto.
-		const limite = spostaGiorni(oggi, -GIORNI_RISCHIO_ABBANDONO);
-		const [conAbbonamento, ultimi] = await Promise.all([
-			db.select({ id: members.id, nome: members.fullName, telefono: members.phone, inizio: subscriptions.startDate, fine: subscriptions.endDate })
-				.from(subscriptions)
-				.innerJoin(members, eq(subscriptions.memberId, members.id))
-				.where(isNull(members.archiviatoIl)),
-			db.select({ memberId: ingressi.memberId, ultimo: max(ingressi.entratoAlle) }).from(ingressi).groupBy(ingressi.memberId),
-		]);
-		const ultimoDi = new Map(ultimi.map((u) => [u.memberId, oggiIso(u.ultimo)]));
-		const valide = new Map();
-		for (const s of conAbbonamento) {
-			if (!abbonamentoCopre([{ start_date: s.inizio, end_date: s.fine }], oggi)) continue;
-			const corrente = valide.get(s.id);
-			if (!corrente || String(s.inizio) < String(corrente.inizio)) valide.set(s.id, s);
-		}
-		const rischio = [...valide.values()]
-			.filter((s) => String(s.inizio).slice(0, 10) <= limite)
-			.map((s) => ({ id: s.id, nome: s.nome, telefono: s.telefono, ultimo_ingresso: ultimoDi.get(s.id) ?? null }))
-			.filter((s) => !s.ultimo_ingresso || s.ultimo_ingresso <= limite)
-			.map((s) => ({ ...s, giorni: s.ultimo_ingresso ? giorniFra(s.ultimo_ingresso, oggi) : null }))
+		// Chi non viene più lo dice il motore dei segnali: è "assente" (shared/segnali.js), con la
+		// stessa soglia di Oggi e dell'elenco dei soci.
+		const motore = await situazioni();
+		const rischio = motore.persone
+			.filter((p) => p.socio_id && p.segnali.some((s) => s.pubblico === 'staff' && s.codice === 'assente'))
+			.map((p) => ({
+				id: p.socio_id, nome: p.nome, telefono: p.telefono, ultimo_ingresso: p.ultimo_ingresso,
+				giorni: p.ultimo_ingresso ? giorniFra(p.ultimo_ingresso, oggi) : null,
+			}))
 			.sort((a, b) => (b.giorni ?? Infinity) - (a.giorni ?? Infinity) || a.nome.localeCompare(b.nome, 'it'));
 
 		return {
@@ -225,7 +219,7 @@ export default async function ingressiRoutes(fastify) {
 			totale: nelPeriodo.length, totalePrima: prima.length, soci,
 			frequenzaSettimanale: soci ? Math.round((nelPeriodo.length / soci / (giorni / 7)) * 10) / 10 : null,
 			mappa, fasce: FASCE.map((f) => `${f}–${f + 2}`), giorniSettimana: GIORNI_SETTIMANA,
-			rischio, sogliaRischio: GIORNI_RISCHIO_ABBANDONO,
+			rischio, sogliaRischio: motore.soglie.segnali.assenzaGiorni,
 		};
 	});
 }

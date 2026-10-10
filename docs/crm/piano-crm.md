@@ -68,7 +68,8 @@ account (globale)            login dell'app unica, push token
 - Abbonamenti, documenti, ingressi, prenotazioni e QR puntano a `soci`. **Prenotazioni di prova** (fase acquisizione): `bookings.persona_id` con `prova = true`; lo schema lo prevede subito, si usa dopo.
 - `attivita.tipo` è un elenco chiuso in `shared/`:
   - `nota`, `tentativo`, `risposta`, `richiamo`, `chiusura`, `riapertura`, `stato_automatico`;
-  - `messaggio`, `proposta_rinnovo`, `richiesta_rinnovo`, `ingresso_dopo_contatto`, `sondaggio`.
+  - `messaggio`, `richiesta_rinnovo`, `ingresso_dopo_contatto`, `sondaggio`;
+  - (Fase 2) `contatto` — un contatto con un socio, con `canale` ed `esito`: `risposto`, `nessuna_risposta`, `proposto_rinnovo`, `salutato` (la proposta di rinnovo è un esito, non un tipo a sé) — e `rimando`, con `esito` = il giorno fino a cui i segnali tacciono.
 
   Ogni riga ha `autore` (null = sistema) e un `riferimento` jsonb (id del messaggio, della trattativa, dell'abbonamento).
 - Migrazione dall'esistente:
@@ -82,7 +83,11 @@ account (globale)            login dell'app unica, push token
 ## C. Il motore dei segnali (il cuore)
 
 ### C1. `shared/segnali.js`: funzioni pure, testate con `node --test`
-`segnaliPersona({ persona, socio, trattative, iscrizioni, documenti, ingressi, prenotazioni, attivita, oggi, soglie })` restituisce un elenco di `{ codice, priorita, motivo, azioni, pubblico: staff|socio|bancone, nascostoFino }`.
+`segnaliPersona({ socio, trattativa, iscrizioni, documenti, ingressi, noShow, contatti, oggi, soglie })` restituisce `{ fase, segnali, copertura }`, con i segnali come `{ codice, titolo, priorita, motivo, azioni, pubblico: staff|socio|bancone, nascostoFino, dati }`.
+
+Fatto nella Fase 2, con due scelte diverse dal disegno iniziale:
+- il motore riceve **aggregati**, non righe: `ingressi = { ultimo, quattro, dodici, totale }` (null se la palestra non registra ingressi: senza, tutti sembrerebbero assenti), `noShow` (contato con `esitoPrenotazione`), `contatti = { ultimo, rimandatoAl }` dal diario. Li prepara `server/src/lib/segnali.js` con poche query;
+- il contatto nasconde i segnali del socio per `contattoNascondeGiorni` (7); quelli del lead li nasconde solo il rimando, perché il contatto con un lead ne cambia già lo stato. Al bancone il saluto vale per il giorno, il rinnovo proposto come un contatto.
 - Assorbe `avvisiSocio` (che resta come vista "pubblico socio"), `condizioniLead`, i rinnovi e i certificati della dashboard, il rischio degli ingressi.
 - **Fase del ciclo di vita**, calcolata e mai salvata:
   - `lead`;
@@ -248,6 +253,8 @@ Ogni modifica passa da `lib/registro.js`.
 6. **Acquisizione**: form pubblico e QR in sala, lezione di prova (`bookings.persona_id`), porta un amico, "scopri palestre" dell'app unica (solo con consenso).
 
 Fuori ambito per decisione: pagamenti. Più avanti: assistente AI sul diario e sui testi; tesseramento EPS con scadenza.
+
+**Fase 2, cosa resta fuori** (rimandato, non scartato): il filtro "i miei" e l'aggiornamento in tempo reale (SSE) di Oggi; le liste salvate e le azioni multiple dell'elenco; l'elenco unico persone (soci e contatti restano due pagine); `ingresso_dopo_contatto` nel giro; `rinnovo_richiesto`, che nasce con "Richiedi il rinnovo" (Fase 3). Il bancone legge i segnali, ma il controllo degli ingressi sta passando al tornello (ramo `ingressi-registro-manuale`): dove mostrarli quando nessuno sta al bancone è una scelta della Fase 3.
 
 ## File chiave toccati
 - Schema: `server/src/db/schema/{crm,lead,courses,common}.js`, più i nuovi `persone.js` e `messaggi.js`; le migrazioni in `server/drizzle/`.

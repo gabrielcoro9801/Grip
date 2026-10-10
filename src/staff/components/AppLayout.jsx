@@ -6,8 +6,9 @@ import StaffLogin from "@/staff/pages/StaffLogin";
 import {
   LayoutDashboard, Users, Calendar,
   ChevronLeft, ChevronRight, LogOut, Menu, Dumbbell,
-  ShieldCheck, ScrollText, UserPlus, KeyRound
+  ShieldCheck, ScrollText, UserPlus, KeyRound, ListChecks, Search
 } from "lucide-react";
+import RicercaGlobale from "@/staff/components/RicercaGlobale";
 import { CambioPasswordObbligatorio, DialogCambioPassword } from "@/ui/CambioPassword";
 import { Button } from "@/ui/primitivi/button";
 import { Badge } from "@/ui/primitivi/badge";
@@ -19,6 +20,8 @@ import SelettoreTema from "@/ui/SelettoreTema";
 // i soci non aveva motivo di aprirlo. Ogni voce porta alla pagina che si intitola
 // come lei — l'intestazione della pagina non deve mai smentire il menu.
 const navItems = [
+  // Il lavoro del giorno viene prima di tutto: chi seguire oggi, e perché.
+  { label: "Oggi", path: "/oggi", icon: ListChecks },
   { label: "Dashboard", path: "/", icon: LayoutDashboard },
   { label: "Gestione membri", path: "/crm", icon: Users },
   // I lead sono contatti, non soci: non hanno scheda, abbonamento né accesso. Stanno in una
@@ -35,6 +38,7 @@ export default function AppLayout() {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [cambioPassword, setCambioPassword] = useState(false);
+  const [ricerca, setRicerca] = useState(false);
 
   // Staff auth gate: if no staff profile selected, show staff login
   if (staffLoading) {
@@ -63,7 +67,7 @@ export default function AppLayout() {
     if (item.roles && !item.roles.includes(staffUser.ruolo)) return false;
     const requiredModule = SIDEBAR_PERMISSIONS[item.path];
     if (!requiredModule) return true; // no permission required
-    return canAccess(staffUser.ruolo, requiredModule, "view");
+    return [requiredModule].flat().some((m) => canAccess(staffUser.ruolo, m, "view"));
   });
 
   return (
@@ -99,6 +103,19 @@ export default function AppLayout() {
             <SelettoreTema className="bg-sidebar-accent text-sidebar-foreground" />
           </div>
         )}
+
+        {/* La ricerca di una persona da ovunque: è il gesto più frequente della reception. */}
+        <div className="px-2 pt-3">
+          <button
+            type="button" onClick={() => { setMobileOpen(false); setRicerca(true); }}
+            title={collapsed ? "Cerca (Ctrl+K)" : undefined}
+            className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm w-full text-sidebar-foreground bg-sidebar-accent/50 hover:bg-sidebar-accent hover:text-white transition-colors"
+          >
+            <Search className="w-5 h-5 flex-shrink-0" aria-hidden="true" />
+            <span className={collapsed ? "sr-only" : "flex-1 text-left"}>Cerca</span>
+            {!collapsed && <kbd className="text-[10px] opacity-70">Ctrl K</kbd>}
+          </button>
+        </div>
 
         {/* Nav */}
         <nav aria-label="Navigazione principale" className="flex-1 py-4 px-2 space-y-1 overflow-y-auto">
@@ -178,9 +195,9 @@ export default function AppLayout() {
             <Dumbbell className="w-5 h-5 text-primary" aria-hidden="true" />
             <span className="font-heading font-bold">Grip</span>
           </div>
-          <div className="text-xs text-muted-foreground text-right">
-            {staffUser.nome}
-          </div>
+          <Button variant="ghost" size="icon" onClick={() => setRicerca(true)} aria-label="Cerca una persona">
+            <Search className="w-5 h-5" aria-hidden="true" />
+          </Button>
         </header>
 
         <main className="flex-1 overflow-y-auto">
@@ -193,6 +210,7 @@ export default function AppLayout() {
         </main>
       </div>
 
+      <RicercaGlobale aperta={ricerca} onAperta={setRicerca} />
       <DialogCambioPassword open={cambioPassword} onClose={() => setCambioPassword(false)} onCambiata={aggiornaUtente} />
     </div>
   );

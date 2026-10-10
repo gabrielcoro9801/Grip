@@ -7,9 +7,8 @@ import { Checkbox } from "@/ui/primitivi/checkbox";
 import { useToast } from "@/ui/primitivi/use-toast";
 import { formatDataOra, formatData } from "@/core/domain/format";
 import { descriviAttivita, NOTA_DIARIO_MASSIMO } from "@/core/domain/lead";
-import { linkWhatsApp } from "@/core/domain/anagrafica";
 import { TIPI_CONSENSO } from "@/core/domain/consensi";
-import { BookOpen, Phone, MessageCircle, Mail, Bot } from "lucide-react";
+import { BookOpen, Bot } from "lucide-react";
 
 // Quante righe si vedono prima di "mostra tutto": le ultime sono quelle che servono prima di
 // richiamare.
@@ -17,8 +16,9 @@ const RIGHE_VISIBILI = 6;
 const FONTI = { portale: "dal portale", reception: "in reception", form: "dal modulo online" };
 
 /**
- * Il diario del socio nella sua scheda: come contattarlo con un clic, che cosa è successo (dai
- * tempi in cui era un contatto, se lo era), le note della segreteria e i consensi promozionali.
+ * Il diario del socio nella sua scheda: che cosa è successo (dai tempi in cui era un contatto, se
+ * lo era), i contatti, le note della segreteria e i consensi promozionali. Chiamarlo, scrivergli
+ * e registrare com'è andata si fa dall'intestazione della scheda (SituazioneSocio).
  */
 export default function DiarioSocio({ socio, puoModificare }) {
   const { toast } = useToast();
@@ -56,7 +56,6 @@ export default function DiarioSocio({ socio, puoModificare }) {
     }
   };
 
-  const whatsapp = linkWhatsApp(socio.phone, `Ciao ${socio.nome}!`);
   const righe = diario ? [...diario.attivita].reverse() : [];
   const visibili = tutto ? righe : righe.slice(0, RIGHE_VISIBILI);
 
@@ -66,20 +65,6 @@ export default function DiarioSocio({ socio, puoModificare }) {
         <CardTitle className="text-sm font-heading flex items-center gap-2"><BookOpen className="w-4 h-4" /> Diario</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        {(socio.phone || socio.email) && (
-          <div className="flex flex-wrap gap-2">
-            {socio.phone && (
-              <Button asChild size="sm" variant="outline" className="h-8"><a href={`tel:${socio.phone}`}><Phone className="w-3.5 h-3.5 mr-1" /> Chiama</a></Button>
-            )}
-            {whatsapp && (
-              <Button asChild size="sm" variant="outline" className="h-8"><a href={whatsapp} target="_blank" rel="noreferrer"><MessageCircle className="w-3.5 h-3.5 mr-1" /> WhatsApp</a></Button>
-            )}
-            {socio.email && (
-              <Button asChild size="sm" variant="outline" className="h-8"><a href={`mailto:${socio.email}`}><Mail className="w-3.5 h-3.5 mr-1" /> Email</a></Button>
-            )}
-          </div>
-        )}
-
         {puoModificare && (
           <form onSubmit={aggiungiNota} className="space-y-2">
             <Textarea

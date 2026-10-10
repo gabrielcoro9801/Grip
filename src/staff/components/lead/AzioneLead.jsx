@@ -17,7 +17,7 @@ const TITOLI = {
 };
 
 /** Un gruppo di pulsanti a scelta singola, con aria-pressed. */
-function Scelte({ etichetta, voci, valore, onScegli }) {
+export function Scelte({ etichetta, voci, valore, onScegli }) {
   return (
     <div>
       <Label>{etichetta}</Label>

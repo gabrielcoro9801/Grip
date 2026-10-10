@@ -16,6 +16,7 @@ import FisseSocio from "@/staff/components/soci/FisseSocio";
 import IngressiSocio from "@/staff/components/soci/IngressiSocio";
 import DiarioSocio from "@/staff/components/soci/DiarioSocio";
 import DocumentiSocio from "@/staff/components/soci/DocumentiSocio";
+import SituazioneSocio from "@/staff/components/soci/SituazioneSocio";
 import { AvatarSocio, SceltaFoto } from "@/staff/components/soci/FotoSocio";
 import { caricaFile } from "@/staff/lib/uploads";
 import { canAccess, canEdit } from "@/staff/lib/permissions";
@@ -77,6 +78,10 @@ export default function MemberDetail() {
   const [generatedPassword, setGeneratedPassword] = useState("");
 
   const [loadError, setLoadError] = useState(null);
+  // Cresce a ogni contatto registrato dall'intestazione: il diario si ricarica e lo mostra.
+  const [versioneDiario, setVersioneDiario] = useState(0);
+  // Il diario è lavoro della segreteria: lo vede chi segue i soci o i contatti.
+  const vedeDiario = canAccess(staffUser?.ruolo, "crm_members", "view") || canAccess(staffUser?.ruolo, "crm_leads", "view");
 
   const loadData = async () => {
     setLoading(true);
@@ -327,14 +332,14 @@ export default function MemberDetail() {
 
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 max-w-5xl mx-auto space-y-6">
+    <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
       <Link to="/crm" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
         <ArrowLeft className="w-4 h-4" /> Torna a Gestione membri
       </Link>
 
-      {/* Intestazione: chi è, e basta. I dati stanno tutti nella tile dell'anagrafica qui
-          sotto; ripeterli qui voleva dire leggerli due volte. */}
-      <div>
+      {/* Intestazione: chi è, a che punto è con la palestra e che cosa c'è da fare. I dati
+          stanno tutti nella tile dell'anagrafica; ripeterli qui voleva dire leggerli due volte. */}
+      <div className="space-y-3">
         <h1 className="text-xl font-heading font-bold">{member.full_name}</h1>
         <div className="flex flex-wrap items-center gap-2 mt-1">
           <span className="inline-block text-xs font-mono font-medium text-muted-foreground bg-muted px-2 py-0.5 rounded">
@@ -345,19 +350,33 @@ export default function MemberDetail() {
           )}
 
         </div>
+        {vedeDiario && (
+          <SituazioneSocio
+            personaId={member.persona_id} onFatto={() => setVersioneDiario((v) => v + 1)}
+            puoModificare={puoModificare || canEdit(staffUser?.ruolo, "crm_leads")}
+          />
+        )}
       </div>
 
-      <div className="grid lg:grid-cols-2 gap-6">
+      {/* Il diario al centro: è la storia della persona, ed è lì che si lavora. Le schede con
+          anagrafica, abbonamenti, documenti e accesso gli stanno accanto. */}
+      <div className="grid lg:grid-cols-5 gap-6 items-start">
+        {vedeDiario && (
+          <div className="lg:col-span-3">
+            <DiarioSocio key={versioneDiario} socio={member} puoModificare={puoModificare || canEdit(staffUser?.ruolo, "crm_leads")} />
+          </div>
+        )}
+        <div className={`${vedeDiario ? "lg:col-span-2" : "lg:col-span-5"} space-y-6`}>
         {/* Anagrafica: la tile principale, a tutta larghezza. Stesso ordine del modulo, così
             chi corregge un dato lo ritrova dove l'ha visto. */}
-        <Card className="border-0 shadow-sm lg:col-span-2">
+        <Card className="border-0 shadow-sm">
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-heading flex items-center gap-2"><UserRound className="w-4 h-4" /> Anagrafica</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="flex flex-col sm:flex-row gap-6">
-              <AvatarSocio socio={member} size="lg" className="self-center sm:self-start" />
-              <dl className="flex-1 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-4">
+            <div className="flex flex-col sm:flex-row lg:flex-col gap-6">
+              <AvatarSocio socio={member} size="lg" className="self-center sm:self-start lg:self-center" />
+              <dl className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
                 <DatoAnagrafico etichetta="Nome">{member.nome}</DatoAnagrafico>
                 <DatoAnagrafico etichetta="Cognome">{member.cognome}</DatoAnagrafico>
                 <DatoAnagrafico etichetta="Codice fiscale">{member.codice_fiscale}</DatoAnagrafico>
@@ -371,7 +390,7 @@ export default function MemberDetail() {
                 <DatoAnagrafico etichetta="Contatto di emergenza">{member.emergency_contact_name}</DatoAnagrafico>
                 <DatoAnagrafico etichetta="Telefono di emergenza">{member.emergency_contact_phone}</DatoAnagrafico>
                 <DatoAnagrafico etichetta="Socio dal">{formatData(member.created_date, "media")}</DatoAnagrafico>
-                <DatoAnagrafico etichetta="Note" className="sm:col-span-2 lg:col-span-3">{member.notes}</DatoAnagrafico>
+                <DatoAnagrafico etichetta="Note" className="sm:col-span-2">{member.notes}</DatoAnagrafico>
               </dl>
             </div>
             {puoModificare && (
@@ -424,12 +443,8 @@ export default function MemberDetail() {
           </CardContent>
         </Card>
 
-        {/* I documenti occupano due righe: sono la tile più lunga, e affiancata ad abbonamenti
-            e accesso non lascia buchi nella griglia. */}
         {puoVedereDocumenti && (
-          <div className="lg:row-span-2">
-            <DocumentiSocio socio={member} documenti={documents} puoModificare={puoModificareDocumenti} staffUser={staffUser} onCambio={loadData} />
-          </div>
+          <DocumentiSocio socio={member} documenti={documents} puoModificare={puoModificareDocumenti} staffUser={staffUser} onCambio={loadData} />
         )}
 
         {/* Le prenotazioni fisse: sono prenotazioni, quindi le vede chi vede il calendario. */}
@@ -520,12 +535,7 @@ export default function MemberDetail() {
           </CardContent>
         </Card>
 
-        {/* Il diario è lavoro della segreteria: lo vede chi segue i soci o i contatti. */}
-        {(canAccess(staffUser?.ruolo, "crm_members", "view") || canAccess(staffUser?.ruolo, "crm_leads", "view")) && (
-          <div className="lg:col-span-2">
-            <DiarioSocio socio={member} puoModificare={puoModificare || canEdit(staffUser?.ruolo, "crm_leads")} />
-          </div>
-        )}
+        </div>
       </div>
 
       {/* New Subscription Dialog */}

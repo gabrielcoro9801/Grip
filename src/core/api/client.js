@@ -312,6 +312,27 @@ export const api = {
 		consenso(personaId, tipo, valore) {
 			return request(`/api/persone/${personaId}/consensi`, { method: 'POST', body: { tipo, valore } });
 		},
+		/** Un contatto con un socio: { canale, esito, nota? } → { attivita }. Nasconde i suoi segnali per qualche giorno. */
+		contatto(personaId, corpo) {
+			return request(`/api/persone/${personaId}/contatti`, { method: 'POST', body: corpo });
+		},
+		/** I segnali della persona tornano fra `giorni` giorni. → { attivita } */
+		rimanda(personaId, giorni) {
+			return request(`/api/persone/${personaId}/rimanda`, { method: 'POST', body: { giorni } });
+		},
+		/** La ricerca di Ctrl+K: nome, telefono, codice fiscale o codice socio. → { risultati } */
+		cerca(q) {
+			return request(`/api/persone/cerca?q=${encodeURIComponent(q)}`);
+		},
+	},
+
+	/**
+	 * Chi va seguito, e perché (shared/segnali.js).
+	 * { persona?, tipo?: 'soci'|'lead', fase?, segnale?, pubblico?, da_fare? } → { oggi, persone, conteggi }
+	 */
+	segnali(filtri = {}) {
+		const q = new URLSearchParams(Object.entries(filtri).filter(([, v]) => v)).toString();
+		return request(`/api/segnali${q ? `?${q}` : ''}`);
 	},
 
 	/**
