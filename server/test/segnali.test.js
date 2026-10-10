@@ -204,6 +204,24 @@ describe('i permessi', () => {
 	});
 });
 
+describe('il bancone', () => {
+	test('la verifica porta "proponi il rinnovo"; segnato nel diario, non si ripropone', async () => {
+		const verifica = async () => (await come('reception', 'POST', '/api/ingressi/verifica', { member_id: id.soci.scade })).json();
+		const prima = await verifica();
+		assert.deepEqual(prima.segnali, [{ codice: 'in_scadenza', motivo: 'Scade tra 3 giorni: proponi il rinnovo', azioni: ['proposta_rinnovo'] }]);
+		assert.equal(prima.socio.persona_id, await persona('scade'));
+		const r = await come('reception', 'POST', `/api/persone/${prima.socio.persona_id}/contatti`, { canale: 'di_persona', esito: 'proposto_rinnovo' });
+		assert.equal(r.statusCode, 201);
+		assert.deepEqual((await verifica()).segnali, []);
+	});
+
+	test('chi non viene più, nelle statistiche, lo dice il motore', async () => {
+		const s = (await come('reception', 'GET', '/api/ingressi/statistiche?giorni=30')).json();
+		assert.equal(s.sogliaRischio, 14);
+		assert.ok(!s.rischio.some((x) => Object.values(id.soci).includes(x.id)), 'tutti i nostri entrano spesso');
+	});
+});
+
 describe('il diario resta pulito', () => {
 	test('le righe scritte dai test hanno un autore', async () => {
 		const righe = await db.select().from(attivita).where(inArray(attivita.personaId, id.persone));

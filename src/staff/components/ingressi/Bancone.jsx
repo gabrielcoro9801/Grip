@@ -4,6 +4,7 @@ import { api } from "@/core/api/client";
 import { Button } from "@/ui/primitivi/button";
 import { Input } from "@/ui/primitivi/input";
 import { Card, CardContent } from "@/ui/primitivi/card";
+import SegnaliBancone from "@/staff/components/ingressi/SegnaliBancone";
 import { AvatarSocio } from "@/staff/components/soci/FotoSocio";
 import { useToast } from "@/ui/primitivi/use-toast";
 import { formatDataOra } from "@/core/domain/format";
@@ -159,6 +160,7 @@ export default function Bancone({ puoRegistrare }) {
                 ))}
               </ul>
             )}
+            <SegnaliBancone key={scheda.socio.id} personaId={scheda.socio.persona_id} segnali={scheda.segnali} puoRegistrare={puoRegistrare} />
             {scheda.lezioni_oggi.length > 0 && (
               <p className="text-sm text-muted-foreground">
                 Oggi: {scheda.lezioni_oggi.map((l) => `${l.corso} alle ${l.inizio}${l.stato === "waitlisted" ? " (in lista d'attesa)" : ""}`).join(", ")}
