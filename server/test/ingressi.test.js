@@ -1,4 +1,4 @@
-// Gli ingressi al bancone, contro le rotte vere: il semaforo, la registrazione, la deroga che
+// Gli ingressi in palestra, contro le rotte vere: il semaforo, la registrazione, la deroga che
 // finisce nel registro, i permessi e le statistiche (compreso chi non viene più).
 import test, { before, after, describe } from 'node:test';
 import assert from 'node:assert/strict';
@@ -70,7 +70,7 @@ after(async () => {
 
 const verifica = (chi, codice) => come('reception', 'POST', '/api/ingressi/verifica', { codice: codiceDinamico(semi[chi]) ?? codice });
 
-describe('il semaforo al bancone', () => {
+describe('il semaforo', () => {
 	test('verde: in regola; giallo: certificato scaduto; rosso: senza abbonamento', async () => {
 		const v = (await verifica('verde')).json();
 		assert.equal(v.valido, true);
@@ -134,6 +134,42 @@ describe('registrare', () => {
 		assert.equal((await come('istruttore', 'POST', '/api/ingressi', { member_id: id.soci.verde })).statusCode, 403);
 		assert.equal((await come('socio', 'POST', '/api/ingressi/verifica', { member_id: id.soci.verde })).statusCode, 403);
 		assert.equal((await come('socio', 'GET', '/api/ingressi')).statusCode, 403);
+	});
+});
+
+describe('a mano, a posteriori, e da annullare', () => {
+	test("il semaforo è quello del giorno dell'ingresso; nel futuro no", async () => {
+		// Abbonamento finito ieri: ieri era in regola, oggi no.
+		const ieri = spostaGiorni(oggi, -1);
+		const [socio] = await db.insert(members).values({ nome: 'Ieri', cognome: 'Ingresso', codiceSocio: `INE${lettere}`, dateOfBirth: '1990-01-01' }).returning();
+		id.soci.ieri = socio.id;
+		await db.insert(subscriptions).values({ memberId: socio.id, planName: 'Mensile', startDate: spostaGiorni(oggi, -30), endDate: ieri });
+		await db.insert(memberDocuments).values([
+			{ memberId: socio.id, documentType: 'certificato_medico', expiryDate: spostaGiorni(oggi, 200) },
+			{ memberId: socio.id, documentType: 'documento_identita', expiryDate: spostaGiorni(oggi, 900) },
+		]);
+		const alle = `${ieri}T10:00:00Z`;
+		assert.equal((await come('reception', 'POST', '/api/ingressi/verifica', { member_id: socio.id, alle })).json().semaforo, 'verde');
+		assert.equal((await come('reception', 'POST', '/api/ingressi/verifica', { member_id: socio.id })).json().semaforo, 'rosso');
+		const r = await come('reception', 'POST', '/api/ingressi', { member_id: socio.id, metodo: 'manuale', entrato_alle: alle });
+		assert.equal(r.statusCode, 201, r.body);
+		assert.equal(r.json().ingresso.esito, 'ammesso');
+		assert.equal(new Date(r.json().ingresso.entrato_alle).toISOString(), new Date(alle).toISOString());
+		assert.ok((await come('reception', 'GET', `/api/ingressi?dal=${ieri}&al=${ieri}`)).json().ingressi.some((i) => i.member_id === socio.id));
+
+		const domani = new Date(Date.now() + 60 * 60_000).toISOString();
+		assert.equal((await come('reception', 'POST', '/api/ingressi', { member_id: socio.id, entrato_alle: domani })).statusCode, 400);
+		assert.equal((await come('reception', 'POST', '/api/ingressi', { member_id: socio.id, entrato_alle: 'ieri sera' })).statusCode, 400);
+	});
+
+	test("annullare: lo staff che modifica i soci sì, l'istruttore no; resta nel registro", async () => {
+		const { ingresso } = (await come('reception', 'POST', '/api/ingressi', { member_id: id.soci.verde, metodo: 'manuale' })).json();
+		assert.equal((await come('istruttore', 'DELETE', `/api/ingressi/${ingresso.id}`)).statusCode, 403);
+		assert.equal((await come('reception', 'DELETE', `/api/ingressi/${ingresso.id}`)).statusCode, 204);
+		assert.equal((await come('reception', 'DELETE', `/api/ingressi/${ingresso.id}`)).statusCode, 404);
+		assert.ok(!(await come('reception', 'GET', '/api/ingressi')).json().ingressi.some((i) => i.id === ingresso.id));
+		const voci = await db.select().from(auditLogs).where(eq(auditLogs.entitaId, id.soci.verde));
+		assert.ok(voci.some((v) => v.tipoAzione === 'delete' && /Ingresso annullato/.test(v.dettagli)));
 	});
 });
 

@@ -495,7 +495,7 @@ export default async function memberRoutes(fastify) {
 
 /**
  * Che cosa c'è da sistemare per il socio adesso: abbonamento e documenti, con la stessa regola
- * del bancone degli ingressi (shared/avvisi.js). Si calcola a ogni lettura e non si salva: un
+ * del controllo degli ingressi (shared/avvisi.js). Si calcola a ogni lettura e non si salva: un
  * avviso sparisce da solo quando il socio rinnova o porta il documento.
  */
 async function avvisiDelSocio(memberId) {

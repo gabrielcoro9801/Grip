@@ -1,8 +1,8 @@
 // Che cosa c'è da sistemare per un socio, adesso: abbonamento e documenti.
 //
-// Una regola sola per due posti: il bancone degli ingressi (semaforo verde, giallo, rosso) e la
+// Una regola sola per due posti: il controllo degli ingressi (semaforo verde, giallo, rosso) e la
 // sezione "Notifiche e avvisi" del portale. Se ne avessero una ciascuno, prima o poi il socio
-// leggerebbe "tutto in regola" sul telefono mentre la reception lo ferma all'ingresso.
+// leggerebbe "tutto in regola" sul telefono mentre all'ingresso lo fermano.
 //
 // Gli avvisi non si salvano: si calcolano dalle date ogni volta, e spariscono da soli quando
 // il socio rinnova o porta il documento. Un avviso salvato resterebbe vero anche dopo.

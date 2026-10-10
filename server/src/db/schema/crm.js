@@ -134,7 +134,7 @@ export const qrAccessi = pgTable('qr_accessi', {
 	unAttivo: uniqueIndex('qr_accessi_attivo_unico_idx').on(table.clienteId).where(sql`${table.stato} = 'attivo'`),
 }));
 
-// Gli ingressi in palestra, registrati al bancone dopo il controllo del QR (routes/ingressi.js).
+// Gli ingressi in palestra: dal QR (il tornello, quando ci sarà) o registrati a mano dallo staff (routes/ingressi.js).
 // Non sono presenze alle lezioni: dicono chi è entrato e quando, e con quale esito — servono a
 // controllare l'accesso e alle statistiche (affluenza, frequenza, soci che non vengono più).
 //
