@@ -155,7 +155,9 @@ export async function accoda(conn, { ctx, codice, persona, riferimento, canali, 
 		statoMessaggio = 'simulato';
 		motivo = scelta.stato === 'ok' ? null : `sarebbe stato bloccato: ${scelta.motivo}`;
 	} else if (scelta.stato !== 'ok') statoMessaggio = scelta.stato;
-	else if (inSilenzio(adesso, ctx.com.silenzio)) {
+	// Il silenzio vale per i playbook del giro e per gli SMS. Un'email immediata (la lezione di
+	// domattina annullata alle 22) parte: non sveglia nessuno, e domattina sarebbe tardi.
+	else if ((!pb.immediato || scelta.canale === 'sms') && inSilenzio(adesso, ctx.com.silenzio)) {
 		statoMessaggio = 'bloccato_silenzio';
 		motivo = `fascia di silenzio (${ctx.com.silenzio.dalle}–${ctx.com.silenzio.alle})`;
 	} else statoMessaggio = 'in_coda';
@@ -220,11 +222,16 @@ function disiscrizioneDi(codice, canale, personaId) {
  * Spedisce i messaggi in coda, uno alla volta: ognuno in una transazione che lo blocca, così
  * due spedizioni nello stesso momento non mandano lo stesso messaggio due volte.
  *
+ * ponytail: la chiamata al fornitore avviene dentro la transazione (tiene una connessione e il
+ * lucchetto della riga per qualche secondo); se il fornitore accetta e poi il commit fallisce, il
+ * messaggio ripartirebbe al giro dopo. Con volumi veri: segnare la riga "in invio", chiudere,
+ * spedire fuori, poi aggiornare.
+ *
  * @param adattatori  per i test: chi spedisce, canale per canale
  * @returns { inviati, falliti }
  */
-export async function spedisci(conn = db, { adattatori = ADATTATORI, limite = 200, log } = {}) {
-	const ctx = await contesto(conn);
+export async function spedisci(conn = db, { adattatori = ADATTATORI, limite = MASSIMO_PER_GIRO * 2, log, adesso = new Date() } = {}) {
+	const ctx = await contesto(conn, adesso);
 	if (!ctx) return { inviati: 0, falliti: 0 };
 	const segreti = {};
 	const esito = { inviati: 0, falliti: 0 };
@@ -234,10 +241,25 @@ export async function spedisci(conn = db, { adattatori = ADATTATORI, limite = 20
 				.where(and(eq(messaggi.stato, 'in_coda'), eq(messaggi.organizationId, ctx.palestra.id)))
 				.orderBy(messaggi.createdDate).limit(1).for('update', { skipLocked: true });
 			if (!m) return null;
+			// Le serrature, di nuovo, al momento di spedire: spento l'interruttore o il playbook,
+			// o il canale non più pronto, quello che era in coda non parte più.
+			const fermo = !ctx.com.attive ? 'comunicazioni spente prima dell\'invio'
+				: ctx.com.playbook[m.playbook] !== 'attivo' ? 'playbook non più attivo prima dell\'invio'
+					: !ctx.pronti.includes(m.canale) ? 'canale non più pronto prima dell\'invio' : null;
+			if (fermo) {
+				await tx.update(messaggi).set({ stato: 'fallito', motivo: `Fermato: ${fermo}` }).where(eq(messaggi.id, m.id));
+				return 'fallito';
+			}
+			// In silenzio resta in coda: lo spedisce il giro di domani mattina (un SMS sempre;
+			// un'email solo se non è immediata, come in `accoda`).
+			if ((m.canale === 'sms' || !playbookDi(m.playbook)?.immediato) && inSilenzio(adesso, ctx.com.silenzio)) return 'silenzio';
 			try {
+				// Un punto di salvataggio: se qualcosa qui dentro fallisce (un socio cancellato nel
+				// frattempo), si torna qui e il messaggio si segna non riuscito, invece di bloccare la coda.
+				await tx.transaction(async (sp) => {
 				let risultato;
 				if (m.canale === 'app') {
-					await tx.insert(notifiche).values({ memberId: m.destinatario, tipo: m.playbook, titolo: (m.oggetto ?? 'Avviso').slice(0, 160), testo: m.testo });
+					await sp.insert(notifiche).values({ memberId: m.destinatario, tipo: m.playbook, titolo: (m.oggetto ?? 'Avviso').slice(0, 160), testo: m.testo });
 					risultato = { idFornitore: null, costoCentesimi: 0 };
 				} else {
 					const conf = ctx.com.canali[m.canale];
@@ -250,17 +272,18 @@ export async function spedisci(conn = db, { adattatori = ADATTATORI, limite = 20
 					const intestazioni = link ? { 'List-Unsubscribe': `<${link}>`, 'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click' } : {};
 					risultato = await adattatore.invia({ canale: m.canale, a: m.destinatario, oggetto: m.oggetto ?? '', testo: m.testo, conf, segreto: segreti[m.canale], intestazioni });
 				}
-				await tx.update(messaggi).set({
+				await sp.update(messaggi).set({
 					stato: 'inviato', inviatoIl: new Date(), idFornitore: risultato.idFornitore ?? null,
 					costoCentesimi: m.canale === 'sms' ? m.costoCentesimi : (risultato.costoCentesimi ?? 0),
 				}).where(eq(messaggi.id, m.id));
 				// Nel diario: chi legge la scheda deve sapere che cosa gli è arrivato, e quando.
 				if (m.personaId) {
-					await tx.insert(attivita).values({
+					await sp.insert(attivita).values({
 						personaId: m.personaId, tipo: 'messaggio', canale: m.canale, esito: m.playbook, autoreNome: AUTORE_SISTEMA,
 						nota: (m.oggetto || m.testo).slice(0, 500), riferimento: { messaggio: m.id },
 					});
 				}
+				});
 				return 'inviato';
 			} catch (errore) {
 				log?.warn?.({ err: errore, messaggio: m.id }, 'invio non riuscito');
@@ -268,7 +291,7 @@ export async function spedisci(conn = db, { adattatori = ADATTATORI, limite = 20
 				return 'fallito';
 			}
 		});
-		if (!fatto) break;
+		if (!fatto || fatto === 'silenzio') break;
 		esito[fatto === 'inviato' ? 'inviati' : 'falliti'] += 1;
 	}
 	return esito;
@@ -368,7 +391,7 @@ export async function giroInvii(conn = db, { adesso = new Date(), adattatori, lo
 			}
 		}
 	}
-	const spedizione = await spedisci(conn, { adattatori, log });
+	const spedizione = await spedisci(conn, { adattatori, log, adesso });
 	esito.inviati = spedizione.inviati;
 	esito.falliti = spedizione.falliti;
 	return esito;

@@ -97,8 +97,10 @@ export function firmaValida(nomeFile, scade, firma) {
 // così nessuno può disiscrivere altri cambiando un id. Non scade: un link in una vecchia email
 // deve funzionare ancora (e toglie soltanto: non può dare un consenso).
 
-const firmaDisiscrizione = (personaId, tipo) =>
-	createHmac('sha256', chiave()).update(`disiscrizione:${personaId}:${tipo}`).digest('hex').slice(0, 32);
+// La firma usa JWT_SECRET, non la chiave dei file: un QR_SECRET impostato più tardi non deve
+// rompere i link già spediti. Si accetta anche quella dei file, per lo stesso motivo al contrario.
+const firmaDisiscrizione = (personaId, tipo, segreto = config.jwtSecret) =>
+	createHmac('sha256', String(segreto)).update(`disiscrizione:${personaId}:${tipo}`).digest('hex').slice(0, 32);
 
 /** Il link di disiscrizione di una persona da un consenso (shared/consensi.js). */
 export function linkDisiscrizione(personaId, tipo, base) {
@@ -108,7 +110,9 @@ export function linkDisiscrizione(personaId, tipo, base) {
 /** Vera se il link di disiscrizione è nostro. */
 export function disiscrizioneValida(personaId, tipo, firma) {
 	if (!personaId || !tipo || !firma) return false;
-	const attesa = Buffer.from(firmaDisiscrizione(personaId, tipo));
 	const ricevuta = Buffer.from(String(firma));
-	return attesa.length === ricevuta.length && timingSafeEqual(attesa, ricevuta);
+	return [config.jwtSecret, chiave()].filter(Boolean).some((segreto) => {
+		const attesa = Buffer.from(firmaDisiscrizione(personaId, tipo, segreto));
+		return attesa.length === ricevuta.length && timingSafeEqual(attesa, ricevuta);
+	});
 }

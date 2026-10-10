@@ -14,7 +14,7 @@ import {
 } from '../src/db/schema/index.js';
 import { config } from '../src/config.js';
 import { giro } from '../src/giro.js';
-import { giroInvii, contesto } from '../src/lib/invii.js';
+import { giroInvii, contesto, spedisci } from '../src/lib/invii.js';
 import { notifica } from '../src/lib/notifiche.js';
 import { linkDisiscrizione } from '../src/lib/urlFirmati.js';
 import { improntaCanale } from '../../shared/comunicazioni.js';
@@ -324,6 +324,56 @@ describe('testi', () => {
 		const prova = (await come('admin', 'POST', '/api/comunicazioni/anteprima-testo', { playbook: 'rinnovo', canale: 'email', persona_id: id.persone.scadenza, oggetto: 'Rinnova, {nome}', testo: 'Ciao {nome}, {quando}.' })).json();
 		assert.equal(prova.oggetto, 'Rinnova, Scadenza');
 		assert.equal(prova.testo, 'Ciao Scadenza, scade tra 3 giorni.');
+	});
+});
+
+describe('dopo la revisione', () => {
+	test('spento l\'interruttore, quello che era in coda non parte più', async () => {
+		const [p] = await db.select().from(organizations).limit(1);
+		const [m] = await db.insert(messaggi).values({
+			organizationId: p.id, personaId: id.persone.scadenza, playbook: 'rinnovo', canale: 'app', destinatario: id.soci.scadenza,
+			oggetto: 'In coda', testo: 'Rimasto in coda', chiave: `prova-coda-${t}`, stato: 'in_coda',
+		}).returning();
+		config.inviiReali = true;
+		try {
+			await impostaComunicazioni({ ...p.impostazioni.comunicazioni, attive: false });
+			await spedisci(db, { adattatori, adesso: mattina() });
+		} finally { config.inviiReali = false; }
+		const [dopo] = await db.select().from(messaggi).where(eq(messaggi.id, m.id));
+		assert.equal(dopo.stato, 'fallito');
+		assert.match(dopo.motivo, /Fermato: comunicazioni spente/);
+		assert.ok(!(await db.select().from(notifiche).where(eq(notifiche.memberId, id.soci.scadenza))).some((n) => n.titolo === 'In coda'));
+		await impostaComunicazioni(p.impostazioni.comunicazioni);
+	});
+
+	test('le impostazioni non escono e non entrano dall\'endpoint generico', async () => {
+		const [p] = await db.select().from(organizations).limit(1);
+		const letta = (await come('admin', 'GET', `/api/entities/Organization/${p.id}`)).json();
+		assert.equal(letta.impostazioni, undefined);
+		const prima = p.impostazioni;
+		const res = await come('admin', 'PUT', `/api/entities/Organization/${p.id}`, { impostazioni: { comunicazioni: { attive: true } } });
+		assert.ok(res.statusCode < 500, res.body);
+		const [dopo] = await db.select().from(organizations).limit(1);
+		assert.deepEqual(dopo.impostazioni, prima);
+	});
+
+	test('un\'email immediata parte anche in fascia di silenzio; il giro no', async () => {
+		const [p] = await db.select().from(organizations).limit(1);
+		const com = structuredClone(p.impostazioni.comunicazioni);
+		const [segreto] = await db.select().from(segretiCanali).where(eq(segretiCanali.canale, 'email'));
+		com.canali.email.verificato = { ...com.canali.email.verificato, reale: true, impronta: improntaCanale(com.canali.email, new Date(segreto.updatedDate).toISOString()) };
+		await impostaComunicazioni({ ...com, attive: true, playbook: { ...com.playbook, lezione_annullata: 'attivo' } });
+		const sera = new Date(`${oggiIso()}T20:30:00Z`);
+		config.inviiReali = true;
+		try {
+			const { accodaAvviso } = await import('../src/lib/invii.js');
+			await db.transaction((tx) => accodaAvviso(tx, 'lezione_annullata', [id.soci.con], { titolo: 'Lezione annullata: Sera', testo: 'La lezione di stasera è annullata.' }, `sera:${t}`, sera));
+		} finally { config.inviiReali = false; }
+		const [m] = (await deiMiei()).filter((x) => x.chiave.includes(`sera:${t}`));
+		assert.equal(m.stato, 'in_coda');
+		assert.equal(m.canale, 'email');
+		await db.update(messaggi).set({ stato: 'fallito', motivo: 'chiuso dal test' }).where(eq(messaggi.id, m.id));
+		await impostaComunicazioni(p.impostazioni.comunicazioni);
 	});
 });
 
