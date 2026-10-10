@@ -7,7 +7,10 @@ import { Label } from "@/ui/primitivi/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/ui/primitivi/select";
 import PageHeader from "@/staff/components/PageHeader";
 import StatusBadge from "@/ui/StatusBadge";
-import { Plus, Search, Users } from "lucide-react";
+import { Plus, Search, Users, LayoutGrid, List } from "lucide-react";
+import { Card, CardContent } from "@/ui/primitivi/card";
+import { AvatarSocio } from "@/staff/components/soci/FotoSocio";
+import { statoIscrizione } from "@/core/domain/abbonamenti";
 import { LoadingState } from "@/ui/Spinner";
 import { EmptyState, ErrorState } from "@/ui/StateViews";
 import { formatData } from "@/core/domain/format";
@@ -25,6 +28,35 @@ const ORDINAMENTI = [
   { valore: "scadenza", etichetta: "Scadenza più vicina", confronta: (a, b) => inFondo(a.scadenza, b.scadenza, (x, y) => x.localeCompare(y)) || confrontaTesto(a.nome, b.nome) },
   { valore: "ingresso", etichetta: "Assenti da più tempo", confronta: (a, b) => inFondo(a.ultimo_ingresso, b.ultimo_ingresso, (x, y) => x.localeCompare(y)) || confrontaTesto(a.nome, b.nome) },
 ];
+
+// Tile o tabella: la scelta resta, per chi la fa, su quel browser. Le tile sono quelle di sempre;
+// la tabella ha le colonne del motore dei segnali. Se il browser non lascia salvare, valgono le tile.
+const CHIAVE_VISTA = "grip.soci.vista";
+const VISTE = ["tile", "tabella"];
+function vistaSalvata() {
+  try { const v = localStorage.getItem(CHIAVE_VISTA); return VISTE.includes(v) ? v : "tile"; } catch { return "tile"; }
+}
+function salvaVista(v) {
+  try { localStorage.setItem(CHIAVE_VISTA, v); } catch { /* resta per questa visita */ }
+}
+
+function RigaTile({ etichetta, children }) {
+  return (
+    <div className="flex items-center justify-between gap-3 text-xs min-h-5">
+      <dt className="text-muted-foreground flex-shrink-0">{etichetta}</dt>
+      <dd className="truncate text-right">{children}</dd>
+    </div>
+  );
+}
+
+/** Lo stato dell'abbonamento come lo mostravano le tile: archiviato, attivo, in scadenza, scaduto, nessuno. */
+function StatoTile({ socio }) {
+  if (socio.archiviato_il) return <StatusBadge status="archiviato" label={`Archiviato il ${formatData(socio.archiviato_il, "breve")}`} tone="neutro" className="py-0" />;
+  if (socio.scadenza) return <StatusBadge status={statoIscrizione({ end_date: socio.scadenza })} className="py-0" />;
+  if (socio.valido) return <StatusBadge status="active" className="py-0" />;
+  if (socio.ultima_fine) return <StatusBadge status="expired" className="py-0" />;
+  return <StatusBadge status="nessuno" label="Senza abbonamento" tone="neutro" className="py-0" />;
+}
 
 /** "4 · media 6": gli ingressi delle ultime 4 settimane, e la media delle 12 per confronto. */
 function Frequenza({ socio }) {
@@ -50,6 +82,8 @@ export default function MembersList() {
   const [dati, setDati] = useState(null);
   const [search, setSearch] = useState("");
   const [ordine, setOrdine] = useState("nome");
+  const [vista, setVista] = useState(vistaSalvata);
+  const scegliVista = (v) => { setVista(v); salvaVista(v); };
   // "Aggiungi socio" è il flusso Iscrivi, per chi entra direttamente senza essere stato un contatto.
   const [showForm, setShowForm] = useState(false);
   const [errore, setErrore] = useState(null);
@@ -124,6 +158,15 @@ export default function MembersList() {
               ))}
             </SelectContent>
           </Select>
+          <div role="group" aria-label="Vista" className="inline-flex rounded-md border overflow-hidden">
+            {[["tile", LayoutGrid, "Tile"], ["tabella", List, "Tabella"]].map(([v, Icona, etichetta]) => (
+              <button key={v} type="button" aria-pressed={vista === v} title={etichetta}
+                className={`flex items-center gap-1 px-2.5 py-1.5 text-sm ${vista === v ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
+                onClick={() => scegliVista(v)}>
+                <Icona className="h-4 w-4" aria-hidden="true" /><span className="sr-only sm:not-sr-only">{etichetta}</span>
+              </button>
+            ))}
+          </div>
           <Label htmlFor="ordina-soci" className="sr-only">Ordina per</Label>
           <Select value={ordine} onValueChange={setOrdine}>
             <SelectTrigger id="ordina-soci" className="w-[200px]"><SelectValue /></SelectTrigger>
@@ -144,6 +187,33 @@ export default function MembersList() {
               : search ? `Nessun risultato per «${search}». Prova con un altro nome, il codice o il telefono.` : "Nessun socio in questo filtro, oggi."
           }
         />
+      ) : vista === "tile" ? (
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {elenco.map((s) => (
+            <Link key={s.socio_id} to={`/crm/soci/${s.socio_id}`} className="block">
+              {/* Tutte le tile hanno la stessa altezza e le stesse righe, piene o con un
+                  trattino: si confrontano a colpo d'occhio, e la griglia non balla. */}
+              <Card className="border-0 shadow-sm hover:shadow-md transition-shadow cursor-pointer h-[200px]">
+                <CardContent className="p-4 h-full flex flex-col">
+                  <div className="flex items-start gap-3">
+                    <AvatarSocio socio={{ full_name: s.nome, nome: s.nome_proprio, cognome: s.nome?.slice((s.nome_proprio ?? "").length), foto_url: s.foto_url }} />
+                    <div className="min-w-0 flex-1">
+                      <h3 className="font-medium text-sm truncate" title={s.nome}>{s.nome}</h3>
+                      <p className="text-xs text-muted-foreground font-mono">{s.codice_socio}</p>
+                    </div>
+                  </div>
+                  <dl className="mt-auto space-y-1.5">
+                    <RigaTile etichetta="Stato"><StatoTile socio={s} /></RigaTile>
+                    <RigaTile etichetta="Abbonamento">{s.abbonamento || "—"}</RigaTile>
+                    <RigaTile etichetta="Scadenza">{s.scadenza || s.ultima_fine ? formatData(s.scadenza ?? s.ultima_fine, "media") : "—"}</RigaTile>
+                    <RigaTile etichetta="Telefono">{s.telefono || "—"}</RigaTile>
+                    <RigaTile etichetta="Email">{s.email || "—"}</RigaTile>
+                  </dl>
+                </CardContent>
+              </Card>
+            </Link>
+          ))}
+        </div>
       ) : (
         <div className="border border-border rounded-lg overflow-hidden overflow-x-auto bg-card">
           <table className="w-full text-sm">
