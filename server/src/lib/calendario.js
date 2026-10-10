@@ -74,7 +74,7 @@ export async function applicaRimozione(tx, { daEliminare, daAnnullare, prenotazi
 			titolo: `Lezione annullata: ${nomeCorso}`,
 			testo: `La lezione di ${nomeCorso} di ${giornoEsteso(lezione.date)} alle ${hhmm(lezione.startTime)} è stata annullata, `
 				+ 'e la tua prenotazione è stata cancellata. Ci scusiamo per il disagio.',
-		});
+		}, { evento: 'lezione_annullata', riferimento: `lezione:${lezione.id}` });
 	}
 }
 

@@ -4,9 +4,12 @@
 // chiusa la domenica non deve saltare un giorno. Lo lancia un Railway Cron (docs/deploy.md), o
 // lo si lancia a mano:  npm run giro
 //
-// Non invia niente: messaggi, email e notifiche sono un'altra parte, che arriverà spenta. Ogni
-// passo è idempotente — lanciato due volte nello stesso giorno, la seconda non trova nulla da
-// fare — così un cron ripetuto o un lancio a mano in più non fanno danni.
+// Due parti. La **manutenzione** non invia niente ed è sempre attiva. Gli **invii** (i playbook
+// delle comunicazioni, lib/invii.js) stanno dietro tre serrature e al primo deploy sono spenti:
+// senza INVII_REALI, senza l'interruttore della palestra, senza un canale verificato e un
+// playbook attivo non parte niente; un playbook in anteprima scrive solo messaggi `simulato`.
+// Ogni passo è idempotente — lanciato due volte nello stesso giorno, la seconda non trova nulla
+// da fare — così un cron ripetuto o un lancio a mano in più non fanno danni.
 //
 // Oggi fa due cose: chiude come *non raggiungibili* i lead con troppi tentativi senza risposta,
 // l'ultimo da tanto (prima lo faceva GET /api/lead/lavoro alla lettura: una GET non deve
@@ -17,6 +20,7 @@ import { and, eq, gte, lte, sql } from 'drizzle-orm';
 import { db, pool } from './db/client.js';
 import { organizations, trattative, attivita } from './db/schema/index.js';
 import { soglieDi } from '../../shared/soglie.js';
+import { giroInvii } from './lib/invii.js';
 import { oggiIso, spostaGiorni } from '../../shared/giorni.js';
 
 const AUTORE_SISTEMA = 'Sistema';
@@ -76,13 +80,13 @@ async function registraRientri(conn, adesso) {
 }
 
 /**
- * Un giro su tutte le palestre. → [{ palestra, non_raggiungibili, rientri }]
+ * Un giro su tutte le palestre. → [{ palestra, non_raggiungibili, rientri, invii }]
  *
  * ponytail: oggi c'è una palestra per installazione e le trattative non hanno ancora la loro
  * palestra: il giro scorre le palestre, ma ogni passo lavora sul database intero. Con il
  * multi-tenant ogni passo riceverà la palestra e filtrerà per lei.
  */
-export async function giro({ oggi = oggiIso(), conn = db, adesso = new Date() } = {}) {
+export async function giro({ oggi = oggiIso(), conn = db, adesso = new Date(), adattatori } = {}) {
 	const palestre = await conn.select({ nome: organizations.nome, impostazioni: organizations.impostazioni }).from(organizations);
 	const esiti = [];
 	for (const palestra of palestre) {
@@ -91,6 +95,9 @@ export async function giro({ oggi = oggiIso(), conn = db, adesso = new Date() } 
 			palestra: palestra.nome,
 			non_raggiungibili: await chiudiNonRaggiungibili(conn, oggi, soglie.lead),
 			rientri: await registraRientri(conn, adesso),
+			// Dopo la manutenzione: i rientri appena scritti non cambiano chi va contattato, ma i
+			// lead chiusi sì, e i segnali si leggono una volta sola, già aggiornati.
+			invii: await giroInvii(conn, { adesso, adattatori }),
 		});
 	}
 	return esiti;
@@ -99,7 +106,13 @@ export async function giro({ oggi = oggiIso(), conn = db, adesso = new Date() } 
 // Lanciato da riga di comando (non importato dai test): un giro, il resoconto, e l'uscita.
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
 	try {
-		for (const e of await giro()) console.log(`${e.palestra}: ${e.non_raggiungibili} lead chiusi come non raggiungibili, ${e.rientri} soci rientrati dopo un contatto.`);
+		for (const e of await giro()) {
+			console.log(`${e.palestra}: ${e.non_raggiungibili} lead chiusi come non raggiungibili, ${e.rientri} soci rientrati dopo un contatto.`);
+			const i = e.invii;
+			console.log(i.silenzio
+				? '  Comunicazioni: fascia di silenzio, nessun messaggio accodato.'
+				: `  Comunicazioni: ${i.simulati} simulati, ${i.accodati} accodati, ${i.bloccati} bloccati; ${i.inviati} inviati, ${i.falliti} non riusciti${i.freno ? ' (raggiunto il massimo per giro)' : ''}.`);
+		}
 		await pool.end();
 		process.exit(0);
 	} catch (errore) {

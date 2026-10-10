@@ -88,3 +88,31 @@ export function firmaValida(nomeFile, scade, firma) {
 	// la differenza di tempo fra due stringhe direbbe quanti caratteri iniziali erano giusti.
 	return attesa.length === ricevuta.length && timingSafeEqual(attesa, ricevuta);
 }
+
+// --- La disiscrizione ----------------------------------------------------------------------
+//
+// In fondo a ogni messaggio promozionale c'è un link che toglie il consenso di quel canale con
+// un clic, senza accedere al portale: chi non vuole più ricevere non deve ricordarsi una
+// password. La firma dice che il link l'abbiamo scritto noi per quella persona e quel consenso,
+// così nessuno può disiscrivere altri cambiando un id. Non scade: un link in una vecchia email
+// deve funzionare ancora (e toglie soltanto: non può dare un consenso).
+
+// La firma usa JWT_SECRET, non la chiave dei file: un QR_SECRET impostato più tardi non deve
+// rompere i link già spediti. Si accetta anche quella dei file, per lo stesso motivo al contrario.
+const firmaDisiscrizione = (personaId, tipo, segreto = config.jwtSecret) =>
+	createHmac('sha256', String(segreto)).update(`disiscrizione:${personaId}:${tipo}`).digest('hex').slice(0, 32);
+
+/** Il link di disiscrizione di una persona da un consenso (shared/consensi.js). */
+export function linkDisiscrizione(personaId, tipo, base) {
+	return `${base}?p=${encodeURIComponent(personaId)}&t=${encodeURIComponent(tipo)}&f=${firmaDisiscrizione(personaId, tipo)}`;
+}
+
+/** Vera se il link di disiscrizione è nostro. */
+export function disiscrizioneValida(personaId, tipo, firma) {
+	if (!personaId || !tipo || !firma) return false;
+	const ricevuta = Buffer.from(String(firma));
+	return [config.jwtSecret, chiave()].filter(Boolean).some((segreto) => {
+		const attesa = Buffer.from(firmaDisiscrizione(personaId, tipo, segreto));
+		return attesa.length === ricevuta.length && timingSafeEqual(attesa, ricevuta);
+	});
+}

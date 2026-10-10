@@ -251,7 +251,7 @@ Ogni modifica passa da `lib/registro.js`.
 1. **Fondamenta**: modello Persona e trattative, migrazione, `attivita`, E.164, `soglie.js`, consensi, impostazioni, ingresso del lead semplificato con controllo doppioni.
 2. **Segnali e lavoro**: `segnali.js`, `/api/segnali`, Oggi, elenco intelligente, Scheda 360, bancone CRM, Ctrl+K, giro di manutenzione, presenze e no-show.
 3. **Iscrivi e retention operativa**: flusso Iscrivi, "Richiedi il rinnovo", sospensione dell'abbonamento (congelamento con data di ripresa), motivo di abbandono, vista istruttore.
-4. **Canali (spenti)**: `messaggi`, modelli, adattatori, `/admin/comunicazioni`, anteprima, giro degli invii.
+4. **Canali (spenti)**: `messaggi`, modelli, adattatori, `/admin/comunicazioni`, anteprima, giro degli invii. *Fatta.*
 5. **Ascolto ed efficacia**: NPS, effetto dei contatti, retention per coorte, riepilogo settimanale al titolare, obiettivi per operatore.
 6. **Acquisizione**: form pubblico e QR in sala, lezione di prova (`bookings.persona_id`), porta un amico, "scopri palestre" dell'app unica (solo con consenso).
 
@@ -262,6 +262,20 @@ Fuori ambito per decisione: pagamenti. Più avanti: assistente AI sul diario e s
 - **Motivo di abbandono**: obbligatorio archiviando; "chiudere uno scaduto recuperabile perso" è la stessa archiviazione. La dashboard conta i motivi degli ultimi 12 mesi.
 - **Istruttore**: i permessi predefiniti non gli danno più soci, documenti e contatti (migrazione 0055, solo se il ruolo aveva ancora i predefiniti). Tiene il calendario, che dall'endpoint generico apre ancora l'elenco dei soci: punto aperto dell'audit, da chiudere quando il calendario riceverà i nomi dal server.
 - **Iscrivi**: l'informativa privacy firmata è obbligatoria e scrive `gdpr_consent`; i consensi promozionali si registrano con fonte `reception`. I file si caricano prima della transazione (`ponytail:` orfani se fallisce, li pulisce `manutenzione:file-orfani`).
+
+**Fase 4, com'è andata.** Fatti: `messaggi` (chiave unica per palestra, playbook, persona e occasione), `modelli_messaggio`, `segreti_canali` (AES-256-GCM), gli adattatori `email` (SMTP della palestra o Brevo, scelta per palestra) e `finto`, `notifica()` punto d'ingresso unico, i playbook nel giro, `/admin/comunicazioni`, la disiscrizione firmata. Scelte:
+- **Le serrature in `accoda`** (`lib/invii.js`); `spedisci` ripete la prima (senza `INVII_REALI` va al finto anche un messaggio in coda per errore).
+- **Un canale per messaggio**, il primo possibile nell'ordine portale → email → SMS; "app" è la notifica nel portale (le push vere verranno con l'app). Un playbook non è un quinto conto: è un segnale del motore più una finestra di giorni (`occasione`), così un giro saltato si recupera e la chiave lo fa partire una volta sola.
+- **Simulato non occupa il posto del vero**: la chiave dell'anteprima ha un suffisso suo. Con una serratura chiusa, anche un messaggio che sarebbe stato bloccato si scrive *simulato*, con il motivo.
+- **Silenzio**: il giro in fascia di silenzio non accoda (il cron va di giorno); un avviso immediato in silenzio si scrive `bloccato_silenzio` e non parte (`ponytail:` si potrebbe rimandare all'alba). La notifica nel portale parte sempre.
+- **Budget SMS** a zero di partenza, tetto rigido sotto lucchetto (`pg_advisory_xact_lock`); un freno di 300 messaggi veri per giro.
+- **Minori**: nessun campo "contatto del genitore" esiste ancora, quindi un minore riceve solo nel portale; email e SMS sono bloccati.
+- **Verifica dei canali**: un codice di sei cifre da riscrivere; vale per quella configurazione (impronta) e, se fatta in simulazione, non vale con gli invii veri accesi.
+- **Lista di controllo**: un canale pronto, informativa confermata, testi riletti, `PUBLIC_BASE_URL` impostata.
+- **Un messaggio automatico non è un contatto**: scrive `messaggio` nel diario ma non nasconde i segnali di Oggi.
+- Le soglie del motore si cambiano dalla sezione (scheda Soglie).
+
+**Fase 4, cosa resta fuori**: un fornitore SMS vero (Skebby, Aruba o Brevo, con il mittente registrato secondo AGCOM 12/23/CIR) e Web Push sul portale con chiavi VAPID (da fare insieme al portale installabile): rimandati per scelta dell'utente; le ricevute di consegna dai fornitori (webhook: lo stato `consegnato` esiste ma nessuno lo scrive); il contatto del genitore per i minori; playbook benvenuto, riconquista, lead e NPS (Fase 5 e 6); l'invio a una lista salvata; il riepilogo al titolare (Fase 5).
 
 **Fase 3, cosa resta fuori**: il filtro "i miei" e il tempo reale di Oggi, le liste salvate, l'elenco unico persone (come prima); la richiesta di sospensione dal portale (decisione: solo la reception); i limiti alla sospensione (la palestra non li vuole: si aggiungono in `shared/soglie.js` se servono); la mostra dell'efficacia (Fase 5: il dato c'è); la sezione degli invii `/admin/comunicazioni` (Fase 4).
 

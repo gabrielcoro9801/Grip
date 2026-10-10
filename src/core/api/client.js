@@ -363,6 +363,29 @@ export const api = {
 	},
 
 	/**
+	 * Le comunicazioni automatiche (shared/comunicazioni.js): solo l'amministratore. Ogni scrittura
+	 * restituisce la sezione intera, aggiornata. Le credenziali si mandano e non tornano mai.
+	 */
+	comunicazioni: {
+		leggi() { return request('/api/comunicazioni'); },
+		regole(corpo) { return request('/api/comunicazioni/regole', { method: 'PUT', body: corpo }); },
+		soglie(corpo) { return request('/api/comunicazioni/soglie', { method: 'PUT', body: corpo }); },
+		canale(canale, corpo) { return request(`/api/comunicazioni/canali/${canale}`, { method: 'PUT', body: corpo }); },
+		/** L'invio di prova: → { simulato, a, testo? } (il testo solo se simulato, per leggerne il codice). */
+		prova(canale, a) { return request(`/api/comunicazioni/canali/${canale}/prova`, { method: 'POST', body: { a } }); },
+		verifica(canale, codice) { return request(`/api/comunicazioni/canali/${canale}/verifica`, { method: 'POST', body: { codice } }); },
+		playbook(codice, stato) { return request(`/api/comunicazioni/playbook/${codice}`, { method: 'PUT', body: { stato } }); },
+		salvaTesto(codice, canale, corpo) { return request(`/api/comunicazioni/modelli/${codice}/${canale}`, { method: 'PUT', body: corpo }); },
+		testoPredefinito(codice, canale) { return request(`/api/comunicazioni/modelli/${codice}/${canale}`, { method: 'DELETE' }); },
+		conferma(voce, fatta) { return request('/api/comunicazioni/conferme', { method: 'PUT', body: { voce, fatta } }); },
+		interruttore(attive) { return request('/api/comunicazioni/interruttore', { method: 'PUT', body: { attive } }); },
+		/** "Domani sarebbero partiti N messaggi" → { giorno, totale, per_canale, bloccati, senza_canale, esempi } */
+		anteprima(codice) { return request(`/api/comunicazioni/anteprima/${codice}`); },
+		anteprimaTesto(corpo) { return request('/api/comunicazioni/anteprima-testo', { method: 'POST', body: corpo }); },
+		messaggi(mese) { return request(`/api/comunicazioni/messaggi${mese ? `?mese=${mese}` : ''}`); },
+	},
+
+	/**
 	 * Chi va seguito, e perché (shared/segnali.js).
 	 * { persona?, tipo?: 'soci'|'lead', fase?, segnale?, pubblico?, da_fare? } → { oggi, persone, conteggi }
 	 */

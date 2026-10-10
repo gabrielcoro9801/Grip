@@ -104,6 +104,44 @@ Tre punti che si sbagliano quasi sempre, spiegati lì per esteso:
 
 ## Stato del progetto
 
+### 10 ottobre 2026 — CRM, fase 4: i canali, costruiti e spenti
+
+GRIP sa mandare messaggi automatici ai soci, e **al primo deploy non ne manda nessuno**. La nuova
+sezione **Comunicazioni** (solo l'amministratore, modulo `crm_comunicazioni`) serve a
+configurarli, provarli e, alla fine, accenderli. Come si mette in produzione: [`docs/deploy.md`](docs/deploy.md), 2.8.
+
+- **Playbook pronti, non un costruttore di flussi**: rinnovo (14 e 3 giorni prima, 3 dopo),
+  assenza (dal 21° giorno: prima, dal 14°, lo cerca una persona da Oggi), ambientamento (prima
+  settimana), certificato medico (30 e 7 giorni prima, scaduto), compleanno (promozionale), più
+  i due immediati: lezione annullata e posto dalla lista d'attesa. Chi riceve lo dice il motore
+  dei segnali: un contatto dello staff tace il messaggio automatico, e chi ha già chiesto il
+  rinnovo dal portale non riceve l'invito a rinnovare. Ognuno è **spento, in anteprima o attivo**.
+- **Un messaggio per occasione, una volta sola**: si prova il portale, poi l'email, poi l'SMS, e
+  si prende il primo possibile. Lanciato due volte, il giro non raddoppia.
+- **Tre serrature in un punto solo** (`lib/invii.js`): `INVII_REALI` sul server, l'interruttore
+  della palestra (che si apre solo a lista di controllo completa), un canale verificato con un
+  invio di prova e il playbook attivo. Con una chiusa, il messaggio resta *simulato*.
+- **Anteprima**: "domani sarebbero partiti 12 messaggi", con il testo vero per ciascuno; i testi
+  si riscrivono con i segnaposto e si provano su un socio vero.
+- **Le regole che evitano i guai**: fascia di silenzio (21–9), budget SMS mensile con tetto
+  rigido, un freno di 300 messaggi per giro, il marketing solo a chi ha il consenso per quel
+  canale, i minori raggiunti solo nel portale (non c'è ancora un contatto del genitore a cui scrivere).
+- **Canali**: le notifiche nel portale; l'email con la casella della palestra (SMTP) o con
+  Brevo, a scelta della palestra; gli SMS per ora solo simulati. Credenziali cifrate
+  (`CHIAVE_SEGRETI`) che non tornano mai nell'interfaccia.
+- **Disiscrizione** con un clic in fondo a ogni promozione, anche dal programma di posta
+  (RFC 8058); finisce nel registro dei consensi.
+- **Registro dei messaggi**: partiti, simulati, bloccati e perché, con la spesa SMS del mese.
+  Ogni messaggio partito scrive una riga nel diario del socio.
+- Chi passa dalla lista d'attesa ora riceve anche la **notifica nel portale**.
+- Verifica nel browser: `cd server && npm run verifica:fase4` (dopo `npx vite build`).
+
+Due avvertenze:
+
+- **Il giro quotidiano va spostato di giorno** (`15 8 * * *` UTC, non di notte) e ha bisogno
+  delle stesse chiavi del backend: vedi `docs/deploy.md`, 2.7.
+- La migrazione 0056 dà il modulo Comunicazioni al ruolo admin di sistema; agli altri ruoli no.
+
 ### 10 ottobre 2026 — CRM, fase 3: iscrivere in un passo, e non perdere chi sta per andare
 
 - **Iscrivi**, una finestra a passi — anagrafica, abbonamento, certificato (foto o file),

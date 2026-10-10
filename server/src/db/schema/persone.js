@@ -78,6 +78,6 @@ export const consensi = pgTable('consensi', {
 	createdDate: timestamp('created_date', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({
 	tipoValido: check('consensi_tipo_valido', sql`${table.tipo} IN ('marketing_email', 'marketing_sms', 'marketing_push')`),
-	fonteValida: check('consensi_fonte_valida', sql`${table.fonte} IN ('portale', 'reception', 'form')`),
+	fonteValida: check('consensi_fonte_valida', sql`${table.fonte} IN ('portale', 'reception', 'form', 'disiscrizione')`),
 	perPersona: index('consensi_persona_id_idx').on(table.personaId, table.createdDate),
 }));
