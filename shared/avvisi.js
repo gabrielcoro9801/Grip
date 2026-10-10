@@ -6,8 +6,8 @@
 //
 // Gli avvisi non si salvano: si calcolano dalle date ogni volta, e spariscono da soli quando
 // il socio rinnova o porta il documento. Un avviso salvato resterebbe vero anche dopo.
-import { oggiIso, giorniFra } from './giorni.js';
-import { abbonamentoCopre, GIORNI_ABBONAMENTO_IN_SCADENZA } from './abbonamenti.js';
+import { oggiIso, giorniFra, spostaGiorni } from './giorni.js';
+import { abbonamentoCopre, sospensioneIl, GIORNI_ABBONAMENTO_IN_SCADENZA } from './abbonamenti.js';
 import { TIPI_DOCUMENTO, tipoAtteso, conStatoDocumenti } from './anagrafica.js';
 
 const dataIt = (iso) => { const [a, m, g] = String(iso).slice(0, 10).split('-'); return `${g}/${m}/${a}`; };
@@ -21,7 +21,7 @@ const fra = (giorni) => (giorni === 0 ? 'oggi' : giorni === 1 ? 'domani' : `fra 
  * scadenza, abbonamento in scadenza senza rinnovo).
  *
  * @param socio      { date_of_birth, archiviato_il }
- * @param iscrizioni [{ start_date, end_date }]
+ * @param iscrizioni [{ start_date, end_date }], passate da `conSospensioni` se il socio ne ha
  * @param documenti  [{ document_type, created_date, expiry_date }]
  * @returns [{ codice, gravita, titolo, testo, azione: 'abbonamento' | 'documenti' | null }]
  */
@@ -32,8 +32,16 @@ export function avvisiSocio({ socio, iscrizioni = [], documenti = [], oggi = ogg
     avvisi.push({ codice: 'archiviato', gravita: 'rosso', titolo: 'Socio archiviato', testo: 'Ha lasciato la palestra: per tornare va riattivato dalla reception.', azione: null });
   }
 
-  // L'abbonamento: valido oggi? E se finisce presto, c'è già il rinnovo?
-  if (!abbonamentoCopre(iscrizioni, oggi)) {
+  // L'abbonamento: valido oggi? E se finisce presto, c'è già il rinnovo? Sospeso è un'altra cosa
+  // da scaduto: non entra, ma non c'è niente da rinnovare.
+  const sospensione = sospensioneIl(iscrizioni, oggi);
+  if (sospensione) {
+    avvisi.push({
+      codice: 'abbonamento_sospeso', gravita: 'rosso', titolo: 'Abbonamento sospeso',
+      testo: `È sospeso fino al ${dataIt(sospensione.al)}: riprende il ${dataIt(spostaGiorni(sospensione.al, 1))}, e la scadenza slitta di altrettanto.`,
+      azione: 'abbonamento',
+    });
+  } else if (!abbonamentoCopre(iscrizioni, oggi)) {
     const ultima = iscrizioni.map((i) => i.end_date && String(i.end_date).slice(0, 10)).filter((d) => d && d < oggi).sort().pop();
     avvisi.push({
       codice: 'abbonamento_non_valido', gravita: 'rosso',

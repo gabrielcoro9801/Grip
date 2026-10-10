@@ -1,9 +1,11 @@
-import { eq, and, gte, lte, inArray, ne, desc, isNull, count } from 'drizzle-orm';
+import { eq, and, gte, lte, inArray, ne, desc, isNull, count, sql } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import {
-	members, subscriptions, memberDocuments, qrAccessi,
-	courses, categories, instructors, rooms, events, sessions, bookings, notifiche, consensi,
+	members, memberDocuments, qrAccessi,
+	courses, categories, instructors, rooms, events, sessions, bookings, notifiche, consensi, attivita,
 } from '../../db/schema/index.js';
+import { iscrizioniDelSocio } from '../../lib/iscrizioni.js';
+import { richiestaRinnovoAperta, TIPI_CONTATTO } from '../../../../shared/segnali.js';
 import { consensiDi } from '../persone.js';
 import { tipoConsensoValido } from '../../../../shared/consensi.js';
 import { getUserFromRequest } from '../../auth/tokens.js';
@@ -13,7 +15,7 @@ import { prenota, disdici } from '../../lib/prenotazioni.js';
 import { firmaUrl } from '../../lib/urlFirmati.js';
 import { msResiduiFinestra } from '../../../../shared/qrDinamico.js';
 import { nomeDocumento, conStatoDocumenti } from '../../../../shared/anagrafica.js';
-import { statoIscrizione, abbonamentoCopre, MESSAGGIO_SENZA_ABBONAMENTO } from '../../../../shared/abbonamenti.js';
+import { statoIscrizione, motivoSenzaCopertura, sospensioneIl } from '../../../../shared/abbonamenti.js';
 import { oggiIso, eUnGiorno, giorniFra, giorniDaOggi, spostaGiorni, lezioneFinita } from '../../../../shared/giorni.js';
 import { limiteDisdetta, motivoDisdettaChiusa } from '../../../../shared/corsi.js';
 import { applicaFisse, creaFissa, terminaFissa, elencoFisse } from '../../lib/prenotazioniFisse.js';
@@ -91,11 +93,8 @@ export default async function memberRoutes(fastify) {
 		const [socio] = await db.select().from(members).where(eq(members.id, request.idSocio)).limit(1);
 		if (!socio) return { socio: null, abbonamento: null, documenti: null };
 
-		const abbonamenti = await db
-			.select()
-			.from(subscriptions)
-			.where(eq(subscriptions.memberId, request.idSocio))
-			.orderBy(desc(subscriptions.startDate));
+		// Con le date dopo le sospensioni, dalla più recente.
+		const abbonamenti = (await iscrizioniDelSocio(request.idSocio)).reverse();
 
 		// Servono anche tipo e data di caricamento, non solo la scadenza: un certificato
 		// scaduto e già sostituito è archiviato, e non va contato fra quelli scaduti —
@@ -116,8 +115,9 @@ export default async function memberRoutes(fastify) {
 		// La corrente è la più recente ancora valida oggi; se non ce n'è, l'ultima scaduta. La
 		// colonna `status` non si guarda: nessuno la aggiorna, e sceglieva come "corrente" anche
 		// un abbonamento scaduto da mesi.
-		const statoDi = (a) => statoIscrizione({ end_date: a.endDate });
+		const statoDi = (a) => statoIscrizione(a);
 		const corrente = abbonamenti.find((a) => statoDi(a) !== 'expired') ?? abbonamenti[0] ?? null;
+		const sospensione = sospensioneIl(abbonamenti, oggiIso());
 
 		return {
 			socio: {
@@ -138,12 +138,15 @@ export default async function memberRoutes(fastify) {
 			},
 			abbonamento: corrente && {
 				id: corrente.id,
-				piano: corrente.planName,
+				piano: corrente.plan_name,
 				stato: statoDi(corrente),
-				inizio: corrente.startDate,
-				fine: corrente.endDate,
-				giorni_alla_scadenza: giorniDaOggi(corrente.endDate),
-				in_scadenza: entroGiorni(corrente.endDate, 7),
+				inizio: corrente.start_date,
+				// Dopo le sospensioni: è la scadenza vera.
+				fine: corrente.end_date,
+				giorni_alla_scadenza: giorniDaOggi(corrente.end_date),
+				in_scadenza: entroGiorni(corrente.end_date, 7),
+				// Fermo oggi: fino a quando, e il giorno in cui riprende.
+				sospeso: sospensione ? { fino_al: sospensione.al, riprende_il: spostaGiorni(sospensione.al, 1) } : null,
 			},
 			documenti: {
 				totale: documenti.length,
@@ -154,23 +157,45 @@ export default async function memberRoutes(fastify) {
 	});
 
 	fastify.get('/abbonamenti', async (request) => {
-		const righe = await db
-			.select()
-			.from(subscriptions)
-			.where(eq(subscriptions.memberId, request.idSocio))
-			.orderBy(desc(subscriptions.startDate));
+		const [righe, richiesta] = await Promise.all([iscrizioniDelSocio(request.idSocio), richiestaRinnovoDi(request.idSocio)]);
+		const oggi = oggiIso();
 
 		return {
-			abbonamenti: righe.map((a) => ({
+			abbonamenti: righe.reverse().map((a) => ({
 				id: a.id,
-				piano: a.planName,
-				stato: statoIscrizione({ end_date: a.endDate }),
-				inizio: a.startDate,
-				fine: a.endDate,
-				giorni_alla_scadenza: giorniDaOggi(a.endDate),
-				prezzo_pagato: a.pricePaid,
+				piano: a.plan_name,
+				stato: statoIscrizione(a),
+				inizio: a.start_date,
+				// La scadenza dopo le sospensioni; `giorni_sospesi` dice di quanto si è allungata.
+				fine: a.end_date,
+				giorni_alla_scadenza: giorniDaOggi(a.end_date),
+				prezzo_pagato: a.price_paid,
+				giorni_sospesi: a.giorni_sospesi,
+				// Quelle in corso o in arrivo: le passate sono già nella scadenza.
+				sospensioni: a.sospensioni.filter((s) => s.al >= oggi).map((s) => ({ dal: s.dal, al: s.al, riprende_il: spostaGiorni(s.al, 1) })),
 			})),
+			// La richiesta di rinnovo che aspetta la reception, o null.
+			richiesta_rinnovo: richiesta,
 		};
+	});
+
+	/**
+	 * "Richiedi il rinnovo": il socio dice che vuole rinnovare, la reception lo richiama e incassa
+	 * di persona. Non c'è un pagamento e non parte nessun messaggio: nasce una riga nel diario,
+	 * e il motore dei segnali (shared/segnali.js) la mette in cima a Oggi finché la reception non
+	 * rinnova o non lo sente. Una seconda richiesta mentre la prima aspetta non ne crea un'altra.
+	 *
+	 * → 201 { richiesta_rinnovo: { il } } (200 se ce n'era già una aperta)
+	 */
+	fastify.post('/abbonamento/richiesta-rinnovo', async (request, reply) => {
+		const aperta = await richiestaRinnovoDi(request.idSocio);
+		if (aperta) return { richiesta_rinnovo: aperta };
+		const [socio] = await db.select({ personaId: members.personaId, nome: members.fullName }).from(members).where(eq(members.id, request.idSocio)).limit(1);
+		const [riga] = await db.insert(attivita).values({
+			personaId: socio.personaId, tipo: 'richiesta_rinnovo', autoreId: request.utente.sub, autoreNome: socio.nome,
+		}).returning({ il: attivita.createdDate });
+		reply.code(201);
+		return { richiesta_rinnovo: { il: riga.il } };
 	});
 
 	fastify.get('/documenti', async (request) => {
@@ -319,10 +344,7 @@ export default async function memberRoutes(fastify) {
 
 		// Se il socio può prenotare quella lezione lo dice il server, con la stessa regola che
 		// applica quando la prenotazione arriva: così il portale lo mostra prima del pulsante.
-		const mieIscrizioni = await db
-			.select({ start_date: subscriptions.startDate, end_date: subscriptions.endDate })
-			.from(subscriptions)
-			.where(eq(subscriptions.memberId, request.idSocio));
+		const mieIscrizioni = await iscrizioniDelSocio(request.idSocio);
 
 		const giorni = new Map();
 		for (const r of righe) {
@@ -330,7 +352,7 @@ export default async function memberRoutes(fastify) {
 			const c = conta.get(s.id) ?? { confermati: 0, in_attesa: 0 };
 			const miaPrenotazione = mie.get(s.id);
 			const capienza = s.capacity ?? 0;
-			const coperta = abbonamentoCopre(mieIscrizioni, s.date);
+			const senzaCopertura = motivoSenzaCopertura(mieIscrizioni, s.date);
 
 			const lezione = {
 				id: s.id,
@@ -350,7 +372,7 @@ export default async function memberRoutes(fastify) {
 				},
 				// null se si può prenotare; altrimenti il perché, da mostrare al posto del pulsante.
 				// Una lezione di oggi già finita resta in agenda, ma non si prenota né si disdice.
-				motivo_non_prenotabile: lezioneFinita(s) ? 'La lezione è già finita.' : (coperta ? null : MESSAGGIO_SENZA_ABBONAMENTO),
+				motivo_non_prenotabile: lezioneFinita(s) ? 'La lezione è già finita.' : senzaCopertura,
 				finita: lezioneFinita(s),
 				// Fino a quando il socio può disdire da sé ("AAAA-MM-GGTHH:MM", ora di Roma), null se
 				// fino alla fine; e, se il termine è passato, il perché.
@@ -526,12 +548,30 @@ export default async function memberRoutes(fastify) {
 async function avvisiDelSocio(memberId) {
 	const [[socio], iscrizioni, documenti] = await Promise.all([
 		db.select({ dateOfBirth: members.dateOfBirth, archiviatoIl: members.archiviatoIl }).from(members).where(eq(members.id, memberId)).limit(1),
-		db.select({ start_date: subscriptions.startDate, end_date: subscriptions.endDate }).from(subscriptions).where(eq(subscriptions.memberId, memberId)),
+		iscrizioniDelSocio(memberId),
 		db.select({ document_type: memberDocuments.documentType, created_date: memberDocuments.createdDate, expiry_date: memberDocuments.expiryDate })
 			.from(memberDocuments).where(eq(memberDocuments.memberId, memberId)),
 	]);
 	return avvisiSocio({ socio: { date_of_birth: socio?.dateOfBirth, archiviato_il: socio?.archiviatoIl }, iscrizioni, documenti })
 		.map(({ codice, gravita, titolo, testo, azione }) => ({ codice, gravita, titolo, testo, azione }));
+}
+
+/**
+ * La richiesta di rinnovo del socio che aspetta ancora la reception, { il } o null. La regola —
+ * cosa la chiude — è quella del motore dei segnali (shared/segnali.js).
+ */
+async function richiestaRinnovoDi(memberId) {
+	const [socio] = await db.select({ personaId: members.personaId }).from(members).where(eq(members.id, memberId)).limit(1);
+	if (!socio) return null;
+	const [[diario], iscrizioni] = await Promise.all([
+		db.select({
+			richiesta: sql`max(${attivita.createdDate}) filter (where ${attivita.tipo} = 'richiesta_rinnovo')`,
+			riscontro: sql`max(${attivita.createdDate}) filter (where ${inArray(attivita.tipo, TIPI_CONTATTO)} and ${attivita.esito} is distinct from 'nessuna_risposta')`,
+		}).from(attivita).where(eq(attivita.personaId, socio.personaId)),
+		iscrizioniDelSocio(memberId),
+	]);
+	if (!richiestaRinnovoAperta(diario?.richiesta, { ultimoContatto: diario?.riscontro, iscrizioni })) return null;
+	return { il: new Date(diario.richiesta).toISOString() };
 }
 
 // --- Le date ------------------------------------------------------------------------

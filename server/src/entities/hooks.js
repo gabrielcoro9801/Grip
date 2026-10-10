@@ -10,6 +10,7 @@ import {
 } from '../db/schema/index.js';
 import { motivoPasswordNonValida } from '../../../shared/password.js';
 import { usoDellaSala } from '../lib/sale.js';
+import { iscrizioniPerSocio } from '../lib/iscrizioni.js';
 import { translateToSnakeCase } from './columnMaps.js';
 import {
 	sessoValido, normalizzaCodiceFiscale, codiceFiscaleValido, motivoDocumentoNonValido, tipoDocumentoValido,
@@ -582,23 +583,35 @@ export function stripHiddenFieldsMany(entityName, rows) {
  * Lo stato di un'iscrizione dipende dalle date e nessun processo aggiorna la colonna: si
  * calcola qui, nel punto da cui passano tutte le letture, e così dashboard, elenchi, filtri e
  * scheda del socio si correggono insieme senza che nessuna schermata debba saperlo.
+ *
+ * Lo stesso per le date dopo le sospensioni (lib/iscrizioni.js): un'iscrizione sospesa esce con
+ * la scadenza allungata e `giorni_sospesi`. Si calcolano su tutte le iscrizioni dei soci delle
+ * righe, non solo su quelle chieste: una sospensione fa slittare anche il rinnovo che segue.
  */
 const CAMPI_CALCOLATI = {
-	Subscription: (riga) => ({ ...riga, status: statoIscrizione(riga) }),
+	async Subscription(righe) {
+		const effettive = new Map();
+		const perSocio = await iscrizioniPerSocio([...new Set(righe.map((r) => r.member_id).filter(Boolean))]);
+		for (const elenco of perSocio.values()) for (const i of elenco) effettive.set(i.id, i);
+		return righe.map((riga) => {
+			const e = effettive.get(riga.id);
+			const r = e ? { ...riga, start_date: e.start_date, end_date: e.end_date, giorni_sospesi: e.giorni_sospesi } : riga;
+			return { ...r, status: statoIscrizione(r) };
+		});
+	},
 };
 const NOMI_CAMPI_CALCOLATI = { Subscription: ['status'] };
 
 /** I campi di un'entità che escono calcolati: un filtro su questi non si fa sulla colonna. */
 export const campiCalcolati = (entityName) => NOMI_CAMPI_CALCOLATI[entityName] ?? [];
 
-export function conCampiCalcolati(entityName, riga) {
-	const calcola = CAMPI_CALCOLATI[entityName];
-	return calcola && riga ? calcola(riga) : riga;
+export async function conCampiCalcolati(entityName, riga) {
+	return riga ? (await conCampiCalcolatiMolte(entityName, [riga]))[0] : riga;
 }
 
-export function conCampiCalcolatiMolte(entityName, righe) {
+export async function conCampiCalcolatiMolte(entityName, righe) {
 	const calcola = CAMPI_CALCOLATI[entityName];
-	return calcola && Array.isArray(righe) ? righe.map(calcola) : righe;
+	return calcola && Array.isArray(righe) && righe.length ? calcola(righe) : righe;
 }
 
 /**

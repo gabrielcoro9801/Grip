@@ -347,7 +347,8 @@ describe('il contratto resta quello promesso', () => {
 		);
 		assert.deepEqual(
 			Object.keys(dati.abbonamento).sort(),
-			['fine', 'giorni_alla_scadenza', 'id', 'in_scadenza', 'inizio', 'piano', 'stato']
+			// `sospeso` è un'aggiunta (null se l'abbonamento non è fermo oggi).
+			['fine', 'giorni_alla_scadenza', 'id', 'in_scadenza', 'inizio', 'piano', 'sospeso', 'stato']
 		);
 	});
 

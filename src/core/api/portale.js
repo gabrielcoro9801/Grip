@@ -25,10 +25,14 @@ export function caricaProfilo() {
 	return api.richiesta(`${BASE}/profilo`);
 }
 
-/** Lo storico degli abbonamenti. */
-export async function caricaAbbonamenti() {
-	const { abbonamenti } = await api.richiesta(`${BASE}/abbonamenti`);
-	return abbonamenti;
+/** Lo storico degli abbonamenti, e la richiesta di rinnovo che aspetta la reception: { abbonamenti, richiesta_rinnovo }. */
+export function caricaAbbonamenti() {
+	return api.richiesta(`${BASE}/abbonamenti`);
+}
+
+/** "Voglio rinnovare": la reception lo vede in cima a Oggi e lo richiama. Niente pagamenti. → { richiesta_rinnovo: { il } } */
+export function richiediRinnovo() {
+	return api.richiesta(`${BASE}/abbonamento/richiesta-rinnovo`, { method: 'POST' });
 }
 
 /** I propri documenti, con scadenze già valutate dal server. */

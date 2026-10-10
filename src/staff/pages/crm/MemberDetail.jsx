@@ -17,6 +17,7 @@ import IngressiSocio from "@/staff/components/soci/IngressiSocio";
 import DiarioSocio from "@/staff/components/soci/DiarioSocio";
 import DocumentiSocio from "@/staff/components/soci/DocumentiSocio";
 import SituazioneSocio from "@/staff/components/soci/SituazioneSocio";
+import SospensioniSocio from "@/staff/components/soci/SospensioniSocio";
 import { AvatarSocio, SceltaFoto } from "@/staff/components/soci/FotoSocio";
 import { caricaFile } from "@/staff/lib/uploads";
 import { canAccess, canEdit } from "@/staff/lib/permissions";
@@ -431,6 +432,7 @@ export default function MemberDetail() {
                     <div>
                       <p className="text-sm font-medium">{sub.plan_name}</p>
                       <p className="text-xs text-muted-foreground">{formatData(sub.start_date, "giornoBreve")} — {formatData(sub.end_date, "media")}</p>
+                      {sub.giorni_sospesi > 0 && <p className="text-xs text-muted-foreground">+{sub.giorni_sospesi} giorni di sospensione</p>}
                     </div>
                     <div className="text-right">
                       <StatusBadge status={sub.status} />
@@ -440,6 +442,7 @@ export default function MemberDetail() {
                 ))}
               </div>
             )}
+            {subscriptions.length > 0 && <SospensioniSocio socio={member} puoModificare={puoModificare} onCambio={loadData} />}
           </CardContent>
         </Card>
 

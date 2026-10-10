@@ -4,7 +4,7 @@
 // un tipo non vendibile, e le schermate, che la mostrano prima di salvare. Due calcoli separati
 // della stessa scadenza avrebbero finito per dare due date diverse.
 
-import { oggiIso, giorniFra } from './giorni.js';
+import { oggiIso, giorniFra, spostaGiorni } from './giorni.js';
 import { motivoCambioStato } from './stati.js';
 import { SOGLIE } from './soglie.js';
 
@@ -88,6 +88,9 @@ export function statoIscrizione(iscrizione, oggi = oggiIso()) {
  * È la regola della prenotazione: si prenota una lezione solo con un abbonamento valido il
  * giorno in cui si tiene — non oggi, perché chi rinnova il mese prossimo può già prenotare le
  * lezioni del mese prossimo, e chi scade domani non può prenotare quelle della settimana dopo.
+ *
+ * Un giorno dentro una sospensione non è coperto: le iscrizioni passate da `conSospensioni`
+ * portano le loro (`sospensioni`), quelle lette senza non ne hanno.
  */
 export function abbonamentoCopre(iscrizioni, giorno) {
 	const data = String(giorno ?? '').slice(0, 10);
@@ -95,11 +98,78 @@ export function abbonamentoCopre(iscrizioni, giorno) {
 	return (iscrizioni ?? []).some((i) => {
 		const inizio = i?.start_date ? String(i.start_date).slice(0, 10) : null;
 		const fine = i?.end_date ? String(i.end_date).slice(0, 10) : null;
-		return (!inizio || inizio <= data) && (!fine || data <= fine);
+		return (!inizio || inizio <= data) && (!fine || data <= fine) && !dentro(i.sospensioni, data);
 	});
 }
 
 export const MESSAGGIO_SENZA_ABBONAMENTO = "Per prenotare serve un abbonamento valido il giorno della lezione: rivolgiti alla reception.";
+export const MESSAGGIO_SOSPESO = "Il tuo abbonamento è sospeso quel giorno: la prenotazione riapre alla ripresa.";
+
+const dentro = (sospensioni, data) => (sospensioni ?? []).some((s) => s.dal <= data && data <= s.al);
+const giornoDi = (d) => (d ? String(d).slice(0, 10) : null);
+
+/** La sospensione che copre quel giorno, fra quelle delle iscrizioni (`conSospensioni`), o null. */
+export function sospensioneIl(iscrizioni, giorno) {
+	const data = giornoDi(giorno);
+	for (const i of iscrizioni ?? []) {
+		const s = (i.sospensioni ?? []).find((x) => x.dal <= data && data <= x.al);
+		if (s) return s;
+	}
+	return null;
+}
+
+/** Perché quel giorno non si prenota: l'abbonamento è sospeso, o non c'è. null se si prenota. */
+export function motivoSenzaCopertura(iscrizioni, giorno) {
+	if (abbonamentoCopre(iscrizioni, giorno)) return null;
+	return sospensioneIl(iscrizioni, giorno) ? MESSAGGIO_SOSPESO : MESSAGGIO_SENZA_ABBONAMENTO;
+}
+
+/**
+ * Le iscrizioni di un socio con le date di oggi, dopo le sue sospensioni.
+ *
+ * Una sospensione (un congelamento, con una data di ripresa) ferma l'abbonamento: in quei giorni
+ * il socio non entra e non prenota, e l'abbonamento finisce dopo, di altrettanti giorni. La
+ * scadenza non si riscrive — come lo stato, si calcola: nel database `end_date` resta quella
+ * venduta, e chi legge un'iscrizione riceve questa.
+ *
+ * L'iscrizione che copre il primo giorno sospeso si allunga; un rinnovo già comprato che le
+ * viene dietro (che parte prima della nuova fine) slitta di altrettanto, così nessun giorno si
+ * paga due volte. Un rinnovo che parte molto dopo resta dov'è.
+ *
+ * @param iscrizioni  [{ start_date, end_date, … }]
+ * @param sospensioni [{ dal, al, … }] — `al` è l'ultimo giorno sospeso, compreso
+ * @returns le iscrizioni, nello stesso ordine, con `start_date` ed `end_date` di oggi, e in più
+ *   `sospensioni` (quelle che le fermano), `giorni_sospesi` e `fine_originale`.
+ */
+export function conSospensioni(iscrizioni = [], sospensioni = []) {
+	const righe = iscrizioni.map((i) => ({
+		...i, start_date: giornoDi(i.start_date), end_date: giornoDi(i.end_date), fine_originale: giornoDi(i.end_date), sospensioni: [], giorni_sospesi: 0,
+	}));
+	const periodi = sospensioni
+		.map((s) => ({ ...s, dal: giornoDi(s.dal), al: giornoDi(s.al) }))
+		.filter((s) => s.dal && s.al && s.al >= s.dal)
+		.sort((a, b) => a.dal.localeCompare(b.dal));
+	const perInizio = [...righe].sort((a, b) => String(a.start_date ?? '').localeCompare(String(b.start_date ?? '')));
+	for (const s of periodi) {
+		const durata = giorniFra(s.dal, s.al) + 1;
+		const allunga = (i) => { if (i.end_date) i.end_date = spostaGiorni(i.end_date, durata); i.giorni_sospesi += durata; };
+		// Fin dove arriva la catena di iscrizioni allungate: un rinnovo che parte entro, slitta.
+		let catena = null;
+		for (const i of perInizio) {
+			const copre = (!i.start_date || i.start_date <= s.dal) && (!i.end_date || i.end_date >= s.dal);
+			if (copre) {
+				allunga(i);
+				i.sospensioni.push(s);
+				catena = i.end_date && (!catena || i.end_date > catena) ? i.end_date : catena;
+			} else if (catena && i.start_date > s.dal && i.start_date <= catena) {
+				i.start_date = spostaGiorni(i.start_date, durata);
+				allunga(i);
+				catena = i.end_date > catena ? i.end_date : catena;
+			}
+		}
+	}
+	return righe;
+}
 
 /** Vera se l'iscrizione vale ancora oggi (attiva o in scadenza). */
 export const iscrizioneValida = (iscrizione, oggi = oggiIso()) => statoIscrizione(iscrizione, oggi) !== 'expired';

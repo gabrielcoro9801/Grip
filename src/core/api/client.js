@@ -174,9 +174,21 @@ export const api = {
 		impostaAccessoPortale(memberId, password) {
 			return request(`/api/soci/${encodeURIComponent(memberId)}/accesso-portale`, { method: 'POST', body: { password } });
 		},
-		/** Archivia un socio che ha lasciato la palestra. → { socio, prenotazioni_disdette } */
-		archivia(memberId) {
-			return request(`/api/soci/${encodeURIComponent(memberId)}/archivia`, { method: 'POST' });
+		/** Archivia un socio che ha lasciato la palestra: { motivo, nota? } → { socio, prenotazioni_disdette } */
+		archivia(memberId, corpo) {
+			return request(`/api/soci/${encodeURIComponent(memberId)}/archivia`, { method: 'POST', body: corpo });
+		},
+		/** Le sospensioni dell'abbonamento: { sospensioni: [{ id, dal, al, riprende_il, nota, stato }] } */
+		sospensioni(memberId) {
+			return request(`/api/soci/${encodeURIComponent(memberId)}/sospensioni`);
+		},
+		/** { dal, riprende_il, nota? } → { sospensione, prenotazioni_disdette } */
+		sospendi(memberId, corpo) {
+			return request(`/api/soci/${encodeURIComponent(memberId)}/sospensioni`, { method: 'POST', body: corpo });
+		},
+		/** Fa riprendere prima (oggi, o `riprende_il`). → { sospensione | null } */
+		terminaSospensione(memberId, idSospensione, riprendeIl) {
+			return request(`/api/soci/${encodeURIComponent(memberId)}/sospensioni/${idSospensione}/termina`, { method: 'POST', body: riprendeIl ? { riprende_il: riprendeIl } : {} });
 		},
 		/** Riattiva un socio archiviato. → { socio } */
 		riattiva(memberId) {
