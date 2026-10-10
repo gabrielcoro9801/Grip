@@ -125,7 +125,7 @@ describe('i lead restano fuori', () => {
 			assert.equal((await come('socio', { method: 'GET', url })).statusCode, 403, url);
 		}
 		assert.equal((await post('socio', '/api/lead', { nome: 'X' })).statusCode, 403);
-		assert.equal((await post('socio', `/api/lead/${lead.id}/trasforma`, { nome: 'X' })).statusCode, 403);
+		assert.equal((await post('socio', '/api/iscrivi', { lead_id: lead.id, anagrafica: { nome: 'X' }, informativa_privacy: true })).statusCode, 403);
 		assert.equal((await come('socio', { method: 'GET', url: `/api/persone/${lead.persona_id}/diario` })).statusCode, 403);
 	});
 
@@ -285,7 +285,8 @@ describe('i canali', () => {
 });
 
 describe("l'iscrizione", () => {
-	const iscrivi = (id, corpo) => post('reception', `/api/lead/${id}/trasforma`, corpo);
+	// Il passo dell'anagrafica del flusso Iscrivi (routes/iscrizioni.js); gli altri passi hanno i loro test.
+	const iscrivi = (id, { gdpr_consent: _privacy, ...anagrafica }) => post('reception', '/api/iscrivi', { lead_id: id, anagrafica, informativa_privacy: true });
 	const anagraficaCompleta = { nome: 'Anna Maria', cognome: 'Verdi', sesso: 'F', codice_fiscale: CF.toLowerCase(), date_of_birth: '1985-12-10' };
 
 	test('senza codice fiscale valido o senza data di nascita non si fa, e il contatto resta', async () => {

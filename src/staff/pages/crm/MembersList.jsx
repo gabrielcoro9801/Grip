@@ -4,21 +4,16 @@ import { Link, useSearchParams } from "react-router-dom";
 import { Button } from "@/ui/primitivi/button";
 import { Input } from "@/ui/primitivi/input";
 import { Label } from "@/ui/primitivi/label";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/ui/primitivi/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/ui/primitivi/select";
 import PageHeader from "@/staff/components/PageHeader";
 import StatusBadge from "@/ui/StatusBadge";
 import { Plus, Search, Users } from "lucide-react";
 import { LoadingState } from "@/ui/Spinner";
 import { EmptyState, ErrorState } from "@/ui/StateViews";
-import { useToast } from "@/ui/primitivi/use-toast";
-import { caricaFile } from "@/staff/lib/uploads";
 import { formatData } from "@/core/domain/format";
 import { FASI, SEGNALI, fase as faseDi, etichettaSegnale } from "@/core/domain/segnali";
-import CampiAnagrafica, { ANAGRAFICA_VUOTA, motivoAnagraficaIncompleta } from "@/staff/components/soci/CampiAnagrafica";
-import { SceltaFoto } from "@/staff/components/soci/FotoSocio";
+import Iscrivi from "@/staff/components/soci/Iscrivi";
 
-const FOTO_VUOTA = { file: null, rimossa: false };
 const TUTTI = "tutti";
 const NESSUNO = "nessuno";
 
@@ -55,11 +50,8 @@ export default function MembersList() {
   const [dati, setDati] = useState(null);
   const [search, setSearch] = useState("");
   const [ordine, setOrdine] = useState("nome");
+  // "Aggiungi socio" è il flusso Iscrivi, per chi entra direttamente senza essere stato un contatto.
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState(ANAGRAFICA_VUOTA);
-  const [foto, setFoto] = useState(FOTO_VUOTA);
-  const [salvando, setSalvando] = useState(false);
-  const { toast } = useToast();
   const [errore, setErrore] = useState(null);
 
   // Fase, segnale e colonne li calcola il server (GET /api/segnali): prima la pagina scaricava
@@ -71,30 +63,6 @@ export default function MembersList() {
   }, [filtroFase, filtroSegnale]);
 
   useEffect(() => { loadData(); }, [loadData]);
-
-  const chiudiForm = () => {
-    setShowForm(false);
-    setForm(ANAGRAFICA_VUOTA);
-    setFoto(FOTO_VUOTA);
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setSalvando(true);
-    try {
-      // Prima la foto, poi il socio: così il socio nasce già con la sua foto, in una scrittura.
-      const foto_url = foto.file ? (await caricaFile({ file: foto.file })).file_url : null;
-      // Il codice socio lo assegna il server, sempre: calcolarlo qui sul massimo fra i soci
-      // caricati in pagina assegnerebbe lo stesso codice a due iscrizioni contemporanee.
-      await api.entities.Member.create({ ...form, foto_url });
-      chiudiForm();
-      loadData();
-    } catch (err) {
-      // Il server rifiuta, con un messaggio da leggere, un codice fiscale già presente.
-      toast({ title: "Socio non creato", description: err.message, variant: "destructive" });
-    }
-    setSalvando(false);
-  };
 
   const elenco = useMemo(() => {
     if (!dati) return [];
@@ -108,8 +76,6 @@ export default function MembersList() {
         || (cifre.length >= 3 && (s.telefono ?? "").replace(/\D/g, "").includes(cifre)))
       .sort(criterio.confronta);
   }, [dati, search, ordine, filtroFase]);
-
-  const incompleto = motivoAnagraficaIncompleta(form);
 
   if (errore) return <ErrorState error={errore} onRetry={loadData} />;
   if (!dati) return <LoadingState minHeight="h-64" />;
@@ -218,18 +184,7 @@ export default function MembersList() {
         </div>
       )}
 
-      <Dialog open={showForm} onOpenChange={(aperta) => (aperta ? setShowForm(true) : chiudiForm())}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>Aggiungi nuovo socio</DialogTitle></DialogHeader>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <CampiAnagrafica valori={form} onChange={setForm} />
-            <SceltaFoto socio={form} file={foto.file} onChange={setFoto} />
-            <Button type="submit" className="w-full" disabled={Boolean(incompleto) || salvando}>
-              {salvando ? "Salvataggio..." : "Crea socio"}
-            </Button>
-          </form>
-        </DialogContent>
-      </Dialog>
+      <Iscrivi aperto={showForm} onChiudi={() => setShowForm(false)} />
     </div>
   );
 }

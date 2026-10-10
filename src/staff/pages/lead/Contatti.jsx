@@ -8,7 +8,7 @@ import { Textarea } from "@/ui/primitivi/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/ui/primitivi/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/ui/primitivi/select";
 import PageHeader from "@/staff/components/PageHeader";
-import TrasformaInSocio from "@/staff/components/lead/TrasformaInSocio";
+import Iscrivi from "@/staff/components/soci/Iscrivi";
 import AzioneLead from "@/staff/components/lead/AzioneLead";
 import DiarioLead from "@/staff/components/lead/DiarioLead";
 import StatusBadge from "@/ui/StatusBadge";
@@ -456,7 +456,8 @@ export default function Contatti() {
         onCambio={carica}
       />
 
-      <TrasformaInSocio
+      <Iscrivi
+        aperto={Boolean(daTrasformare)}
         lead={daTrasformare}
         onChiudi={(fatto) => { setDaTrasformare(null); if (fatto) carica(); }}
       />

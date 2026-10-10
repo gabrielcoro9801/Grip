@@ -197,6 +197,14 @@ export const api = {
 	},
 
 	/**
+	 * Iscrivi, in un passo: { lead_id?, anagrafica, abbonamento?, certificato?, informativa_privacy,
+	 * consensi?, portale? } → { member, riattivato, accesso_portale }. Tutto in una transazione.
+	 */
+	iscrivi(corpo) {
+		return request('/api/iscrivi', { method: 'POST', body: corpo });
+	},
+
+	/**
 	 * Numeri e avvisi della dashboard, contati dal server. Una parte che il ruolo non può
 	 * vedere arriva `null`.
 	 */
@@ -288,10 +296,6 @@ export const api = {
 		doppioni({ telefono, email, escludi }) {
 			const q = new URLSearchParams(Object.entries({ telefono, email, escludi }).filter(([, v]) => v));
 			return request(`/api/lead/doppioni?${q}`);
-		},
-		/** Il contatto si iscrive: nasce il socio, o torna quello di prima. → { member, riattivato } */
-		trasforma(leadId, anagrafica) {
-			return request(`/api/lead/${leadId}/trasforma`, { method: 'POST', body: anagrafica });
 		},
 		/** Quanti contatti e quanti soci cita ogni canale: { [idCanale]: { contatti, soci } }. */
 		usoCanali() {
