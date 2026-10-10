@@ -18,6 +18,7 @@ import DiarioSocio from "@/staff/components/soci/DiarioSocio";
 import DocumentiSocio from "@/staff/components/soci/DocumentiSocio";
 import SituazioneSocio from "@/staff/components/soci/SituazioneSocio";
 import SospensioniSocio from "@/staff/components/soci/SospensioniSocio";
+import DialogoAbbandono from "@/staff/components/soci/DialogoAbbandono";
 import { AvatarSocio, SceltaFoto } from "@/staff/components/soci/FotoSocio";
 import { caricaFile } from "@/staff/lib/uploads";
 import { canAccess, canEdit } from "@/staff/lib/permissions";
@@ -239,32 +240,10 @@ export default function MemberDetail() {
     }
   };
 
-  // Un socio che lascia la palestra si archivia: niente si cancella, e lo si riattiva quando
-  // torna. Lo fa il server, che disdice anche le prenotazioni future e spegne portale e QR.
-  const archivia = async () => {
-    const ok = await conferma({
-      title: `Archiviare ${member.full_name}?`,
-      description:
-        "Scheda, abbonamenti e storico restano. Non comparirà più fra i soci che frequentano, non potrà prenotare né comprare abbonamenti, " +
-        "e portale e QR non lo faranno entrare. Le sue prenotazioni future vengono disdette. Potrai riattivarlo in qualunque momento.",
-      confirmLabel: "Archivia",
-      destructive: true,
-    });
-    if (!ok) return;
-    setSaving(true);
-    try {
-      const { prenotazioni_disdette: disdette } = await api.soci.archivia(id);
-      toast({
-        title: "Socio archiviato",
-        description: disdette ? `Disdette ${disdette} ${disdette === 1 ? "prenotazione futura" : "prenotazioni future"}.` : undefined,
-      });
-      loadData();
-    } catch (err) {
-      toast({ title: "Socio non archiviato", description: err.message, variant: "destructive" });
-    } finally {
-      setSaving(false);
-    }
-  };
+  // Un socio che lascia la palestra si archivia, con il suo motivo (DialogoAbbandono): niente si
+  // cancella, e lo si riattiva quando torna. Il server disdice le prenotazioni future e spegne
+  // portale e QR.
+  const [abbandono, setAbbandono] = useState(false);
 
   const riattiva = async () => {
     setSaving(true);
@@ -401,7 +380,7 @@ export default function MemberDetail() {
                     <ArchiveRestore className="w-3.5 h-3.5 mr-1" /> Riattiva socio
                   </Button>
                 ) : (
-                  <Button size="sm" variant="outline" onClick={archivia} disabled={saving}>
+                  <Button size="sm" variant="outline" onClick={() => setAbbandono(true)} disabled={saving}>
                     <Archive className="w-3.5 h-3.5 mr-1" /> Archivia socio
                   </Button>
                 )}
@@ -589,6 +568,7 @@ export default function MemberDetail() {
       </Dialog>
 
       {dialogoConferma}
+      <DialogoAbbandono socio={{ id: member.id, nome: member.full_name }} aperto={abbandono} onChiudi={() => setAbbandono(false)} onFatto={() => { loadData(); setVersioneDiario((v) => v + 1); }} />
 
       {/* Password Dialog */}
       <Dialog open={showPasswordDialog} onOpenChange={(v) => { setShowPasswordDialog(v); if (!v) { setPasswordForm({ password: "", confirm: "" }); setGeneratedPassword(""); } }}>

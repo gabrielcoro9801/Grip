@@ -13,9 +13,9 @@
 //
 // Ogni parte ha il permesso di lettura dell'entità che la governa: chi non vede i documenti
 // riceve `null` al posto degli avvisi sui certificati, e la pagina non mostra quella parte.
-import { and, asc, count, eq, gte, isNull, lte, ne, or } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gte, isNull, lte, ne, or } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { bookings, courses, events, members, sessions } from '../db/schema/index.js';
+import { attivita, bookings, courses, events, members, sessions } from '../db/schema/index.js';
 import { getUserFromRequest } from '../auth/tokens.js';
 import { canReadEntity } from '../auth/authorize.js';
 import { situazioni } from '../lib/segnali.js';
@@ -36,10 +36,11 @@ export default async function dashboardRoutes(fastify) {
 		const puo = (entita) => canReadEntity(ruolo, entita);
 		const servonoSegnali = puo('Subscription') || puo('MemberDocument');
 
-		const [iscritti, motore, prossime] = await Promise.all([
+		const [iscritti, motore, prossime, abbandoni] = await Promise.all([
 			puo('Member') ? contaSoci() : null,
 			servonoSegnali ? situazioni() : null,
 			puo('Booking') ? prossimeLezioni(oggi) : null,
+			puo('Subscription') ? motiviAbbandono(oggi) : null,
 		]);
 		const soci = (motore?.persone ?? []).filter((p) => p.socio_id);
 		const abbonamenti = puo('Subscription') ? rinnovi(soci) : null;
@@ -55,6 +56,7 @@ export default async function dashboardRoutes(fastify) {
 			certificati,
 			rinnovi: abbonamenti,
 			prossime,
+			abbandoni,
 		};
 	});
 }
@@ -91,6 +93,18 @@ function avvisiCertificati(soci) {
 		.filter(({ s }) => s)
 		.map(({ p, s }) => ({ id: s.dati.documento_id, member_id: p.socio_id, member_name: p.nome, file_name: s.dati.file_name, giorni: s.dati.giorni, scaduto: s.dati.scaduto }))
 		.sort((a, b) => a.giorni - b.giorni);
+}
+
+/**
+ * Perché se ne vanno: i motivi scelti archiviando i soci negli ultimi 12 mesi, dal più frequente.
+ * Si leggono dal diario (`abbandono`), che resta anche se il socio poi torna.
+ */
+async function motiviAbbandono(oggi) {
+	const righe = await db.select({ motivo: attivita.esito, quanti: count() }).from(attivita)
+		.where(and(eq(attivita.tipo, 'abbandono'), gte(attivita.createdDate, new Date(`${spostaGiorni(oggi, -365)}T00:00:00Z`))))
+		.groupBy(attivita.esito)
+		.orderBy(desc(count()));
+	return righe.map((r) => ({ motivo: r.motivo, quanti: Number(r.quanti) }));
 }
 
 /** Le prenotazioni non disdette delle lezioni da oggi a fra sette giorni. */

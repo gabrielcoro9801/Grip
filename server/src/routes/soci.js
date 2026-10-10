@@ -22,7 +22,7 @@ import { applicaFisse } from '../lib/prenotazioniFisse.js';
 import { iscrizioniDelSocio, sospensioniDelSocio } from '../lib/iscrizioni.js';
 import { registerPgErrorHandler } from './errorHandler.js';
 import { abbonamentoCopre } from '../../../shared/abbonamenti.js';
-import { NOTA_DIARIO_MASSIMO } from '../../../shared/lead.js';
+import { NOTA_DIARIO_MASSIMO, motivoAbbandonoValido, etichettaMotivoAbbandono } from '../../../shared/lead.js';
 import { oggiIso, lezioneFinita, eUnGiorno, spostaGiorni } from '../../../shared/giorni.js';
 
 const nomeDi = async (idAccount) => {
@@ -132,26 +132,39 @@ export default async function sociRoutes(fastify) {
 	});
 
 	/**
-	 * POST /api/soci/:id/archivia → { socio, prenotazioni_disdette }
+	 * POST /api/soci/:id/archivia { motivo, nota? } → { socio, prenotazioni_disdette }
 	 *
 	 * Un socio che lascia la palestra. Non si cancella niente: scheda, abbonamenti e storico
 	 * restano, e lo si riattiva quando torna. Da archiviato non compare negli elenchi, non compra
 	 * abbonamenti, non prenota, e portale e QR non lo fanno entrare (auth/revoca.js, routes/qr.js).
 	 *
+	 * Il motivo (MOTIVI_ABBANDONO, shared/lead.js) è obbligatorio: finisce nel diario e la
+	 * dashboard conta perché se ne vanno. È anche il modo di chiudere uno "scaduto da recuperare"
+	 * che non torna: archiviato, esce da Oggi.
+	 *
 	 * Le prenotazioni alle lezioni che devono ancora finire si disdicono: tenere il posto a chi
 	 * non verrà più lo toglierebbe a chi è in lista d'attesa, che così viene promosso.
 	 */
 	fastify.post('/api/soci/:id/archivia', async (request, reply) => {
+		const motivo = request.body?.motivo;
+		const nota = String(request.body?.nota ?? '').trim() || null;
 		const [socio] = await db
-			.select({ id: members.id, nome: members.fullName, archiviatoIl: members.archiviatoIl })
+			.select({ id: members.id, nome: members.fullName, archiviatoIl: members.archiviatoIl, personaId: members.personaId })
 			.from(members)
 			.where(eq(members.id, request.params.id))
 			.limit(1);
 		if (!socio) return reply.code(404).send({ error: 'Socio non trovato.' });
 		if (socio.archiviatoIl) return { socio: await socioPubblico(socio.id), prenotazioni_disdette: 0 };
+		if (!motivoAbbandonoValido(motivo)) return reply.code(400).send({ error: 'Scegli perché se ne va.' });
+		if (motivo === 'altro' && !nota) return reply.code(400).send({ error: 'Con «Altro» scrivi il motivo nella nota.' });
+		if (nota && nota.length > NOTA_DIARIO_MASSIMO) return reply.code(400).send({ error: `La nota sta in ${NOTA_DIARIO_MASSIMO} caratteri.` });
 
 		const oggi = oggiIso();
-		await db.update(members).set({ archiviatoIl: oggi, updatedDate: new Date() }).where(eq(members.id, socio.id));
+		const autoreNome = await nomeDi(request.utente.sub);
+		await db.transaction(async (tx) => {
+			await tx.update(members).set({ archiviatoIl: oggi, updatedDate: new Date() }).where(eq(members.id, socio.id));
+			await tx.insert(attivita).values({ personaId: socio.personaId, tipo: 'abbandono', esito: motivo, nota, autoreId: request.utente.sub, autoreNome });
+		});
 
 		const future = await db
 			.select({ id: bookings.id, date: sessions.date, endTime: sessions.endTime })
@@ -166,7 +179,7 @@ export default async function sociRoutes(fastify) {
 
 		await registra(request.utente, {
 			tipoAzione: 'deactivate', entitaTipo: 'member', entitaNome: socio.nome, entitaId: socio.id,
-			dettagli: disdette ? `Archiviato; prenotazioni future disdette: ${disdette}` : 'Archiviato',
+			dettagli: `Archiviato (${etichettaMotivoAbbandono(motivo)})${disdette ? `; prenotazioni future disdette: ${disdette}` : ''}`,
 		}, request.log);
 		return { socio: await socioPubblico(socio.id), prenotazioni_disdette: disdette };
 	});
@@ -274,13 +287,17 @@ export default async function sociRoutes(fastify) {
 
 	fastify.post('/api/soci/:id/riattiva', async (request, reply) => {
 		const [socio] = await db
-			.select({ id: members.id, nome: members.fullName, archiviatoIl: members.archiviatoIl })
+			.select({ id: members.id, nome: members.fullName, archiviatoIl: members.archiviatoIl, personaId: members.personaId })
 			.from(members)
 			.where(eq(members.id, request.params.id))
 			.limit(1);
 		if (!socio) return reply.code(404).send({ error: 'Socio non trovato.' });
 		if (socio.archiviatoIl) {
-			await db.update(members).set({ archiviatoIl: null, updatedDate: new Date() }).where(eq(members.id, socio.id));
+			const autoreNome = await nomeDi(request.utente.sub);
+			await db.transaction(async (tx) => {
+				await tx.update(members).set({ archiviatoIl: null, updatedDate: new Date() }).where(eq(members.id, socio.id));
+				await tx.insert(attivita).values({ personaId: socio.personaId, tipo: 'riattivazione', autoreId: request.utente.sub, autoreNome });
+			});
 			await registra(request.utente, {
 				tipoAzione: 'activate', entitaTipo: 'member', entitaNome: socio.nome, entitaId: socio.id, dettagli: 'Riattivato',
 			}, request.log);
