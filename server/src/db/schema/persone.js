@@ -11,7 +11,7 @@
 // cercare, contare e riconoscere le persone si fa su una tabella sola. Per chi non è socio, la
 // persona è l'unico posto dove stanno.
 import { sql } from 'drizzle-orm';
-import { pgTable, uuid, varchar, text, boolean, integer, timestamp, check, index } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, text, boolean, integer, timestamp, jsonb, check, index, uniqueIndex } from 'drizzle-orm/pg-core';
 import { staffAccounts } from './hr.js';
 import { trattative } from './lead.js';
 
@@ -53,10 +53,17 @@ export const attivita = pgTable('attivita', {
 	nota: varchar('nota', { length: 500 }),
 	autoreId: uuid('autore_id').references(() => staffAccounts.id, { onDelete: 'set null' }),
 	autoreNome: varchar('autore_nome', { length: 255 }).notNull(),
+	// Quello a cui la riga si riferisce, se serve ritrovarlo: per un contatto i segnali da fare in
+	// quel momento (`{ segnali: ['assente'] }`, li scrive il server dal motore); per un
+	// `ingresso_dopo_contatto` il contatto e l'ingresso (`{ contatto, ingresso }`).
+	riferimento: jsonb('riferimento'),
 	createdDate: timestamp('created_date', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({
 	perPersona: index('attivita_persona_id_idx').on(table.personaId, table.createdDate),
 	perTrattativa: index('attivita_trattativa_id_idx').on(table.trattativaId),
+	// Un rientro per contatto: il giro si può lanciare quante volte si vuole.
+	unRientroPerContatto: uniqueIndex('attivita_ingresso_dopo_contatto_unico')
+		.on(sql`(${table.riferimento}->>'contatto')`).where(sql`${table.tipo} = 'ingresso_dopo_contatto'`),
 }));
 
 // I consensi alle comunicazioni promozionali (shared/consensi.js), come registro: una riga per

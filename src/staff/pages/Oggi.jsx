@@ -7,10 +7,11 @@ import StatusBadge from "@/ui/StatusBadge";
 import { LoadingState } from "@/ui/Spinner";
 import { EmptyState, ErrorState } from "@/ui/StateViews";
 import AzioniPersona from "@/staff/components/segnali/AzioniPersona";
+import SegnaliBancone from "@/staff/components/ingressi/SegnaliBancone";
 import { useStaffAuth } from "@/staff/lib/StaffAuthContext";
 import { canEdit } from "@/staff/lib/permissions";
 import { fase as faseDi, etichettaSegnale } from "@/core/domain/segnali";
-import { ListChecks } from "lucide-react";
+import { ListChecks, DoorOpen } from "lucide-react";
 
 const VISTE = [
   { valore: "", etichetta: "Tutti" },
@@ -29,17 +30,24 @@ const linkDi = (p) => (p.socio_id ? `/crm/soci/${p.socio_id}` : `/lead?q=${encod
  * i nuovi da accompagnare, i compleanni. Ogni riga dice perché, in parole, e ha le azioni a
  * portata di pollice: lo staff chiama dal telefono. Registrato il contatto, la riga sparisce per
  * qualche giorno.
+ *
+ * In cima, chi è entrato oggi e ha qualcosa da sentirsi dire — il rinnovo, il bentornato, gli
+ * auguri: il controllo degli ingressi è passivo (il tornello), e altrimenti non lo vedrebbe nessuno.
  */
 export default function Oggi() {
   const { staffUser } = useStaffAuth();
   const [parametri, setParametri] = useSearchParams();
   const tipo = VISTE.some((v) => v.valore === parametri.get("tipo")) ? parametri.get("tipo") : "";
   const [dati, setDati] = useState(null);
+  const [entrati, setEntrati] = useState([]);
   const [errore, setErrore] = useState(null);
 
   const carica = useCallback(() => {
     setErrore(null);
     api.segnali({ da_fare: "1", tipo }).then(setDati).catch(setErrore);
+    // Chi è passato dal tornello non lo vede nessuno: qui, quello che gli va detto. Solo soci.
+    if (tipo !== "lead") api.segnali({ entrati_oggi: "1", tipo: "soci" }).then((d) => setEntrati(d.persone)).catch(() => setEntrati([]));
+    else setEntrati([]);
   }, [tipo]);
   useEffect(() => { setDati(null); carica(); }, [carica]);
 
@@ -60,6 +68,26 @@ export default function Oggi() {
           </button>
         ))}
       </div>
+
+      {entrati.length > 0 && (
+        <section aria-labelledby="entrati-oggi" className="mb-6">
+          <h2 id="entrati-oggi" className="text-sm font-heading font-semibold mb-2 flex items-center gap-2">
+            <DoorOpen className="w-4 h-4" aria-hidden="true" /> Entrati oggi
+          </h2>
+          <ul className="space-y-2">
+            {entrati.map((p) => (
+              <li key={p.persona_id}>
+                <Card className="border-0 shadow-sm">
+                  <CardContent className="p-3 space-y-2">
+                    <Link to={linkDi(p)} className="font-medium hover:underline break-words">{p.nome}</Link>
+                    <SegnaliBancone personaId={p.persona_id} segnali={p.bancone} puoRegistrare={puoModificare(p)} />
+                  </CardContent>
+                </Card>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {errore && <ErrorState error={errore} onRetry={carica} />}
       {!dati && !errore && <LoadingState minHeight="h-64" />}
