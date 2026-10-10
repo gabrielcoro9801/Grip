@@ -58,6 +58,21 @@ export const config = {
 	qrSecret: process.env.QR_SECRET || undefined,
 
 	/**
+	 * La prima serratura delle comunicazioni (lib/invii.js): senza `INVII_REALI=true` nessun
+	 * messaggio esce davvero, comunque sia configurata la palestra. Si usa il fornitore finto e il
+	 * messaggio resta `simulato`. È spenta se manca: dimenticarla non deve mai far partire niente.
+	 */
+	inviiReali: ['1', 'true', 'si', 'sì'].includes(String(process.env.INVII_REALI ?? '').trim().toLowerCase()),
+
+	/**
+	 * La chiave con cui si cifrano le credenziali dei canali (lib/segreti.js): la password della
+	 * casella, la chiave di Brevo. Facoltativa: senza, le credenziali non si possono salvare e i
+	 * canali che le chiedono restano non configurati. Non blocca l'avvio, perché il primo deploy
+	 * delle comunicazioni deve partire spento senza chiedere niente.
+	 */
+	chiaveSegreti: process.env.CHIAVE_SEGRETI || undefined,
+
+	/**
 	 * Origini ammesse dal browser. In sviluppo qualunque, perché Vite e il server girano su
 	 * porte diverse e l'unico a raggiungerli è chi sta davanti al computer.
 	 */

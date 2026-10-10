@@ -106,6 +106,8 @@ Sempre sotto **Variables** del servizio backend:
 | `CORS_ORIGIN` | `https://gripcore.it` | con un servizio solo non serve davvero, ma il server la pretende |
 | `PUBLIC_BASE_URL` | `https://gripcore.it` | entra negli indirizzi dei file caricati (documenti, foto) |
 | `UPLOAD_DIR` | `/data/uploads` | vedi 2.4 |
+| `CHIAVE_SEGRETI` | un'altra stringa lunga e casuale | cifra le credenziali dei canali delle comunicazioni (la password della casella, la chiave di Brevo). Facoltativa: senza, il server parte, ma le credenziali non si possono salvare. **Non cambiarla** dopo averle salvate: quelle cifrate con la vecchia non si leggono più, e vanno reinserite |
+| `INVII_REALI` | **non impostarla** finché la palestra non è pronta | la prima serratura delle comunicazioni (vedi 2.8): senza, nessun messaggio esce davvero, comunque sia configurata la palestra |
 
 Il segreto lo generi così:
 
@@ -235,12 +237,11 @@ forzi a un valore diverso da quello su cui Railway instrada — per esempio copi
 ### 2.7 Il giro quotidiano (Railway Cron)
 
 Alcune cose il CRM le fa da solo una volta al giorno, anche se nessuno apre GRIP: chiude come
-*non raggiungibili* i contatti con troppi tentativi senza risposta, e scrive nel diario chi,
+*non raggiungibili* i contatti con troppi tentativi senza risposta, scrive nel diario chi,
 contattato perché assente o in calo, è rientrato entro 14 giorni (la misura dell'efficacia dei
-contatti). Le fa
-[`server/src/giro.js`](../server/src/giro.js), che **non invia niente** ed è idempotente:
-lanciato due volte nello stesso giorno, la seconda non trova nulla da fare. A mano, da
-`server/`: `npm run giro`.
+contatti), e fa girare i playbook delle comunicazioni (2.8). Le fa
+[`server/src/giro.js`](../server/src/giro.js), che è idempotente: lanciato due volte nello
+stesso giorno, la seconda non trova nulla da fare. A mano, da `server/`: `npm run giro`.
 
 Su Railway gira come un **servizio a parte**, nello stesso progetto, che parte all'ora
 stabilita, fa il giro ed esce:
@@ -248,18 +249,55 @@ stabilita, fa il giro ed esce:
 1. **+ New → GitHub Repo**, lo stesso repository del backend. Chiamalo `giro`.
 2. **Settings → Build**: builder **Dockerfile**, Root Directory vuoto, come il backend (2.3).
 3. **Settings → Deploy → Custom Start Command**: `node server/src/giro.js`.
-4. **Settings → Deploy → Cron Schedule**: `0 3 * * *`. L'ora è in **UTC**: le 3 UTC sono le
-   4 o le 5 a Roma, quando nessuno lavora.
-5. **Variables**: basta `DATABASE_URL`, come riferimento a quella del database
-   (`${{Postgres.DATABASE_URL}}`). Il giro non serve pagine e non usa le altre variabili.
+4. **Settings → Deploy → Cron Schedule**: `15 8 * * *`. L'ora è in **UTC**: le 8:15 UTC sono le
+   10:15 d'estate e le 9:15 d'inverno a Roma. **Non di notte**: dentro la fascia di silenzio
+   delle comunicazioni (di base dalle 21 alle 9) il giro fa la manutenzione ma non accoda
+   nessun messaggio, e con un cron notturno i playbook non partirebbero mai.
+5. **Variables**: `DATABASE_URL`, come riferimento a quella del database
+   (`${{Postgres.DATABASE_URL}}`), e le stesse del backend che servono alle comunicazioni:
+   `JWT_SECRET` e `QR_SECRET` (firmano i link di disiscrizione, che il backend deve poter
+   riconoscere), `CHIAVE_SEGRETI` (per leggere le credenziali dei canali), `PUBLIC_BASE_URL`
+   (i link nei messaggi) e, quando sarà il momento, `INVII_REALI`. Mettile come riferimenti a
+   quelle del backend (`${{backend.JWT_SECRET}}` e così via), non come copie: una chiave
+   diversa fra i due servizi rompe i link senza dare errori.
 6. Il giro non apre una porta: se il rilascio resta in attesa del controllo di salute
    (`/health`, che `railway.json` chiede per il backend), svuota **Healthcheck Path** nelle
    impostazioni di questo servizio.
 
 Per sapere se ha girato: **Deployments** del servizio `giro`, una riga al giorno; nei log c'è
-il resoconto, per esempio `La mia associazione: 2 lead chiusi come non raggiungibili, 3 soci rientrati dopo un contatto.` Se il
+il resoconto, per esempio `La mia associazione: 2 lead chiusi come non raggiungibili, 3 soci rientrati dopo un contatto.`
+seguito dalla riga delle comunicazioni (`0 simulati, 0 accodati…`). Se il
 processo non esce, Railway salta le esecuzioni successive: il giro chiude sempre la
 connessione al database ed esce, anche quando fallisce (codice d'uscita 1).
+
+### 2.8 Le comunicazioni ai soci (arrivano spente)
+
+GRIP sa mandare messaggi automatici ai soci — il rinnovo che si avvicina, l'assenza, il
+certificato in scadenza, la lezione annullata — nel portale, per email e (in futuro) per SMS.
+**Al primo deploy non parte niente**, e niente può partire per sbaglio: servono tre cose
+insieme, controllate in un punto solo del codice (`server/src/lib/invii.js`).
+
+1. **`INVII_REALI=true` sul server** (e sul servizio `giro`). Senza, ogni messaggio va a un
+   fornitore finto e resta *simulato*: la palestra può configurare tutto e vedere le anteprime.
+2. **L'interruttore della palestra**, in Comunicazioni → Stato: si accende solo con la lista di
+   controllo completa (un canale pronto, l'informativa privacy aggiornata, i testi riletti, e
+   `PUBLIC_BASE_URL` impostata).
+3. **Un canale pronto** (configurato e verificato con un invio di prova: il codice ricevuto si
+   riscrive in GRIP) e **il playbook in "Attivo"**. Una verifica fatta in simulazione non vale
+   per gli invii veri: accesa `INVII_REALI`, l'invio di prova va rifatto.
+
+Le credenziali dei canali (la password della casella, la chiave di Brevo) si salvano solo con
+`CHIAVE_SEGRETI` impostata, cifrate, e non si rileggono mai dall'interfaccia.
+
+**Email**: la palestra sceglie in Comunicazioni → Canali fra la sua casella (SMTP: server,
+porta, utente e password — per Gmail e Outlook serve una "password per le app") e Brevo
+(un account gratuito, il dominio del mittente verificato su Brevo, la chiave API). Non c'è un
+server di posta nostro: dagli indirizzi di Railway le email finirebbero nello spam.
+**SMS**: per ora c'è solo il fornitore simulato. **Push** sul telefono: non ancora.
+
+Per provare tutto senza mandare niente: `cd server && npm run verifica:fase4` (dopo
+`npx vite build` nella radice), con `INVII_REALI` spenta — lo script si rifiuta di partire
+altrimenti.
 
 ---
 

@@ -393,6 +393,13 @@
       "when": 1791651380364,
       "tag": "0055_istruttore_collegato",
       "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "7",
+      "when": 1791654309196,
+      "tag": "0056_comunicazioni",
+      "breakpoints": true
     }
   ]
 }

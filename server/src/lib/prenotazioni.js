@@ -5,6 +5,7 @@ import { motivoSenzaCopertura } from '../../../shared/abbonamenti.js';
 import { iscrizioniDelSocio } from './iscrizioni.js';
 import { lezioneFinita } from '../../../shared/giorni.js';
 import { motivoDisdettaChiusa } from '../../../shared/corsi.js';
+import { notifica, giornoEsteso } from './notifiche.js';
 
 /**
  * Prenotare e disdire: le due regole, in un posto solo.
@@ -209,6 +210,23 @@ export async function promuoviFinoACapienza(tx, sessionId) {
 	for (const [indice, riga] of coda.slice(liberi).entries()) {
 		if (riga.waitlistPosition === indice + 1) continue;
 		await tx.update(bookings).set({ waitlistPosition: indice + 1 }).where(eq(bookings.id, riga.id));
+	}
+
+	// Chi passa dalla lista d'attesa deve saperlo: altrimenti scopre di avere un posto solo se
+	// riapre l'agenda, e magari non viene. Nel portale sempre; per email o SMS se la palestra
+	// ha acceso il playbook (lib/invii.js). Nella stessa transazione della promozione.
+	if (promosse.length) {
+		const [corso] = await tx.select({ nome: courses.name }).from(events)
+			.innerJoin(courses, eq(events.courseId, courses.id)).where(eq(events.id, lezione.eventId)).limit(1);
+		const nome = corso?.nome ?? 'la lezione';
+		for (const riga of promosse) {
+			await notifica(tx, [riga.memberId], {
+				tipo: 'promosso_lista_attesa',
+				titolo: `Posto confermato: ${nome}`,
+				testo: `Si è liberato un posto: la tua prenotazione a ${nome} di ${giornoEsteso(lezione.date)} alle ${String(lezione.startTime).slice(0, 5)} è confermata. `
+					+ 'Se non puoi più venire, disdici dal portale per lasciare il posto a un altro.',
+			}, { evento: 'promosso_lista_attesa', riferimento: `prenotazione:${riga.id}` });
+		}
 	}
 	return promosse;
 }

@@ -26,6 +26,8 @@ import calendarioRoutes from './routes/calendario.js';
 import prenotazioniFisseRoutes from './routes/prenotazioniFisse.js';
 import ingressiRoutes from './routes/ingressi.js';
 import dashboardRoutes from './routes/dashboard.js';
+import comunicazioniRoutes from './routes/comunicazioni.js';
+import disiscrizioneRoutes from './routes/disiscrizione.js';
 import memberRoutes from './routes/member/index.js';
 import { firmaValida } from './lib/urlFirmati.js';
 import { UPLOAD_DIR } from './lib/fileCaricati.js';
@@ -181,6 +183,9 @@ export function buildApp({ publicBaseUrl = 'http://localhost:3001', logger = tru
 	app.register(prenotazioniFisseRoutes);
 	app.register(ingressiRoutes);
 	app.register(dashboardRoutes);
+	app.register(comunicazioniRoutes);
+	// Aperta: il link in fondo ai messaggi promozionali, firmato (lib/urlFirmati.js).
+	app.register(disiscrizioneRoutes);
 	// L'API del portale soci, sotto un prefisso suo e con una versione nel percorso: è il
 	// contratto che un domani reggerà un'app installata, che non si aggiorna a comando.
 	// Registrata prima delle rotte generiche perché è la più specifica.

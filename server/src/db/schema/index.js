@@ -7,3 +7,4 @@ export * from './hr.js';
 export * from './fitness.js';
 export * from './notifiche.js';
 export * from './persone.js';
+export * from './messaggi.js';

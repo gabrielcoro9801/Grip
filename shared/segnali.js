@@ -290,7 +290,7 @@ export function segnaliPersona({
 
 	if (frequenta) {
 		if (noShow >= NO_SHOW_SEGNALE) aggiungi('no_show_ripetuti', `${noShow} no-show in 4 settimane`, { dati: { no_show: noShow } });
-		if (giorniSocio >= 7 && giorniSocio < 14) aggiungi('ambientamento_giorno_7', `iscritto da ${giorniSocio} giorni: come si trova?`);
+		if (giorniSocio >= 7 && giorniSocio < 14) aggiungi('ambientamento_giorno_7', `iscritto da ${giorniSocio} giorni: come si trova?`, { dati: { giorni: giorniSocio } });
 		if (ingressi && !assente && giorniSocio >= 21 && giorniSocio <= soglie.ambientamentoGiorni && (Number(ingressi.quattro) || 0) < INGRESSI_AMBIENTAMENTO) {
 			aggiungi('ambientamento_pochi_ingressi', `${plurale(Number(ingressi.quattro) || 0, 'ingresso', 'ingressi')} in 4 settimane, iscritto da ${giorniSocio} giorni`);
 		}

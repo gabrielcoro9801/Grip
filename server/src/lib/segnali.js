@@ -48,7 +48,7 @@ export async function situazioni({ personaId = null, conn = db, adesso = new Dat
 	const dal12 = spostaGiorni(oggi, -83);
 
 	const anagrafiche = await conn.select({
-		persona_id: persone.id, nome: persone.fullName, telefono: persone.telefono, email: persone.email,
+		persona_id: persone.id, nome: persone.fullName, nome_proprio: persone.nome, telefono: persone.telefono, email: persone.email,
 		socio_id: members.id, codice_socio: members.codiceSocio, archiviato_il: members.archiviatoIl,
 		date_of_birth: members.dateOfBirth, created_date: members.createdDate,
 	}).from(persone).leftJoin(members, eq(members.personaId, persone.id))
@@ -141,7 +141,9 @@ export async function situazioni({ personaId = null, conn = db, adesso = new Dat
 		});
 		elenco.push({
 			persona_id: a.persona_id, socio_id: a.socio_id, trattativa_id: trattativa?.id ?? null,
-			nome: a.nome, telefono: a.telefono, email: a.email, codice_socio: a.codice_socio, archiviato_il: a.archiviato_il,
+			nome: a.nome, nome_proprio: a.nome_proprio, telefono: a.telefono, email: a.email, codice_socio: a.codice_socio, archiviato_il: a.archiviato_il,
+			// Per le comunicazioni (lib/invii.js): un minore non riceve fuori dal portale.
+			nascita: a.date_of_birth ?? null,
 			fase, segnali,
 			ultimo_ingresso: c?.ultimo ? oggiIso(new Date(c.ultimo)) : null,
 			ingressi_4: ingressiSocio ? ingressiSocio.quattro : null,
