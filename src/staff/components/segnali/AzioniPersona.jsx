@@ -20,7 +20,7 @@ const RIMANDI = [
 // Al telefono non si propone un rinnovo "salutando": gli esiti di persona li usa il bancone.
 const ESITI_DA_STAFF = ESITI_CONTATTO.filter((e) => e.valore !== "salutato");
 
-/** "Fatto, com'è andata": il contatto con un socio, nel suo diario. */
+/** "Registra contatto": com'è andato il contatto con un socio, nel suo diario. */
 function DialogoContatto({ persona, aperto, onChiudi, onFatto }) {
   const { toast } = useToast();
   const [valori, setValori] = useState({ canale: "telefono", esito: null, nota: "" });
@@ -47,7 +47,7 @@ function DialogoContatto({ persona, aperto, onChiudi, onFatto }) {
       <DialogContent className="max-w-md">
         <form onSubmit={conferma} className="space-y-4">
           <DialogHeader>
-            <DialogTitle>Fatto: com'è andata?</DialogTitle>
+            <DialogTitle>Com'è andato il contatto?</DialogTitle>
             <DialogDescription>{persona.nome}{persona.perche ? ` · ${persona.perche}` : ""}</DialogDescription>
           </DialogHeader>
           <Scelte etichetta="Come" voci={CANALI_CONTATTO} valore={valori.canale} onScegli={imposta("canale")} />
@@ -133,7 +133,7 @@ export default function AzioniPersona({ persona, puoModificare, onFatto, classNa
       )}
       {puoModificare && (
         <>
-          <Button size="sm" className="h-9" onClick={() => setAperta("contatto")}><Check className="w-4 h-4 mr-1" /> Fatto</Button>
+          <Button size="sm" className="h-9" onClick={() => setAperta("contatto")}><Check className="w-4 h-4 mr-1" /> Registra contatto</Button>
           <Button size="sm" variant="ghost" className="h-9" onClick={() => setAperta("rimanda")}><Clock className="w-4 h-4 mr-1" /> Rimanda</Button>
           {/* Uno scaduto che non torna si chiude con il suo motivo: archiviato, esce da Oggi. */}
           {persona.socio_id && !persona.archiviato_il && persona.da_fare?.includes("scaduto_recuperabile") && (

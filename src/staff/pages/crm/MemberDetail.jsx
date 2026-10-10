@@ -10,7 +10,7 @@ import { Label } from "@/ui/primitivi/label";
 import { Input } from "@/ui/primitivi/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/ui/primitivi/select";
 import StatusBadge from "@/ui/StatusBadge";
-import { ArrowLeft, Plus, CreditCard, QrCode, KeyRound, RefreshCw, Pencil, UserRound, Archive, ArchiveRestore } from "lucide-react";
+import { ArrowLeft, Plus, CreditCard, QrCode, KeyRound, RefreshCw, Pencil, UserRound, Archive, ArchiveRestore, ListChecks } from "lucide-react";
 import CampiAnagrafica, { anagraficaDi, motivoAnagraficaIncompleta } from "@/staff/components/soci/CampiAnagrafica";
 import FisseSocio from "@/staff/components/soci/FisseSocio";
 import IngressiSocio from "@/staff/components/soci/IngressiSocio";
@@ -312,14 +312,14 @@ export default function MemberDetail() {
 
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
+    <div className="p-4 sm:p-6 lg:p-8 max-w-5xl mx-auto space-y-6">
       <Link to="/crm" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
         <ArrowLeft className="w-4 h-4" /> Torna a Gestione membri
       </Link>
 
-      {/* Intestazione: chi è, a che punto è con la palestra e che cosa c'è da fare. I dati
-          stanno tutti nella tile dell'anagrafica; ripeterli qui voleva dire leggerli due volte. */}
-      <div className="space-y-3">
+      {/* Intestazione: chi è, e basta. I dati stanno tutti nella tile dell'anagrafica qui
+          sotto; ripeterli qui voleva dire leggerli due volte. */}
+      <div>
         <h1 className="text-xl font-heading font-bold">{member.full_name}</h1>
         <div className="flex flex-wrap items-center gap-2 mt-1">
           <span className="inline-block text-xs font-mono font-medium text-muted-foreground bg-muted px-2 py-0.5 rounded">
@@ -330,33 +330,23 @@ export default function MemberDetail() {
           )}
 
         </div>
-        {vedeDiario && (
-          <SituazioneSocio
-            personaId={member.persona_id} onFatto={() => setVersioneDiario((v) => v + 1)}
-            puoModificare={puoModificare || canEdit(staffUser?.ruolo, "crm_leads")}
-          />
-        )}
       </div>
 
-      {/* Il diario al centro: è la storia della persona, ed è lì che si lavora. Le schede con
-          anagrafica, abbonamenti, documenti e accesso gli stanno accanto. */}
-      <div className="grid lg:grid-cols-5 gap-6 items-start">
-        {vedeDiario && (
-          <div className="lg:col-span-3">
-            <DiarioSocio key={versioneDiario} socio={member} puoModificare={puoModificare || canEdit(staffUser?.ruolo, "crm_leads")} />
-          </div>
-        )}
-        <div className={`${vedeDiario ? "lg:col-span-2" : "lg:col-span-5"} space-y-6`}>
+      {/* La scheda com'era prima del CRM: l'anagrafica a tutta larghezza, poi abbonamenti,
+          documenti, fisse e accesso su due colonne. Il lavoro della segreteria (che cosa c'è
+          da fare, i contatti, il diario) è un blocco in più, in fondo: chi apre la scheda per
+          un dato lo trova subito, chi la apre per seguire il socio scende. */}
+      <div className="grid lg:grid-cols-2 gap-6">
         {/* Anagrafica: la tile principale, a tutta larghezza. Stesso ordine del modulo, così
             chi corregge un dato lo ritrova dove l'ha visto. */}
-        <Card className="border-0 shadow-sm">
+        <Card className="border-0 shadow-sm lg:col-span-2">
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-heading flex items-center gap-2"><UserRound className="w-4 h-4" /> Anagrafica</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="flex flex-col sm:flex-row lg:flex-col gap-6">
-              <AvatarSocio socio={member} size="lg" className="self-center sm:self-start lg:self-center" />
-              <dl className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
+            <div className="flex flex-col sm:flex-row gap-6">
+              <AvatarSocio socio={member} size="lg" className="self-center sm:self-start" />
+              <dl className="flex-1 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-4">
                 <DatoAnagrafico etichetta="Nome">{member.nome}</DatoAnagrafico>
                 <DatoAnagrafico etichetta="Cognome">{member.cognome}</DatoAnagrafico>
                 <DatoAnagrafico etichetta="Codice fiscale">{member.codice_fiscale}</DatoAnagrafico>
@@ -370,7 +360,7 @@ export default function MemberDetail() {
                 <DatoAnagrafico etichetta="Contatto di emergenza">{member.emergency_contact_name}</DatoAnagrafico>
                 <DatoAnagrafico etichetta="Telefono di emergenza">{member.emergency_contact_phone}</DatoAnagrafico>
                 <DatoAnagrafico etichetta="Socio dal">{formatData(member.created_date, "media")}</DatoAnagrafico>
-                <DatoAnagrafico etichetta="Note" className="sm:col-span-2">{member.notes}</DatoAnagrafico>
+                <DatoAnagrafico etichetta="Note" className="sm:col-span-2 lg:col-span-3">{member.notes}</DatoAnagrafico>
               </dl>
             </div>
             {puoModificare && (
@@ -517,7 +507,26 @@ export default function MemberDetail() {
           </CardContent>
         </Card>
 
-        </div>
+        {/* Il blocco del CRM: la situazione del socio con le azioni (chiama, WhatsApp, registra
+            un contatto, rimanda), e sotto il diario con la storia dei contatti. */}
+        {vedeDiario && (
+          <Card className="border-0 shadow-sm lg:col-span-2">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-heading flex items-center gap-2"><ListChecks className="w-4 h-4" /> Da seguire</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <SituazioneSocio
+                personaId={member.persona_id} onFatto={() => setVersioneDiario((v) => v + 1)}
+                puoModificare={puoModificare || canEdit(staffUser?.ruolo, "crm_leads")}
+              />
+            </CardContent>
+          </Card>
+        )}
+        {vedeDiario && (
+          <div className="lg:col-span-2">
+            <DiarioSocio key={versioneDiario} socio={member} puoModificare={puoModificare || canEdit(staffUser?.ruolo, "crm_leads")} />
+          </div>
+        )}
       </div>
 
       {/* New Subscription Dialog */}
