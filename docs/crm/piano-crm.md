@@ -69,7 +69,8 @@ account (globale)            login dell'app unica, push token
 - `attivita.tipo` è un elenco chiuso in `shared/`:
   - `nota`, `tentativo`, `risposta`, `richiamo`, `chiusura`, `riapertura`, `stato_automatico`;
   - `messaggio`, `richiesta_rinnovo`, `ingresso_dopo_contatto`, `sondaggio`;
-  - (Fase 2) `contatto` — un contatto con un socio, con `canale` ed `esito`: `risposto`, `nessuna_risposta`, `proposto_rinnovo`, `salutato` (la proposta di rinnovo è un esito, non un tipo a sé) — e `rimando`, con `esito` = il giorno fino a cui i segnali tacciono.
+  - (Fase 2) `contatto` — un contatto con un socio, con `canale` ed `esito`: `risposto`, `nessuna_risposta`, `proposto_rinnovo`, `salutato` (la proposta di rinnovo è un esito, non un tipo a sé) — e `rimando`, con `esito` = il giorno fino a cui i segnali tacciono;
+  - (Fase 3) `sospensione` (`esito` = "dal/al") e `fine_sospensione`, `abbandono` (`esito` = il motivo, `MOTIVI_ABBANDONO`), `riattivazione`, `nota_istruttore`. Il contatto registra in `riferimento` i segnali da fare in quel momento (`{ segnali }`, li scrive il server); `ingresso_dopo_contatto` il contatto e l'ingresso (`{ contatto, ingresso }`, una riga per contatto).
 
   Ogni riga ha `autore` (null = sistema) e un `riferimento` jsonb (id del messaggio, della trattativa, dell'abbonamento).
 - Migrazione dall'esistente:
@@ -157,6 +158,7 @@ Una prenotazione `confirmed` con un ingresso del socio nella finestra (da 60 min
   - un tocco registra `proposta_rinnovo` o "salutato" nel diario.
 - **D6. Ricerca globale Ctrl+K**: nome, telefono, CF o codice → scheda. È il gesto più frequente della reception.
 - **D7. Vista istruttore**, con accesso leggero: le sue lezioni, presenti e no-show, assenti ricorrenti, nota nel diario.
+  Fatta nella Fase 3 ("Le mie lezioni", `/istruttore`): `staff_accounts.instructor_id` collega l'account all'istruttore, il modulo `lezioni_istruttore` la apre. Vede solo chi è prenotato alle sue lezioni (ultime 12 settimane e future), e del diario solo le note degli istruttori.
 
 ---
 
@@ -201,6 +203,7 @@ Ordine di invio: push → email → SMS, solo se la regola lo prevede e c'è bud
 | Sondaggio NPS | 30 e 180 gg; voto 6 o meno → Oggi; 9–10 → recensione Google | email/push | marketing |
 
 **"Richiedi il rinnovo"** nel portale (`/member-portal/abbonamento`): crea un'`attivita` di tipo `richiesta_rinnovo` e il segnale con priorità massima. Al posto dei pagamenti: il socio esprime l'intenzione, la reception incassa di persona.
+Fatto nella Fase 3: `rinnovo_richiesto` (priorità 100) resta finché non si vende un abbonamento o non si registra un contatto riuscito dopo la richiesta (un "non ha risposto" non la chiude; un contatto di prima non la nasconde). Una seconda richiesta mentre la prima aspetta non ne crea un'altra.
 
 ---
 
@@ -253,6 +256,14 @@ Ogni modifica passa da `lib/registro.js`.
 6. **Acquisizione**: form pubblico e QR in sala, lezione di prova (`bookings.persona_id`), porta un amico, "scopri palestre" dell'app unica (solo con consenso).
 
 Fuori ambito per decisione: pagamenti. Più avanti: assistente AI sul diario e sui testi; tesseramento EPS con scadenza.
+
+**Fase 3, com'è andata.** Fatti: Iscrivi (`POST /api/iscrivi`, una transazione; sostituisce `trasforma`), "Richiedi il rinnovo", sospensione, motivo di abbandono, vista istruttore, segnali del tornello in cima a Oggi ("Entrati oggi") e nella scheda, `ingresso_dopo_contatto` nel giro. Scelte:
+- **Sospensione** (`sospensioni`, del socio e non dell'iscrizione): la scadenza si calcola (`conSospensioni`), allunga l'iscrizione che copre il primo giorno e fa slittare il rinnovo già comprato che le viene dietro. La decide solo la reception, senza tetti di durata né di numero (scelta della palestra), motivo facoltativo; si parte da oggi o dopo, e si può far riprendere prima. Fase `sospeso`; dopo la ripresa l'assenza si conta dalla ripresa e il calo tace per 12 settimane.
+- **Motivo di abbandono**: obbligatorio archiviando; "chiudere uno scaduto recuperabile perso" è la stessa archiviazione. La dashboard conta i motivi degli ultimi 12 mesi.
+- **Istruttore**: i permessi predefiniti non gli danno più soci, documenti e contatti (migrazione 0055, solo se il ruolo aveva ancora i predefiniti). Tiene il calendario, che dall'endpoint generico apre ancora l'elenco dei soci: punto aperto dell'audit, da chiudere quando il calendario riceverà i nomi dal server.
+- **Iscrivi**: l'informativa privacy firmata è obbligatoria e scrive `gdpr_consent`; i consensi promozionali si registrano con fonte `reception`. I file si caricano prima della transazione (`ponytail:` orfani se fallisce, li pulisce `manutenzione:file-orfani`).
+
+**Fase 3, cosa resta fuori**: il filtro "i miei" e il tempo reale di Oggi, le liste salvate, l'elenco unico persone (come prima); la richiesta di sospensione dal portale (decisione: solo la reception); i limiti alla sospensione (la palestra non li vuole: si aggiungono in `shared/soglie.js` se servono); la mostra dell'efficacia (Fase 5: il dato c'è); la sezione degli invii `/admin/comunicazioni` (Fase 4).
 
 **Fase 2, cosa resta fuori** (rimandato, non scartato): il filtro "i miei" e l'aggiornamento in tempo reale (SSE) di Oggi; le liste salvate e le azioni multiple dell'elenco; l'elenco unico persone (soci e contatti restano due pagine); `ingresso_dopo_contatto` nel giro; `rinnovo_richiesto`, che nasce con "Richiedi il rinnovo" (Fase 3). Il bancone non c'è più: il controllo degli ingressi è passivo (tornello) e lo staff registra a mano solo le eccezioni. I segnali "bancone" compaiono nella finestra "Registra ingresso"; dove mostrarli per chi entra dal tornello è una scelta della Fase 3.
 

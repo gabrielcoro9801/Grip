@@ -15,7 +15,8 @@ import { canAccess } from '../../../shared/permissions.js';
 import { translateToSnakeCase } from '../entities/columnMaps.js';
 import { registerPgErrorHandler } from './errorHandler.js';
 import { NOTA_DIARIO_MASSIMO, CANALI_CONTATTO, STATI_APERTI, esitoContattoValido } from '../../../shared/lead.js';
-import { RIMANDO_MASSIMO_GIORNI } from '../../../shared/segnali.js';
+import { RIMANDO_MASSIMO_GIORNI, daFare } from '../../../shared/segnali.js';
+import { situazioni } from '../lib/segnali.js';
 import { consensiAttuali, tipoConsensoValido } from '../../../shared/consensi.js';
 import { normalizzaTelefono } from '../../../shared/anagrafica.js';
 import { oggiIso, spostaGiorni } from '../../../shared/giorni.js';
@@ -138,8 +139,13 @@ export default async function personeRoutes(fastify) {
 		if (!CANALI_CONTATTO.some((c) => c.valore === canale)) return reply.code(400).send({ error: "Indica come l'hai contattato." });
 		if (!esitoContattoValido(esito)) return reply.code(400).send({ error: "Indica com'è andata." });
 		if (nota && nota.length > NOTA_DIARIO_MASSIMO) return reply.code(400).send({ error: `La nota sta in ${NOTA_DIARIO_MASSIMO} caratteri.` });
+		// Perché lo si è cercato, lo dice il motore e non il client: i segnali da fare adesso. È ciò
+		// che permette al giro di contare chi, contattato perché assente, è poi tornato (giro.js).
+		const [situazione] = (await situazioni({ personaId: request.params.id })).persone;
+		const segnali = daFare(situazione?.segnali ?? [], 'staff').map((s) => s.codice);
 		const [riga] = await db.insert(attivita).values({
 			personaId: request.params.id, tipo: 'contatto', canale, esito, nota, autoreId: request.utente.sub, autoreNome: await nomeAutore(request),
+			riferimento: segnali.length ? { segnali } : null,
 		}).returning();
 		reply.code(201);
 		return { attivita: translateToSnakeCase(attivita, riga) };

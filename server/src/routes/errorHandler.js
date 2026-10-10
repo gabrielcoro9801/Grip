@@ -30,6 +30,7 @@ const VINCOLI_CON_MESSAGGIO = {
 	bookings_attiva_unica_idx: 'Il socio è già prenotato a questa lezione.',
 	qr_accessi_attivo_unico_idx: "Il socio ha già un codice d'accesso attivo: revoca quello prima di crearne un altro.",
 	staff_accounts_linked_member_id_idx: 'Il socio ha già un account per il portale.',
+	staff_accounts_instructor_id_idx: "Questo istruttore è già collegato a un altro account.",
 };
 
 // Chi elimina una riga ancora citata da altre riceveva «Riferimento a un record inesistente»,

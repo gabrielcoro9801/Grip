@@ -10,7 +10,7 @@ import { eq, inArray } from 'drizzle-orm';
 import { buildApp } from '../src/app.js';
 import { db, pool } from '../src/db/client.js';
 import {
-	members, staffAccounts, qrAccessi, bookings, sessions, events, courses, rooms, instructors, subscriptions, plans, auditLogs,
+	members, staffAccounts, qrAccessi, bookings, sessions, events, courses, rooms, instructors, subscriptions, plans, auditLogs, attivita,
 } from '../src/db/schema/index.js';
 import { codiceDinamico } from '../src/lib/qrDinamico.js';
 import { oggiIso, spostaGiorni } from '../../shared/giorni.js';
@@ -88,6 +88,8 @@ after(async () => {
 	await db.delete(subscriptions).where(inArray(subscriptions.memberId, id.soci));
 	await db.delete(plans).where(eq(plans.id, id.tipo));
 	await db.delete(auditLogs).where(inArray(auditLogs.entitaId, id.soci));
+	const persone = (await db.select({ id: members.personaId }).from(members).where(inArray(members.id, id.soci))).map((p) => p.id);
+	await db.delete(attivita).where(inArray(attivita.personaId, persone));
 	await db.delete(staffAccounts).where(inArray(staffAccounts.id, id.account));
 	await db.delete(members).where(inArray(members.id, id.soci));
 	await app.close();
@@ -101,8 +103,14 @@ describe('archiviare un socio', () => {
 		assert.equal(res.json().archiviato_il, null);
 	});
 
+	test('senza un motivo dall\'elenco non si archivia; con «Altro» serve la nota', async () => {
+		assert.equal((await admin({ method: 'POST', url: `/api/soci/${id.soci[0]}/archivia` })).statusCode, 400);
+		assert.equal((await admin({ method: 'POST', url: `/api/soci/${id.soci[0]}/archivia`, payload: { motivo: 'boh' } })).statusCode, 400);
+		assert.equal((await admin({ method: 'POST', url: `/api/soci/${id.soci[0]}/archivia`, payload: { motivo: 'altro' } })).statusCode, 400);
+	});
+
 	test('si archivia, e la sua prenotazione futura passa a chi aspettava', async () => {
-		const res = await admin({ method: 'POST', url: `/api/soci/${id.soci[0]}/archivia` });
+		const res = await admin({ method: 'POST', url: `/api/soci/${id.soci[0]}/archivia`, payload: { motivo: 'trasferimento', nota: 'Va a Milano' } });
 		assert.equal(res.statusCode, 200, res.body);
 		assert.equal(res.json().socio.archiviato_il, oggiIso());
 		assert.equal(res.json().prenotazioni_disdette, 1);
@@ -110,6 +118,14 @@ describe('archiviare un socio', () => {
 		const righe = await db.select().from(bookings).where(eq(bookings.sessionId, id.lezione));
 		assert.equal(righe.find((b) => b.memberId === id.soci[0]).status, 'cancelled');
 		assert.equal(righe.find((b) => b.memberId === id.soci[1]).status, 'confirmed', 'chi era in lista è promosso');
+	});
+
+	test('il motivo resta nel diario, e la dashboard lo conta', async () => {
+		const [socio] = await db.select({ personaId: members.personaId }).from(members).where(eq(members.id, id.soci[0]));
+		const diario = await db.select().from(attivita).where(eq(attivita.personaId, socio.personaId));
+		assert.ok(diario.some((a) => a.tipo === 'abbandono' && a.esito === 'trasferimento' && a.nota === 'Va a Milano'));
+		const dashboard = (await admin({ method: 'GET', url: '/api/dashboard' })).json();
+		assert.ok(dashboard.abbandoni.find((a) => a.motivo === 'trasferimento').quanti >= 1);
 	});
 
 	test('portale: la sessione aperta non vale più, e non si rientra', async () => {

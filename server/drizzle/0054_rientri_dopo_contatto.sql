@@ -1,0 +1,2 @@
+ALTER TABLE "attivita" ADD COLUMN "riferimento" jsonb;--> statement-breakpoint
+CREATE UNIQUE INDEX "attivita_ingresso_dopo_contatto_unico" ON "attivita" USING btree (("riferimento"->>'contatto')) WHERE "attivita"."tipo" = 'ingresso_dopo_contatto';

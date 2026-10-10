@@ -290,9 +290,28 @@ export const MOTIVI_CHIUSURA = [
   { valore: "altro", etichetta: "Altro" },
 ];
 
+/**
+ * Perché un socio se ne va: lo sceglie la reception archiviandolo, anche da uno "scaduto da
+ * recuperare" che non torna. Un elenco chiuso, non una nota, così si contano (la dashboard).
+ */
+export const MOTIVI_ABBANDONO = [
+  { valore: "prezzo", etichetta: "Prezzo" },
+  { valore: "orari", etichetta: "Orari" },
+  { valore: "tempo", etichetta: "Poco tempo, lavoro" },
+  { valore: "trasferimento", etichetta: "Si è trasferito" },
+  { valore: "salute", etichetta: "Salute o infortunio" },
+  { valore: "motivazione", etichetta: "Ha perso la motivazione" },
+  { valore: "servizio", etichetta: "Non soddisfatto" },
+  { valore: "altra_struttura", etichetta: "Ha scelto un'altra struttura" },
+  { valore: "non_risponde", etichetta: "Non risponde più" },
+  { valore: "altro", etichetta: "Altro" },
+];
+export const motivoAbbandonoValido = (v) => MOTIVI_ABBANDONO.some((m) => m.valore === v);
+
 const etichetta = (elenco, v) => elenco.find((x) => x.valore === v)?.etichetta ?? v ?? "";
 export const etichettaCanaleContatto = (v) => etichetta(CANALI_CONTATTO, v);
 export const etichettaMotivoChiusura = (v) => etichetta(MOTIVI_CHIUSURA, v);
+export const etichettaMotivoAbbandono = (v) => etichetta(MOTIVI_ABBANDONO, v);
 
 /** Le soglie predefinite, in giorni (shared/soglie.js); quelle della palestra le dà `soglieDi`. */
 export const SOGLIE_LEAD = SOGLIE.lead;
@@ -450,6 +469,19 @@ export function descriviAttivita(a) {
     case "contatto": return `${etichettaCanaleContatto(a.canale)}: ${etichetta(ESITI_CONTATTO, a.esito)}`;
     case "rimando": return `Rimandato al ${dataBreve(a.esito)}`;
     case "nota": return "Nota";
+    case "nota_istruttore": return "Nota dell'istruttore";
+    case "richiesta_rinnovo": return "Ha chiesto il rinnovo dal portale";
+    case "sospensione": {
+      const [dal, al] = String(a.esito ?? "").split("/");
+      return al ? `Abbonamento sospeso dal ${dataBreve(dal)} al ${dataBreve(al)}` : "Abbonamento sospeso";
+    }
+    case "fine_sospensione": return `Sospensione finita: riprende il ${dataBreve(a.esito)}`;
+    case "abbandono": return `Ha lasciato la palestra: ${etichettaMotivoAbbandono(a.esito)}`;
+    case "riattivazione": return "Tornato socio";
+    case "ingresso_dopo_contatto": {
+      const n = Number(a.esito);
+      return `Tornato in palestra ${n === 0 ? "il giorno stesso del contatto" : n === 1 ? "il giorno dopo il contatto" : `${n} giorni dopo il contatto`}`;
+    }
     default: return a.tipo;
   }
 }

@@ -2,11 +2,12 @@ import React, { useState, useEffect, useCallback } from "react";
 import { api } from "@/core/api/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/ui/primitivi/card";
 import { Badge } from "@/ui/primitivi/badge";
-import { Users, UserCheck, Calendar, AlertTriangle, Clock, FileWarning } from "lucide-react";
+import { Users, UserCheck, Calendar, AlertTriangle, Clock, FileWarning, UserX } from "lucide-react";
 import StatusBadge from "@/ui/StatusBadge";
 import { LoadingState } from "@/ui/Spinner";
 import { ErrorState } from "@/ui/StateViews";
 import { formatData } from "@/core/domain/format";
+import { etichettaMotivoAbbandono } from "@/core/domain/lead";
 
 /**
  * La home del gestionale: numeri e avvisi.
@@ -36,7 +37,7 @@ export default function Dashboard() {
   if (loading) return <LoadingState minHeight="h-full" />;
   if (errore) return <ErrorState error={errore} onRetry={carica} className="h-full" />;
 
-  const { kpi, certificati, rinnovi, prossime } = dati;
+  const { kpi, certificati, rinnovi, prossime, abbandoni } = dati;
   const kpis = [
     { label: "Soci attivi", value: kpi.soci_attivi, icon: UserCheck, color: "text-success", bg: "bg-success/10" },
     { label: "Soci iscritti", value: kpi.soci_iscritti, icon: Users, color: "text-info", bg: "bg-info/10" },
@@ -137,6 +138,31 @@ export default function Dashboard() {
                   ))}
                 </div>
               )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Perché se ne vanno: i motivi scelti archiviando, negli ultimi 12 mesi. */}
+        {abbandoni && abbandoni.length > 0 && (
+          <Card className="border-0 shadow-sm">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base font-heading flex items-center gap-2">
+                <UserX className="w-4 h-4 text-muted-foreground" />
+                Perché se ne vanno
+                <span className="text-xs font-normal text-muted-foreground ml-auto">ultimi 12 mesi</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ul className="space-y-2">
+                {abbandoni.map((a) => (
+                  <li key={a.motivo} className="text-sm">
+                    <div className="flex justify-between gap-2"><span>{etichettaMotivoAbbandono(a.motivo)}</span><span className="tabular-nums font-medium">{a.quanti}</span></div>
+                    <div className="h-1.5 rounded-full bg-muted mt-1" aria-hidden="true">
+                      <div className="h-1.5 rounded-full bg-primary/60" style={{ width: `${(a.quanti / abbandoni[0].quanti) * 100}%` }} />
+                    </div>
+                  </li>
+                ))}
+              </ul>
             </CardContent>
           </Card>
         )}

@@ -7,11 +7,12 @@
 //
 // ponytail: tutto in memoria, per palestra; regge migliaia di persone. Una vista materializzata
 // solo se le misure lo chiederanno.
-import { and, count, eq, gte, inArray, isNull, lte, max, ne, or, sql } from 'drizzle-orm';
+import { and, count, eq, gte, inArray, lte, max, ne, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
-	persone, members, trattative, subscriptions, memberDocuments, ingressi, bookings, sessions, attivita,
+	persone, members, trattative, memberDocuments, ingressi, bookings, sessions, attivita,
 } from '../db/schema/index.js';
+import { iscrizioniPerSocio } from './iscrizioni.js';
 import { translateToSnakeCase } from '../entities/columnMaps.js';
 import { soglieEnte } from './impostazioni.js';
 import { segnaliPersona, esitoPrenotazione, TIPI_CONTATTO } from '../../../shared/segnali.js';
@@ -59,13 +60,8 @@ export async function situazioni({ personaId = null, conn = db, adesso = new Dat
 	const [elencoTrattative, iscrizioni, documenti, conteggi, misurati, prenotazioni, recenti, contatti] = await Promise.all([
 		conn.select().from(trattative)
 			.where(and(ne(trattative.stato, 'iscritto'), personaId ? eq(trattative.personaId, personaId) : undefined)),
-		conn.select({
-			id: subscriptions.id, member_id: subscriptions.memberId, plan_name: subscriptions.planName,
-			start_date: subscriptions.startDate, end_date: subscriptions.endDate,
-		}).from(subscriptions).where(and(
-			or(isNull(subscriptions.endDate), gte(subscriptions.endDate, spostaGiorni(oggi, -GIORNI_STORICO_ABBONAMENTI))),
-			suoi(subscriptions.memberId),
-		)),
+		// Con le date dopo le sospensioni (lib/iscrizioni.js).
+		iscrizioniPerSocio(personaId ? idSoci : null, { conn, fineDal: spostaGiorni(oggi, -GIORNI_STORICO_ABBONAMENTI) }),
 		conn.select({
 			id: memberDocuments.id, member_id: memberDocuments.memberId, file_name: memberDocuments.fileName,
 			document_type: memberDocuments.documentType, created_date: memberDocuments.createdDate, expiry_date: memberDocuments.expiryDate,
@@ -74,6 +70,9 @@ export async function situazioni({ personaId = null, conn = db, adesso = new Dat
 			member_id: ingressi.memberId, ultimo: max(ingressi.entratoAlle), totale: count(),
 			quattro: sql`count(*) filter (where ${ingressi.entratoAlle} >= ${mezzanotteRoma(dal4)})`.mapWith(Number),
 			dodici: sql`count(*) filter (where ${ingressi.entratoAlle} >= ${mezzanotteRoma(dal12)})`.mapWith(Number),
+			// Per i segnali del bancone di chi è già entrato oggi, dal tornello: com'era prima di oggi.
+			oggi: sql`count(*) filter (where ${ingressi.entratoAlle} >= ${mezzanotteRoma(oggi)})`.mapWith(Number),
+			prima: sql`max(${ingressi.entratoAlle}) filter (where ${ingressi.entratoAlle} < ${mezzanotteRoma(oggi)})`.mapWith((v) => (v ? oggiIso(new Date(v)) : null)),
 		}).from(ingressi).where(suoi(ingressi.memberId)).groupBy(ingressi.memberId),
 		// Una palestra che non registra gli ingressi non ha assenti: avrebbe solo soci "mai entrati".
 		conn.select({ id: ingressi.id }).from(ingressi).where(gte(ingressi.entratoAlle, mezzanotteRoma(dal4))).limit(1),
@@ -89,6 +88,9 @@ export async function situazioni({ personaId = null, conn = db, adesso = new Dat
 			persona_id: attivita.personaId,
 			ultimo: sql`max(${attivita.createdDate}) filter (where ${inArray(attivita.tipo, TIPI_CONTATTO)})`.mapWith((v) => (v ? oggiIso(new Date(v)) : null)),
 			rimandato_al: sql`max(${attivita.esito}) filter (where ${attivita.tipo} = 'rimando')`,
+			// Istanti, non giorni: richiesta e telefonata possono essere dello stesso giorno.
+			riscontro: sql`max(${attivita.createdDate}) filter (where ${inArray(attivita.tipo, TIPI_CONTATTO)} and ${attivita.esito} is distinct from 'nessuna_risposta')`,
+			richiesta: sql`max(${attivita.createdDate}) filter (where ${attivita.tipo} = 'richiesta_rinnovo')`,
 		}).from(attivita).where(personaId ? eq(attivita.personaId, personaId) : undefined).groupBy(attivita.personaId),
 	]);
 
@@ -101,7 +103,7 @@ export async function situazioni({ personaId = null, conn = db, adesso = new Dat
 			trattativaDi.set(t.personaId, t);
 		}
 	}
-	const iscrizioniDi = raggruppa(iscrizioni, 'member_id');
+	const iscrizioniDi = iscrizioni;
 	const documentiDi = raggruppa(documenti, 'member_id');
 	const prenotazioniDi = raggruppa(prenotazioni, 'member_id');
 	const recentiDi = raggruppa(recenti, 'member_id');
@@ -115,7 +117,10 @@ export async function situazioni({ personaId = null, conn = db, adesso = new Dat
 		if (!a.socio_id && !trattativa) continue;
 		const c = conteggiDi.get(a.socio_id);
 		const ingressiSocio = a.socio_id && misura
-			? { ultimo: c?.ultimo ? oggiIso(new Date(c.ultimo)) : null, quattro: c?.quattro ?? 0, dodici: c?.dodici ?? 0, totale: Number(c?.totale ?? 0) }
+			? {
+				ultimo: c?.ultimo ? oggiIso(new Date(c.ultimo)) : null, quattro: c?.quattro ?? 0, dodici: c?.dodici ?? 0, totale: Number(c?.totale ?? 0),
+				prima: c?.prima ?? null, oggi: c?.oggi ?? 0,
+			}
 			: null;
 		const istanti = (recentiDi.get(a.socio_id) ?? []).map((r) => r.alle);
 		const noShow = misura
@@ -128,7 +133,10 @@ export async function situazioni({ personaId = null, conn = db, adesso = new Dat
 			iscrizioni: iscrizioniDi.get(a.socio_id) ?? [],
 			documenti: documentiDi.get(a.socio_id) ?? [],
 			ingressi: ingressiSocio, noShow,
-			contatti: { ultimo: diario?.ultimo ?? null, rimandatoAl: diario?.rimandato_al ?? null },
+			contatti: {
+				ultimo: diario?.ultimo ?? null, rimandatoAl: diario?.rimandato_al ?? null,
+				riscontro: diario?.riscontro ?? null, richiestaRinnovo: diario?.richiesta ?? null,
+			},
 			oggi, soglie,
 		});
 		elenco.push({
@@ -141,6 +149,9 @@ export async function situazioni({ personaId = null, conn = db, adesso = new Dat
 			scadenza: copertura?.scadenza ?? null,
 			abbonamento: copertura?.riferimento?.plan_name ?? null,
 			valido: Boolean(copertura?.valido),
+			sospensione: copertura?.sospensione ? { dal: copertura.sospensione.dal, al: copertura.sospensione.al } : null,
+			// Entrato oggi, dal tornello o registrato a mano: i segnali del bancone gli valgono ancora.
+			entrato_oggi: Boolean(c?.oggi),
 		});
 	}
 	return { oggi, soglie, persone: elenco };

@@ -9,7 +9,8 @@ import AzioneLead, { Scelte } from "@/staff/components/lead/AzioneLead";
 import { CANALI_CONTATTO, ESITI_CONTATTO, NOTA_DIARIO_MASSIMO } from "@/core/domain/lead";
 import { linkWhatsApp } from "@/core/domain/anagrafica";
 import { testoMessaggio } from "@/core/domain/segnali";
-import { Phone, MessageCircle, Mail, Check, Clock } from "lucide-react";
+import DialogoAbbandono from "@/staff/components/soci/DialogoAbbandono";
+import { Phone, MessageCircle, Mail, Check, Clock, UserX } from "lucide-react";
 
 const RIMANDI = [
   { giorni: 1, etichetta: "A domani" },
@@ -134,7 +135,14 @@ export default function AzioniPersona({ persona, puoModificare, onFatto, classNa
         <>
           <Button size="sm" className="h-9" onClick={() => setAperta("contatto")}><Check className="w-4 h-4 mr-1" /> Fatto</Button>
           <Button size="sm" variant="ghost" className="h-9" onClick={() => setAperta("rimanda")}><Clock className="w-4 h-4 mr-1" /> Rimanda</Button>
+          {/* Uno scaduto che non torna si chiude con il suo motivo: archiviato, esce da Oggi. */}
+          {persona.socio_id && !persona.archiviato_il && persona.da_fare?.includes("scaduto_recuperabile") && (
+            <Button size="sm" variant="ghost" className="h-9 text-muted-foreground" onClick={() => setAperta("abbandono")}><UserX className="w-4 h-4 mr-1" /> Non torna</Button>
+          )}
         </>
+      )}
+      {persona.socio_id && (
+        <DialogoAbbandono socio={{ id: persona.socio_id, nome: persona.nome }} aperto={aperta === "abbandono"} onChiudi={() => setAperta(null)} onFatto={onFatto} />
       )}
       {lead ? (
         <AzioneLead

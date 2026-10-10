@@ -33,7 +33,13 @@ const persona = async (chiave) => {
 const oggiDi = async (chi = 'reception') => (await come(chi, 'GET', '/api/segnali?da_fare=1')).json();
 const riga = (dati, chiave) => dati.persone.find((p) => p.socio_id === id.soci[chiave]);
 
+// "Vede ma non modifica": fino alla fase 3 del CRM era l'istruttore predefinito, e questi test lo
+// usano così. Oggi l'istruttore ha la sua vista e non le anagrafiche: gli si ridà qui la sola lettura.
+const SOLA_LETTURA = { ...PERMESSI_PREDEFINITI, istruttore: { crm_members: ['view'], crm_documents: ['view'], crm_leads: ['view'], calendar: ['view', 'edit'] } };
+const matriceDiProva = () => impostaMatrice({ permessi: SOLA_LETTURA, capacita: {} });
+
 before(async () => {
+	matriceDiProva();
 	app = buildApp({ logger: false });
 	await app.ready();
 	const nomi = ['Scade', 'Contattato', 'Rimandato', 'Saltalezioni', 'Regolare'];
@@ -200,7 +206,7 @@ describe('i permessi', () => {
 			const trovati = (await come('istruttore', 'GET', `/api/persone/cerca?q=${encodeURIComponent(`Segnali${lettere}`)}`)).json().risultati;
 			assert.deepEqual(trovati, []);
 		} finally {
-			ripristinaMatricePredefinita();
+			matriceDiProva();
 		}
 	});
 });

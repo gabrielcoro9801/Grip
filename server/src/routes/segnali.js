@@ -20,7 +20,10 @@ function perLoSchermo(p, pubblico) {
 		.sort((a, b) => b.priorita - a.priorita)
 		.map(({ nascostoFino, ...s }) => ({ ...s, nascosto_fino: nascostoFino }));
 	const fare = daFare(p.segnali, pubblico);
-	return { ...p, segnali, da_fare: fare.map((s) => s.codice), perche: perche(fare), priorita: fare[0]?.priorita ?? 0 };
+	// Chi è già entrato oggi (dal tornello, o registrato a mano) porta anche quello che gli va detto:
+	// il rinnovo da proporre, il bentornato, gli auguri, il traguardo.
+	const bancone = p.entrato_oggi ? daFare(p.segnali, 'bancone').map(({ codice, motivo, azioni }) => ({ codice, motivo, azioni })) : [];
+	return { ...p, segnali, da_fare: fare.map((s) => s.codice), perche: perche(fare), priorita: fare[0]?.priorita ?? 0, bancone };
 }
 
 export default async function segnaliRoutes(fastify) {
@@ -37,12 +40,15 @@ export default async function segnaliRoutes(fastify) {
 	});
 
 	/**
-	 * GET /api/segnali?persona=&tipo=soci|lead&fase=&segnale=&pubblico=staff&da_fare=1
+	 * GET /api/segnali?persona=&tipo=soci|lead&fase=&segnale=&pubblico=staff&da_fare=1&entrati_oggi=1
 	 * → { oggi, persone, conteggi: { fasi, segnali } }
 	 *
 	 * - `da_fare=1`: solo chi ha un segnale da fare adesso (non nascosto da un contatto o da un
 	 *   rimando), dal più prezioso: è la lista di Oggi.
 	 * - `fase`, `segnale`: filtri dell'elenco; `segnale` cerca fra quelli da fare.
+	 * - `entrati_oggi=1`: chi è entrato oggi e ha ancora un segnale del bancone da fare (`bancone`):
+	 *   il controllo degli ingressi è passivo, e chi passa dal tornello non lo vede nessuno. Oggi
+	 *   li mostra in cima.
 	 * - `conteggi` si contano prima di `fase` e `segnale`, per le etichette dei filtri.
 	 */
 	fastify.get('/api/segnali', async (request, reply) => {
@@ -63,6 +69,7 @@ export default async function segnaliRoutes(fastify) {
 			for (const s of p.da_fare) conteggi.segnali[s] = (conteggi.segnali[s] ?? 0) + 1;
 		}
 
+		if (q.entrati_oggi === '1') elenco = elenco.filter((p) => p.bancone.length);
 		if (q.da_fare === '1') elenco = elenco.filter((p) => p.da_fare.length);
 		if (q.fase) elenco = elenco.filter((p) => p.fase === q.fase);
 		if (q.segnale) elenco = elenco.filter((p) => p.da_fare.includes(q.segnale));

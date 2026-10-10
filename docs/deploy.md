@@ -234,8 +234,10 @@ forzi a un valore diverso da quello su cui Railway instrada — per esempio copi
 
 ### 2.7 Il giro quotidiano (Railway Cron)
 
-Alcune cose il CRM le fa da solo una volta al giorno, anche se nessuno apre GRIP: oggi chiude
-come *non raggiungibili* i contatti con troppi tentativi senza risposta. Le fa
+Alcune cose il CRM le fa da solo una volta al giorno, anche se nessuno apre GRIP: chiude come
+*non raggiungibili* i contatti con troppi tentativi senza risposta, e scrive nel diario chi,
+contattato perché assente o in calo, è rientrato entro 14 giorni (la misura dell'efficacia dei
+contatti). Le fa
 [`server/src/giro.js`](../server/src/giro.js), che **non invia niente** ed è idempotente:
 lanciato due volte nello stesso giorno, la seconda non trova nulla da fare. A mano, da
 `server/`: `npm run giro`.
@@ -255,7 +257,7 @@ stabilita, fa il giro ed esce:
    impostazioni di questo servizio.
 
 Per sapere se ha girato: **Deployments** del servizio `giro`, una riga al giorno; nei log c'è
-il resoconto, per esempio `La mia associazione: 2 lead chiusi come non raggiungibili.` Se il
+il resoconto, per esempio `La mia associazione: 2 lead chiusi come non raggiungibili, 3 soci rientrati dopo un contatto.` Se il
 processo non esce, Railway salta le esecuzioni successive: il giro chiude sempre la
 connessione al database ed esce, anche quando fallisce (codice d'uscita 1).
 

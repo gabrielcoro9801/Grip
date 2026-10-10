@@ -16,7 +16,7 @@
 import { and, desc, eq, gte, lte, ne } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
-	members, subscriptions, memberDocuments, qrAccessi, ingressi, bookings, sessions, events, courses, staffAccounts,
+	members, memberDocuments, qrAccessi, ingressi, bookings, sessions, events, courses, staffAccounts,
 } from '../db/schema/index.js';
 import { getUserFromRequest } from '../auth/tokens.js';
 import { canReadEntity, canWriteEntity } from '../auth/authorize.js';
@@ -25,6 +25,7 @@ import { registra } from '../lib/registro.js';
 import { semeDelCodice, verificaCodice } from '../lib/qrDinamico.js';
 import { firmaUrl } from '../lib/urlFirmati.js';
 import { situazioni } from '../lib/segnali.js';
+import { iscrizioniDelSocio } from '../lib/iscrizioni.js';
 import { avvisiSocio, semaforo } from '../../../shared/avvisi.js';
 import { daFare } from '../../../shared/segnali.js';
 import { oggiIso, oraIso, spostaGiorni, eUnGiorno, giorniFra } from '../../../shared/giorni.js';
@@ -55,7 +56,7 @@ async function schedaIngresso(memberId, oggi = oggiIso()) {
 	const [socio] = await db.select().from(members).where(eq(members.id, memberId)).limit(1);
 	if (!socio) return null;
 	const [iscrizioni, documenti, lezioni, [ultimo]] = await Promise.all([
-		db.select({ start_date: subscriptions.startDate, end_date: subscriptions.endDate }).from(subscriptions).where(eq(subscriptions.memberId, memberId)),
+		iscrizioniDelSocio(memberId),
 		db.select({ document_type: memberDocuments.documentType, created_date: memberDocuments.createdDate, expiry_date: memberDocuments.expiryDate })
 			.from(memberDocuments).where(eq(memberDocuments.memberId, memberId)),
 		db.select({ corso: courses.name, inizio: sessions.startTime, fine: sessions.endTime, stato: bookings.status })

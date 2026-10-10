@@ -14,7 +14,8 @@ import { enteDellaNumerazione } from '../src/lib/codiceSocio.js';
 import {
 	members, staffAccounts, canaliContatto, numberingCounters, ruoli, persone, trattative, attivita, consensi,
 } from '../src/db/schema/index.js';
-import { caricaMatrice, caricaMatriceIniziale } from '../src/lib/ruoli.js';
+import { caricaMatrice } from '../src/lib/ruoli.js';
+import { impostaMatrice, ripristinaMatricePredefinita, PERMESSI_PREDEFINITI } from '../../shared/permissions.js';
 import { oggiIso, spostaGiorni } from '../../shared/giorni.js';
 import { giro } from '../src/giro.js';
 
@@ -63,7 +64,13 @@ async function leadSuPersona(personaId) {
 	return res.json().lead;
 }
 
+// "Vede ma non modifica": fino alla fase 3 del CRM era l'istruttore predefinito, e questi test lo
+// usano così. Oggi l'istruttore ha la sua vista e non le anagrafiche: gli si ridà qui la sola lettura.
+const SOLA_LETTURA = { ...PERMESSI_PREDEFINITI, istruttore: { crm_members: ['view'], crm_documents: ['view'], crm_leads: ['view'], calendar: ['view', 'edit'] } };
+const matriceDiProva = () => impostaMatrice({ permessi: SOLA_LETTURA, capacita: {} });
+
 before(async () => {
+	matriceDiProva();
 	app = buildApp({ logger: false });
 	await app.ready();
 	const suffisso = Date.now();
@@ -104,6 +111,7 @@ before(async () => {
 });
 
 after(async () => {
+	ripristinaMatricePredefinita();
 	await db.delete(staffAccounts).where(inArray(staffAccounts.id, idAccount));
 	if (idSocio.length) await db.delete(members).where(inArray(members.id, idSocio));
 	// Le persone portano via trattative, diario e consensi; poi i canali non sono più citati.
@@ -125,7 +133,7 @@ describe('i lead restano fuori', () => {
 			assert.equal((await come('socio', { method: 'GET', url })).statusCode, 403, url);
 		}
 		assert.equal((await post('socio', '/api/lead', { nome: 'X' })).statusCode, 403);
-		assert.equal((await post('socio', `/api/lead/${lead.id}/trasforma`, { nome: 'X' })).statusCode, 403);
+		assert.equal((await post('socio', '/api/iscrivi', { lead_id: lead.id, anagrafica: { nome: 'X' }, informativa_privacy: true })).statusCode, 403);
 		assert.equal((await come('socio', { method: 'GET', url: `/api/persone/${lead.persona_id}/diario` })).statusCode, 403);
 	});
 
@@ -285,7 +293,8 @@ describe('i canali', () => {
 });
 
 describe("l'iscrizione", () => {
-	const iscrivi = (id, corpo) => post('reception', `/api/lead/${id}/trasforma`, corpo);
+	// Il passo dell'anagrafica del flusso Iscrivi (routes/iscrizioni.js); gli altri passi hanno i loro test.
+	const iscrivi = (id, { gdpr_consent: _privacy, ...anagrafica }) => post('reception', '/api/iscrivi', { lead_id: id, anagrafica, informativa_privacy: true });
 	const anagraficaCompleta = { nome: 'Anna Maria', cognome: 'Verdi', sesso: 'F', codice_fiscale: CF.toLowerCase(), date_of_birth: '1985-12-10' };
 
 	test('senza codice fiscale valido o senza data di nascita non si fa, e il contatto resta', async () => {
@@ -368,7 +377,7 @@ describe("l'iscrizione", () => {
 			assert.equal((await iscrivi(lead.id, anagraficaCompleta)).statusCode, 403);
 		} finally {
 			await db.update(ruoli).set({ permessi: originali }).where(eq(ruoli.id, ruolo.id));
-			await caricaMatriceIniziale();
+			matriceDiProva();
 		}
 	});
 });

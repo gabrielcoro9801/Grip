@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { api } from "@/core/api/client";
 import { useStaffAuth } from "@/staff/lib/StaffAuthContext";
 import { Button } from "@/ui/primitivi/button";
@@ -13,7 +13,9 @@ import { formatDataOra } from "@/core/domain/format";
 import { LUNGHEZZA_MINIMA_PASSWORD } from "@/core/domain/password";
 import DialogResetPassword from "@/staff/components/admin/DialogResetPassword";
 
-const formVuoto = { nome: "", email: "", ruolo: "", password: "" };
+// `instructor_id`: l'istruttore che l'account è, per la vista "Le mie lezioni"; "" = nessuno.
+const formVuoto = { nome: "", email: "", ruolo: "", password: "", instructor_id: "" };
+const NESSUNO = "nessuno";
 
 /**
  * Gli account di chi lavora nella struttura.
@@ -34,6 +36,10 @@ export default function UtentiInterni({ accounts, ruoli, reload }) {
 	const [form, setForm] = useState(formVuoto);
 	const [resetTarget, setResetTarget] = useState(null);
 	const [saving, setSaving] = useState(false);
+	const [istruttori, setIstruttori] = useState([]);
+	useEffect(() => { api.entities.Instructor.list().then(setIstruttori).catch(() => setIstruttori([])); }, []);
+	// Un istruttore, un account: quelli già collegati ad altri non si propongono.
+	const collegati = new Set(accounts.filter((a) => a.instructor_id && a.id !== inModifica?.id).map((a) => a.instructor_id));
 
 	const etichettaRuolo = (nome) => ruoli.find((r) => r.nome === nome)?.label || nome;
 
@@ -60,6 +66,7 @@ export default function UtentiInterni({ accounts, ruoli, reload }) {
 			email: acc.email,
 			ruolo: acc.ruolo,
 			password: "",
+			instructor_id: acc.instructor_id ?? "",
 		});
 		setMostraForm(true);
 	};
@@ -72,6 +79,7 @@ export default function UtentiInterni({ accounts, ruoli, reload }) {
 				nome: form.nome,
 				email: form.email,
 				ruolo: form.ruolo,
+				instructor_id: form.instructor_id || null,
 			};
 			if (inModifica) {
 				await api.entities.StaffAccount.update(inModifica.id, {
@@ -207,6 +215,21 @@ export default function UtentiInterni({ accounts, ruoli, reload }) {
 							</Select>
 							<p className="text-xs text-muted-foreground mt-1">
 								Cosa comporta ciascun ruolo è nella scheda «Ruoli e permessi».
+							</p>
+						</div>
+						<div>
+							<Label>Istruttore collegato</Label>
+							<Select value={form.instructor_id || NESSUNO} onValueChange={(v) => setForm({ ...form, instructor_id: v === NESSUNO ? "" : v })}>
+								<SelectTrigger aria-label="Istruttore collegato"><SelectValue /></SelectTrigger>
+								<SelectContent>
+									<SelectItem value={NESSUNO}>Nessuno</SelectItem>
+									{istruttori.filter((i) => !collegati.has(i.id) && (i.attivo || i.id === form.instructor_id)).map((i) => (
+										<SelectItem key={i.id} value={i.id}>{i.full_name}</SelectItem>
+									))}
+								</SelectContent>
+							</Select>
+							<p className="text-xs text-muted-foreground mt-1">
+								Chi tiene dei corsi: in «Le mie lezioni» vede le sue lezioni, i suoi soci e chi non viene.
 							</p>
 						</div>
 						<div>
