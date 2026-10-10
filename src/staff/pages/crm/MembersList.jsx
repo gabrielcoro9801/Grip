@@ -1,7 +1,6 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { api } from "@/core/api/client";
-import { Link } from "react-router-dom";
-import { Card, CardContent } from "@/ui/primitivi/card";
+import { Link, useSearchParams } from "react-router-dom";
 import { Button } from "@/ui/primitivi/button";
 import { Input } from "@/ui/primitivi/input";
 import { Label } from "@/ui/primitivi/label";
@@ -15,80 +14,63 @@ import { EmptyState, ErrorState } from "@/ui/StateViews";
 import { useToast } from "@/ui/primitivi/use-toast";
 import { caricaFile } from "@/staff/lib/uploads";
 import { formatData } from "@/core/domain/format";
+import { FASI, SEGNALI, fase as faseDi, etichettaSegnale } from "@/core/domain/segnali";
 import CampiAnagrafica, { ANAGRAFICA_VUOTA, motivoAnagraficaIncompleta } from "@/staff/components/soci/CampiAnagrafica";
-import { AvatarSocio, SceltaFoto } from "@/staff/components/soci/FotoSocio";
+import { SceltaFoto } from "@/staff/components/soci/FotoSocio";
 
 const FOTO_VUOTA = { file: null, rimossa: false };
-
-// Più di un abbonamento per socio è normale (rinnovi, pacchetti): la tile ne mostra uno, e
-// deve essere quello che conta oggi — prima l'attivo, poi quello in scadenza, poi il più recente.
-const PRIORITA_STATO = { active: 0, expiring: 1, expired: 2 };
-function abbonamentoRilevante(abbonamenti) {
-  return [...abbonamenti].sort((a, b) =>
-    (PRIORITA_STATO[a.status] ?? 3) - (PRIORITA_STATO[b.status] ?? 3)
-    || String(b.end_date ?? "").localeCompare(String(a.end_date ?? ""))
-  )[0] ?? null;
-}
+const TUTTI = "tutti";
+const NESSUNO = "nessuno";
 
 const confrontaTesto = (a, b) => (a ?? "").localeCompare(b ?? "", "it", { sensitivity: "base" });
-
-// Ogni criterio ha un secondo ordinamento per cognome e nome: a parità, l'elenco non deve
-// cambiare ordine da un caricamento all'altro.
+// Chi manca di un dato (nessuna scadenza, mai entrato) va in fondo, dove non disturba.
+const inFondo = (a, b, confronta) => (!a || !b ? (a ? 0 : 1) - (b ? 0 : 1) : confronta(a, b));
 const ORDINAMENTI = [
-  { valore: "cognome", etichetta: "Cognome (A–Z)", confronta: (a, b) => confrontaTesto(a.cognome, b.cognome) || confrontaTesto(a.nome, b.nome) },
-  { valore: "nome", etichetta: "Nome (A–Z)", confronta: (a, b) => confrontaTesto(a.nome, b.nome) || confrontaTesto(a.cognome, b.cognome) },
-  { valore: "codice", etichetta: "Codice socio", confronta: (a, b) => confrontaTesto(a.codice_socio, b.codice_socio) },
-  { valore: "recenti", etichetta: "Iscritti più di recente", confronta: (a, b) => String(b.created_date).localeCompare(String(a.created_date)) },
-  {
-    valore: "scadenza",
-    etichetta: "Scadenza abbonamento",
-    // Chi scade prima in cima; chi non ha abbonamento in fondo, dove non disturba.
-    confronta: (a, b) => {
-      const sa = a._abbonamento?.end_date, sb = b._abbonamento?.end_date;
-      if (!sa || !sb) return (sa ? 0 : 1) - (sb ? 0 : 1) || confrontaTesto(a.cognome, b.cognome);
-      return String(sa).localeCompare(String(sb)) || confrontaTesto(a.cognome, b.cognome);
-    },
-  },
+  { valore: "nome", etichetta: "Nome (A–Z)", confronta: (a, b) => confrontaTesto(a.nome, b.nome) },
+  { valore: "scadenza", etichetta: "Scadenza più vicina", confronta: (a, b) => inFondo(a.scadenza, b.scadenza, (x, y) => x.localeCompare(y)) || confrontaTesto(a.nome, b.nome) },
+  { valore: "ingresso", etichetta: "Assenti da più tempo", confronta: (a, b) => inFondo(a.ultimo_ingresso, b.ultimo_ingresso, (x, y) => x.localeCompare(y)) || confrontaTesto(a.nome, b.nome) },
 ];
 
-function RigaTile({ etichetta, children }) {
-  return (
-    <div className="flex items-center justify-between gap-3 text-xs min-h-5">
-      <dt className="text-muted-foreground flex-shrink-0">{etichetta}</dt>
-      <dd className="truncate text-right">{children}</dd>
-    </div>
-  );
+/** "4 · media 6": gli ingressi delle ultime 4 settimane, e la media delle 12 per confronto. */
+function Frequenza({ socio }) {
+  if (socio.ingressi_4 === null) return "—";
+  return <span className="tabular-nums">{socio.ingressi_4}<span className="text-muted-foreground"> · media {socio.media_4}</span></span>;
 }
 
+/**
+ * L'elenco dei soci, con quello che serve per decidere: in che fase sono, quando sono entrati
+ * l'ultima volta, quanto vengono, quando scadono e che cosa c'è da fare.
+ */
 export default function MembersList() {
-  const [members, setMembers] = useState([]);
-  const [subscriptions, setSubscriptions] = useState([]);
+  const [parametri, setParametri] = useSearchParams();
+  // I filtri stanno nell'indirizzo, come la vista dei contatti: "Assenti" si tiene nei preferiti.
+  const filtroFase = FASI.some((f) => f.valore === parametri.get("fase")) ? parametri.get("fase") : TUTTI;
+  const filtroSegnale = SEGNALI.some((s) => s.valore === parametri.get("segnale")) ? parametri.get("segnale") : NESSUNO;
+  const filtra = (chiave, valore, vuoto) => {
+    const prossimi = new URLSearchParams(parametri);
+    if (valore === vuoto) prossimi.delete(chiave); else prossimi.set(chiave, valore);
+    setParametri(prossimi, { replace: true });
+  };
+
+  const [dati, setDati] = useState(null);
   const [search, setSearch] = useState("");
-  const [ordine, setOrdine] = useState("cognome");
-  // Gli archiviati hanno lasciato la palestra: non stanno fra chi frequenta, ma si ritrovano.
-  const [vista, setVista] = useState("frequentano");
+  const [ordine, setOrdine] = useState("nome");
   const [showForm, setShowForm] = useState(false);
-  const [loading, setLoading] = useState(true);
   const [form, setForm] = useState(ANAGRAFICA_VUOTA);
   const [foto, setFoto] = useState(FOTO_VUOTA);
   const [salvando, setSalvando] = useState(false);
   const { toast } = useToast();
-
   const [errore, setErrore] = useState(null);
 
-  // Senza `catch`, un errore di rete lasciava la pagina sulla rotellina per sempre.
-  const loadData = () => {
+  // Fase, segnale e colonne li calcola il server (GET /api/segnali): prima la pagina scaricava
+  // tutti i soci e tutti gli abbonamenti e li incrociava qui.
+  const loadData = useCallback(() => {
     setErrore(null);
-    Promise.all([
-      api.entities.Member.list(),
-      api.entities.Subscription.list(),
-    ]).then(([m, s]) => {
-      setMembers(m);
-      setSubscriptions(s);
-    }).catch(setErrore).finally(() => setLoading(false));
-  };
+    api.segnali({ tipo: "soci", fase: filtroFase === TUTTI ? "" : filtroFase, segnale: filtroSegnale === NESSUNO ? "" : filtroSegnale })
+      .then(setDati).catch(setErrore);
+  }, [filtroFase, filtroSegnale]);
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => { loadData(); }, [loadData]);
 
   const chiudiForm = () => {
     setShowForm(false);
@@ -115,66 +97,70 @@ export default function MembersList() {
   };
 
   const elenco = useMemo(() => {
+    if (!dati) return [];
     const cerca = search.trim().toLowerCase();
-    const perSocio = new Map();
-    for (const s of subscriptions) {
-      if (!perSocio.has(s.member_id)) perSocio.set(s.member_id, []);
-      perSocio.get(s.member_id).push(s);
-    }
+    const cifre = cerca.replace(/\D/g, "");
     const criterio = ORDINAMENTI.find((o) => o.valore === ordine) ?? ORDINAMENTI[0];
-    return members
-      .filter((m) => (vista === "archiviati") === Boolean(m.archiviato_il))
-      .map((m) => ({ ...m, _abbonamento: abbonamentoRilevante(perSocio.get(m.id) ?? []) }))
-      .filter((m) => !cerca || [m.full_name, m.email, m.codice_fiscale, m.codice_socio, m.phone]
-        .some((v) => v && v.toLowerCase().includes(cerca)))
+    return dati.persone
+      // Senza filtro di fase gli ex soci non si mostrano: non frequentano più, ma si ritrovano.
+      .filter((s) => filtroFase !== TUTTI || s.fase !== "ex_socio")
+      .filter((s) => !cerca || [s.nome, s.email, s.codice_socio].some((v) => v && v.toLowerCase().includes(cerca))
+        || (cifre.length >= 3 && (s.telefono ?? "").replace(/\D/g, "").includes(cifre)))
       .sort(criterio.confronta);
-  }, [members, subscriptions, search, ordine, vista]);
-
-  const archiviati = members.filter((m) => m.archiviato_il).length;
+  }, [dati, search, ordine, filtroFase]);
 
   const incompleto = motivoAnagraficaIncompleta(form);
 
-  if (loading) {
-    return <LoadingState minHeight="h-64" />;
-  }
-  if (errore) return <ErrorState error={errore} onRetry={() => { setLoading(true); loadData(); }} />;
+  if (errore) return <ErrorState error={errore} onRetry={loadData} />;
+  if (!dati) return <LoadingState minHeight="h-64" />;
+
+  const fasi = dati.conteggi.fasi;
+  const exSoci = fasi.ex_socio ?? 0;
+  const frequentano = Object.entries(fasi).filter(([f]) => f !== "ex_socio").reduce((s, [, n]) => s + n, 0);
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
-      <PageHeader
-        title="Gestione membri"
-        description={`${members.length - archiviati} soci registrati${archiviati ? ` · ${archiviati} archiviati` : ""}`}
-      >
+      <PageHeader title="Gestione membri" description={`${frequentano} soci${exSoci ? ` · ${exSoci} ex soci` : ""}`}>
         <Button onClick={() => setShowForm(true)} size="sm">
           <Plus className="w-4 h-4 mr-1" /> Aggiungi socio
         </Button>
       </PageHeader>
 
-      <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-4">
+      <div className="flex flex-col lg:flex-row lg:items-center gap-3 mb-4">
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input
-            placeholder="Nome, codice, telefono, email o CF..."
+            placeholder="Nome, codice, telefono o email..."
             aria-label="Cerca un socio"
             value={search}
             onChange={e => setSearch(e.target.value)}
             className="pl-9"
           />
         </div>
-        <div className="flex items-center gap-2 sm:ml-auto">
-          <Label htmlFor="vista-soci" className="sr-only">Quali soci</Label>
-          <Select value={vista} onValueChange={setVista}>
-            <SelectTrigger id="vista-soci" className="w-[160px]"><SelectValue /></SelectTrigger>
+        <div className="flex flex-wrap items-center gap-2 lg:ml-auto">
+          <Label htmlFor="fase-soci" className="sr-only">Fase</Label>
+          <Select value={filtroFase} onValueChange={(v) => filtra("fase", v, TUTTI)}>
+            <SelectTrigger id="fase-soci" className="w-[200px]"><SelectValue /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="frequentano">Frequentano</SelectItem>
-              <SelectItem value="archiviati">Archiviati ({archiviati})</SelectItem>
+              <SelectItem value={TUTTI}>Tutti i soci ({frequentano})</SelectItem>
+              {FASI.filter((f) => f.valore !== "lead").map((f) => (
+                <SelectItem key={f.valore} value={f.valore}>{f.etichetta} ({fasi[f.valore] ?? 0})</SelectItem>
+              ))}
             </SelectContent>
           </Select>
-        </div>
-        <div className="flex items-center gap-2">
-          <Label htmlFor="ordina-soci" className="text-sm text-muted-foreground whitespace-nowrap">Ordina per</Label>
+          <Label htmlFor="segnale-soci" className="sr-only">Da fare</Label>
+          <Select value={filtroSegnale} onValueChange={(v) => filtra("segnale", v, NESSUNO)}>
+            <SelectTrigger id="segnale-soci" className="w-[220px]"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value={NESSUNO}>Qualunque cosa da fare</SelectItem>
+              {SEGNALI.filter((s) => dati.conteggi.segnali[s.valore] || s.valore === filtroSegnale).map((s) => (
+                <SelectItem key={s.valore} value={s.valore}>{s.etichetta} ({dati.conteggi.segnali[s.valore] ?? 0})</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Label htmlFor="ordina-soci" className="sr-only">Ordina per</Label>
           <Select value={ordine} onValueChange={setOrdine}>
-            <SelectTrigger id="ordina-soci" className="w-[210px]"><SelectValue /></SelectTrigger>
+            <SelectTrigger id="ordina-soci" className="w-[200px]"><SelectValue /></SelectTrigger>
             <SelectContent>
               {ORDINAMENTI.map((o) => <SelectItem key={o.valore} value={o.valore}>{o.etichetta}</SelectItem>)}
             </SelectContent>
@@ -183,55 +169,53 @@ export default function MembersList() {
       </div>
 
       {elenco.length === 0 ? (
-        // Senza, restava un'area bianca sotto la ricerca: indistinguibile da un
-        // caricamento che non finisce, e senza dire che fare.
         <EmptyState
           icon={Users}
-          title={members.length === 0 ? "Nessun socio registrato" : vista === "archiviati" && !search ? "Nessun socio archiviato" : "Nessun socio corrisponde"}
+          title={frequentano + exSoci === 0 ? "Nessun socio registrato" : "Nessun socio corrisponde"}
           description={
-            members.length === 0
+            frequentano + exSoci === 0
               ? "Da qui si tesserano le persone che frequentano la palestra."
-              : vista === "archiviati" && !search
-                ? "Un socio che lascia la palestra si archivia dalla sua scheda, e lo si ritrova qui."
-                : `Nessun risultato per «${search}». Prova con un altro nome, il codice o il telefono.`
+              : search ? `Nessun risultato per «${search}». Prova con un altro nome, il codice o il telefono.` : "Nessun socio in questo filtro, oggi."
           }
         />
       ) : (
-      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {elenco.map(member => {
-          const sub = member._abbonamento;
-          return (
-            <Link key={member.id} to={`/crm/soci/${member.id}`} className="block">
-              {/* Tutte le tile hanno la stessa altezza e le stesse righe, piene o con un
-                  trattino: si confrontano a colpo d'occhio, e la griglia non balla. */}
-              <Card className="border-0 shadow-sm hover:shadow-md transition-shadow cursor-pointer h-[200px]">
-                <CardContent className="p-4 h-full flex flex-col">
-                  <div className="flex items-start gap-3">
-                    <AvatarSocio socio={member} />
-                    <div className="min-w-0 flex-1">
-                      <h3 className="font-medium text-sm truncate" title={member.full_name}>{member.full_name}</h3>
-                      <p className="text-xs text-muted-foreground font-mono">{member.codice_socio}</p>
-                    </div>
-                  </div>
-                  <dl className="mt-auto space-y-1.5">
-                    <RigaTile etichetta="Stato">
-                      {member.archiviato_il
-                        ? <StatusBadge status="archiviato" label={`Archiviato il ${formatData(member.archiviato_il, "breve")}`} tone="neutro" className="py-0" />
-                        : sub
-                          ? <StatusBadge status={sub.status} className="py-0" />
-                          : <StatusBadge status="nessuno" label="Senza abbonamento" tone="neutro" className="py-0" />}
-                    </RigaTile>
-                    <RigaTile etichetta="Abbonamento">{sub?.plan_name || "—"}</RigaTile>
-                    <RigaTile etichetta="Scadenza">{sub?.end_date ? formatData(sub.end_date, "media") : "—"}</RigaTile>
-                    <RigaTile etichetta="Telefono">{member.phone || "—"}</RigaTile>
-                    <RigaTile etichetta="Email">{member.email || "—"}</RigaTile>
-                  </dl>
-                </CardContent>
-              </Card>
-            </Link>
-          );
-        })}
-      </div>
+        <div className="border border-border rounded-lg overflow-hidden overflow-x-auto bg-card">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border text-left bg-muted/30">
+                <th className="py-3 px-4 font-medium text-muted-foreground">Socio</th>
+                <th className="py-3 px-4 font-medium text-muted-foreground">Fase</th>
+                <th className="py-3 px-4 font-medium text-muted-foreground hidden md:table-cell">Ultimo ingresso</th>
+                <th className="py-3 px-4 font-medium text-muted-foreground hidden md:table-cell">Ingressi in 4 settimane</th>
+                <th className="py-3 px-4 font-medium text-muted-foreground hidden sm:table-cell">Scadenza</th>
+                <th className="py-3 px-4 font-medium text-muted-foreground hidden lg:table-cell">Da fare</th>
+              </tr>
+            </thead>
+            <tbody>
+              {elenco.map((s) => {
+                const f = faseDi(s.fase);
+                return (
+                  <tr key={s.socio_id} className="border-b border-border/50 last:border-0 hover:bg-muted/30">
+                    <td className="py-3 px-4">
+                      <Link to={`/crm/soci/${s.socio_id}`} className="font-medium hover:underline">{s.nome}</Link>
+                      <span className="block text-xs text-muted-foreground font-mono">{s.codice_socio}</span>
+                    </td>
+                    <td className="py-3 px-4"><StatusBadge status={s.fase} label={f.etichetta} tone={f.tono} className="py-0" /></td>
+                    <td className="py-3 px-4 hidden md:table-cell">{s.ultimo_ingresso ? formatData(s.ultimo_ingresso, "breve") : "—"}</td>
+                    <td className="py-3 px-4 hidden md:table-cell"><Frequenza socio={s} /></td>
+                    <td className="py-3 px-4 hidden sm:table-cell">
+                      {s.scadenza ? formatData(s.scadenza, "breve") : "—"}
+                      {s.abbonamento && <span className="block text-xs text-muted-foreground">{s.abbonamento}</span>}
+                    </td>
+                    <td className="py-3 px-4 hidden lg:table-cell">
+                      {s.da_fare[0] ? <span title={s.perche}>{etichettaSegnale(s.da_fare[0])}</span> : <span className="text-muted-foreground">—</span>}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       )}
 
       <Dialog open={showForm} onOpenChange={(aperta) => (aperta ? setShowForm(true) : chiudiForm())}>

@@ -9,7 +9,7 @@
 //
 // Le risposte hanno la forma di sempre — un lead con nome, recapiti e stato in una riga — così
 // le schermate non devono sapere che sotto ci sono due tabelle.
-import { and, asc, count, desc, eq, gte, inArray, lte, ne, or, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, inArray, ne, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { trattative, persone, members, attivita, staffAccounts, canaliContatto } from '../db/schema/index.js';
 import { getUserFromRequest } from '../auth/tokens.js';
@@ -21,13 +21,10 @@ import { soglieEnte } from '../lib/impostazioni.js';
 import { registerPgErrorHandler } from './errorHandler.js';
 import { oggiIso } from '../../../shared/abbonamenti.js';
 import { registra } from '../lib/registro.js';
-import { spostaGiorni } from '../../../shared/giorni.js';
 import { sessoValido, normalizzaTelefono } from '../../../shared/anagrafica.js';
 import {
 	applicaAzione, contaFiltriLead, statoLead, descriviAttivita, motivoLeadIncompleto, NOTE_LEAD_MASSIMO, STATI_APERTI,
 } from '../../../shared/lead.js';
-
-const AUTORE_SISTEMA = 'Sistema';
 
 // Le azioni con cui si lavora un lead, e cosa prendono dal corpo della richiesta.
 const AZIONI = {
@@ -138,30 +135,12 @@ export default async function leadRoutes(fastify) {
 	 *
 	 * I lead con il loro stato, quanti ce ne sono per ogni filtro rapido, e le soglie della
 	 * palestra con cui sono contati (la pagina filtra con le stesse). Le trattative già iscritte
-	 * non sono lead. Prima di rispondere chiude come *non raggiungibili* quelli che hanno superato
-	 * le soglie: è il primo automatismo, e gira qui — alla lettura — finché non ci sarà il giro
-	 * quotidiano. È idempotente: un lead già chiuso non rientra nella condizione.
+	 * non sono lead. Non scrive niente: la chiusura dei *non raggiungibili*, che girava qui alla
+	 * lettura, ora la fa il giro quotidiano (src/giro.js).
 	 */
 	fastify.get('/api/lead/lavoro', { preHandler: puoLeggere }, async () => {
 		const oggi = oggiIso();
 		const soglie = (await soglieEnte()).lead;
-		const limite = spostaGiorni(oggi, -soglie.nonRaggiungibileGiorni);
-		await db.transaction(async (tx) => {
-			const chiusi = await tx.update(trattative)
-				.set({ stato: 'non_raggiungibile', statoDal: oggi, updatedDate: new Date() })
-				.where(and(
-					eq(trattative.stato, 'in_attesa'),
-					gte(trattative.tentativiSenzaRisposta, soglie.tentativiMassimi),
-					lte(trattative.ultimoContattoIl, limite),
-				))
-				.returning({ id: trattative.id, personaId: trattative.personaId, tentativi: trattative.tentativiSenzaRisposta });
-			if (chiusi.length) {
-				await tx.insert(attivita).values(chiusi.map((t) => ({
-					personaId: t.personaId, trattativaId: t.id, tipo: 'stato_automatico', esito: 'non_raggiungibile', autoreNome: AUTORE_SISTEMA,
-					nota: `${t.tentativi} tentativi senza risposta, l'ultimo da almeno ${soglie.nonRaggiungibileGiorni} giorni`,
-				})));
-			}
-		});
 		const righe = await selezionaLead().where(ne(trattative.stato, 'iscritto')).orderBy(desc(trattative.dataContatto));
 		return { leads: righe, conteggi: contaFiltriLead(righe, oggi, soglie), soglie };
 	});

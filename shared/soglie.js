@@ -20,6 +20,15 @@ export const SOGLIE = Object.freeze({
   abbonamentoInScadenzaGiorni: 14,
   // Da quanti giorni prima della scadenza un documento è "in scadenza".
   documentoInScadenzaGiorni: 30,
+  // Il motore dei segnali (shared/segnali.js): le fasi di un socio e quando va cercato.
+  segnali: Object.freeze({
+    nuovoGiorni: 30, // iscritto da poco: "nuovo"
+    ambientamentoGiorni: 90, // fino a qui "ambientamento", la finestra in cui se ne perdono di più
+    assenzaGiorni: 14, // senza ingressi da tanto: "assente" (era GIORNI_RISCHIO_ABBANDONO)
+    caloPercentuale: 50, // ingressi delle ultime 4 settimane sotto questa parte della media: "in calo"
+    recuperabileGiorni: 60, // scaduto da non più di tanto: si può ancora recuperare
+    contattoNascondeGiorni: 7, // dopo un contatto, per tanto il segnale non si ripropone
+  }),
 });
 
 const giorniValidi = (v) => Number.isInteger(v) && v > 0 && v <= 3650;

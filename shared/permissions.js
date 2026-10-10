@@ -180,8 +180,10 @@ export function canEdit(role, module) {
   return canAccess(role, module, "edit");
 }
 
-/** Mappa percorso sidebar → modulo permesso (null = tutti i ruoli) */
+/** Mappa percorso sidebar → modulo permesso (null = tutti i ruoli; un elenco = basta uno dei moduli) */
 export const SIDEBAR_PERMISSIONS = {
+  // Oggi è il lavoro su soci e contatti: la vede chi segue gli uni o gli altri.
+  "/oggi": ["crm_members", "crm_leads"],
   "/": null,
   "/crm": "crm_members",
   "/lead": "crm_leads",

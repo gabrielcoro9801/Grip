@@ -6,16 +6,20 @@
 // apertura della home diventava il download dell'intero archivio. Il portale soci fa già così:
 // il server conta e manda numeri, la pagina li mostra.
 //
+// Rinnovi e certificati non hanno più un conto loro: li dice il motore dei segnali
+// (lib/segnali.js), lo stesso di Oggi e dell'elenco dei soci, così i numeri sono gli stessi
+// ovunque. Qui si mostrano tutti, anche quelli già contattati: la dashboard è il quadro, Oggi
+// la lista di cose da fare.
+//
 // Ogni parte ha il permesso di lettura dell'entità che la governa: chi non vede i documenti
 // riceve `null` al posto degli avvisi sui certificati, e la pagina non mostra quella parte.
 import { and, asc, count, eq, gte, isNull, lte, ne, or } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { bookings, courses, events, memberDocuments, members, sessions, subscriptions } from '../db/schema/index.js';
+import { bookings, courses, events, members, sessions } from '../db/schema/index.js';
 import { getUserFromRequest } from '../auth/tokens.js';
 import { canReadEntity } from '../auth/authorize.js';
-import { conStatoDocumenti } from '../../../shared/anagrafica.js';
-import { GIORNI_ABBONAMENTO_IN_SCADENZA } from '../../../shared/abbonamenti.js';
-import { oggiIso, giorniFra, spostaGiorni } from '../../../shared/giorni.js';
+import { situazioni } from '../lib/segnali.js';
+import { oggiIso, spostaGiorni } from '../../../shared/giorni.js';
 
 export default async function dashboardRoutes(fastify) {
 	fastify.addHook('preHandler', async (request, reply) => {
@@ -29,25 +33,27 @@ export default async function dashboardRoutes(fastify) {
 	fastify.get('/api/dashboard', async (request) => {
 		const ruolo = request.utente.ruolo;
 		const oggi = oggiIso();
-		const giorniDa = (data) => giorniFra(oggi, data);
 		const puo = (entita) => canReadEntity(ruolo, entita);
+		const servonoSegnali = puo('Subscription') || puo('MemberDocument');
 
-		const [iscritti, abbonamenti, certificati, prossime] = await Promise.all([
+		const [iscritti, motore, prossime] = await Promise.all([
 			puo('Member') ? contaSoci() : null,
-			puo('Subscription') ? rinnovi(oggi, giorniDa) : null,
-			puo('MemberDocument') ? avvisiCertificati(giorniDa) : null,
+			servonoSegnali ? situazioni() : null,
 			puo('Booking') ? prossimeLezioni(oggi) : null,
 		]);
+		const soci = (motore?.persone ?? []).filter((p) => p.socio_id);
+		const abbonamenti = puo('Subscription') ? rinnovi(soci) : null;
+		const certificati = puo('MemberDocument') ? avvisiCertificati(soci) : null;
 
 		return {
 			kpi: {
-				soci_attivi: abbonamenti?.sociAttivi ?? null,
+				soci_attivi: abbonamenti ? soci.filter((p) => !p.archiviato_il && p.valido).length : null,
 				soci_iscritti: iscritti,
 				certificati_in_scadenza: certificati?.length ?? null,
 				prossime_lezioni: prossime?.length ?? null,
 			},
 			certificati,
-			rinnovi: abbonamenti?.avvisi ?? null,
+			rinnovi: abbonamenti,
 			prossime,
 		};
 	});
@@ -60,68 +66,30 @@ async function contaSoci() {
 	return Number(quanti);
 }
 
-/**
- * Soci con un abbonamento valido, e gli avvisi di rinnovo.
- *
- * Un avviso è un abbonamento in scadenza, oppure l'ultimo scaduto di un socio che non ne ha un
- * altro valido: chi ha già rinnovato non va richiamato, e di chi non ha rinnovato basta
- * l'ultimo — prima comparivano tutti quelli che aveva mai avuto.
- */
-async function rinnovi(oggi, giorniDa) {
-	const righe = await db
-		.select({
-			id: subscriptions.id, memberId: subscriptions.memberId, planName: subscriptions.planName,
-			endDate: subscriptions.endDate, nome: members.fullName,
-		})
-		.from(subscriptions)
-		.innerJoin(members, eq(subscriptions.memberId, members.id))
-		.where(isNull(members.archiviatoIl));
+// Il segnale di una persona per un codice, contato anche se è nascosto da un contatto.
+const segnaleDi = (persona, codici) => persona.segnali.find((s) => s.pubblico === 'staff' && codici.includes(s.codice));
 
-	const validi = new Set(righe.filter((r) => !r.endDate || r.endDate >= oggi).map((r) => r.memberId));
-	const ultimoScaduto = new Map();
-	const avvisi = [];
-	for (const r of righe) {
-		const giorni = giorniDa(r.endDate);
-		if (giorni !== null && giorni >= 0 && giorni <= GIORNI_ABBONAMENTO_IN_SCADENZA) {
-			avvisi.push({ id: r.id, member_name: r.nome, plan_name: r.planName, status: 'expiring', giorni });
-		} else if (giorni !== null && giorni < 0 && !validi.has(r.memberId)) {
-			const prima = ultimoScaduto.get(r.memberId);
-			if (!prima || r.endDate > prima.endDate) ultimoScaduto.set(r.memberId, r);
-		}
-	}
-	for (const r of ultimoScaduto.values()) {
-		avvisi.push({ id: r.id, member_name: r.nome, plan_name: r.planName, status: 'expired', giorni: giorniDa(r.endDate) });
-	}
-	avvisi.sort((a, b) => a.giorni - b.giorni);
-	return { sociAttivi: validi.size, avvisi };
+/**
+ * Gli avvisi di rinnovo: chi è in scadenza senza aver già rinnovato, e chi è scaduto da poco
+ * (recuperabile). Chi è scaduto da mesi è un ex socio: non è più un avviso.
+ */
+function rinnovi(soci) {
+	return soci
+		.map((p) => ({ p, s: segnaleDi(p, ['in_scadenza', 'scaduto_recuperabile']) }))
+		.filter(({ s }) => s)
+		.map(({ p, s }) => ({
+			id: s.dati.iscrizione_id, member_id: p.socio_id, member_name: p.nome, plan_name: s.dati.abbonamento,
+			status: s.codice === 'in_scadenza' ? 'expiring' : 'expired', giorni: s.dati.giorni,
+		}))
+		.sort((a, b) => a.giorni - b.giorni);
 }
 
-/**
- * I certificati medici scaduti o in scadenza che contano ancora.
- *
- * Lo stato lo decide `conStatoDocumenti`, socio per socio: un certificato scaduto e già
- * sostituito è archiviato, non è un avviso.
- */
-async function avvisiCertificati(giorniDa) {
-	const righe = await db
-		.select({
-			id: memberDocuments.id, member_id: memberDocuments.memberId, document_type: memberDocuments.documentType,
-			created_date: memberDocuments.createdDate, expiry_date: memberDocuments.expiryDate,
-			file_name: memberDocuments.fileName, nome: members.fullName,
-		})
-		.from(memberDocuments)
-		.innerJoin(members, eq(memberDocuments.memberId, members.id))
-		.where(and(eq(memberDocuments.documentType, 'certificato_medico'), isNull(members.archiviatoIl)));
-
-	const perSocio = new Map();
-	for (const r of righe) {
-		if (!perSocio.has(r.member_id)) perSocio.set(r.member_id, []);
-		perSocio.get(r.member_id).push(r);
-	}
-	return [...perSocio.values()]
-		.flatMap((documenti) => conStatoDocumenti(documenti, giorniDa))
-		.filter((d) => d.stato === 'scaduto' || d.stato === 'in_scadenza')
-		.map((d) => ({ id: d.id, member_name: d.nome, file_name: d.file_name, giorni: d.giorni_alla_scadenza, scaduto: d.stato === 'scaduto' }))
+/** I certificati medici scaduti o in scadenza che contano ancora, uno per socio. */
+function avvisiCertificati(soci) {
+	return soci
+		.map((p) => ({ p, s: segnaleDi(p, ['certificato_scaduto', 'certificato_in_scadenza']) }))
+		.filter(({ s }) => s)
+		.map(({ p, s }) => ({ id: s.dati.documento_id, member_id: p.socio_id, member_name: p.nome, file_name: s.dati.file_name, giorni: s.dati.giorni, scaduto: s.dati.scaduto }))
 		.sort((a, b) => a.giorni - b.giorni);
 }
 

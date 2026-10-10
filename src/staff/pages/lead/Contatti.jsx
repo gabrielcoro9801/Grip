@@ -74,8 +74,10 @@ export default function Contatti() {
   const [parametri, setParametri] = useSearchParams();
   const vista = FILTRI_LEAD.some((f) => f.valore === parametri.get("vista")) ? parametri.get("vista") : "aperti";
   const scegliVista = (v) => setParametri(v === "aperti" ? {} : { vista: v }, { replace: true });
+  // Da Oggi e da Ctrl+K si arriva qui con il nome già cercato (`?q=`).
+  useEffect(() => { if (parametri.get("q")) setCerca(parametri.get("q")); }, [parametri]);
 
-  // `lavoro` chiude prima i lead diventati non raggiungibili, e porta i conteggi dei filtri.
+  // `lavoro` porta i lead e i conteggi dei filtri.
   const carica = useCallback(() => {
     setErrore(null);
     Promise.all([api.lead.lavoro(), api.entities.CanaleContatto.list("nome")])

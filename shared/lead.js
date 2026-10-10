@@ -270,6 +270,18 @@ export const CANALI_CONTATTO = [
   { valore: "di_persona", etichetta: "Di persona" },
 ];
 
+/**
+ * Com'è andato un contatto con una persona — un socio da Oggi, dalla scheda o dal bancone. Il
+ * contatto con un lead passa invece dalle sue azioni (`applicaAzione`), che ne cambiano lo stato.
+ */
+export const ESITI_CONTATTO = [
+  { valore: "risposto", etichetta: "ha risposto" },
+  { valore: "nessuna_risposta", etichetta: "non ha risposto" },
+  { valore: "proposto_rinnovo", etichetta: "proposto il rinnovo" },
+  { valore: "salutato", etichetta: "salutato" },
+];
+export const esitoContattoValido = (v) => ESITI_CONTATTO.some((e) => e.valore === v);
+
 export const MOTIVI_CHIUSURA = [
   { valore: "prezzo", etichetta: "Prezzo" },
   { valore: "orari", etichetta: "Orari" },
@@ -435,6 +447,8 @@ export function descriviAttivita(a) {
     case "riapertura": return "Riaperto";
     case "stato_automatico": return `Passato a «${statoLead(a.esito).etichetta}»`;
     case "iscrizione": return a.esito === "riattivato" ? "Tornato socio" : "Diventato socio";
+    case "contatto": return `${etichettaCanaleContatto(a.canale)}: ${etichetta(ESITI_CONTATTO, a.esito)}`;
+    case "rimando": return `Rimandato al ${dataBreve(a.esito)}`;
     case "nota": return "Nota";
     default: return a.tipo;
   }

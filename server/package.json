@@ -15,6 +15,7 @@
     "db:seed": "node src/seed.js",
     "db:deploy": "node src/migrate.js",
     "db:reset-admin": "node src/reset-admin.js",
+    "giro": "node src/giro.js",
     "db:ripara-date-settimanali": "node src/ripara-date-settimanali.js",
     "manutenzione:file-orfani": "node src/pulisci-file-orfani.js",
     "verifica:browser": "node scripts/verifica-browser.mjs",

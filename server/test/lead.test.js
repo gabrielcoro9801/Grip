@@ -16,6 +16,7 @@ import {
 } from '../src/db/schema/index.js';
 import { caricaMatrice, caricaMatriceIniziale } from '../src/lib/ruoli.js';
 import { oggiIso, spostaGiorni } from '../../shared/giorni.js';
+import { giro } from '../src/giro.js';
 
 const PASSWORD = 'prova-lead-1234';
 const CF = 'RSSMRA85T10A562S';
@@ -436,20 +437,24 @@ describe('gli stati di un lead', () => {
 		assert.equal(letto.json().attivita.length, 5);
 	});
 
-	test('troppi tentativi senza risposta, e da tanto: non raggiungibile da solo, una volta sola', async () => {
+	test('troppi tentativi senza risposta, e da tanto: il giro lo chiude da solo, una volta sola; la GET non scrive', async () => {
 		const lead = await nuovoLead();
 		await db.update(trattative).set({
 			stato: 'in_attesa', tentativiSenzaRisposta: 3, ultimoContattoIl: spostaGiorni(oggiIso(), -20),
 		}).where(eq(trattative.id, lead.id));
 
-		const prima = await come('reception', { method: 'GET', url: '/api/lead/lavoro' });
-		assert.equal(prima.statusCode, 200, prima.body);
-		const chiuso = prima.json().leads.find((l) => l.id === lead.id);
-		assert.equal(chiuso.stato, 'non_raggiungibile');
-		assert.ok(prima.json().conteggi.chiusi >= 1);
-		assert.equal(prima.json().soglie.tentativiMassimi, 3, 'la pagina riceve le soglie con cui filtrare');
+		const letto = await come('reception', { method: 'GET', url: '/api/lead/lavoro' });
+		assert.equal(letto.statusCode, 200, letto.body);
+		assert.equal(letto.json().leads.find((l) => l.id === lead.id).stato, 'in_attesa', 'una GET non scrive');
+		assert.equal(letto.json().soglie.tentativiMassimi, 3, 'la pagina riceve le soglie con cui filtrare');
 
-		await come('reception', { method: 'GET', url: '/api/lead/lavoro' });
+		const [esito] = await giro();
+		assert.ok(esito.non_raggiungibili >= 1);
+		const dopo = await come('reception', { method: 'GET', url: '/api/lead/lavoro' });
+		assert.equal(dopo.json().leads.find((l) => l.id === lead.id).stato, 'non_raggiungibile');
+		assert.ok(dopo.json().conteggi.chiusi >= 1);
+
+		await giro();
 		const automatici = (await diario(lead.persona_id)).filter((a) => a.tipo === 'stato_automatico');
 		assert.equal(automatici.length, 1);
 		assert.equal(automatici[0].autoreNome, 'Sistema');

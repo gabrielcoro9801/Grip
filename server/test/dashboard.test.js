@@ -74,6 +74,16 @@ describe('i numeri li conta il server', () => {
 		assert.equal(suo.scaduto, false);
 	});
 
+	test('rinnovi e certificati sono quelli del motore dei segnali', async () => {
+		const dati = (await leggi('admin')).json();
+		const motore = (await app.inject({ method: 'GET', url: '/api/segnali?tipo=soci', headers: { authorization: `Bearer ${token.admin}` } })).json();
+		const nostri = (elenco) => elenco.filter((id) => idSoci.includes(id)).sort();
+		const conSegnale = (codici) => motore.persone.filter((p) => p.segnali.some((s) => codici.includes(s.codice))).map((p) => p.socio_id);
+		assert.deepEqual(nostri(dati.rinnovi.map((r) => r.member_id)), nostri(conSegnale(['in_scadenza', 'scaduto_recuperabile'])));
+		assert.deepEqual(nostri(dati.certificati.map((c) => c.member_id)), nostri(conSegnale(['certificato_scaduto', 'certificato_in_scadenza'])));
+		assert.equal(nostri(dati.rinnovi.map((r) => r.member_id)).length, 1);
+	});
+
 	test('i numeri ci sono tutti', async () => {
 		const { kpi } = (await leggi('admin')).json();
 		for (const campo of ['soci_attivi', 'soci_iscritti', 'certificati_in_scadenza', 'prossime_lezioni']) {
