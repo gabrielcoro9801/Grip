@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from "react";
-import { caricaProfilo } from "@/core/api/portale";
+import { caricaProfilo, caricaConsensi, scegliConsenso } from "@/core/api/portale";
+import { Checkbox } from "@/ui/primitivi/checkbox";
+import { TIPI_CONSENSO } from "@/core/domain/consensi";
 import { useMemberAuth } from "@/member/session/MemberAuthContext";
 import { Card, CardContent } from "@/ui/primitivi/card";
 import { Button } from "@/ui/primitivi/button";
@@ -10,6 +12,49 @@ import {
 } from "@/ui/primitivi/dialog";
 import { LoadingState } from "@/ui/Spinner";
 import { formatData } from "@/core/domain/format";
+
+/**
+ * Che cosa la palestra può mandare oltre alle comunicazioni di servizio (scadenze, lezioni
+ * annullate): promozioni, auguri, proposte. Li sceglie il socio, canale per canale, e può
+ * cambiare idea quando vuole.
+ */
+function ConsensiComunicazioni() {
+  const [consensi, setConsensi] = useState(null);
+  const [errore, setErrore] = useState(null);
+  useEffect(() => {
+    caricaConsensi().then((r) => setConsensi(r.consensi)).catch(setErrore);
+  }, []);
+
+  const scegli = async (tipo, valore) => {
+    setErrore(null);
+    try {
+      setConsensi((await scegliConsenso(tipo, valore)).consensi);
+    } catch (err) {
+      setErrore(err);
+    }
+  };
+
+  if (!consensi && !errore) return null;
+  return (
+    <Card className="border-0 shadow-sm">
+      <CardContent className="p-4 space-y-3">
+        <div>
+          <h2 className="text-sm font-medium">Comunicazioni dalla palestra</h2>
+          <p className="text-xs text-muted-foreground">
+            Scadenze e avvisi sulle lezioni ti arrivano comunque. Qui scegli se ricevere anche promozioni e novità.
+          </p>
+        </div>
+        {errore && <p className="text-sm text-destructive">{errore.message}</p>}
+        {consensi && TIPI_CONSENSO.map((t) => (
+          <label key={t.valore} className="flex items-center gap-3 text-sm">
+            <Checkbox checked={consensi[t.valore].valore} onCheckedChange={(v) => scegli(t.valore, v === true)} />
+            {t.etichetta}
+          </label>
+        ))}
+      </CardContent>
+    </Card>
+  );
+}
 
 export default function MemberProfile() {
   const { logout, aggiornaUtente } = useMemberAuth();
@@ -66,6 +111,8 @@ export default function MemberProfile() {
           ))}
         </CardContent>
       </Card>
+
+      <ConsensiComunicazioni />
 
       <Button variant="outline" className="w-full" onClick={() => setShowReport(true)}>
         <Pencil className="w-4 h-4 mr-1" /> Segnala una modifica

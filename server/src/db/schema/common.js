@@ -10,6 +10,9 @@ export const organizations = pgTable('organizations', {
 	pivaCf: varchar('piva_cf', { length: 32 }),
 	indirizzo: text('indirizzo'),
 	logoUrl: text('logo_url'),
+	// Le scelte della palestra che cambiano il comportamento di GRIP: per ora le soglie dei giorni
+	// (shared/soglie.js, soglieDi). Vuoto vuol dire "i valori predefiniti".
+	impostazioni: jsonb('impostazioni').notNull().default({}),
 	createdDate: timestamp('created_date', { withTimezone: true }).notNull().defaultNow(),
 	updatedDate: timestamp('updated_date', { withTimezone: true }).notNull().defaultNow(),
 });

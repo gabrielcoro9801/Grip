@@ -1,15 +1,13 @@
-// I lead: persone che hanno contattato la palestra e non sono ancora socie.
+// I contatti: da quali canali arrivano le persone, e le loro trattative (i lead).
 //
-// Sono contatti e nient'altro. Non accedono alla piattaforma, non prenotano, non hanno uno
-// stato: se e quando provare una lezione lo decide chi gestisce l'ASD, a modo suo. Grip ne
-// tiene l'anagrafica essenziale per contarli — quanti, da quale canale, di che età — e per
-// trasformarli in soci quando si iscrivono. A quel punto il lead si cancella.
-//
-// Una tabella separata da `members` perché tutto quello che riguarda i soci — codice, QR,
-// portale, abbonamenti — non ha senso per un contatto.
+// Un contatto non è un socio: non accede alla piattaforma, non prenota. Di lui GRIP tiene la
+// persona (persone.js) e la trattativa: quando, da dove, a che punto è. Quando si iscrive la
+// trattativa resta, chiusa come *iscritto*, e la persona diventa socia senza perdere la storia.
 import { sql } from 'drizzle-orm';
-import { pgTable, uuid, varchar, boolean, integer, date, timestamp, check, index } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, boolean, integer, date, timestamp, check, index, uniqueIndex } from 'drizzle-orm/pg-core';
 import { staffAccounts } from './hr.js';
+import { persone } from './persone.js';
+import { categories } from './courses.js';
 
 // Come ci ha contattato: Instagram, passaparola, in sede. La lista la decide l'ente — ogni
 // palestra ha i suoi canali — e un canale non più usato si disattiva invece di sparire, così
@@ -21,22 +19,18 @@ export const canaliContatto = pgTable('canali_contatto', {
 	createdDate: timestamp('created_date', { withTimezone: true }).notNull().defaultNow(),
 });
 
-export const leads = pgTable('leads', {
+// Una trattativa: una persona che ci ha contattato, da dove e quando, e a che punto è il
+// rapporto. Un lead è una trattativa aperta di una persona che non è socia; quando si iscrive
+// la trattativa diventa *iscritto* e resta, ed è da qui che Andamento conta da quali canali
+// arrivano i soci. La stessa persona può averne più d'una nel tempo, una aperta alla volta.
+//
+// Gli stati (shared/lead.js, STATI_LEAD) li cambiano solo le azioni di routes/lead.js. Il *da
+// quanto* non si salva: si calcola da queste date, ed è da lì che nascono i filtri rapidi.
+export const trattative = pgTable('trattative', {
 	id: uuid('id').defaultRandom().primaryKey(),
-	nome: varchar('nome', { length: 120 }).notNull(),
-	cognome: varchar('cognome', { length: 120 }).notNull(),
-	telefono: varchar('telefono', { length: 64 }),
-	email: varchar('email', { length: 255 }),
+	personaId: uuid('persona_id').notNull().references(() => persone.id, { onDelete: 'cascade' }),
 	dataContatto: date('data_contatto').notNull(),
 	canaleId: uuid('canale_id').notNull().references(() => canaliContatto.id, { onDelete: 'restrict' }),
-	sesso: varchar('sesso', { length: 8 }).notNull(), // M | F | altro
-	annoNascita: integer('anno_nascita'),
-	// Due righe da ricordare al richiamo ("chiamare dopo le 18", "chiede del corso bimbi").
-	// Il limite è in shared/lead.js (NOTE_LEAD_MASSIMO), qui come lunghezza della colonna.
-	note: varchar('note', { length: 140 }),
-	// A che punto è il rapporto (shared/lead.js, STATI_LEAD). Lo cambiano solo le azioni di
-	// routes/lead.js, mai l'endpoint generico. Il *da quanto* non si salva: si calcola da queste
-	// date, ed è da lì che nascono i filtri rapidi e, un giorno, le automazioni.
 	stato: varchar('stato', { length: 24 }).notNull().default('nuovo'),
 	statoDal: date('stato_dal').notNull().default(sql`CURRENT_DATE`),
 	// Di fila, senza risposta: una risposta li azzera.
@@ -45,30 +39,20 @@ export const leads = pgTable('leads', {
 	ultimaRispostaIl: date('ultima_risposta_il'),
 	richiamareIl: date('richiamare_il'),
 	motivoChiusura: varchar('motivo_chiusura', { length: 32 }),
+	// Chi dello staff la segue: "i miei contatti", e un domani i conti per operatore.
+	assegnataAId: uuid('assegnata_a_id').references(() => staffAccounts.id, { onDelete: 'set null' }),
+	// Che cosa cerca ("il corso bimbi"): una categoria di corsi invece di una frase nella nota.
+	interesseCategoriaId: uuid('interesse_categoria_id').references(() => categories.id, { onDelete: 'set null' }),
 	createdDate: timestamp('created_date', { withTimezone: true }).notNull().defaultNow(),
 	updatedDate: timestamp('updated_date', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({
-	sessoValido: check('leads_sesso_valido', sql`${table.sesso} IN ('M', 'F', 'altro')`),
-	annoValido: check('leads_anno_nascita_valido', sql`${table.annoNascita} IS NULL OR ${table.annoNascita} BETWEEN 1900 AND 2100`),
-	statoValido: check('leads_stato_valido', sql`${table.stato} IN ('nuovo', 'in_attesa', 'in_conversazione', 'da_richiamare', 'non_raggiungibile', 'non_interessato')`),
-	perData: index('leads_data_contatto_idx').on(table.dataContatto),
-	perStato: index('leads_stato_idx').on(table.stato),
+	statoValido: check('trattative_stato_valido', sql`${table.stato} IN ('nuovo', 'in_attesa', 'in_conversazione', 'da_richiamare', 'non_raggiungibile', 'non_interessato', 'iscritto')`),
+	perData: index('trattative_data_contatto_idx').on(table.dataContatto),
+	perStato: index('trattative_stato_idx').on(table.stato),
+	perPersona: index('trattative_persona_id_idx').on(table.personaId),
+	// Una sola aperta per persona: due trattative vive sulla stessa persona vorrebbero dire due
+	// colleghi che la richiamano senza saperlo.
+	unaAperta: uniqueIndex('trattative_una_aperta_idx').on(table.personaId)
+		.where(sql`${table.stato} IN ('nuovo', 'in_attesa', 'in_conversazione', 'da_richiamare')`),
 }));
 
-// Il diario di un lead: ogni tentativo, risposta, richiamo, chiusura e riapertura, con chi l'ha
-// fatto. `autore_id` vuoto vuol dire "il sistema": oggi il passaggio automatico a non
-// raggiungibile, domani i messaggi mandati dalle automazioni — un invio automatico è un
-// tentativo come un altro, firmato da chi l'ha fatto. Se ne va col lead.
-export const leadAttivita = pgTable('lead_attivita', {
-	id: uuid('id').defaultRandom().primaryKey(),
-	leadId: uuid('lead_id').notNull().references(() => leads.id, { onDelete: 'cascade' }),
-	tipo: varchar('tipo', { length: 24 }).notNull(), // tentativo | risposta | richiamo | chiusura | riapertura | stato_automatico
-	canale: varchar('canale', { length: 16 }), // telefono | whatsapp | email | sms | di_persona
-	esito: varchar('esito', { length: 32 }), // nessuna_risposta | risposto | la data del richiamo | il motivo di chiusura
-	nota: varchar('nota', { length: 140 }),
-	autoreId: uuid('autore_id').references(() => staffAccounts.id, { onDelete: 'set null' }),
-	autoreNome: varchar('autore_nome', { length: 255 }).notNull(),
-	createdDate: timestamp('created_date', { withTimezone: true }).notNull().defaultNow(),
-}, (table) => ({
-	perLead: index('lead_attivita_lead_id_idx').on(table.leadId, table.createdDate),
-}));

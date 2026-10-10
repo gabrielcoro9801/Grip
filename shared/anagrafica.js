@@ -5,6 +5,7 @@
 // controllo va fatto mentre lo si digita (schermate) e di nuovo quando arriva (server): con
 // due copie della regola, prima o poi una delle due accetterebbe un codice che l'altra rifiuta.
 import { oggiIso, eUnGiorno } from "./giorni.js";
+import { SOGLIE } from "./soglie.js";
 
 export const SESSI = [
   { valore: "M", etichetta: "Maschio" },
@@ -116,6 +117,40 @@ export function codiceFiscaleValido(valoreGrezzo) {
 // Partita IVA
 // ---------------------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------------------
+// Telefono
+// ---------------------------------------------------------------------------------------
+
+/**
+ * Il numero nel formato internazionale (E.164): "333 123 4567" → "+393331234567", o null se
+ * non è un numero.
+ *
+ * Un numero scritto ogni volta in modo diverso ("333.1234567", "+39 333…", "0039…") non si
+ * ritrova cercandolo, non dice che due contatti sono la stessa persona, e non apre WhatsApp
+ * né riceve un SMS. Senza prefisso si intende italiano: cellulari (3…) e fissi (0…). Uno con
+ * il prefisso si tiene com'è, purché abbia le cifre di un numero vero.
+ *
+ * La stessa regola è scritta in SQL nella migrazione 0051, che ha sistemato i numeri già salvati.
+ */
+export function normalizzaTelefono(valore) {
+  const grezzo = String(valore ?? "").trim();
+  if (!grezzo || /[^\d\s+()./-]/.test(grezzo)) return null;
+  let cifre = grezzo.replace(/[^\d+]/g, "");
+  if (cifre.startsWith("00")) cifre = `+${cifre.slice(2)}`;
+  if (cifre.lastIndexOf("+") > 0) return null;
+  if (cifre.startsWith("+")) return /^\+[1-9]\d{6,14}$/.test(cifre) ? cifre : null;
+  if (/^(3\d{8,9}|0\d{5,10})$/.test(cifre)) return `+39${cifre}`;
+  if (/^39(3\d{8,9}|0\d{5,10})$/.test(cifre)) return `+${cifre}`;
+  return null;
+}
+
+/** Il link che apre una chat WhatsApp col numero, e il testo già scritto se c'è; null senza numero. */
+export function linkWhatsApp(telefono, testo) {
+  const numero = normalizzaTelefono(telefono);
+  if (!numero) return null;
+  return `https://wa.me/${numero.slice(1)}${testo ? `?text=${encodeURIComponent(testo)}` : ""}`;
+}
+
 /** Le note di un istruttore stanno in tre righe della sua tile. */
 export const NOTE_ISTRUTTORE_MASSIMO = 140;
 
@@ -202,7 +237,7 @@ export function motivoDocumentoNonValido(doc) {
 // ---------------------------------------------------------------------------------------
 
 /** Quanti giorni prima della scadenza un documento si dice "in scadenza". */
-export const GIORNI_IN_SCADENZA = 30;
+export const GIORNI_IN_SCADENZA = SOGLIE.documentoInScadenzaGiorni;
 
 const ETICHETTE_STATO = {
   valido: "Valido",

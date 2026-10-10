@@ -6,27 +6,14 @@ import StatusBadge from "@/ui/StatusBadge";
 import { useToast } from "@/ui/primitivi/use-toast";
 import { formatDataOra, formatData } from "@/core/domain/format";
 import { oggiIso } from "@/core/domain/giorni";
-import {
-  statoLead, statoAperto, descriviTempoLead, etichettaCanaleContatto, etichettaMotivoChiusura,
-} from "@/core/domain/lead";
-import { Phone, Mail, RotateCcw, Bot } from "lucide-react";
-
-/** Una riga del diario in parole. */
-function descrivi(a) {
-  switch (a.tipo) {
-    case "tentativo": return `Contattato via ${etichettaCanaleContatto(a.canale)}: non ha risposto`;
-    case "risposta": return `Contattato via ${etichettaCanaleContatto(a.canale)}: ha risposto`;
-    case "richiamo": return `Da richiamare il ${formatData(a.esito, "breve")}`;
-    case "chiusura": return `Non interessato: ${etichettaMotivoChiusura(a.esito)}`;
-    case "riapertura": return "Riaperto";
-    case "stato_automatico": return `Passato a «${statoLead(a.esito).etichetta}»`;
-    default: return a.tipo;
-  }
-}
+import { statoLead, statoAperto, descriviTempoLead, descriviAttivita } from "@/core/domain/lead";
+import { linkWhatsApp } from "@/core/domain/anagrafica";
+import { Phone, Mail, RotateCcw, Bot, MessageCircle } from "lucide-react";
 
 /**
- * Il diario di un lead: a che punto è, e tutto quello che è successo, dal primo contatto. Il
- * primo evento non è salvato: è il giorno in cui è arrivato. Da qui si riapre un lead chiuso.
+ * Il diario di un lead: a che punto è, e tutto quello che è successo alla persona — anche prima
+ * di questo contatto, se era già nota (un ex socio che richiama). L'arrivo del contatto non è una
+ * riga salvata: si mette in fila con le altre per data. Da qui si riapre un lead chiuso.
  */
 export default function DiarioLead({ lead, nomeCanale, puoModificare, onChiudi, onCambio }) {
   const { toast } = useToast();
@@ -72,6 +59,7 @@ export default function DiarioLead({ lead, nomeCanale, puoModificare, onChiudi, 
 
             <div className="space-y-1 text-sm">
               {lead.telefono && <a href={`tel:${lead.telefono}`} className="flex items-center gap-2 text-primary hover:underline"><Phone className="w-4 h-4" aria-hidden="true" />{lead.telefono}</a>}
+              {linkWhatsApp(lead.telefono) && <a href={linkWhatsApp(lead.telefono, `Ciao ${lead.nome}!`)} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-primary hover:underline"><MessageCircle className="w-4 h-4" aria-hidden="true" />Scrivi su WhatsApp</a>}
               {lead.email && <a href={`mailto:${lead.email}`} className="flex items-center gap-2 text-primary hover:underline"><Mail className="w-4 h-4" aria-hidden="true" />{lead.email}</a>}
               {lead.note && <p className="text-muted-foreground">{lead.note}</p>}
             </div>
@@ -82,22 +70,25 @@ export default function DiarioLead({ lead, nomeCanale, puoModificare, onChiudi, 
               {!attivita && !errore && <p className="text-sm text-muted-foreground">Caricamento…</p>}
               {attivita && (
                 <ol className="relative border-l border-border ml-1.5 space-y-3">
-                  <li className="pl-4">
-                    <span className="absolute -left-[5px] mt-1.5 w-2.5 h-2.5 rounded-full bg-muted-foreground/40" aria-hidden="true" />
-                    <p className="text-sm">Registrato come contatto</p>
-                    <p className="text-xs text-muted-foreground">{formatDataOra(lead.created_date)}</p>
-                  </li>
-                  {attivita.map((a) => (
+                  {[{ id: "arrivo", arrivo: true, created_date: lead.created_date }, ...attivita]
+                    .sort((x, y) => String(x.created_date).localeCompare(String(y.created_date)))
+                    .map((a) => (a.arrivo ? (
+                    <li key={a.id} className="pl-4">
+                      <span className="absolute -left-[5px] mt-1.5 w-2.5 h-2.5 rounded-full bg-muted-foreground/40" aria-hidden="true" />
+                      <p className="text-sm">Registrato come contatto</p>
+                      <p className="text-xs text-muted-foreground">{formatDataOra(lead.created_date)}</p>
+                    </li>
+                  ) : (
                     <li key={a.id} className="pl-4">
                       <span className="absolute -left-[5px] mt-1.5 w-2.5 h-2.5 rounded-full bg-primary" aria-hidden="true" />
-                      <p className="text-sm">{descrivi(a)}</p>
+                      <p className="text-sm">{descriviAttivita(a)}</p>
                       {a.nota && <p className="text-sm text-muted-foreground">«{a.nota}»</p>}
                       <p className="text-xs text-muted-foreground flex items-center gap-1">
                         {!a.autore_id && <Bot className="w-3 h-3" aria-hidden="true" />}
                         {formatDataOra(a.created_date)} · {a.autore_nome || "—"}
                       </p>
                     </li>
-                  ))}
+                  )))}
                 </ol>
               )}
             </section>

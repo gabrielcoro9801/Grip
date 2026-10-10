@@ -189,7 +189,7 @@ describe('cosa un socio legge di sé', () => {
 		for (const url of [`/api/entities/Member/${idSocio}`, '/api/entities/Member']) {
 			const res = await come(tokenSocio, { method: 'GET', url });
 			const righe = [res.json()].flat();
-			for (const campo of ['notes', 'lead_canale_id', 'lead_data_contatto']) {
+			for (const campo of ['notes', 'persona_id']) {
 				assert.ok(righe.every((r) => !(campo in r)), `${campo} è arrivato al socio da ${url}`);
 			}
 		}

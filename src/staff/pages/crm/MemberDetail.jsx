@@ -14,6 +14,7 @@ import { ArrowLeft, Plus, CreditCard, QrCode, KeyRound, RefreshCw, Pencil, UserR
 import CampiAnagrafica, { anagraficaDi, motivoAnagraficaIncompleta } from "@/staff/components/soci/CampiAnagrafica";
 import FisseSocio from "@/staff/components/soci/FisseSocio";
 import IngressiSocio from "@/staff/components/soci/IngressiSocio";
+import DiarioSocio from "@/staff/components/soci/DiarioSocio";
 import DocumentiSocio from "@/staff/components/soci/DocumentiSocio";
 import { AvatarSocio, SceltaFoto } from "@/staff/components/soci/FotoSocio";
 import { caricaFile } from "@/staff/lib/uploads";
@@ -518,6 +519,13 @@ export default function MemberDetail() {
             </section>
           </CardContent>
         </Card>
+
+        {/* Il diario è lavoro della segreteria: lo vede chi segue i soci o i contatti. */}
+        {(canAccess(staffUser?.ruolo, "crm_members", "view") || canAccess(staffUser?.ruolo, "crm_leads", "view")) && (
+          <div className="lg:col-span-2">
+            <DiarioSocio socio={member} puoModificare={puoModificare || canEdit(staffUser?.ruolo, "crm_leads")} />
+          </div>
+        )}
       </div>
 
       {/* New Subscription Dialog */}

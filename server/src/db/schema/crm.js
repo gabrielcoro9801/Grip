@@ -2,7 +2,7 @@
 // Campi dedotti dall'uso reale nel codice (il datastore precedente non aveva schema).
 import { sql } from 'drizzle-orm';
 import { pgTable, uuid, varchar, text, boolean, integer, numeric, date, timestamp, jsonb, check, uniqueIndex, index } from 'drizzle-orm/pg-core';
-import { canaliContatto } from './lead.js';
+import { persone } from './persone.js';
 
 // Anagrafica "socio" applicativo (login member, prenotazioni, documenti, QR).
 export const members = pgTable('members', {
@@ -25,10 +25,6 @@ export const members = pgTable('members', {
 	emergencyContactPhone: varchar('emergency_contact_phone', { length: 64 }),
 	gdprConsent: boolean('gdpr_consent').default(false),
 	gdprConsentDate: date('gdpr_consent_date'),
-	// Il consenso alle comunicazioni promozionali, distinto da quello al trattamento. Oggi non
-	// lo scrive nessuno: lo darà il socio dal portale, con una notifica al titolare.
-	consensoMarketing: boolean('consenso_marketing').notNull().default(false),
-	consensoMarketingData: date('consenso_marketing_data'),
 	// Progressivo a 6 cifre (es. "000007"), assegnato dal contatore (lib/codiceSocio.js).
 	//
 	// È la chiave con cui la palestra riconosce un socio: obbligatorio e univoco. Non è la
@@ -46,13 +42,10 @@ export const members = pgTable('members', {
 	// QR non lo fanno entrare. Si riattiva quando torna. Lo scrivono solo le rotte dedicate
 	// (routes/soci.js), non l'endpoint generico.
 	archiviatoIl: date('archiviato_il'),
-	// Da dove è arrivato, se è nato da un contatto (lead): il canale e il giorno del primo
-	// contatto. Il lead si cancella quando diventa socio, e senza queste due colonne non si
-	// saprebbe più quale canale porta iscritti e non solo telefonate. Le scrive soltanto la
-	// trasformazione (routes/lead.js); vuote per chi si è iscritto direttamente, e per chi è
-	// stato trasformato prima che esistessero. Un canale citato da qui non si elimina.
-	leadCanaleId: uuid('lead_canale_id').references(() => canaliContatto.id, { onDelete: 'restrict' }),
-	leadDataContatto: date('lead_data_contatto'),
+	// La persona che questo socio è (persone.js): il suo diario, le sue trattative, i suoi
+	// consensi. Se chi crea il socio non la indica, la crea il database (trigger
+	// `socio_su_persona`), che poi tiene allineati sulla persona nome, recapiti e note del socio.
+	personaId: uuid('persona_id').notNull().unique('members_persona_id_univoco').references(() => persone.id, { onDelete: 'restrict' }),
 	createdDate: timestamp('created_date', { withTimezone: true }).notNull().defaultNow(),
 	updatedDate: timestamp('updated_date', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({

@@ -103,7 +103,7 @@ function buildEntityClient(name) {
 }
 
 const ENTITY_NAMES = [
-	'Member', 'Subscription', 'Plan', 'MemberDocument', 'QRAccesso', 'Lead', 'CanaleContatto',
+	'Member', 'Subscription', 'Plan', 'MemberDocument', 'QRAccesso', 'CanaleContatto',
 	'Course', 'Category', 'Instructor', 'Event', 'Session', 'Room', 'Booking',
 	'StaffAccount',
 	'Organization', 'AuditLog',
@@ -253,12 +253,27 @@ export const api = {
 	},
 
 	/**
-	 * Un lead diventa socio.
-	 *
-	 * Non passa da `entities` perché sono due scritture che vanno fatte insieme — nasce il socio,
-	 * sparisce il contatto — e il server le fa in una transazione.
+	 * I contatti (lead). Non passano da `entities`: un lead è una persona più una sua trattativa,
+	 * e il server le scrive insieme, in una transazione.
 	 */
 	lead: {
+		/** Un contatto nuovo, o una trattativa nuova su una persona già nota ({ persona_id, … }). → { lead } */
+		crea(dati) {
+			return request('/api/lead', { method: 'POST', body: dati });
+		},
+		/** Corregge dati del contatto e della trattativa. → { lead } */
+		aggiorna(leadId, dati) {
+			return request(`/api/lead/${leadId}`, { method: 'PUT', body: dati });
+		},
+		elimina(leadId) {
+			return request(`/api/lead/${leadId}`, { method: 'DELETE' });
+		},
+		/** Le persone già note con quel telefono o quella email: { doppioni: [{ persona_id, nome, tipo, trattativa_aperta_id }] }. */
+		doppioni({ telefono, email, escludi }) {
+			const q = new URLSearchParams(Object.entries({ telefono, email, escludi }).filter(([, v]) => v));
+			return request(`/api/lead/doppioni?${q}`);
+		},
+		/** Il contatto si iscrive: nasce il socio, o torna quello di prima. → { member, riattivato } */
 		trasforma(leadId, anagrafica) {
 			return request(`/api/lead/${leadId}/trasforma`, { method: 'POST', body: anagrafica });
 		},
@@ -266,7 +281,7 @@ export const api = {
 		usoCanali() {
 			return request('/api/lead/canali/uso');
 		},
-		/** I lead col loro stato e i conteggi dei filtri rapidi: { leads, conteggi }. */
+		/** I lead col loro stato, i conteggi dei filtri rapidi e le soglie con cui sono contati: { leads, conteggi, soglie }. */
 		lavoro() {
 			return request('/api/lead/lavoro');
 		},
@@ -278,9 +293,24 @@ export const api = {
 		andamento() {
 			return request('/api/lead/andamento');
 		},
-		/** Il diario di un lead, dal più vecchio: { attivita }. */
+		/** Il diario della persona del lead, dal più vecchio: { attivita }. */
 		attivita(leadId) {
 			return request(`/api/lead/${leadId}/attivita`);
+		},
+	},
+
+	/** La storia di una persona per la segreteria: diario e consensi. */
+	persone: {
+		/** { attivita, consensi } */
+		diario(personaId) {
+			return request(`/api/persone/${personaId}/diario`);
+		},
+		nota(personaId, nota) {
+			return request(`/api/persone/${personaId}/note`, { method: 'POST', body: { nota } });
+		},
+		/** Un consenso raccolto in reception. → { consensi } */
+		consenso(personaId, tipo, valore) {
+			return request(`/api/persone/${personaId}/consensi`, { method: 'POST', body: { tipo, valore } });
 		},
 	},
 

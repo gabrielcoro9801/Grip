@@ -3,7 +3,7 @@ import { Input } from "@/ui/primitivi/input";
 import { Label } from "@/ui/primitivi/label";
 import { Textarea } from "@/ui/primitivi/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/ui/primitivi/select";
-import { SESSI, codiceFiscaleValido, normalizzaCodiceFiscale, NOTE_SOCIO_MASSIMO, motivoDataNascitaNonValida } from "@/core/domain/anagrafica";
+import { SESSI, codiceFiscaleValido, normalizzaCodiceFiscale, NOTE_SOCIO_MASSIMO, motivoDataNascitaNonValida, normalizzaTelefono } from "@/core/domain/anagrafica";
 import { oggiIso } from "@/core/domain/giorni";
 
 // Il consenso GDPR non è più fra i campi: non lo dà la segreteria, lo darà il socio dal portale.
@@ -41,6 +41,9 @@ export function motivoAnagraficaIncompleta(v) {
   const nascita = motivoDataNascitaNonValida(v.date_of_birth);
   if (nascita) return nascita;
   if ((v.notes ?? "").length > NOTE_SOCIO_MASSIMO) return `Le note stanno in ${NOTE_SOCIO_MASSIMO} caratteri.`;
+  // La stessa regola del server: un numero che non è un numero non si salva.
+  if (String(v.phone ?? "").trim() && !normalizzaTelefono(v.phone)) return "Il telefono non è valido.";
+  if (String(v.emergency_contact_phone ?? "").trim() && !normalizzaTelefono(v.emergency_contact_phone)) return "Il telefono di emergenza non è valido.";
   return null;
 }
 

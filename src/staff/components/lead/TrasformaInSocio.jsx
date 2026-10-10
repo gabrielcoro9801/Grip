@@ -7,11 +7,12 @@ import { useToast } from "@/ui/primitivi/use-toast";
 import CampiAnagrafica, { ANAGRAFICA_VUOTA, motivoAnagraficaIncompleta } from "@/staff/components/soci/CampiAnagrafica";
 
 /**
- * La finestra che trasforma un lead in socio.
+ * La finestra con cui un contatto si iscrive.
  *
- * Parte da quello che il lead ha già — nome, cognome, sesso, recapiti — e chiede il resto
- * dell'anagrafica del socio, codice fiscale per primo. Confermando nasce il socio e il lead
- * sparisce, in un'operazione sola sul server; poi si apre la scheda del socio.
+ * Parte da quello che si sa già — dal contatto nome e recapiti, da un ex socio tutta la sua
+ * vecchia scheda — e chiede il resto dell'anagrafica, codice fiscale per primo. Confermando
+ * nasce il socio (o torna quello di prima, con il suo codice) in un'operazione sola sul server;
+ * il contatto resta nel diario della persona. Poi si apre la scheda del socio.
  */
 export default function TrasformaInSocio({ lead, onChiudi }) {
   const navigate = useNavigate();
@@ -21,11 +22,17 @@ export default function TrasformaInSocio({ lead, onChiudi }) {
 
   useEffect(() => {
     if (!lead) return;
+    // Un ex socio ha già una scheda: si riparte da quella, che ha codice fiscale e data di nascita.
+    if (lead.socio_id) {
+      api.entities.Member.get(lead.socio_id)
+        .then((s) => setValori(Object.fromEntries(Object.keys(ANAGRAFICA_VUOTA).map((k) => [k, s[k] ?? ANAGRAFICA_VUOTA[k]]))))
+        .catch(() => {});
+    }
     setValori({
       ...ANAGRAFICA_VUOTA,
       nome: lead.nome,
-      cognome: lead.cognome,
-      sesso: lead.sesso,
+      cognome: lead.cognome ?? "",
+      sesso: lead.sesso ?? "",
       email: lead.email ?? "",
       phone: lead.telefono ?? "",
       // La nota del contatto diventa la prima nota del socio: è la stessa segreteria che la
@@ -38,8 +45,9 @@ export default function TrasformaInSocio({ lead, onChiudi }) {
     e.preventDefault();
     setSalvando(true);
     try {
-      const { member } = await api.lead.trasforma(lead.id, valori);
-      toast({ title: "Socio creato", description: `${member.full_name} è ora un socio.` });
+      const esito = await api.lead.trasforma(lead.id, valori);
+      const { member, riattivato } = esito;
+      toast({ title: riattivato ? "Socio riattivato" : "Socio creato", description: riattivato ? `${member.full_name} è tornato socio, con il suo codice.` : `${member.full_name} è ora un socio.` });
       onChiudi(true);
       navigate(`/crm/soci/${member.id}`);
     } catch (err) {
@@ -55,16 +63,18 @@ export default function TrasformaInSocio({ lead, onChiudi }) {
     <Dialog open={!!lead} onOpenChange={(aperta) => !aperta && onChiudi(false)}>
       <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Trasforma in socio</DialogTitle>
+          <DialogTitle>Iscrivi</DialogTitle>
           <DialogDescription>
-            Completa l'anagrafica. Confermando nasce il socio con il suo codice, e il contatto viene eliminato.
+            {lead?.socio_id
+              ? "È già stato socio: controlla i dati della sua scheda. Confermando torna socio, con il suo codice e la sua storia."
+              : "Completa l'anagrafica. Confermando nasce il socio con il suo codice; la storia del contatto resta nel suo diario."}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={conferma} className="space-y-4">
           <CampiAnagrafica valori={valori} onChange={setValori} suggerimentoNascita={suggerimento} />
           {incompleto && <p className="text-xs text-muted-foreground">{incompleto}</p>}
           <Button type="submit" className="w-full" disabled={Boolean(incompleto) || salvando}>
-            {salvando ? "Creazione del socio..." : "Crea il socio"}
+            {salvando ? "Iscrizione..." : lead?.socio_id ? "Riattiva il socio" : "Crea il socio"}
           </Button>
         </form>
       </DialogContent>

@@ -6,6 +6,7 @@
 
 import { oggiIso, giorniFra } from './giorni.js';
 import { motivoCambioStato } from './stati.js';
+import { SOGLIE } from './soglie.js';
 
 // Oggi a Roma vive in `giorni.js`; resta esportato anche da qui perché server e schermate lo
 // prendono da questo modulo da quando è nato.
@@ -64,7 +65,7 @@ export function motivoNonVendibile(tipo, oggi = oggiIso()) {
  * portale soci ne hanno una loro, più stretta (sette giorni): lì si parla al socio, qui alla
  * segreteria, che deve avere il tempo di proporre il rinnovo.
  */
-export const GIORNI_ABBONAMENTO_IN_SCADENZA = 14;
+export const GIORNI_ABBONAMENTO_IN_SCADENZA = SOGLIE.abbonamentoInScadenzaGiorni;
 
 /**
  * Lo stato di un'iscrizione, calcolato dalle date: 'active' | 'expiring' | 'expired'.

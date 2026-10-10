@@ -8,6 +8,8 @@ import PageHeader from "@/staff/components/PageHeader";
 import { LoadingState } from "@/ui/Spinner";
 import { ErrorState } from "@/ui/StateViews";
 import { SESSI, etichettaSesso } from "@/core/domain/anagrafica";
+
+const etichettaSessoAndamento = (v) => (v === "nd" ? "Non indicato" : etichettaSesso(v));
 import { oggiIso } from "@/core/domain/giorni";
 import {
   MESI, FASCE_ETA, intervalloPeriodo, filtraAndamento, fasciaEta, riepilogoAndamento, serieMensile, esitiPerCanale,
@@ -95,7 +97,8 @@ export default function Andamento() {
       canali: esitiPerCanale(senza("canaleId"), canali),
       stagioni: matriceStagionalita(senza("canaleId"), canali),
       motivi: motiviPerdita(filtraAndamento(righe, tutti)),
-      sessi: contaInOrdine(senza("sesso"), (r) => r.sesso, SESSI.map((s) => s.valore)),
+      // Il sesso di un contatto è facoltativo: chi non l'ha indicato si conta a parte, come l'età.
+      sessi: contaInOrdine(senza("sesso"), (r) => r.sesso ?? "nd", [...SESSI.map((s) => s.valore), "nd"]),
       fasce: contaInOrdine(senza("fascia"), fasciaEta, FASCE_ETA.map((f) => f.valore)),
       anni: anniDisponibili(righe),
       vuoto: righe.length === 0,
@@ -116,7 +119,7 @@ export default function Andamento() {
   const filtriAttivi = [
     filtri.mese && { campo: "mese", testo: meseLeggibile(filtri.mese) },
     filtri.canaleId && { campo: "canaleId", testo: nomeCanale(filtri.canaleId) },
-    filtri.sesso && { campo: "sesso", testo: etichettaSesso(filtri.sesso) },
+    filtri.sesso && { campo: "sesso", testo: etichettaSessoAndamento(filtri.sesso) },
     filtri.fascia && { campo: "fascia", testo: FASCE_ETA.find((f) => f.valore === filtri.fascia)?.etichetta },
   ].filter(Boolean);
 
@@ -184,7 +187,7 @@ export default function Andamento() {
             />
             <BarreConteggio
               titolo="Per sesso" sottotitolo="Clic per filtrare"
-              voci={conti.sessi.map((s) => ({ chiave: s.valore, etichetta: etichettaSesso(s.valore), totale: s.totale }))}
+              voci={conti.sessi.map((s) => ({ chiave: s.valore, etichetta: etichettaSessoAndamento(s.valore), totale: s.totale }))}
               colore={COLORI.contatti} scelta={filtri.sesso} onScegli={imposta("sesso")}
             />
             <BarreConteggio

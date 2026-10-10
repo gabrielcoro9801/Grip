@@ -2,8 +2,10 @@ import { eq, and, gte, lte, inArray, ne, desc, isNull, count } from 'drizzle-orm
 import { db } from '../../db/client.js';
 import {
 	members, subscriptions, memberDocuments, qrAccessi,
-	courses, categories, instructors, rooms, events, sessions, bookings, notifiche,
+	courses, categories, instructors, rooms, events, sessions, bookings, notifiche, consensi,
 } from '../../db/schema/index.js';
+import { consensiDi } from '../persone.js';
+import { tipoConsensoValido } from '../../../../shared/consensi.js';
 import { getUserFromRequest } from '../../auth/tokens.js';
 import { socioDiAccount } from '../../auth/socioCorrente.js';
 import { codiceDinamico } from '../../lib/qrDinamico.js';
@@ -490,6 +492,29 @@ export default async function memberRoutes(fastify) {
 			.where(and(eq(notifiche.memberId, request.idSocio), isNull(notifiche.lettaIl)))
 			.returning({ id: notifiche.id });
 		return { lette: lette.length };
+	});
+
+	// I consensi alle comunicazioni promozionali (shared/consensi.js): li dà e li toglie il socio,
+	// canale per canale. Ogni scelta si aggiunge al registro, con il nome del socio e "portale".
+	const personaDelSocio = async (idSocio) => {
+		const [socio] = await db.select({ personaId: members.personaId, nome: members.fullName }).from(members).where(eq(members.id, idSocio)).limit(1);
+		return socio;
+	};
+
+	/** GET /consensi → { consensi: { marketing_email: { valore, fonte, il }, … } } */
+	fastify.get('/consensi', async (request) => {
+		const socio = await personaDelSocio(request.idSocio);
+		return { consensi: await consensiDi(socio.personaId) };
+	});
+
+	/** PUT /consensi { tipo, valore } → { consensi } */
+	fastify.put('/consensi', async (request, reply) => {
+		const { tipo, valore } = request.body ?? {};
+		if (!tipoConsensoValido(tipo)) return reply.code(400).send({ error: 'Tipo di consenso non valido.' });
+		if (typeof valore !== 'boolean') return reply.code(400).send({ error: 'Indica se dai o togli il consenso.' });
+		const socio = await personaDelSocio(request.idSocio);
+		await db.insert(consensi).values({ personaId: socio.personaId, tipo, valore, fonte: 'portale', autoreNome: socio.nome });
+		return { consensi: await consensiDi(socio.personaId) };
 	});
 }
 

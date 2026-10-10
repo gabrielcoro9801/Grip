@@ -104,6 +104,37 @@ Tre punti che si sbagliano quasi sempre, spiegati lì per esteso:
 
 ## Stato del progetto
 
+### 10 ottobre 2026 — CRM, fase 1: una persona, una storia
+
+Lead, soci ed ex soci sono ora **la stessa persona** (`persone`). Un lead è una **trattativa**
+della persona (`trattative`, che prende il posto di `leads`): quando si iscrive non si cancella
+più, si chiude come *iscritto*, e il suo **diario** (`attivita`, prima `lead_attivita`) resta alla
+persona. Un ex socio che richiama si riconosce e, iscrivendosi, ritrova la sua scheda con il suo
+codice. Il piano completo del CRM, con le fasi successive, è in
+[`docs/crm/piano-crm.md`](docs/crm/piano-crm.md).
+
+- **Contatto più rapido**: bastano nome, un recapito (telefono o email), canale e giorno.
+- **Doppioni**: registrando un contatto, la reception vede se telefono o email sono già di un
+  socio, di un ex socio o di un contatto aperto, e lo collega invece di crearne un altro.
+- **Telefoni in formato internazionale** (`+39…`, `normalizzaTelefono` in `shared/anagrafica.js`):
+  i numeri già salvati sono stati convertiti dalla migrazione; quelli non riconosciuti sono rimasti
+  com'erano e vanno corretti alla prossima modifica della scheda.
+- **Diario nella scheda socio**, con note della segreteria e pulsanti per chiamare, scrivere su
+  WhatsApp (un link, nessuna integrazione con Meta) o mandare un'email.
+- **Consensi promozionali** per email, SMS e notifiche: li sceglie il socio dal portale
+  (Anagrafica) o li registra la reception da un modulo firmato. Sono un registro: ogni scelta resta.
+- **Soglie in un posto solo** (`shared/soglie.js`), modificabili per palestra in
+  `organizations.impostazioni.soglie`; per ora le leggono i contatti.
+
+Due avvertenze:
+
+- **Lo schema va avanti solo con le migrazioni** (`npm run db:deploy`), non con `db:push`: la
+  persona di un socio la crea e la aggiorna un trigger del database (`socio_su_persona`, migrazione
+  0051), che `push` non conosce. Senza trigger un socio nuovo non si salva.
+- **Le migrazioni non ricostruiscono un database vuoto**: la 0023 inserisce in `exercises`, che
+  nessuna migrazione precedente crea (il database storico è nato con `push`). Va sistemato prima di
+  creare nuovi ambienti, e comunque prima del multi-tenant.
+
 ### 7 ottobre 2026 — l'allenamento esce dall'applicazione
 
 Sono stati tolti dal gestionale e dal portale soci **libreria esercizi, schede modello e
