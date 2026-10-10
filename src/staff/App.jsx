@@ -16,6 +16,7 @@ const StaffShell = lazy(() => import('@/staff/StaffShell'));
 const PermissionGate = lazy(() => import('@/staff/components/PermissionGate'));
 const Dashboard = lazy(() => import('@/staff/pages/Dashboard'));
 const Oggi = lazy(() => import('@/staff/pages/Oggi'));
+const LeMieLezioni = lazy(() => import('@/staff/pages/LeMieLezioni'));
 const CrmLayout = lazy(() => import('@/staff/pages/crm/CrmLayout'));
 const MembersList = lazy(() => import('@/staff/pages/crm/MembersList'));
 const MemberDetail = lazy(() => import('@/staff/pages/crm/MemberDetail'));
@@ -54,6 +55,7 @@ export default function App() {
               <Route element={<StaffShell />}>
                 <Route path="/" element={<Dashboard />} />
                 <Route path="/oggi" element={<PermissionGate module={["crm_members", "crm_leads"]}><Oggi /></PermissionGate>} />
+                <Route path="/istruttore" element={<PermissionGate module="lezioni_istruttore"><LeMieLezioni /></PermissionGate>} />
                 {/* Gli slug del gestionale sono in italiano come le voci che li
                     nominano. I vecchi percorsi in inglese restano come redirect,
                     perché possono essere nei preferiti. */}

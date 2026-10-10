@@ -296,6 +296,16 @@ const WRITE_TRANSFORMS = {
 			password, password_hash: _hash, token_version: _versione, password_da_cambiare: _obbligo, ...rest
 		} = body ?? {};
 		if (creazione && !password) throw rifiuta('La password è obbligatoria.');
+		// L'istruttore collegato (la vista "Le mie lezioni"): uno che esiste, o nessuno. Un account
+		// del portale è un socio, non un istruttore.
+		if (presente(rest, 'instructor_id')) {
+			if (vuoto(rest.instructor_id)) rest.instructor_id = null;
+			else {
+				if (rest.ruolo === 'member') throw rifiuta("Un account del portale non si collega a un istruttore.");
+				const [istruttore] = await db.select({ id: instructors.id }).from(instructors).where(eq(instructors.id, rest.instructor_id)).limit(1);
+				if (!istruttore) throw rifiuta("L'istruttore scelto non esiste più.");
+			}
+		}
 		if (password) {
 			const nonValida = motivoPasswordNonValida(password);
 			if (nonValida) throw rifiuta(nonValida);

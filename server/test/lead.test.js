@@ -14,7 +14,8 @@ import { enteDellaNumerazione } from '../src/lib/codiceSocio.js';
 import {
 	members, staffAccounts, canaliContatto, numberingCounters, ruoli, persone, trattative, attivita, consensi,
 } from '../src/db/schema/index.js';
-import { caricaMatrice, caricaMatriceIniziale } from '../src/lib/ruoli.js';
+import { caricaMatrice } from '../src/lib/ruoli.js';
+import { impostaMatrice, ripristinaMatricePredefinita, PERMESSI_PREDEFINITI } from '../../shared/permissions.js';
 import { oggiIso, spostaGiorni } from '../../shared/giorni.js';
 import { giro } from '../src/giro.js';
 
@@ -63,7 +64,13 @@ async function leadSuPersona(personaId) {
 	return res.json().lead;
 }
 
+// "Vede ma non modifica": fino alla fase 3 del CRM era l'istruttore predefinito, e questi test lo
+// usano così. Oggi l'istruttore ha la sua vista e non le anagrafiche: gli si ridà qui la sola lettura.
+const SOLA_LETTURA = { ...PERMESSI_PREDEFINITI, istruttore: { crm_members: ['view'], crm_documents: ['view'], crm_leads: ['view'], calendar: ['view', 'edit'] } };
+const matriceDiProva = () => impostaMatrice({ permessi: SOLA_LETTURA, capacita: {} });
+
 before(async () => {
+	matriceDiProva();
 	app = buildApp({ logger: false });
 	await app.ready();
 	const suffisso = Date.now();
@@ -104,6 +111,7 @@ before(async () => {
 });
 
 after(async () => {
+	ripristinaMatricePredefinita();
 	await db.delete(staffAccounts).where(inArray(staffAccounts.id, idAccount));
 	if (idSocio.length) await db.delete(members).where(inArray(members.id, idSocio));
 	// Le persone portano via trattative, diario e consensi; poi i canali non sono più citati.
@@ -369,7 +377,7 @@ describe("l'iscrizione", () => {
 			assert.equal((await iscrivi(lead.id, anagraficaCompleta)).statusCode, 403);
 		} finally {
 			await db.update(ruoli).set({ permessi: originali }).where(eq(ruoli.id, ruolo.id));
-			await caricaMatriceIniziale();
+			matriceDiProva();
 		}
 	});
 });

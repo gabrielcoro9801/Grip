@@ -17,6 +17,7 @@ import qrRoutes from './routes/qr.js';
 import prenotazioniRoutes from './routes/prenotazioni.js';
 import leadRoutes from './routes/lead.js';
 import iscrizioniRoutes from './routes/iscrizioni.js';
+import istruttoreRoutes from './routes/istruttore.js';
 import personeRoutes from './routes/persone.js';
 import segnaliRoutes from './routes/segnali.js';
 import sociRoutes from './routes/soci.js';
@@ -171,6 +172,7 @@ export function buildApp({ publicBaseUrl = 'http://localhost:3001', logger = tru
 	app.register(prenotazioniRoutes);
 	app.register(leadRoutes);
 	app.register(iscrizioniRoutes);
+	app.register(istruttoreRoutes);
 	app.register(personeRoutes);
 	app.register(segnaliRoutes);
 	app.register(sociRoutes);

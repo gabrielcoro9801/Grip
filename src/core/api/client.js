@@ -196,6 +196,22 @@ export const api = {
 		},
 	},
 
+	/** La vista dell'istruttore (routes/istruttore.js): le sue lezioni e i soci che ci vengono. */
+	istruttore: {
+		/** { dal?, al? } → { collegato, istruttore, dal, al, lezioni, spesso } */
+		lezioni(filtri = {}) {
+			const q = new URLSearchParams(Object.entries(filtri).filter(([, v]) => v)).toString();
+			return request(`/api/istruttore/lezioni${q ? `?${q}` : ''}`);
+		},
+		/** → { socio, note } */
+		socio(memberId) {
+			return request(`/api/istruttore/soci/${encodeURIComponent(memberId)}`);
+		},
+		nota(memberId, nota) {
+			return request(`/api/istruttore/soci/${encodeURIComponent(memberId)}/note`, { method: 'POST', body: { nota } });
+		},
+	},
+
 	/**
 	 * Iscrivi, in un passo: { lead_id?, anagrafica, abbonamento?, certificato?, informativa_privacy,
 	 * consensi?, portale? } → { member, riattivato, accesso_portale }. Tutto in una transazione.
