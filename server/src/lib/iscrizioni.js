@@ -4,7 +4,7 @@
 // ogni lettura. Per questo chi decide se un socio entra, prenota o va seguito legge le iscrizioni
 // da qui e non dalla tabella: letta nuda, un'iscrizione sospesa sembrerebbe scaduta prima, e i
 // giorni fermi sembrerebbero coperti.
-import { and, asc, eq, gte, inArray, isNull, or } from 'drizzle-orm';
+import { asc, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { subscriptions, sospensioni } from '../db/schema/index.js';
 import { conSospensioni } from '../../../shared/abbonamenti.js';
@@ -18,16 +18,16 @@ const colonne = {
 /**
  * Le iscrizioni dei soci indicati (tutti, con `memberIds` null), con le date di oggi.
  *
- * @param fineDal lascia fuori le iscrizioni finite (nella data venduta) prima di quel giorno
+ * @param fineDal lascia fuori le iscrizioni finite prima di quel giorno: dopo le sospensioni, perché
+ *   una vecchia iscrizione sospesa fa slittare il rinnovo che le viene dietro
  * @returns Map<member_id, iscrizioni[]>, dalla più vecchia
  */
 export async function iscrizioniPerSocio(memberIds = null, { conn = db, fineDal = null } = {}) {
 	if (memberIds && !memberIds.length) return new Map();
 	const diChi = (colonna) => (memberIds ? inArray(colonna, memberIds) : undefined);
 	// Una dopo l'altra, non insieme: `conn` può essere una transazione, cioè una connessione sola.
-	const righe = await conn.select(colonne).from(subscriptions)
-		.where(and(diChi(subscriptions.memberId), fineDal ? or(isNull(subscriptions.endDate), gte(subscriptions.endDate, fineDal)) : undefined))
-		.orderBy(asc(subscriptions.startDate));
+	// ponytail: tutte le iscrizioni dei soci chiesti, filtrate dopo; regge anni di storico per palestra.
+	const righe = await conn.select(colonne).from(subscriptions).where(diChi(subscriptions.memberId)).orderBy(asc(subscriptions.startDate));
 	const ferme = await conn.select({ id: sospensioni.id, member_id: sospensioni.memberId, dal: sospensioni.dal, al: sospensioni.al, nota: sospensioni.nota })
 		.from(sospensioni).where(diChi(sospensioni.memberId));
 	const per = (elenco) => {
@@ -37,7 +37,8 @@ export async function iscrizioniPerSocio(memberIds = null, { conn = db, fineDal 
 	};
 	const iscrizioni = per(righe);
 	const sospese = per(ferme);
-	return new Map([...iscrizioni].map(([id, suoi]) => [id, conSospensioni(suoi, sospese.get(id) ?? [])]));
+	const recenti = (elenco) => (fineDal ? elenco.filter((i) => !i.end_date || i.end_date >= fineDal) : elenco);
+	return new Map([...iscrizioni].map(([id, suoi]) => [id, recenti(conSospensioni(suoi, sospese.get(id) ?? []))]));
 }
 
 /** Le iscrizioni di un socio, con le date di oggi. */

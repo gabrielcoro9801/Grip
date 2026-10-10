@@ -129,14 +129,14 @@ export default async function iscrizioniRoutes(fastify) {
 			// la scadenza dal tipo; il tipo di documento e la sua scadenza). Un rifiuto annulla tutto.
 			let abbonamento = null;
 			if (corpo.abbonamento) {
-				const vendita = await applyWriteTransform('Subscription', { ...scegli(corpo.abbonamento, ['plan_id', 'start_date', 'price_paid']), member_id: socio.id });
+				const vendita = await applyWriteTransform('Subscription', { ...scegli(corpo.abbonamento, ['plan_id', 'start_date', 'price_paid']), member_id: socio.id }, { conn: tx });
 				[abbonamento] = await tx.insert(subscriptions).values(translateToJs(subscriptions, vendita)).returning();
 			}
 			if (corpo.certificato) {
 				const documento = await applyWriteTransform('MemberDocument', {
 					...scegli(corpo.certificato, ['file_url', 'file_name', 'expiry_date']),
 					document_type: 'certificato_medico', member_id: socio.id, caricato_da: autoreNome,
-				});
+				}, { conn: tx });
 				if (!documento.file_url) throw rifiuta('Carica il certificato, o salta il passo.');
 				await tx.insert(memberDocuments).values(translateToJs(memberDocuments, documento));
 			}
@@ -152,7 +152,8 @@ export default async function iscrizioniRoutes(fastify) {
 				const [suo] = await tx.select({ id: staffAccounts.id }).from(staffAccounts).where(eq(staffAccounts.linkedMemberId, socio.id)).limit(1);
 				if (suo) {
 					await tx.update(staffAccounts)
-						.set({ passwordHash, passwordDaCambiare: true, attivo: true, tokenVersion: sql`${staffAccounts.tokenVersion} + 1` })
+						// Con l'email di oggi: è quella che la reception gli dice di usare.
+						.set({ email: String(socio.email).trim(), passwordHash, passwordDaCambiare: true, attivo: true, tokenVersion: sql`${staffAccounts.tokenVersion} + 1` })
 						.where(eq(staffAccounts.id, suo.id));
 					accesso = 'reimpostato';
 				} else {

@@ -10,7 +10,7 @@
 // Qui stanno anche archiviazione e riattivazione di un socio: toccano il suo accesso, le sue
 // prenotazioni e il registro, e non sono una modifica dell'anagrafica come le altre.
 import bcrypt from 'bcryptjs';
-import { eq, and, ne, gte, lte, sql } from 'drizzle-orm';
+import { eq, and, ne, gte, lte, isNull, isNotNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { attivita, bookings, members, sessions, sospensioni, staffAccounts } from '../db/schema/index.js';
 import { getUserFromRequest } from '../auth/tokens.js';
@@ -161,10 +161,15 @@ export default async function sociRoutes(fastify) {
 
 		const oggi = oggiIso();
 		const autoreNome = await nomeDi(request.utente.sub);
-		await db.transaction(async (tx) => {
-			await tx.update(members).set({ archiviatoIl: oggi, updatedDate: new Date() }).where(eq(members.id, socio.id));
-			await tx.insert(attivita).values({ personaId: socio.personaId, tipo: 'abbandono', esito: motivo, nota, autoreId: request.utente.sub, autoreNome });
+		// Solo chi archivia davvero scrive il motivo: con un doppio clic la seconda richiesta non
+		// trova più niente da archiviare, e la dashboard non conta due abbandoni.
+		const archiviato = await db.transaction(async (tx) => {
+			const fatto = await tx.update(members).set({ archiviatoIl: oggi, updatedDate: new Date() })
+				.where(and(eq(members.id, socio.id), isNull(members.archiviatoIl))).returning({ id: members.id });
+			if (fatto.length) await tx.insert(attivita).values({ personaId: socio.personaId, tipo: 'abbandono', esito: motivo, nota, autoreId: request.utente.sub, autoreNome });
+			return fatto.length > 0;
 		});
+		if (!archiviato) return { socio: await socioPubblico(socio.id), prenotazioni_disdette: 0 };
 
 		const future = await db
 			.select({ id: bookings.id, date: sessions.date, endTime: sessions.endTime })
@@ -210,7 +215,9 @@ export default async function sociRoutes(fastify) {
 	 * passa a chi è in lista d'attesa.
 	 */
 	fastify.post('/api/soci/:id/sospensioni', async (request, reply) => {
-		const { dal, riprende_il: ripresa } = request.body ?? {};
+		// Giorni, non istanti: "2026-10-10T08:00" passerebbe il controllo e falserebbe i confronti.
+		const dal = String(request.body?.dal ?? '').slice(0, 10);
+		const ripresa = String(request.body?.riprende_il ?? '').slice(0, 10);
 		const nota = String(request.body?.nota ?? '').trim() || null;
 		const oggi = oggiIso();
 		if (!eUnGiorno(dal) || !eUnGiorno(ripresa)) return reply.code(400).send({ error: 'Indica da quando e quando riprende.' });
@@ -262,7 +269,7 @@ export default async function sociRoutes(fastify) {
 	 */
 	fastify.post('/api/soci/:id/sospensioni/:sid/termina', async (request, reply) => {
 		const oggi = oggiIso();
-		const ripresa = request.body?.riprende_il ?? oggi;
+		const ripresa = String(request.body?.riprende_il ?? oggi).slice(0, 10);
 		if (!eUnGiorno(ripresa) || ripresa < oggi) return reply.code(400).send({ error: 'Si riprende da oggi o da un giorno futuro.' });
 		const [s] = await db.select().from(sospensioni)
 			.where(and(eq(sospensioni.id, request.params.sid), eq(sospensioni.memberId, request.params.id))).limit(1);
@@ -296,8 +303,9 @@ export default async function sociRoutes(fastify) {
 		if (socio.archiviatoIl) {
 			const autoreNome = await nomeDi(request.utente.sub);
 			await db.transaction(async (tx) => {
-				await tx.update(members).set({ archiviatoIl: null, updatedDate: new Date() }).where(eq(members.id, socio.id));
-				await tx.insert(attivita).values({ personaId: socio.personaId, tipo: 'riattivazione', autoreId: request.utente.sub, autoreNome });
+				const fatto = await tx.update(members).set({ archiviatoIl: null, updatedDate: new Date() })
+					.where(and(eq(members.id, socio.id), isNotNull(members.archiviatoIl))).returning({ id: members.id });
+				if (fatto.length) await tx.insert(attivita).values({ personaId: socio.personaId, tipo: 'riattivazione', autoreId: request.utente.sub, autoreNome });
 			});
 			await registra(request.utente, {
 				tipoAzione: 'activate', entitaTipo: 'member', entitaNome: socio.nome, entitaId: socio.id, dettagli: 'Riattivato',

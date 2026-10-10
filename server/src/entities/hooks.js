@@ -373,7 +373,7 @@ const WRITE_TRANSFORMS = {
 	// di un'iscrizione già venduta. Ora un'iscrizione nasce sempre da un tipo, e dopo si correggono
 	// solo la data d'inizio (la scadenza segue, ricalcolata dal tipo) e l'importo pagato.
 	// Lo stato non si scrive: si calcola dalle date a ogni lettura.
-	async Subscription(body, { creazione, id }) {
+	async Subscription(body, { creazione, id, conn = db }) {
 		const { status: _calcolato, ...rest } = body ?? {};
 		if (presente(rest, 'price_paid') && !vuoto(rest.price_paid)) {
 			const importo = Number(rest.price_paid);
@@ -400,9 +400,9 @@ const WRITE_TRANSFORMS = {
 		}
 		if (vuoto(rest.member_id)) throw rifiuta('Manca il socio.');
 		if (vuoto(rest.plan_id)) throw rifiuta("Scegli il tipo di abbonamento.");
-		const [socio] = await db.select({ archiviatoIl: members.archiviatoIl }).from(members).where(eq(members.id, rest.member_id)).limit(1);
+		const [socio] = await conn.select({ archiviatoIl: members.archiviatoIl }).from(members).where(eq(members.id, rest.member_id)).limit(1);
 		if (socio?.archiviatoIl) throw rifiuta(SOCIO_ARCHIVIATO);
-		const [tipo] = await db.select().from(plans).where(eq(plans.id, rest.plan_id)).limit(1);
+		const [tipo] = await conn.select().from(plans).where(eq(plans.id, rest.plan_id)).limit(1);
 		const motivo = motivoNonVendibile(tipo && { name: tipo.name, stato: tipo.stato, vendibile_fino_al: tipo.vendibileFinoAl });
 		if (motivo) throw rifiuta(motivo);
 		if (vuoto(rest.start_date)) rest.start_date = oggiIso();
@@ -568,9 +568,11 @@ const WRITE_TRANSFORMS = {
  * @param opzioni { creazione, utente, id } — alcune regole valgono solo quando la riga nasce,
  *                 altre dipendono da chi scrive e su quale riga.
  */
-export async function applyWriteTransform(entityName, body, { creazione = true, utente = null, id = null } = {}) {
+// `conn`: la transazione di chi chiama, se ce n'è una (routes/iscrizioni.js): le letture devono
+// vedere quello che ha già scritto, come il socio appena riattivato.
+export async function applyWriteTransform(entityName, body, { creazione = true, utente = null, id = null, conn = db } = {}) {
 	const transform = WRITE_TRANSFORMS[entityName];
-	return transform ? transform(body, { creazione, utente, id }) : body;
+	return transform ? transform(body, { creazione, utente, id, conn }) : body;
 }
 
 export function stripHiddenFields(entityName, row) {

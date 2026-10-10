@@ -121,11 +121,13 @@ describe('iscrivi in un passo', () => {
 
 	test('un ex socio che entra direttamente ritrova la sua scheda e il suo codice', async () => {
 		const [ex] = await db.insert(members).values({ nome: 'Ex', cognome: `Socio${lettere}`, codiceSocio: `IX${lettere}`, codiceFiscale: CF_EX, archiviatoIl: '2025-06-30' }).returning();
-		const res = await iscrivi({ anagrafica: anagrafica(CF_EX, { nome: 'Ex', cognome: `Socio${lettere}` }), informativa_privacy: true });
+		// Con l'abbonamento: la vendita deve vedere il socio già riattivato nella stessa transazione.
+		const res = await iscrivi({ anagrafica: anagrafica(CF_EX, { nome: 'Ex', cognome: `Socio${lettere}` }), informativa_privacy: true, abbonamento: { plan_id: id.tipo } });
 		assert.equal(res.statusCode, 201, res.body);
 		assert.equal(res.json().riattivato, true);
 		assert.equal(res.json().member.id, ex.id);
 		assert.equal(res.json().member.codice_socio, ex.codiceSocio);
 		assert.equal(res.json().member.archiviato_il, null);
+		assert.equal((await db.select().from(subscriptions).where(eq(subscriptions.memberId, ex.id))).length, 1);
 	});
 });
