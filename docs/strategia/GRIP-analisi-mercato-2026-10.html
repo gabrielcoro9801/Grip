@@ -1,0 +1,586 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<title>GRIP — mercato, concorrenza e strategia di prodotto</title>
+<style>
+:root{
+  --ink:#1b1f24; --muted:#5b6470; --line:#d9dde3; --soft:#f3f5f8;
+  --accent:#0f6b5c; --accent-soft:#e3f1ee; --warn:#9a5b00; --warn-soft:#fbf1e1;
+  --red:#a33a2a; --red-soft:#f8e7e4;
+}
+@page{ size:A4; margin:20mm 18mm 20mm 18mm; }
+*{ box-sizing:border-box; }
+html,body{ background:#fff; }
+body{ font-family:"Inter",sans-serif; color:var(--ink); font-size:10pt; line-height:1.5; margin:0; }
+h1{ font-family:"Inter Display","Inter",sans-serif; font-size:21pt; line-height:1.15; margin:0 0 4mm; letter-spacing:-.01em; break-before:page; }
+h1 .n{ color:var(--accent); margin-right:3mm; }
+h2{ font-size:13pt; margin:7mm 0 2mm; break-after:avoid; }
+h3{ font-size:10.5pt; margin:5mm 0 1.5mm; break-after:avoid; }
+p{ margin:0 0 2.5mm; }
+ul,ol{ margin:0 0 3mm; padding-left:5mm; }
+li{ margin:0 0 1.2mm; }
+.lead{ font-size:11pt; color:var(--muted); margin-bottom:5mm; }
+.small{ font-size:8.5pt; color:var(--muted); }
+table{ width:100%; border-collapse:collapse; margin:2mm 0 4mm; font-size:8.8pt; break-inside:auto; }
+th,td{ border-bottom:1px solid var(--line); padding:1.6mm 2mm; text-align:left; vertical-align:top; }
+th{ background:var(--soft); font-weight:600; }
+tr{ break-inside:avoid; } thead{ display:table-header-group; } table.keep{ break-inside:avoid; } h2,h3{ break-after:avoid; }
+td.c,th.c{ text-align:center; }
+td.r,th.r{ text-align:right; font-variant-numeric:tabular-nums; }
+.box{ border-left:3px solid var(--accent); background:var(--accent-soft); padding:3mm 4mm; margin:3mm 0 4mm; break-inside:avoid; }
+.box.warn{ border-color:var(--warn); background:var(--warn-soft); }
+.box.red{ border-color:var(--red); background:var(--red-soft); }
+.box p:last-child,.box ul:last-child{ margin-bottom:0; }
+.kpis{ display:flex; gap:3mm; margin:3mm 0 5mm; }
+.kpi{ flex:1; border:1px solid var(--line); border-radius:2mm; padding:3mm; }
+.kpi b{ display:block; font-size:16pt; color:var(--accent); line-height:1.1; }
+.kpi span{ font-size:8.2pt; color:var(--muted); }
+.y{ color:var(--accent); font-weight:700; } .p{ color:var(--warn); font-weight:700; } .no{ color:#9aa1ab; } .half{ display:inline-block; width:.7em; height:.7em; border-radius:50%; border:1.4px solid var(--warn); background:linear-gradient(90deg,var(--warn) 50%,transparent 50%); vertical-align:-.05em; }
+.tag{ display:inline-block; font-size:7.5pt; font-weight:600; padding:.3mm 1.6mm; border-radius:1mm; background:var(--soft); color:var(--muted); }
+.tag.p0{ background:var(--red-soft); color:var(--red); }
+.tag.p1{ background:var(--warn-soft); color:var(--warn); }
+.tag.p2{ background:var(--accent-soft); color:var(--accent); }
+figure{ margin:3mm 0 5mm; break-inside:avoid; }
+figcaption{ font-size:8.5pt; color:var(--muted); margin-top:1.5mm; }
+.cols{ display:flex; gap:6mm; } .cols > div{ flex:1; }
+/* copertina */
+.cover{ height:250mm; display:flex; flex-direction:column; justify-content:space-between; }
+.cover .brand{ font-weight:700; letter-spacing:.3em; color:var(--accent); font-size:11pt; }
+.cover h0{ display:block; font-family:"Inter Display","Inter",sans-serif; font-size:32pt; line-height:1.08; font-weight:700; letter-spacing:-.02em; margin:0 0 6mm; }
+.cover .sub{ font-size:13pt; color:var(--muted); max-width:150mm; }
+.cover .meta{ font-size:9pt; color:var(--muted); border-top:1px solid var(--line); padding-top:4mm; }
+.toc{ list-style:none; padding:0; }
+.toc li{ display:flex; border-bottom:1px dotted var(--line); padding:1.3mm 0; margin:0; }
+.toc li span:first-child{ width:10mm; color:var(--accent); font-weight:600; }
+.toc li.sub span:first-child{ width:18mm; } .toc li.sub{ font-size:9pt; color:var(--muted); }
+.quote{ font-size:13pt; font-weight:600; line-height:1.35; color:var(--accent); margin:4mm 0; }
+</style>
+</head>
+<body>
+
+<!-- ===================== COPERTINA ===================== -->
+<section class="cover">
+  <div class="brand">GRIP</div>
+  <div>
+    <h0>Mercato, concorrenza e strategia di prodotto</h0>
+    <div class="sub">Le palestre piccole del Veneto e del Friuli Venezia Giulia: chi sono, cosa usano, cosa chiedono, e come GRIP può diventare il loro gestionale.</div>
+  </div>
+  <div class="meta">
+    Documento interno · uso riservato ai soci e al team<br>
+    10 ottobre 2026 · stato del prodotto: <code>main</code> al commit 3146d5b (CRM fasi 1 e 2, registro ingressi)<br>
+    I numeri di mercato sono stime con metodo dichiarato (capitolo 2 e appendice A); le funzioni e i prezzi dei concorrenti vengono da fonti pubbliche e vanno verificati su una demo prima di usarli fuori.
+  </div>
+</section>
+
+<!-- ===================== INDICE ===================== -->
+<h1 style="break-before:page">Indice</h1>
+<ul class="toc">
+  <li><span>0</span><span>Sintesi per la direzione</span></li>
+  <li><span>1</span><span>Il contesto: cos'è GRIP oggi</span></li>
+  <li><span>2</span><span>Il mercato: Italia, Veneto e Friuli Venezia Giulia</span></li>
+  <li><span>3</span><span>La concorrenza</span></li>
+  <li><span>4</span><span>Cosa chiede il mercato, e cosa ci manca</span></li>
+  <li><span>5</span><span>Il posizionamento: USP e differenze</span></li>
+  <li><span>6</span><span>La pipeline di sviluppo del prodotto</span></li>
+  <li><span>7</span><span>Entrare nel mercato, e il prezzo di GRIP</span></li>
+  <li><span>A</span><span>Appendice: fonti, metodo e ipotesi</span></li>
+  <li><span>B</span><span>Appendice: glossario</span></li>
+</ul>
+
+<!-- ===================== 0. SINTESI ===================== -->
+<h1><span class="n">0</span>Sintesi per la direzione</h1>
+<p class="lead">Cinque conclusioni, una proposta di valore, cinque decisioni da prendere.</p>
+
+<div class="kpis">
+  <div class="kpi"><b>≈ 12.300</b><span>società e associazioni sportive dilettantistiche in Veneto (9.680) e FVG (2.645), 2024</span></div>
+  <div class="kpi"><b>≈ 3.600</b><span>strutture con corsi o sala attrezzi nelle due regioni (stima, intervallo 3.000–4.300)</span></div>
+  <div class="kpi"><b>≈ 1.600</b><span>palestre piccole con sede e attività continuativa: il mercato servibile (stima)</span></div>
+  <div class="kpi"><b>50–100</b><span>clienti realistici in 36 mesi nelle due regioni (3–6% del servibile)</span></div>
+</div>
+
+<h2>Le cinque conclusioni</h2>
+<ol>
+  <li><b>Il mercato è frammentato e poco digitalizzato.</b> In Italia oltre 5.000 operatori commerciali del fitness si dividono circa 3,1 miliardi di euro di fatturato, e accanto a loro ci sono decine di migliaia di ASD e SSD. Solo il 21% delle PMI italiane usa un CRM (ISTAT 2025). Il concorrente più diffuso tra le palestre piccole non è Glofox: è <b>Excel più WhatsApp</b>.</li>
+  <li><b>Il Nordest è un buon punto di partenza, non un mercato sufficiente.</b> Con 50–100 palestre a circa 80 € al mese GRIP fattura 50–95 mila euro l'anno: basta a validare il prodotto e a coprire una persona, non a costruire un'azienda. Veneto e FVG sono il territorio dove si impara e si raccolgono i casi di successo; la crescita poi è nazionale, con l'app unica multi-tenant.</li>
+  <li><b>I concorrenti vincono sull'operatività e sui pagamenti; nessuno vince sulla retention spiegata.</b> Glofox, Mindbody ed Eversports hanno app negli store, automazioni e pagamenti ricorrenti. TeamSystem copre tesseramento, fiscale e tornelli. Sportclubby è lodato in reception e criticato su CRM e statistiche. Nessuno dice al titolare, ogni mattina, <i>chi sta per perdere, perché, e cosa fare</i> — e nessuno dimostra quanti soci ha tenuto.</li>
+  <li><b>Ci mancano quattro "porte d'ingresso".</b> Senza queste, una palestra non ci prende nemmeno in considerazione: l'<b>app per i soci con le notifiche</b>, i <b>carnet a ingressi</b>, il <b>tesseramento EPS</b> (per le ASD) e il <b>tornello che funziona</b> anche quando la rete cade. Sono tutte nel nostro perimetro e nessuna richiede di gestire soldi.</li>
+  <li><b>"Niente pagamenti" è un'obiezione gestibile, se la trasformiamo in scelta.</b> Molte piccole palestre incassano in contanti, con il POS o con bonifico, e non vogliono commissioni né un contratto con un processore. Il messaggio è: <i>GRIP non tocca i tuoi soldi e non prende percentuali</i>. Le palestre che vogliono l'addebito ricorrente non sono il nostro primo segmento.</li>
+</ol>
+
+<h2>La proposta di valore</h2>
+<p class="quote">«Ogni mattina GRIP ti dice quali soci stai per perdere, perché, e cosa fare. E a fine mese ti dimostra quanti ne hai tenuti.»</p>
+<p>Due proposte di sostegno: <b>una persona, una storia</b> (contatto, socio ed ex socio sono la stessa scheda con lo stesso diario) e <b>privacy già dentro</b> (consensi registrati, niente biometria, niente dati finanziari dei soci, AI dichiarata quando arriverà).</p>
+
+<h2>Le decisioni che spettano ai soci</h2>
+<table class="keep"><thead><tr><th style="width:32%">Decisione</th><th>Opzioni</th><th style="width:30%">Raccomandazione</th></tr></thead><tbody>
+  <tr><td>App per i soci</td><td>PWA installabile con notifiche · app nativa negli store (wrapper della PWA) · app con il marchio di ogni palestra</td><td>PWA subito, wrapper negli store come "app unica GRIP" dopo il multi-tenant. Niente white label per ora.</td></tr>
+  <tr><td>Primo segmento</td><td>Studi boutique (pilates, funzionale) · ASD multi-corso con bambini · palestre di quartiere con sala attrezzi</td><td>ASD multi-corso e studi boutique: più corsi, più prenotazioni, più bisogno di retention, meno bisogno di pagamenti ricorrenti.</td></tr>
+  <tr><td>Multi-sede</td><td>Nel modello dati subito · come funzione dopo</td><td>Nel modello dati con il multi-tenant (costa poco ora, tanto dopo); la funzione quando arriva il primo cliente con due sedi.</td></tr>
+  <tr><td>Prezzo di lancio</td><td>Freemium · prezzo pieno · "club fondatori"</td><td>Club fondatori: 10 palestre, 3 mesi gratuiti, prezzo bloccato per 24 mesi in cambio di feedback e caso di studio (capitolo 7).</td></tr>
+  <tr><td>Tornello</td><td>Solo software, integrando lettori esistenti · fornire anche l'hardware tramite un partner</td><td>Solo software con un partner installatore locale: niente magazzino, e il partner diventa un canale di vendita.</td></tr>
+</tbody></table>
+
+<!-- ===================== 1. CONTESTO ===================== -->
+<h1><span class="n">1</span>Il contesto: cos'è GRIP oggi</h1>
+<p class="lead">Un gestionale per palestre e ASD italiane, costruito con cura sui permessi e sulla privacy, che sta diventando un CRM nativo per la retention.</p>
+
+<h2>1.1 Cosa fa oggi, modulo per modulo</h2>
+<table class="keep"><thead><tr><th style="width:24%">Modulo</th><th>Cosa c'è</th></tr></thead><tbody>
+  <tr><td>Soci e abbonamenti</td><td>Anagrafica con codice socio e codice fiscale, tipi di abbonamento a durata, stato calcolato (attivo, in scadenza, scaduto), archiviazione e riattivazione, documenti e certificati con scadenza, consenso dei genitori per i minori.</td></tr>
+  <tr><td>Contatti (lead) e trattative</td><td>Una persona con una storia sola: il contatto che si iscrive non si cancella, la trattativa si chiude come "iscritto" e il diario resta. Canali di provenienza, controllo dei doppioni su telefono ed email, numeri normalizzati in formato internazionale, andamento per canale.</td></tr>
+  <tr><td>Corsi e prenotazioni</td><td>Catalogo, categorie, istruttori, sale (con sospensioni e annullamenti), calendario, prenotazioni con lista d'attesa, prenotazioni fisse settimanali, disdetta.</td></tr>
+  <tr><td>Ingressi</td><td>QR dinamico che cambia ogni minuto, verifica sul server con semaforo, registro degli ingressi con deroghe e annullamenti, statistiche. Il controllo sta passando da "bancone" a "tornello passivo".</td></tr>
+  <tr><td>CRM (fasi 1 e 2)</td><td>Un solo motore dei segnali: fase di ogni persona (nuovo, ambientamento, attivo, in calo, assente, in scadenza, scaduto recuperabile, ex socio), motivi spiegati in parole, presenze e no-show calcolati. La pagina <b>Oggi</b> con chiamata, WhatsApp, email, esito e rimando. Ctrl+K, scheda con diario, giro quotidiano di manutenzione.</td></tr>
+  <tr><td>Portale soci</td><td>Accesso con QR, abbonamento, documenti, calendario e prenotazioni, notifiche in-app, consensi promozionali per canale.</td></tr>
+  <tr><td>Amministrazione</td><td>Ruoli configurabili con limiti invalicabili, permessi applicati dal server, registro delle azioni scritto dal server, revoca delle sessioni, cambio password obbligatorio, file serviti solo con firma.</td></tr>
+</tbody></table>
+
+<h2>1.2 Cosa abbiamo scelto di non fare</h2>
+<ul>
+  <li><b>Niente pagamenti, incassi né contabilità.</b> L'incasso resta in reception; GRIP non registra flussi di denaro. È una richiesta ricevuta e una scelta condivisa.</li>
+  <li><b>Niente integrazioni con Meta.</b> WhatsApp solo come link aperto da una persona dello staff.</li>
+  <li><b>Niente invii automatici finché la palestra non li accende.</b> Tutto il CRM arriva spento e si attiva dall'ERP, canale per canale.</li>
+  <li><b>Niente biometria</b> per l'accesso: il QR dinamico è la scelta proporzionata.</li>
+</ul>
+
+<h2>1.3 Dove sta andando</h2>
+<p>GRIP sarà rifatto <b>multi-tenant con un'app unica</b> per tutte le palestre: un account globale per il socio, una persona per ogni palestra (che resta titolare dei propri dati). Il piano CRM prosegue con la Fase 3 (iscrizione in un passo, richiesta di rinnovo dal portale, sospensione, motivo di abbandono, vista istruttore), la Fase 4 (canali, spenti), la Fase 5 (ascolto ed efficacia) e la Fase 6 (acquisizione).</p>
+
+<div class="box">
+<p><b>Il punto di forza nascosto.</b> La qualità del codice su permessi, privacy e tracciabilità è superiore a quella che di solito si trova nei gestionali per palestre piccole. Non si vende da sola, ma rende credibili due argomenti commerciali che i concorrenti faticano a sostenere: la privacy come prodotto e la conformità all'AI Act.</p>
+</div>
+
+<!-- ===================== 2. MERCATO ===================== -->
+<h1><span class="n">2</span>Il mercato: Italia, Veneto e Friuli Venezia Giulia</h1>
+<p class="lead">Un mercato grande nei numeri, piccolo per struttura: tante realtà minute, poche catene, molta gestione a mano.</p>
+
+<h2>2.1 Il fitness in Italia</h2>
+<ul>
+  <li><b>Europa.</b> Nel 2025 i club europei hanno raggiunto 75,5 milioni di iscritti (+5,8%) e 39,1 miliardi di euro di ricavi (+9,1%), con 67.515 club (EuropeActive/Deloitte, rapporto 2026). Il settore è in crescita stabile dopo la pandemia.</li>
+  <li><b>Italia.</b> Circa 3,1 miliardi di euro di fatturato annuo, oltre 5 milioni di clienti mensili e più di 5.000 operatori, ancora molto frammentati (Milano Finanza, luglio 2026, a proposito dell'aggregazione Orange Palestre Italiane–GetFit). Nel 2021, dopo il calo del 27% rispetto al 2019, ICE contava oltre 5.000 club con 5,5 milioni di iscritti.</li>
+  <li><b>Lo sport dilettantistico.</b> Al 31/12/2022 il registro CONI contava 114.038 ASD e SSD. Dal 2022 il riferimento è il RASD (Registro nazionale delle attività sportive dilettantistiche), gestito da Sport e Salute per il Dipartimento per lo Sport.</li>
+  <li><b>La pratica.</b> Nel 2024 oltre 21,5 milioni di italiani dai 3 anni in su praticano sport nel tempo libero; il 28,7% con continuità e l'8,7% saltuariamente (ISTAT). Il Nord-Est è l'area con la quota più alta di praticanti (circa 43,9%, dato ISTAT riportato da fonti secondarie). Ginnastica, fitness e cultura fisica sono la prima attività praticata.</li>
+  <li><b>Consolidamento.</b> Le catene (Orange/GetFit, McFit, Virgin, Anytime e simili) crescono, ma la quota maggiore resta di club indipendenti e piccole ASD. È esattamente il nostro cliente.</li>
+</ul>
+
+<h2>2.2 Veneto e Friuli Venezia Giulia</h2>
+<p>Secondo le schede regionali 2025 di Sport e Salute, nel 2024 il Veneto contava <b>9.680</b> enti sportivi dilettantistici (società e associazioni) e il Friuli Venezia Giulia <b>2.645</b>. Il censimento regionale degli impianti del Veneto riporta circa <b>2.242 palestre</b> come impianti, compresi i locali scolastici e comunali: è un dato sulle strutture fisiche, non sugli operatori, ma conferma la dimensione.</p>
+
+<figure>
+<svg viewBox="0 0 520 120" width="100%" role="img" aria-label="Enti sportivi dilettantistici 2024: Veneto 9.680, FVG 2.645">
+  <g font-family="Inter" font-size="11" fill="#1b1f24">
+    <text x="0" y="30">Veneto</text>
+    <rect x="120" y="16" width="360" height="22" fill="#0f6b5c"/>
+    <text x="486" y="31" fill="#1b1f24">9.680</text>
+    <text x="0" y="78">Friuli V. G.</text>
+    <rect x="120" y="64" width="98" height="22" fill="#0f6b5c" opacity=".75"/>
+    <text x="224" y="79">2.645</text>
+    <text x="120" y="112" font-size="9" fill="#5b6470">Enti sportivi dilettantistici (ASD/SSD), 2024 — fonte: Sport e Salute, schede regionali 2025</text>
+  </g>
+</svg>
+</figure>
+
+<h3>La stima per provincia</h3>
+<p>Non esiste un censimento pubblico delle "palestre piccole" per provincia. La stima parte dagli enti dilettantistici, ne considera la quota che svolge attività di palestra o corsi (fitness, ginnastica, danza, arti marziali, yoga e pilates: il 25%, con un intervallo del 20–30%), aggiunge gli operatori commerciali in proporzione alla popolazione, e ripartisce il totale per popolazione residente. È un ordine di grandezza per pianificare, non un elenco. Il metodo completo è nell'appendice A.</p>
+
+<figure>
+<svg viewBox="0 0 520 300" width="100%" role="img" aria-label="Stima delle strutture per provincia">
+  <g font-family="Inter" font-size="10.5" fill="#1b1f24">
+    <!-- scala: 550 = 340px -->
+    <text x="0" y="16">Padova</text><rect x="110" y="5" width="340" height="16" fill="#0f6b5c"/><text x="456" y="17">≈ 550</text>
+    <text x="0" y="40">Verona</text><rect x="110" y="29" width="334" height="16" fill="#0f6b5c"/><text x="450" y="41">≈ 540</text>
+    <text x="0" y="64">Treviso</text><rect x="110" y="53" width="315" height="16" fill="#0f6b5c"/><text x="431" y="65">≈ 510</text>
+    <text x="0" y="88">Vicenza</text><rect x="110" y="77" width="309" height="16" fill="#0f6b5c"/><text x="425" y="89">≈ 500</text>
+    <text x="0" y="112">Venezia</text><rect x="110" y="101" width="303" height="16" fill="#0f6b5c"/><text x="419" y="113">≈ 490</text>
+    <text x="0" y="136">Udine</text><rect x="110" y="125" width="204" height="16" fill="#3d8f80"/><text x="320" y="137">≈ 330</text>
+    <text x="0" y="160">Pordenone</text><rect x="110" y="149" width="124" height="16" fill="#3d8f80"/><text x="240" y="161">≈ 200</text>
+    <text x="0" y="184">Trieste</text><rect x="110" y="173" width="93" height="16" fill="#3d8f80"/><text x="209" y="185">≈ 150</text>
+    <text x="0" y="208">Rovigo</text><rect x="110" y="197" width="80" height="16" fill="#0f6b5c"/><text x="196" y="209">≈ 130</text>
+    <text x="0" y="232">Belluno</text><rect x="110" y="221" width="74" height="16" fill="#0f6b5c"/><text x="190" y="233">≈ 120</text>
+    <text x="0" y="256">Gorizia</text><rect x="110" y="245" width="56" height="16" fill="#3d8f80"/><text x="172" y="257">≈ 90</text>
+    <rect x="110" y="276" width="10" height="10" fill="#0f6b5c"/><text x="125" y="285" font-size="9" fill="#5b6470">Veneto</text>
+    <rect x="175" y="276" width="10" height="10" fill="#3d8f80"/><text x="190" y="285" font-size="9" fill="#5b6470">Friuli Venezia Giulia</text>
+  </g>
+</svg>
+<figcaption>Strutture con corsi o sala attrezzi, stima per provincia (totale ≈ 3.610; Veneto ≈ 2.840, FVG ≈ 770). Ripartizione per popolazione: non tiene conto delle differenze locali di densità.</figcaption>
+</figure>
+
+<table><thead><tr><th>Provincia</th><th class="r">Popolazione (circa)</th><th class="r">Strutture (stima)</th><th>Note per la vendita</th></tr></thead><tbody>
+  <tr><td>Padova</td><td class="r">936.000</td><td class="r">550</td><td>Città universitaria: studenti, boutique e funzionale in crescita.</td></tr>
+  <tr><td>Verona</td><td class="r">929.000</td><td class="r">540</td><td>Mercato ampio e misto; il lago aggiunge stagionalità turistica.</td></tr>
+  <tr><td>Treviso</td><td class="r">875.000</td><td class="r">510</td><td>Tessuto diffuso di piccoli comuni: tante ASD di paese.</td></tr>
+  <tr><td>Vicenza</td><td class="r">851.000</td><td class="r">500</td><td>Profilo simile a Treviso, forte associazionismo.</td></tr>
+  <tr><td>Venezia</td><td class="r">834.000</td><td class="r">490</td><td>Mestre e il litorale; turismo e stagionalità (corsi estivi, ospiti).</td></tr>
+  <tr><td>Rovigo</td><td class="r">227.000</td><td class="r">130</td><td>Mercato piccolo, poca concorrenza digitale.</td></tr>
+  <tr><td>Belluno</td><td class="r">197.000</td><td class="r">120</td><td>Montagna, centri piccoli, multisport e stagionalità invernale.</td></tr>
+  <tr><td>Udine</td><td class="r">515.000</td><td class="r">330</td><td>Il mercato principale del Friuli.</td></tr>
+  <tr><td>Pordenone</td><td class="r">313.000</td><td class="r">200</td><td>Area produttiva, palestre aziendali e convenzioni.</td></tr>
+  <tr><td>Trieste</td><td class="r">229.000</td><td class="r">150</td><td>Città densa e con popolazione anziana: ginnastica dolce, pilates.</td></tr>
+  <tr><td>Gorizia</td><td class="r">139.000</td><td class="r">90</td><td>Piccolo, transfrontaliero.</td></tr>
+</tbody></table>
+<p class="small">Popolazione arrotondata, ordine di grandezza ISTAT 2024–2025: va aggiornata con i dati demografici ufficiali prima di usarla fuori.</p>
+
+<h2>2.3 La forma giuridica cambia il gestionale</h2>
+<table class="keep"><thead><tr><th style="width:22%"></th><th>ASD e SSD (dilettantistiche)</th><th>Società commerciali (srl, ditte)</th></tr></thead><tbody>
+  <tr><td>Chi è</td><td>La maggioranza delle realtà piccole: corsi, bambini, discipline specifiche.</td><td>Palestre con sala attrezzi, catene, studi boutique strutturati.</td></tr>
+  <tr><td>Obblighi tipici</td><td>Iscrizione al RASD, affiliazione a un EPS o a una federazione, <b>tesseramento</b> dei soci con scadenza, certificato medico, libro soci, regole della Riforma dello sport (D.Lgs. 36/2021) per i collaboratori.</td><td>Certificato medico secondo le regole regionali, contratti di abbonamento, privacy.</td></tr>
+  <tr><td>Cosa chiedono al software</td><td>Tesseramento, quote associative, assemblee e libro soci, minori e genitori, corsi a calendario.</td><td>Abbonamenti, accessi al tornello, app, rinnovi, vendita (qui spesso con pagamenti ricorrenti).</td></tr>
+  <tr><td>Per GRIP</td><td><b>Segmento ideale</b>, ma serve il tesseramento EPS.</td><td>Buon segmento per gli studi boutique; più difficile per chi vuole l'addebito ricorrente.</td></tr>
+</tbody></table>
+
+<h2>2.4 I segmenti piccoli</h2>
+<table class="keep"><thead><tr><th style="width:20%">Segmento</th><th>Profilo tipico</th><th>Bisogni principali</th><th style="width:20%">Cosa usa oggi</th><th class="c" style="width:10%">Adatto a GRIP</th></tr></thead><tbody>
+  <tr><td>ASD multi-corso</td><td>100–400 iscritti, molti minori, corsi a calendario, spesso in palestre comunali o in affitto.</td><td>Tesseramento, certificati, genitori, comunicazioni, presenze ai corsi.</td><td>Excel, gruppi WhatsApp, gestionali ASD.</td><td class="c y">Alto</td></tr>
+  <tr><td>Studio boutique (pilates, funzionale, yoga)</td><td>80–300 clienti, 2–6 istruttori, posti limitati.</td><td>Prenotazioni con lista d'attesa, carnet, no-show, retention, app.</td><td>App internazionali (Eversports, Mindbody, Glofox) o fogli condivisi.</td><td class="c y">Alto</td></tr>
+  <tr><td>Arti marziali e danza</td><td>Corsi a fasce d'età, saggi ed esami, stagione da settembre a giugno.</td><td>Iscrizioni stagionali, tesseramento, comunicazioni ai genitori.</td><td>Excel, gestionali ASD.</td><td class="c y">Alto</td></tr>
+  <tr><td>Palestra di quartiere</td><td>200–800 iscritti, sala attrezzi più corsi, un titolare in reception.</td><td>Accessi al tornello, rinnovi, corsi, certificati.</td><td>Gestionali italiani tradizionali, spesso installati sul PC.</td><td class="c p">Medio</td></tr>
+  <tr><td>Centro grande o catena</td><td>Oltre 1.000 iscritti, più sedi, reparto commerciale.</td><td>Pagamenti ricorrenti, multi-sede, vendita, fiscale.</td><td>TeamSystem, Glofox, soluzioni su misura.</td><td class="c no">Basso, per ora</td></tr>
+</tbody></table>
+
+<h2>2.5 Il mercato raggiungibile</h2>
+<table class="keep"><thead><tr><th>Livello</th><th>Definizione</th><th class="r">Veneto + FVG</th><th>Ipotesi</th></tr></thead><tbody>
+  <tr><td><b>TAM</b></td><td>Tutte le strutture con corsi o sala attrezzi</td><td class="r">≈ 3.600 (3.000–4.300)</td><td>25% degli enti dilettantistici più gli operatori commerciali in proporzione alla popolazione.</td></tr>
+  <tr><td><b>Piccole</b></td><td>Una sede, fino a circa 500 iscritti</td><td class="r">≈ 2.900</td><td>Circa l'80% del totale.</td></tr>
+  <tr><td><b>SAM</b></td><td>Piccole con sede o spazi stabili e attività continuativa, che possono adottare un software</td><td class="r">≈ 1.600 (1.200–2.000)</td><td>Escluse le realtà occasionali o con attività marginale.</td></tr>
+  <tr><td><b>SOM a 36 mesi</b></td><td>Clienti conquistabili con una vendita diretta e locale</td><td class="r">50–100</td><td>3–6% del servibile.</td></tr>
+</tbody></table>
+
+<div class="box warn">
+<p><b>Il conto che va fatto prima di tutto.</b> A un prezzo medio di 79 € al mese, 50 palestre valgono circa 47.000 € l'anno e 100 palestre circa 95.000 €. Il costo di una persona a tempo pieno più l'infrastruttura (circa 50–55.000 € l'anno) si copre con <b>circa 55–60 palestre paganti</b>. Il Nordest basta per arrivare a questo punto. Per andare oltre serve il mercato nazionale, ed è il motivo per cui il multi-tenant e l'app unica non sono un dettaglio tecnico ma la condizione per crescere.</p>
+</div>
+
+<!-- ===================== 3. CONCORRENZA ===================== -->
+<h1><span class="n">3</span>La concorrenza</h1>
+<p class="lead">Quattro famiglie di concorrenti, e il più forte di tutti non è un software.</p>
+
+<h2>3.1 La mappa</h2>
+<table class="keep"><thead><tr><th style="width:24%">Concorrente</th><th>Chi è</th><th style="width:34%">Dove è forte</th></tr></thead><tbody>
+  <tr><td><b>Excel + WhatsApp</b></td><td>Il sistema di gran parte delle ASD e delle palestre piccole.</td><td>Costo zero, nessuna formazione, flessibilità totale. Si perde la storia, non si misura niente, la privacy è un rischio.</td></tr>
+  <tr><td><b>ABC Glofox</b></td><td>Piattaforma internazionale per studi e palestre (gruppo ABC Fitness dal 2022).</td><td>App con il marchio della palestra, prenotazioni, pagamenti, CRM e lead, report, multi-sede.</td></tr>
+  <tr><td><b>Mindbody</b></td><td>Il riferimento storico per studi e benessere, con un'app marketplace per i consumatori.</td><td>Ampiezza di funzioni, marketing, marketplace; prezzo per sede alto.</td></tr>
+  <tr><td><b>Eversports</b></td><td>Piattaforma europea (Austria) per studi e centri sportivi, presente in Italia.</td><td>Prenotazioni, app consumer, check-in, pagamenti online, prezzo d'ingresso basso.</td></tr>
+  <tr><td><b>Sportclubby</b></td><td>Startup torinese (2016), dal 2024 nel gruppo Playtomic.</td><td>Gestionale e app per l'utente; reception rapida e supporto lodati nelle recensioni.</td></tr>
+  <tr><td><b>TeamSystem</b> (Wellness in Cloud, Sportivi in Cloud)</td><td>Il grande gruppo italiano del software gestionale.</td><td>Copertura italiana completa: tesseramento e ASD, fiscale, tornelli e hardware propri, QR dinamico, rete commerciale.</td></tr>
+  <tr><td><b>Gestionali locali</b></td><td>Software italiani installati sul PC o su misura, spesso venduti da installatori di tornelli.</td><td>Rapporto personale, integrazione con l'hardware della palestra.</td></tr>
+  <tr><td><b>Salesforce, HubSpot</b></td><td>CRM generici, usati da catene e da chi ha un reparto commerciale.</td><td>Pipeline di vendita, campagne, personalizzazione; costosi e lontani dalla reception.</td></tr>
+</tbody></table>
+
+<h2>3.2 La matrice delle funzioni</h2>
+<p class="small"><span class="y">●</span> dichiarato pubblicamente &nbsp; <span class="p"><i class="half"></i></span> parziale, tramite integrazioni o non verificato &nbsp; <span class="no">○</span> assente o non trovato &nbsp; <span class="tag">scelta</span> escluso da GRIP per decisione</p>
+<table><thead><tr><th style="width:30%">Funzione</th><th class="c">GRIP</th><th class="c">Glofox</th><th class="c">Mindbody</th><th class="c">Eversports</th><th class="c">Sportclubby</th><th class="c">TeamSystem</th></tr></thead><tbody>
+  <tr><td>Soci, abbonamenti a durata</td><td class="c y">●</td><td class="c y">●</td><td class="c y">●</td><td class="c y">●</td><td class="c y">●</td><td class="c y">●</td></tr>
+  <tr><td>Carnet a ingressi / pacchetti</td><td class="c no">○</td><td class="c y">●</td><td class="c y">●</td><td class="c y">●</td><td class="c p"><i class="half"></i></td><td class="c y">●</td></tr>
+  <tr><td>Corsi, prenotazioni, lista d'attesa</td><td class="c y">●</td><td class="c y">●</td><td class="c y">●</td><td class="c y">●</td><td class="c y">●</td><td class="c y">●</td></tr>
+  <tr><td>App nativa negli store</td><td class="c no">○</td><td class="c y">●</td><td class="c y">●</td><td class="c y">●</td><td class="c y">●</td><td class="c y">●</td></tr>
+  <tr><td>Notifiche push</td><td class="c no">○</td><td class="c y">●</td><td class="c y">●</td><td class="c y">●</td><td class="c y">●</td><td class="c y">●</td></tr>
+  <tr><td>QR d'accesso dinamico</td><td class="c y">●</td><td class="c p"><i class="half"></i></td><td class="c p"><i class="half"></i></td><td class="c p"><i class="half"></i></td><td class="c p"><i class="half"></i></td><td class="c y">●</td></tr>
+  <tr><td>Tornelli e hardware</td><td class="c p"><i class="half"></i></td><td class="c p"><i class="half"></i></td><td class="c p"><i class="half"></i></td><td class="c p"><i class="half"></i></td><td class="c p"><i class="half"></i></td><td class="c y">●</td></tr>
+  <tr><td>Certificato medico con scadenze</td><td class="c y">●</td><td class="c p"><i class="half"></i></td><td class="c p"><i class="half"></i></td><td class="c p"><i class="half"></i></td><td class="c y">●</td><td class="c y">●</td></tr>
+  <tr><td>Tesseramento EPS e federazioni</td><td class="c no">○</td><td class="c no">○</td><td class="c no">○</td><td class="c no">○</td><td class="c p"><i class="half"></i></td><td class="c y">●</td></tr>
+  <tr><td>Contatti e lead</td><td class="c y">●</td><td class="c y">●</td><td class="c y">●</td><td class="c p"><i class="half"></i></td><td class="c p"><i class="half"></i></td><td class="c p"><i class="half"></i></td></tr>
+  <tr><td>Storia unica contatto → socio → ex socio</td><td class="c y">●</td><td class="c no">○</td><td class="c p"><i class="half"></i></td><td class="c no">○</td><td class="c no">○</td><td class="c no">○</td></tr>
+  <tr><td>"Chi seguire oggi" con i motivi in parole</td><td class="c y">●</td><td class="c p"><i class="half"></i></td><td class="c p"><i class="half"></i></td><td class="c no">○</td><td class="c no">○</td><td class="c p"><i class="half"></i></td></tr>
+  <tr><td>Presenze e no-show automatici</td><td class="c y">●</td><td class="c y">●</td><td class="c y">●</td><td class="c y">●</td><td class="c p"><i class="half"></i></td><td class="c p"><i class="half"></i></td></tr>
+  <tr><td>Automazioni email e SMS</td><td class="c no">○</td><td class="c y">●</td><td class="c y">●</td><td class="c y">●</td><td class="c p"><i class="half"></i></td><td class="c y">●</td></tr>
+  <tr><td>Moduli lead per il sito, prova online</td><td class="c no">○</td><td class="c y">●</td><td class="c y">●</td><td class="c y">●</td><td class="c p"><i class="half"></i></td><td class="c p"><i class="half"></i></td></tr>
+  <tr><td>Multi-sede</td><td class="c no">○</td><td class="c y">●</td><td class="c y">●</td><td class="c y">●</td><td class="c p"><i class="half"></i></td><td class="c y">●</td></tr>
+  <tr><td>Report di retention</td><td class="c p"><i class="half"></i></td><td class="c y">●</td><td class="c y">●</td><td class="c p"><i class="half"></i></td><td class="c p"><i class="half"></i></td><td class="c p"><i class="half"></i></td></tr>
+  <tr><td>Consensi per canale, registrati</td><td class="c y">●</td><td class="c p"><i class="half"></i></td><td class="c p"><i class="half"></i></td><td class="c p"><i class="half"></i></td><td class="c p"><i class="half"></i></td><td class="c p"><i class="half"></i></td></tr>
+  <tr><td>Lezioni video e on demand</td><td class="c no">○</td><td class="c y">●</td><td class="c y">●</td><td class="c y">●</td><td class="c no">○</td><td class="c p"><i class="half"></i></td></tr>
+  <tr><td>Pagamenti online e ricorrenti</td><td class="c"><span class="tag">scelta</span></td><td class="c y">●</td><td class="c y">●</td><td class="c y">●</td><td class="c y">●</td><td class="c y">●</td></tr>
+  <tr><td>Fiscale e contabilità</td><td class="c"><span class="tag">scelta</span></td><td class="c p"><i class="half"></i></td><td class="c p"><i class="half"></i></td><td class="c p"><i class="half"></i></td><td class="c p"><i class="half"></i></td><td class="c y">●</td></tr>
+</tbody></table>
+<p class="small">La matrice è costruita su schede e pagine pubbliche, recensioni e guide di terze parti: le voci "<i class="half"></i>" in particolare vanno verificate su una demo prima di usarle in una presentazione.</p>
+
+<div class="box red">
+<p><b>Un punto da non sottovalutare.</b> TeamSystem dichiara già il QR dinamico al tornello, la verifica automatica dei certificati e il contatto degli utenti in calo di frequenza. Il QR dinamico <b>non</b> è quindi un elemento di differenza per GRIP. La differenza sta nel come: un motore unico che spiega i motivi, una lista di lavoro quotidiana, la storia unica della persona e la misura dell'efficacia.</p>
+</div>
+
+<h2>3.3 Prezzi e modelli commerciali</h2>
+<figure>
+<svg viewBox="0 0 520 170" width="100%" role="img" aria-label="Prezzo di partenza mensile dei concorrenti">
+  <g font-family="Inter" font-size="10.5" fill="#1b1f24">
+    <!-- scala: 150 € = 300px -->
+    <text x="0" y="18">Eversports</text><rect x="120" y="6" width="88" height="16" fill="#3d8f80"/><text x="214" y="18">da ≈ 39–49 €</text>
+    <text x="0" y="46">Glofox</text><rect x="120" y="34" width="182" height="16" fill="#3d8f80"/><text x="308" y="46">da ≈ 91 € ($99), fino a oltre 550 €</text>
+    <text x="0" y="74">Mindbody</text><rect x="120" y="62" width="256" height="16" fill="#3d8f80"/><text x="382" y="74">≈ 128–640 € per sede</text>
+    <text x="0" y="102">TeamSystem</text><rect x="120" y="90" width="2" height="16" fill="#9aa1ab"/><text x="128" y="102" fill="#5b6470">su preventivo</text>
+    <text x="0" y="130">Sportclubby</text><rect x="120" y="118" width="2" height="16" fill="#9aa1ab"/><text x="128" y="130" fill="#5b6470">non pubblicato</text>
+    <text x="120" y="160" font-size="9" fill="#5b6470">Prezzo di partenza al mese, IVA esclusa; conversione indicativa 1 $ ≈ 0,92 €. Commissioni sui pagamenti escluse.</text>
+  </g>
+</svg>
+</figure>
+<ul>
+  <li><b>Glofox</b> pubblica solo "da 99 $ al mese"; le stime di terzi vanno da circa 80 a oltre 600 $ al mese, con contratti annuali e spesso fatturazione trimestrale anticipata. Le commissioni sulle carte si pagano a parte (circa 2,9% + 0,30 $).</li>
+  <li><b>Mindbody</b> si paga per sede: circa 139 $ (Starter), 259–289 $ (Accelerate), 499 $ (Ultimate) e 699 $ o più (Ultimate Plus, l'unico con l'app col marchio della palestra). Contratti di 12–24 mesi riportati da più fonti.</li>
+  <li><b>Eversports</b> ha la soglia d'ingresso più bassa (39–49 € al mese secondo Capterra), con una versione gratuita.</li>
+  <li><b>TeamSystem</b> e <b>Sportclubby</b> non pubblicano prezzi: si passa da un commerciale.</li>
+</ul>
+
+<h2>3.4 I punti deboli nelle recensioni</h2>
+<table class="keep"><thead><tr><th style="width:20%">Concorrente</th><th>Lamentele ricorrenti</th><th style="width:34%">Cosa ne ricaviamo</th></tr></thead><tbody>
+  <tr><td>Glofox</td><td>Aumenti di prezzo a metà contratto (una recensione G2 riporta +70%), supporto peggiorato dopo l'acquisizione, contratti difficili da disdire, report ed esportazioni limitati.</td><td>Contratto mensile senza vincolo, prezzo bloccato per i fondatori, esportazione completa dei dati sempre disponibile.</td></tr>
+  <tr><td>Mindbody</td><td>Costo alto per sede, contratti lunghi, complessità per uno studio piccolo.</td><td>Semplicità e prezzo per palestra, non per funzione.</td></tr>
+  <tr><td>Sportclubby</td><td>Configurazione, CRM e statistiche migliorabili; consumo dati dell'app Android.</td><td>Il CRM e le statistiche sono il nostro terreno.</td></tr>
+  <tr><td>Excel + WhatsApp</td><td>Nessuna storia, nessuna misura, dati personali nei gruppi e sui telefoni dello staff, tutto dipende dalla memoria del titolare.</td><td>La migrazione da Excel deve essere facilissima, e WhatsApp resta: con un link e l'esito nel diario.</td></tr>
+</tbody></table>
+
+<!-- ===================== 4. RICHIESTE ===================== -->
+<h1><span class="n">4</span>Cosa chiede il mercato, e cosa ci manca</h1>
+<p class="lead">Ci sono funzioni senza le quali non si entra nemmeno nella valutazione, e funzioni per cui si viene scelti. Vanno trattate in modo diverso.</p>
+
+<h2>4.1 I moduli più richiesti</h2>
+<p>Le schede dei concorrenti, le recensioni su Capterra, G2 e Trustpilot e le guide di settore convergono sullo stesso elenco. Gli utenti apprezzano soprattutto presenze, calendario dei corsi, gestione degli abbonamenti, accesso da telefono, prenotazione online, rinnovi. I titolari chiedono soprattutto <b>semplicità</b> (niente ore di formazione) e un <b>supporto umano che risponde</b>.</p>
+
+<div class="cols">
+<div>
+<h3>Porte d'ingresso</h3>
+<p class="small">Senza queste non si viene considerati.</p>
+<ol>
+  <li>Soci e abbonamenti, anche a ingressi (carnet)</li>
+  <li>Calendario dei corsi e prenotazioni da telefono</li>
+  <li>App per i soci con le notifiche</li>
+  <li>Controllo degli accessi (QR, tornello)</li>
+  <li>Certificati medici con scadenza</li>
+  <li>Tesseramento EPS (per le ASD)</li>
+  <li>Report di base: iscritti, rinnovi, presenze</li>
+  <li><span class="tag">scelta</span> Pagamenti: fuori perimetro</li>
+</ol>
+</div>
+<div>
+<h3>Motivi di scelta</h3>
+<p class="small">Fanno vincere il confronto tra due software.</p>
+<ol>
+  <li>Semplicità e velocità in reception</li>
+  <li>Supporto in italiano, rapido e umano</li>
+  <li>Automazioni di rinnovo e di recupero</li>
+  <li>CRM e gestione dei contatti</li>
+  <li>Statistiche di retention</li>
+  <li>Prezzo e contratto trasparenti</li>
+  <li>Migrazione dei dati facile</li>
+</ol>
+</div>
+</div>
+
+<h2>4.2 Requisiti tipicamente italiani</h2>
+<ul>
+  <li><b>Certificato medico</b> non agonistico o agonistico, con scadenza e blocco dell'accesso (GRIP lo ha).</li>
+  <li><b>Tesseramento</b> con l'ente di promozione sportiva (CSEN, ASI, UISP, AICS, CSI, Libertas…) o la federazione: numero di tessera, scadenza, esportazione per il caricamento sul portale dell'ente.</li>
+  <li><b>Minori</b>: consenso dei genitori, il genitore come contatto di riferimento, più figli sotto lo stesso genitore.</li>
+  <li><b>Privacy</b>: dati sanitari (certificati), minori, consensi promozionali separati, nessuna biometria.</li>
+  <li><b>Stagionalità</b>: anno sportivo da settembre a giugno, iscrizioni stagionali, corsi estivi.</li>
+</ul>
+
+<h2>4.3 Cosa ci manca, in ordine</h2>
+<table><thead><tr><th style="width:4%">#</th><th style="width:30%">Lacuna</th><th>Perché pesa</th><th class="c" style="width:10%">Peso</th><th class="c" style="width:10%">Sforzo</th></tr></thead><tbody>
+  <tr><td>1</td><td>App per i soci con notifiche push (PWA, poi negli store)</td><td>È la prima domanda di ogni titolare: "i miei soci prenotano dall'app?"</td><td class="c"><span class="tag p0">alto</span></td><td class="c">M</td></tr>
+  <tr><td>2</td><td>Carnet a ingressi e pacchetti</td><td>Diffusissimi negli studi boutique e nei corsi; oggi non si possono gestire.</td><td class="c"><span class="tag p0">alto</span></td><td class="c">S</td></tr>
+  <tr><td>3</td><td>Tesseramento EPS e federazioni</td><td>Obbligatorio per le ASD, cioè il nostro segmento ideale.</td><td class="c"><span class="tag p0">alto</span></td><td class="c">M</td></tr>
+  <tr><td>4</td><td>Tornello affidabile anche senza rete, integrato con lettori esistenti</td><td>Se l'ingresso si blocca, il socio lo vede subito; e molte palestre hanno già un lettore.</td><td class="c"><span class="tag p0">alto</span></td><td class="c">M</td></tr>
+  <tr><td>5</td><td>Importazione da Excel e dai concorrenti</td><td>Toglie l'obiezione "ho anni di dati altrove".</td><td class="c"><span class="tag p1">medio</span></td><td class="c">M</td></tr>
+  <tr><td>6</td><td>Automazioni dei messaggi (Fase 4, spente di default)</td><td>Le hanno tutti; noi le abbiamo progettate meglio, ma non ancora costruite.</td><td class="c"><span class="tag p1">medio</span></td><td class="c">L</td></tr>
+  <tr><td>7</td><td>Moduli lead per il sito e lezione di prova online (Fase 6)</td><td>L'acquisizione; per noi viene dopo la retention.</td><td class="c"><span class="tag p1">medio</span></td><td class="c">M</td></tr>
+  <tr><td>8</td><td>Report di retention e prova di efficacia (Fase 5)</td><td>È ciò che rende credibile la nostra proposta di valore.</td><td class="c"><span class="tag p1">medio</span></td><td class="c">M</td></tr>
+  <tr><td>9</td><td>Multi-sede</td><td>Pochi clienti nel nostro segmento, ma va previsto nel modello dati.</td><td class="c"><span class="tag p2">basso</span></td><td class="c">M</td></tr>
+  <tr><td>10</td><td>Prima configurazione guidata per una palestra nuova</td><td>Decide se una prova gratuita diventa un cliente.</td><td class="c"><span class="tag p1">medio</span></td><td class="c">S</td></tr>
+  <tr><td>11</td><td>Gamification (sfide, traguardi visibili al socio)</td><td>Piace agli studi boutique; i traguardi esistono già come segnali.</td><td class="c"><span class="tag p2">basso</span></td><td class="c">S</td></tr>
+  <tr><td>12</td><td>Video on demand, API pubblica</td><td>Poco valore per le palestre piccole.</td><td class="c"><span class="tag p2">basso</span></td><td class="c">L</td></tr>
+</tbody></table>
+<p class="small">Sforzo: S = qualche giorno, M = 2–4 settimane, L = oltre un mese, per una persona.</p>
+
+<!-- ===================== 5. POSIZIONAMENTO ===================== -->
+<h1><span class="n">5</span>Il posizionamento: USP e differenze</h1>
+
+<h2>5.1 La proposta di valore</h2>
+<p class="quote">«Ogni mattina GRIP ti dice quali soci stai per perdere, perché, e cosa fare. E a fine mese ti dimostra quanti ne hai tenuti.»</p>
+<p>Il messaggio parla di soldi senza toccare i soldi: un socio tenuto vale mesi di abbonamento. La letteratura di settore indica che la quota di soci che restano in un anno è intorno ai due terzi (HFA, benchmark 2025) e che i primi 90 giorni sono il periodo in cui si perdono più iscritti: è esattamente la fase "ambientamento" che il nostro motore già sorveglia.</p>
+
+<h3>Le due proposte di sostegno</h3>
+<ul>
+  <li><b>Una persona, una storia.</b> Chi telefona, chi si iscrive, chi se ne va e chi torna è sempre la stessa scheda, con lo stesso diario. Nessun concorrente del segmento lo fa: perdono la storia quando il contatto diventa socio, e un ex socio che richiama diventa uno sconosciuto.</li>
+  <li><b>Privacy e conformità già dentro.</b> Consensi registrati per canale, niente biometria, niente dati finanziari dei soci, permessi applicati dal server, registro delle azioni non modificabile. Quando arriverà l'AI: dichiarata, sempre con una persona in mezzo, mai sui dati sanitari né sulla valutazione dello staff.</li>
+</ul>
+
+<h2>5.2 Cosa ci differenzia davvero</h2>
+<table class="keep"><thead><tr><th style="width:28%">Differenza</th><th>La prova nel prodotto</th><th style="width:22%">Stato</th></tr></thead><tbody>
+  <tr><td>Un motore unico che spiega i motivi</td><td>"Scade tra 9 giorni · 3 ingressi in 4 settimane contro 9 di media · 2 no-show": nessun punteggio da interpretare (<code>shared/segnali.js</code>).</td><td>Fatto (Fase 2)</td></tr>
+  <tr><td>Una lista di lavoro quotidiana, dal telefono</td><td>La pagina Oggi con chiama, WhatsApp, email, esito e rimando; il contatto nasconde il segnale per 7 giorni.</td><td>Fatto (Fase 2)</td></tr>
+  <tr><td>Il CRM all'ingresso</td><td>Quando il socio entra: "scade tra 3 giorni, proponi il rinnovo", "bentornato", gli auguri, il 50° ingresso.</td><td>Fatto; da adattare al tornello</td></tr>
+  <tr><td>La prova di efficacia, con un gruppo di controllo</td><td>Esempio di come si leggerà: "dei 40 soci contattati, 26 sono tornati entro 14 giorni; tra quelli non contattati, 14 su 40". Senza confronto il numero non dimostra niente; nessun concorrente lo misura così.</td><td>Da fare (Fasi 3 e 5)</td></tr>
+  <tr><td>Tutto spento finché non lo accendi</td><td>Nessun messaggio parte per errore; anteprima di cosa sarebbe partito; tre serrature.</td><td>Progettato (Fase 4)</td></tr>
+  <tr><td>Contratto onesto</td><td>Mensile, senza vincolo, esportazione completa dei dati sempre disponibile.</td><td>Scelta commerciale</td></tr>
+  <tr><td>Vicinanza</td><td>Supporto in italiano da persone del territorio, e formazione in palestra.</td><td>Scelta commerciale</td></tr>
+</tbody></table>
+
+<h2>5.3 Cosa non siamo</h2>
+<ul>
+  <li>Non siamo un sistema di pagamento né un gestionale fiscale: GRIP si affianca al POS e al commercialista, non li sostituisce.</li>
+  <li>Non siamo un costruttore di flussi di automazione: offriamo playbook pronti, che si accendono e si spengono.</li>
+  <li>Non siamo il software per le catene con 20 sedi, per ora.</li>
+  <li>Non facciamo biometria, e non usiamo l'AI per giudicare lo staff.</li>
+</ul>
+
+<h2>5.4 Obiezioni di vendita e risposte</h2>
+<table class="keep"><thead><tr><th style="width:30%">Obiezione</th><th>Risposta</th></tr></thead><tbody>
+  <tr><td>"Non gestite i pagamenti?"</td><td>"No, e per lei è un vantaggio: non paga commissioni, continua a incassare come fa oggi, e i dati bancari dei suoi soci non sono in un altro software. GRIP le dice chi deve rinnovare; l'incasso resta suo."</td></tr>
+  <tr><td>"Uso Excel e WhatsApp, funziona."</td><td>"Funziona finché lei si ricorda di tutti. GRIP importa il suo Excel in dieci minuti, e WhatsApp lo continua a usare: con un tocco, e l'esito resta nella scheda del socio."</td></tr>
+  <tr><td>"I miei dati sono in Glofox o in un altro gestionale."</td><td>"La migrazione la facciamo noi, e il contratto è mensile: se non le piace, si porta via tutto."</td></tr>
+  <tr><td>"Non avete l'app negli store."</td><td>Oggi: "Il portale si installa sul telefono come un'app e mostra il QR". Dopo la pipeline: l'app unica negli store.</td></tr>
+  <tr><td>"Siete piccoli: e se chiudete?"</td><td>"Esportazione completa in qualunque momento, dati in Italia/UE, contratto senza vincoli."</td></tr>
+</tbody></table>
+
+<!-- ===================== 6. PIPELINE ===================== -->
+<h1><span class="n">6</span>La pipeline di sviluppo del prodotto</h1>
+<p class="lead">Prima le fondamenta che servono ad avere clienti veri, poi le porte d'ingresso, poi ciò che ci rende diversi.</p>
+
+<h2>6.1 Fondamenta, prima di avere dati veri</h2>
+<table class="keep"><thead><tr><th style="width:34%">Lavoro</th><th>Perché</th><th class="c" style="width:12%">Priorità</th></tr></thead><tbody>
+  <tr><td>Integrazione continua (lint, test, build, migrazioni su database vuoto)</td><td>Oggi non esiste: ogni rilascio dipende dall'attenzione di chi lo fa.</td><td class="c"><span class="tag p0">P0</span></td></tr>
+  <tr><td>Backup con ripristino provato, file su object storage in UE</td><td>I certificati medici sono dati sanitari; un backup mai ripristinato non è un backup.</td><td class="c"><span class="tag p0">P0</span></td></tr>
+  <tr><td>Multi-tenant con Row Level Security, sedi nel modello dati</td><td>L'isolamento tra palestre non può dipendere da un <code>WHERE</code> ricordato.</td><td class="c"><span class="tag p0">P0</span></td></tr>
+  <tr><td>Doppio fattore (MFA) per lo staff, limiti di frequenza su tutte le rotte</td><td>Una password rubata in reception vale l'archivio intero.</td><td class="c"><span class="tag p0">P0</span></td></tr>
+  <tr><td>Staging e osservabilità (errori, log senza dati personali)</td><td>Accorgersi dei problemi prima del cliente.</td><td class="c"><span class="tag p1">P1</span></td></tr>
+  <tr><td>Ritiro progressivo dell'endpoint generico delle entità</td><td>È la superficie più larga del sistema.</td><td class="c"><span class="tag p1">P1</span></td></tr>
+</tbody></table>
+
+<h2>6.2 Il CRM, con quello che il mercato aggiunge</h2>
+<table class="keep"><thead><tr><th style="width:16%">Fase</th><th>Dal piano</th><th style="width:36%">Aggiunte dal mercato</th></tr></thead><tbody>
+  <tr><td><b>3</b> Iscrivi e retention</td><td>Iscrizione in un passo, richiesta di rinnovo dal portale, sospensione, motivo di abbandono, vista istruttore, efficacia nel giro.</td><td>Firma del regolamento in fase di iscrizione; account famiglia (genitore con più figli); motivi di sospensione senza dettagli sanitari.</td></tr>
+  <tr><td><b>4</b> Canali (spenti)</td><td>Messaggi, modelli, email, SMS, push, playbook, anteprima.</td><td>La PWA con le push arriva prima e indipendentemente: è una porta d'ingresso.</td></tr>
+  <tr><td><b>5</b> Ascolto ed efficacia</td><td>NPS, effetto dei contatti, coorti, riepilogo settimanale.</td><td>Gruppo di controllo; metriche dello staff aggregate per squadra (art. 4 dello Statuto dei lavoratori).</td></tr>
+  <tr><td><b>6</b> Acquisizione</td><td>Modulo pubblico, QR in sala, lezione di prova, porta un amico, "scopri palestre".</td><td>Integrazione con il sito della palestra (un codice da incollare).</td></tr>
+</tbody></table>
+
+<h2>6.3 Le porte d'ingresso nella roadmap</h2>
+<ul>
+  <li><b>Carnet a ingressi</b> (S): un conteggio di ingressi, senza prezzo né traccia del pagamento. Si aggancia a <code>abbonamentoCopre</code> e ai segnali ("restano 2 ingressi").</li>
+  <li><b>Tesseramento EPS</b> (M): ente, numero di tessera, scadenza, segnale "tessera in scadenza", esportazione per il portale dell'ente.</li>
+  <li><b>PWA con push e QR nel wallet</b> (M): l'app si installa, il QR si apre dal blocco schermo.</li>
+  <li><b>Tornello senza rete</b> (M): verifica locale del QR dinamico con una chiave per sede, coda degli ingressi da sincronizzare, elenco locale dei soci bloccati; integrazione con i lettori più diffusi tramite un partner installatore.</li>
+  <li><b>Importazione e prima configurazione</b> (M): CSV ed Excel con anteprima e controllo dei doppioni; percorso guidato in 20 minuti.</li>
+</ul>
+
+<h2>6.4 Conformità</h2>
+<table class="keep"><thead><tr><th style="width:24%">Norma</th><th>Cosa ci chiede</th><th style="width:28%">Come diventa prodotto</th></tr></thead><tbody>
+  <tr><td>GDPR</td><td>DPA con ogni palestra (GRIP è responsabile del trattamento), elenco dei sub-responsabili, conservazione per categoria di dato, registro dei trattamenti, DPIA per dati sanitari e minori.</td><td>Registro dei trattamenti e modello di DPIA generati per la palestra; diritti degli interessati dal portale.</td></tr>
+  <tr><td>Codice privacy, art. 2-quinquies</td><td>Consenso digitale autonomo dai 14 anni; sotto, il genitore.</td><td>Account famiglia, consensi del genitore.</td></tr>
+  <tr><td>AI Act</td><td>Alfabetizzazione AI (dal 2025), trasparenza dei contenuti generati (da agosto 2026), alto rischio se si valutano i lavoratori.</td><td>Registro dei sistemi di AI, etichette, persona sempre in mezzo, niente AI sullo staff né sui dati sanitari.</td></tr>
+  <tr><td>Legge 132/2025</td><td>Informazione ai lavoratori sull'uso dell'AI; consenso dei genitori per i minori di 14 anni.</td><td>Interruttore per palestra, informativa pronta.</td></tr>
+  <tr><td>Statuto dei lavoratori, art. 4</td><td>Il controllo a distanza dei dipendenti richiede un accordo o un'autorizzazione.</td><td>Metriche dello staff aggregate di default.</td></tr>
+</tbody></table>
+<p class="small">Quadro da operatore, non parere legale: va validato con un DPO o un avvocato prima di entrare nei contratti.</p>
+
+<h2>6.5 La sequenza in trimestri</h2>
+<table class="keep"><thead><tr><th style="width:14%">Trimestre</th><th>Contenuto</th><th style="width:30%">Risultato per la vendita</th></tr></thead><tbody>
+  <tr><td><b>Q4 2026</b></td><td>Fondamenta P0 (CI, backup, MFA, limiti, storage). CRM Fase 3. Carnet a ingressi.</td><td>Pronti per i primi clienti pilota.</td></tr>
+  <tr><td><b>Q1 2027</b></td><td>Multi-tenant con RLS e sedi nel modello. Importazione e prima configurazione. DPA e registro dei trattamenti. Tesseramento EPS.</td><td>Si possono attivare palestre nuove in un giorno; le ASD possono adottarci.</td></tr>
+  <tr><td><b>Q2 2027</b></td><td>PWA con push e QR nel wallet. Tornello senza rete con un partner. Fase 4 (canali, spenti).</td><td>Tutte le porte d'ingresso coperte.</td></tr>
+  <tr><td><b>Q3 2027</b></td><td>Fase 5: efficacia con gruppo di controllo, NPS, report di retention. App unica negli store.</td><td>Il caso di studio con i numeri: la proposta di valore dimostrata.</td></tr>
+  <tr><td><b>Q4 2027</b></td><td>Fase 6: acquisizione. Primo assistente AI (bozze dei messaggi, riassunto del diario), conforme.</td><td>Pronti per uscire dal Nordest.</td></tr>
+</tbody></table>
+
+<!-- ===================== 7. MERCATO E PREZZO ===================== -->
+<h1><span class="n">7</span>Entrare nel mercato, e il prezzo di GRIP</h1>
+
+<h2>7.1 I primi dieci clienti</h2>
+<ul>
+  <li><b>Una provincia, non due regioni.</b> Si parte dalla provincia in cui il team può essere fisicamente presente in palestra entro mezz'ora: le prime dieci palestre si conquistano di persona, con una formazione in sede.</li>
+  <li><b>Un segmento solo</b>: ASD multi-corso e studi boutique, con 100–400 iscritti, che oggi usano Excel o un'app straniera.</li>
+  <li><b>Un problema solo</b>: "quanti soci hai perso lo scorso anno, e quando te ne sei accorto?" La demo parte da Oggi, non dal menu.</li>
+</ul>
+
+<h2>7.2 I canali</h2>
+<table class="keep"><thead><tr><th style="width:28%">Canale</th><th>Perché funziona</th></tr></thead><tbody>
+  <tr><td>Comitati regionali e provinciali degli EPS (CSEN, ASI, UISP, AICS, CSI, Libertas)</td><td>Parlano con centinaia di ASD; una convenzione con un comitato vale più di cento telefonate. Richiede il tesseramento EPS nel prodotto.</td></tr>
+  <tr><td>Commercialisti e consulenti delle ASD</td><td>Sono i consiglieri di fiducia dei presidenti di associazione, e GRIP non entra nel loro lavoro: non è un concorrente, è un alleato.</td></tr>
+  <tr><td>Installatori di tornelli e lettori</td><td>Entrano nelle palestre per primi; un accordo di segnalazione con un installatore locale è il canale per le palestre di quartiere.</td></tr>
+  <tr><td>Passaparola e casi di studio</td><td>I titolari si conoscono; il caso "26 soci recuperati in un trimestre" circola da solo.</td></tr>
+  <tr><td>Fiere ed eventi (Rimini Wellness, eventi degli EPS)</td><td>Visibilità, a costo alto: dopo i primi casi di studio, non prima.</td></tr>
+  <tr><td>Contenuti e gruppi di titolari</td><td>Guide pratiche (privacy in palestra, certificati, retention) che portano contatti qualificati.</td></tr>
+</tbody></table>
+
+<h2>7.3 L'offerta pilota: club fondatori</h2>
+<ul>
+  <li>10 palestre, <b>3 mesi gratuiti</b>, poi il prezzo del piano scelto <b>bloccato per 24 mesi</b>.</li>
+  <li>Migrazione dei dati e formazione in sede incluse.</li>
+  <li>In cambio: un incontro di feedback al mese, il consenso a misurare (in forma aggregata) l'efficacia del CRM, e un caso di studio pubblicabile.</li>
+  <li>Criterio di successo: almeno 7 su 10 restano paganti dopo il periodo gratuito, e almeno 3 accettano di essere citate.</li>
+</ul>
+
+<h2>7.4 Il prezzo di GRIP</h2>
+<p>Si tratta del canone che la palestra paga per usare GRIP: non riguarda e non tocca gli incassi della palestra.</p>
+<table class="keep"><thead><tr><th style="width:18%">Piano</th><th class="r" style="width:14%">Al mese</th><th>Per chi</th><th style="width:38%">Contenuto</th></tr></thead><tbody>
+  <tr><td><b>Avvio</b></td><td class="r">39 €</td><td>Fino a 150 iscritti</td><td>Soci, abbonamenti e carnet, corsi e prenotazioni, portale e QR, certificati, contatti.</td></tr>
+  <tr><td><b>Palestra</b></td><td class="r">79 €</td><td>Fino a 500 iscritti</td><td>Tutto Avvio più il CRM: Oggi, segnali, diario, ingressi con i segnali, statistiche, efficacia.</td></tr>
+  <tr><td><b>Club</b></td><td class="r">129 €</td><td>Oltre 500 iscritti</td><td>Tutto Palestra più più sedi (quando arriva), supporto prioritario, configurazione assistita delle soglie.</td></tr>
+  <tr><td><b>Comunicazioni</b></td><td class="r">a consumo</td><td>Dopo la Fase 4</td><td>Email incluse entro una soglia; SMS al costo del fornitore più un margine; push incluse.</td></tr>
+</tbody></table>
+<ul>
+  <li>Prezzi IVA esclusa, <b>mensili e senza vincolo</b>; pagando l'anno, due mesi in omaggio.</li>
+  <li>Nessun costo di attivazione per i fondatori; dopo, migrazione assistita come servizio a parte.</li>
+  <li>Posizionamento: sopra Eversports, sotto Glofox e Mindbody, con un contratto più semplice di tutti.</li>
+</ul>
+
+<div class="box warn">
+<p><b>Da verificare con le prime palestre.</b> Le soglie per numero di iscritti e il prezzo del piano Palestra sono ipotesi: vanno provati nelle trattative pilota, chiedendo ai titolari quanto spendono oggi (software, tempo, soci persi) prima di proporre una cifra.</p>
+</div>
+
+<h2>7.5 Indicatori da seguire</h2>
+<table class="keep"><thead><tr><th style="width:36%">Indicatore</th><th>Obiettivo nel primo anno</th></tr></thead><tbody>
+  <tr><td>Palestre paganti</td><td>25 a fine 2027 (dieci fondatori più quindici)</td></tr>
+  <tr><td>Abbandono delle palestre clienti</td><td>Sotto il 10% annuo</td></tr>
+  <tr><td>Uso settimanale di Oggi</td><td>Almeno tre giorni su cinque nell'80% delle palestre</td></tr>
+  <tr><td>Soci recuperati per palestra al mese</td><td>Da misurare con il gruppo di controllo: è il numero che si vende</td></tr>
+  <tr><td>Tempo di attivazione di una palestra nuova</td><td>Meno di un giorno lavorativo</td></tr>
+</tbody></table>
+
+<!-- ===================== APPENDICI ===================== -->
+<h1><span class="n">A</span>Appendice: fonti, metodo e ipotesi</h1>
+
+<h2>Metodo della stima di mercato</h2>
+<ol>
+  <li><b>Enti dilettantistici</b>: Veneto 9.680 e FVG 2.645 nel 2024 (Sport e Salute, schede regionali 2025).</li>
+  <li><b>Quota con attività di palestra o corsi</b>: 25% (intervallo 20–30%), ipotesi basata sul peso di ginnastica, fitness, danza, arti marziali, yoga e pilates sulla pratica sportiva. Risultato: Veneto ≈ 2.420, FVG ≈ 660.</li>
+  <li><b>Operatori commerciali</b>: oltre 5.000 in Italia; quota delle due regioni proporzionale alla popolazione (circa il 10,3%): ≈ 515, di cui Veneto ≈ 415 e FVG ≈ 100.</li>
+  <li><b>Totale</b>: Veneto ≈ 2.840, FVG ≈ 770, complessivamente ≈ 3.610; ripartito per provincia in proporzione alla popolazione.</li>
+  <li><b>Piccole</b>: 80% del totale; <b>servibile</b>: piccole con sede o spazi stabili e attività continuativa, stimate in circa il 55% delle piccole.</li>
+</ol>
+<p><b>Come rendere la stima più solida:</b> estrarre dal Registro delle imprese gli operatori con codice ATECO 93.13 per provincia (Camere di commercio), contare gli iscritti al RASD per disciplina e provincia dagli elenchi del Dipartimento per lo Sport, e chiedere ai comitati regionali degli EPS il numero di affiliati per disciplina.</p>
+
+<h2>Fonti</h2>
+<ul class="small">
+  <li>EuropeActive, comunicato sul European Health &amp; Fitness Market Report 2026 (dati 2025): europeactive.eu</li>
+  <li>Milano Finanza, "Orange Palestre Italiane acquisisce GetFit", luglio 2026: milanofinanza.it</li>
+  <li>ICE, scheda di settore articoli sportivi e fitness (dati 2021): ice.it</li>
+  <li>Sport e Salute, Schede regionali 2025 Veneto e Friuli Venezia Giulia: sportesalute.eu</li>
+  <li>CONI, I numeri dello sport 2021–2022: coni.it</li>
+  <li>Dipartimento per lo Sport, provvedimenti di iscrizione al RASD 2025: sport.governo.it</li>
+  <li>ISTAT, La pratica sportiva in Italia, anno 2024; Imprese e ICT, anno 2025: istat.it</li>
+  <li>Regione del Veneto, censimento degli impianti sportivi: regione.veneto.it</li>
+  <li>Glofox: glofox.com; stime di prezzo e recensioni da costbench.com, vibefam.com, G2, Capterra, Trustpilot</li>
+  <li>Mindbody: stime di prezzo da schedulingkit.com, koalendar.com, fitbudd.com, costbench.com</li>
+  <li>Eversports Manager: capterra.it</li>
+  <li>Sportclubby: trustpilot.com, capterra.com, dealroom.co</li>
+  <li>TeamSystem Wellness e Sportivi in Cloud: teamsystem.com (pagine prodotto e magazine)</li>
+  <li>Retention nel fitness: HFA benchmark 2025 citato da fonti di settore; studi sui primi 90 giorni riportati da americanspa.com e gymdesk.com</li>
+</ul>
+<p class="small">Diverse fonti sono secondarie (blog, aggregatori di prezzi, recensioni). Le cifre dei concorrenti vanno confermate con un preventivo o una demo; i dati ISTAT e Sport e Salute vanno riletti sulle tavole originali prima di un uso esterno.</p>
+
+<h1><span class="n">B</span>Appendice: glossario</h1>
+<table><thead><tr><th style="width:22%">Termine</th><th>Significato</th></tr></thead><tbody>
+  <tr><td>ASD / SSD</td><td>Associazione / Società sportiva dilettantistica.</td></tr>
+  <tr><td>EPS</td><td>Ente di promozione sportiva (CSEN, ASI, UISP, AICS, CSI, Libertas…), a cui le ASD si affiliano e con cui tesserano i soci.</td></tr>
+  <tr><td>RASD</td><td>Registro nazionale delle attività sportive dilettantistiche, l'unico riconoscimento ufficiale delle ASD/SSD dal 2022.</td></tr>
+  <tr><td>Carnet</td><td>Abbonamento a numero di ingressi (per esempio 10 lezioni), invece che a durata.</td></tr>
+  <tr><td>Retention</td><td>La capacità di tenere i soci: quanti restano dopo un certo periodo.</td></tr>
+  <tr><td>TAM / SAM / SOM</td><td>Mercato totale / mercato servibile / quota realisticamente conquistabile.</td></tr>
+  <tr><td>Multi-tenant</td><td>Un'unica installazione di GRIP che serve molte palestre, con i dati di ciascuna separati.</td></tr>
+  <tr><td>RLS</td><td>Row Level Security: regole nel database che impediscono a una palestra di leggere le righe di un'altra.</td></tr>
+  <tr><td>PWA</td><td>Progressive Web App: un sito che si installa sul telefono come un'app, con icona e notifiche.</td></tr>
+  <tr><td>DPA / DPIA</td><td>Accordo sul trattamento dei dati (art. 28 GDPR) / valutazione d'impatto sulla protezione dei dati (art. 35).</td></tr>
+  <tr><td>Segnale, fase</td><td>Nel motore di GRIP: la situazione calcolata di una persona (es. "in calo") e il motivo per cui va seguita.</td></tr>
+</tbody></table>
+
+</body>
+</html>
