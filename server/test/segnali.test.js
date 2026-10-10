@@ -1,5 +1,5 @@
-// Il motore dei segnali contro le rotte vere: Oggi, il contatto che nasconde, il rimando, i
-// no-show calcolati dagli ingressi, la ricerca globale e i permessi.
+// Il motore dei segnali contro le rotte vere: Da fare, il "Fatto" che nasconde solo il suo segnale,
+// i no-show calcolati dagli ingressi, la ricerca globale e i permessi.
 import test, { before, after, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import bcrypt from 'bcryptjs';
@@ -7,7 +7,7 @@ import { eq, inArray } from 'drizzle-orm';
 import { buildApp } from '../src/app.js';
 import { db, pool } from '../src/db/client.js';
 import {
-	members, persone, staffAccounts, subscriptions, ingressi, rooms, courses, events, sessions, bookings, attivita,
+	members, persone, staffAccounts, subscriptions, ingressi, rooms, courses, events, sessions, bookings, attivita, memberDocuments,
 } from '../src/db/schema/index.js';
 import { impostaMatrice, ripristinaMatricePredefinita, PERMESSI_PREDEFINITI } from '../../shared/permissions.js';
 import { oggiIso, spostaGiorni } from '../../shared/giorni.js';
@@ -51,6 +51,11 @@ before(async () => {
 	await db.insert(subscriptions).values(soci.map((s, i) => ({
 		memberId: s.id, planName: 'Mensile', startDate: '2025-01-01', endDate: i < 3 ? fra(3) : fra(200),
 	})));
+	// Documenti in regola per tutti: altrimenti ognuno avrebbe "documento mancante".
+	await db.insert(memberDocuments).values(soci.flatMap((s) => [
+		{ memberId: s.id, documentType: 'certificato_medico', expiryDate: fra(300) },
+		{ memberId: s.id, documentType: 'documento_identita', expiryDate: fra(3000) },
+	]));
 	// Tutti entrano spesso: nessuno è assente o in calo, i segnali sono solo quelli voluti.
 	await db.insert(ingressi).values(soci.flatMap((s) => [1, 3, 5, 8].map((g) => ({
 		memberId: s.id, entratoAlle: new Date(`${fra(-g)}T08:00:00Z`), esito: 'ammesso', metodo: 'manuale', registratoDaNome: 'Test',
@@ -96,6 +101,7 @@ after(async () => {
 	await db.delete(courses).where(eq(courses.id, idCorso.corso));
 	await db.delete(rooms).where(eq(rooms.id, idCorso.sala));
 	await db.delete(ingressi).where(inArray(ingressi.memberId, tutti));
+	await db.delete(memberDocuments).where(inArray(memberDocuments.memberId, tutti));
 	await db.delete(subscriptions).where(inArray(subscriptions.memberId, tutti));
 	await db.delete(staffAccounts).where(inArray(staffAccounts.id, id.account));
 	await db.delete(members).where(inArray(members.id, tutti));
@@ -104,45 +110,47 @@ after(async () => {
 	await pool.end();
 });
 
-describe('Oggi', () => {
-	test('chi scade fra 3 giorni è in Oggi, con il perché in parole', async () => {
+describe('Da fare', () => {
+	test('chi scade fra 3 giorni è nella linea dei rinnovi, con il perché in parole; lo stato resta attivo', async () => {
 		const dati = await oggiDi();
 		const scade = riga(dati, 'scade');
-		assert.ok(scade, 'in Oggi');
-		assert.equal(scade.fase, 'in_scadenza');
+		assert.ok(scade, 'in Da fare');
+		assert.equal(scade.fase, 'attivo', 'in scadenza non è uno stato: è una cosa da fare');
 		assert.deepEqual(scade.da_fare, ['in_scadenza']);
 		assert.equal(scade.perche, 'scade tra 3 giorni');
 		assert.equal(scade.scadenza, fra(3));
-		assert.ok(!riga(dati, 'regolare'), 'chi non ha niente da fare non è in Oggi');
-		assert.ok(dati.conteggi.fasi.in_scadenza >= 3);
+		assert.ok(!riga(dati, 'regolare'), 'chi non ha niente da fare non è in Da fare');
+		assert.ok(dati.conteggi.segnali.in_scadenza >= 3);
+		assert.ok(dati.conteggi.linee.rinnovi >= 3);
 	});
 
-	test('"proposto rinnovo" va nel diario e nasconde il segnale per una settimana', async () => {
+	test('"proposto rinnovo" va nel diario, con il suo segnale, e lo nasconde per una settimana', async () => {
 		const pid = await persona('contattato');
-		const r = await come('reception', 'POST', `/api/persone/${pid}/contatti`, { canale: 'di_persona', esito: 'proposto_rinnovo', nota: 'Ci pensa' });
+		const r = await come('reception', 'POST', `/api/persone/${pid}/contatti`, { canale: 'di_persona', esito: 'proposto_rinnovo', segnale: 'in_scadenza', nota: 'Ci pensa' });
 		assert.equal(r.statusCode, 201, r.body);
 		const dati = await oggiDi();
-		assert.ok(!riga(dati, 'contattato'), 'nascosto da Oggi');
+		assert.ok(!riga(dati, 'contattato'), 'nascosto da Da fare');
 		const scheda = (await come('reception', 'GET', `/api/segnali?persona=${pid}`)).json().persone[0];
 		assert.equal(scheda.segnali.find((s) => s.codice === 'in_scadenza').nascosto_fino, fra(7));
 		const diario = (await come('reception', 'GET', `/api/persone/${pid}/diario`)).json().attivita;
-		assert.deepEqual(diario.map((a) => [a.tipo, a.esito, a.nota]), [['contatto', 'proposto_rinnovo', 'Ci pensa']]);
+		assert.deepEqual(diario.filter((a) => a.autore_nome !== 'Sistema').map((a) => [a.tipo, a.esito, a.nota, a.riferimento]), [['contatto', 'proposto_rinnovo', 'Ci pensa', { segnali: ['in_scadenza'] }]]);
 	});
 
-	test('"rimanda" nasconde fino al giorno scelto; i giorni devono avere senso', async () => {
+	test('il "Fatto" vale per un segnale che la persona ha adesso, e il rimando non c\'è più', async () => {
 		const pid = await persona('rimandato');
-		assert.equal((await come('reception', 'POST', `/api/persone/${pid}/rimanda`, { giorni: 0 })).statusCode, 400);
-		assert.equal((await come('reception', 'POST', `/api/persone/${pid}/rimanda`, { giorni: 61 })).statusCode, 400);
-		const r = await come('reception', 'POST', `/api/persone/${pid}/rimanda`, { giorni: 2 });
+		assert.equal((await come('reception', 'POST', `/api/persone/${pid}/contatti`, { canale: 'telefono' })).statusCode, 400, 'senza segnale');
+		assert.equal((await come('reception', 'POST', `/api/persone/${pid}/contatti`, { canale: 'telefono', segnale: 'compleanno' })).statusCode, 400, 'un segnale che non ha');
+		const r = await come('reception', 'POST', `/api/persone/${pid}/contatti`, { canale: 'telefono', segnali: ['in_scadenza'] });
 		assert.equal(r.statusCode, 201, r.body);
-		assert.equal(r.json().attivita.esito, fra(2));
+		assert.equal(r.json().attivita.esito, 'fatto');
 		assert.ok(!riga(await oggiDi(), 'rimandato'));
+		assert.equal((await come('reception', 'POST', `/api/persone/${pid}/rimanda`, { giorni: 2 })).statusCode, 404);
 	});
 
 	test('un contatto senza esito o canale validi si rifiuta', async () => {
 		const pid = await persona('scade');
-		assert.equal((await come('reception', 'POST', `/api/persone/${pid}/contatti`, { canale: 'piccione', esito: 'risposto' })).statusCode, 400);
-		assert.equal((await come('reception', 'POST', `/api/persone/${pid}/contatti`, { canale: 'telefono', esito: 'boh' })).statusCode, 400);
+		assert.equal((await come('reception', 'POST', `/api/persone/${pid}/contatti`, { canale: 'piccione', segnale: 'in_scadenza' })).statusCode, 400);
+		assert.equal((await come('reception', 'POST', `/api/persone/${pid}/contatti`, { canale: 'telefono', esito: 'boh', segnale: 'in_scadenza' })).statusCode, 400);
 	});
 });
 
@@ -157,13 +165,14 @@ describe('presenze e no-show', () => {
 });
 
 describe('filtri dell\'elenco', () => {
-	test('per fase e per segnale, solo soci', async () => {
-		const perFase = (await come('reception', 'GET', '/api/segnali?tipo=soci&fase=in_scadenza')).json();
-		assert.ok(perFase.persone.every((p) => p.fase === 'in_scadenza' && p.socio_id));
-		assert.ok(riga(perFase, 'contattato'), 'l\'elenco mostra anche chi è già stato contattato');
+	test('per stato e per segnale, solo soci', async () => {
+		const perStato = (await come('reception', 'GET', '/api/segnali?tipo=soci&fase=attivo')).json();
+		assert.ok(perStato.persone.every((p) => p.fase === 'attivo' && p.socio_id));
+		assert.ok(riga(perStato, 'contattato'), 'l\'elenco mostra anche chi è già stato seguito');
 		const perSegnale = (await come('reception', 'GET', '/api/segnali?tipo=soci&segnale=no_show_ripetuti')).json();
 		assert.ok(riga(perSegnale, 'saltalezioni'));
 		assert.ok(!riga(perSegnale, 'scade'));
+		assert.equal((await come('reception', 'GET', '/api/segnali?fase=in_scadenza')).statusCode, 400, 'non è più uno stato');
 		assert.equal((await come('reception', 'GET', '/api/segnali?fase=boh')).statusCode, 400);
 		assert.equal((await come('reception', 'GET', '/api/segnali?persona=boh')).statusCode, 400);
 	});
@@ -188,14 +197,13 @@ describe('i permessi', () => {
 	test('il socio non legge i segnali, non cerca e non registra contatti', async () => {
 		assert.equal((await come('socio', 'GET', '/api/segnali')).statusCode, 403);
 		assert.equal((await come('socio', 'GET', '/api/persone/cerca?q=Scade')).statusCode, 403);
-		assert.equal((await come('socio', 'POST', `/api/persone/${await persona('scade')}/contatti`, { canale: 'telefono', esito: 'risposto' })).statusCode, 403);
+		assert.equal((await come('socio', 'POST', `/api/persone/${await persona('scade')}/contatti`, { canale: 'telefono', segnale: 'in_scadenza' })).statusCode, 403);
 	});
 
-	test('chi vede e basta legge, ma non registra contatti né rimanda', async () => {
+	test('chi vede e basta legge, ma non segna i "Fatto"', async () => {
 		assert.equal((await come('istruttore', 'GET', '/api/segnali?da_fare=1')).statusCode, 200);
 		const pid = await persona('scade');
-		assert.equal((await come('istruttore', 'POST', `/api/persone/${pid}/contatti`, { canale: 'telefono', esito: 'risposto' })).statusCode, 403);
-		assert.equal((await come('istruttore', 'POST', `/api/persone/${pid}/rimanda`, { giorni: 3 })).statusCode, 403);
+		assert.equal((await come('istruttore', 'POST', `/api/persone/${pid}/contatti`, { canale: 'telefono', segnale: 'in_scadenza' })).statusCode, 403);
 	});
 
 	test('chi segue solo i contatti non riceve i soci, né li trova', async () => {
@@ -217,7 +225,7 @@ describe('il bancone', () => {
 		const prima = await verifica();
 		assert.deepEqual(prima.segnali, [{ codice: 'in_scadenza', motivo: 'Scade tra 3 giorni: proponi il rinnovo', azioni: ['proposta_rinnovo'] }]);
 		assert.equal(prima.socio.persona_id, await persona('scade'));
-		const r = await come('reception', 'POST', `/api/persone/${prima.socio.persona_id}/contatti`, { canale: 'di_persona', esito: 'proposto_rinnovo' });
+		const r = await come('reception', 'POST', `/api/persone/${prima.socio.persona_id}/contatti`, { canale: 'di_persona', esito: 'proposto_rinnovo', segnale: 'in_scadenza' });
 		assert.equal(r.statusCode, 201);
 		assert.deepEqual((await verifica()).segnali, []);
 	});
@@ -231,7 +239,9 @@ describe('il bancone', () => {
 
 describe('il diario resta pulito', () => {
 	test('le righe scritte dai test hanno un autore', async () => {
-		const righe = await db.select().from(attivita).where(inArray(attivita.personaId, id.persone));
+		// Il giro, se un altro file lo lancia intanto, scrive le sue righe "Sistema": non sono dei test.
+		const righe = (await db.select().from(attivita).where(inArray(attivita.personaId, id.persone)))
+			.filter((r) => !['segnale_aperto', 'segnale_chiuso', 'archiviazione_automatica'].includes(r.tipo));
 		assert.ok(righe.every((r) => r.autoreNome === 'Reception Segnali'));
 	});
 });

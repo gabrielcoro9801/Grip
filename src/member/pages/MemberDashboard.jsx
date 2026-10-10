@@ -9,6 +9,7 @@ import StatusBadge from "@/ui/StatusBadge";
 import { LoadingState } from "@/ui/Spinner";
 import { ErrorState } from "@/ui/StateViews";
 import { formatData } from "@/core/domain/format";
+import ConsensiComunicazioni from "@/member/components/ConsensiComunicazioni";
 
 export default function MemberDashboard() {
   const { memberUser } = useMemberAuth();
@@ -67,6 +68,9 @@ export default function MemberDashboard() {
         </h1>
         <p className="text-sm text-muted-foreground">Benvenuto nella tua area personale</p>
       </div>
+
+      {/* Chi non ha mai scelto se ricevere promozioni se lo sente chiedere qui, una volta. */}
+      <ConsensiComunicazioni primaVolta />
 
       {/* Subscription summary */}
       <Card className="border-0 shadow-sm">

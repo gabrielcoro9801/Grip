@@ -6,19 +6,20 @@
 // apertura della home diventava il download dell'intero archivio. Il portale soci fa già così:
 // il server conta e manda numeri, la pagina li mostra.
 //
-// Rinnovi e certificati non hanno più un conto loro: li dice il motore dei segnali
-// (lib/segnali.js), lo stesso di Oggi e dell'elenco dei soci, così i numeri sono gli stessi
-// ovunque. Qui si mostrano tutti, anche quelli già contattati: la dashboard è il quadro, Oggi
-// la lista di cose da fare.
+// Il lavoro da fare non ha più liste sue qui (erano doppioni di Oggi): la dashboard mostra
+// quante persone ci sono in ogni linea di Da fare, contate dal motore dei segnali
+// (lib/segnali.js), e un clic porta alla linea. Il lavoro si fa là; qui si guarda il quadro.
 //
-// Ogni parte ha il permesso di lettura dell'entità che la governa: chi non vede i documenti
-// riceve `null` al posto degli avvisi sui certificati, e la pagina non mostra quella parte.
+// Ogni parte ha il permesso di lettura dell'entità che la governa: chi non vede i soci non
+// riceve le loro linee, chi non vede i contatti non riceve quella dei contatti.
 import { and, asc, count, desc, eq, gte, isNull, lte, ne, or } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { attivita, bookings, courses, events, members, sessions } from '../db/schema/index.js';
 import { getUserFromRequest } from '../auth/tokens.js';
 import { canReadEntity } from '../auth/authorize.js';
+import { canAccess } from '../../../shared/permissions.js';
 import { situazioni } from '../lib/segnali.js';
+import { daFare, lineaDi, LINEE } from '../../../shared/segnali.js';
 import { oggiIso, spostaGiorni } from '../../../shared/giorni.js';
 
 export default async function dashboardRoutes(fastify) {
@@ -34,27 +35,28 @@ export default async function dashboardRoutes(fastify) {
 		const ruolo = request.utente.ruolo;
 		const oggi = oggiIso();
 		const puo = (entita) => canReadEntity(ruolo, entita);
-		const servonoSegnali = puo('Subscription') || puo('MemberDocument');
+		// Le linee di Da fare le vede chi segue i soci o i contatti, come la pagina: leggere i nomi dei soci
+		// per il calendario non basta.
+		const vedeSoci = canAccess(ruolo, 'crm_members', 'view');
+		const vedeLead = canAccess(ruolo, 'crm_leads', 'view');
 
 		const [iscritti, motore, prossime, abbandoni] = await Promise.all([
 			puo('Member') ? contaSoci() : null,
-			servonoSegnali ? situazioni() : null,
+			vedeSoci || vedeLead ? situazioni() : null,
 			puo('Booking') ? prossimeLezioni(oggi) : null,
 			puo('Subscription') ? motiviAbbandono(oggi) : null,
 		]);
-		const soci = (motore?.persone ?? []).filter((p) => p.socio_id);
-		const abbonamenti = puo('Subscription') ? rinnovi(soci) : null;
-		const certificati = puo('MemberDocument') ? avvisiCertificati(soci) : null;
+		const persone = (motore?.persone ?? []).filter((p) => (p.socio_id ? vedeSoci : vedeLead));
+		const soci = persone.filter((p) => p.socio_id);
 
 		return {
 			kpi: {
-				soci_attivi: abbonamenti ? soci.filter((p) => !p.archiviato_il && p.valido).length : null,
+				soci_attivi: puo('Subscription') ? soci.filter((p) => !p.archiviato_il && p.valido).length : null,
 				soci_iscritti: iscritti,
-				certificati_in_scadenza: certificati?.length ?? null,
+				documenti_da_sistemare: puo('MemberDocument') ? soci.filter((p) => p.segnali.some((s) => s.pubblico === 'staff' && s.codice.startsWith('documento_'))).length : null,
 				prossime_lezioni: prossime?.length ?? null,
 			},
-			certificati,
-			rinnovi: abbonamenti,
+			da_fare: motore ? lineeDaFare(persone, { vedeSoci, vedeLead }) : null,
 			prossime,
 			abbandoni,
 		};
@@ -68,31 +70,20 @@ async function contaSoci() {
 	return Number(quanti);
 }
 
-// Il segnale di una persona per un codice, contato anche se è nascosto da un contatto.
-const segnaleDi = (persona, codici) => persona.segnali.find((s) => s.pubblico === 'staff' && codici.includes(s.codice));
-
 /**
- * Gli avvisi di rinnovo: chi è in scadenza senza aver già rinnovato, e chi è scaduto da poco
- * (recuperabile). Chi è scaduto da mesi è un ex socio: non è più un avviso.
+ * Quante persone ci sono in ogni linea di Da fare, adesso (i segnali già fatti non contano): le
+ * tessere della dashboard. Le linee che il ruolo non vede non ci sono; quelle vuote sì, a zero.
  */
-function rinnovi(soci) {
-	return soci
-		.map((p) => ({ p, s: segnaleDi(p, ['in_scadenza', 'scaduto_recuperabile']) }))
-		.filter(({ s }) => s)
-		.map(({ p, s }) => ({
-			id: s.dati.iscrizione_id, member_id: p.socio_id, member_name: p.nome, plan_name: s.dati.abbonamento,
-			status: s.codice === 'in_scadenza' ? 'expiring' : 'expired', giorni: s.dati.giorni,
-		}))
-		.sort((a, b) => a.giorni - b.giorni);
-}
-
-/** I certificati medici scaduti o in scadenza che contano ancora, uno per socio. */
-function avvisiCertificati(soci) {
-	return soci
-		.map((p) => ({ p, s: segnaleDi(p, ['certificato_scaduto', 'certificato_in_scadenza']) }))
-		.filter(({ s }) => s)
-		.map(({ p, s }) => ({ id: s.dati.documento_id, member_id: p.socio_id, member_name: p.nome, file_name: s.dati.file_name, giorni: s.dati.giorni, scaduto: s.dati.scaduto }))
-		.sort((a, b) => a.giorni - b.giorni);
+function lineeDaFare(persone, { vedeSoci, vedeLead }) {
+	const conti = Object.fromEntries(LINEE
+		.filter((l) => !l.soloImpostazioni && (l.valore === 'contatti' ? vedeLead : vedeSoci))
+		.map((l) => [l.valore, 0]));
+	for (const p of persone) {
+		for (const l of new Set(daFare(p.segnali, 'staff').map((s) => lineaDi(s.codice)))) {
+			if (l in conti) conti[l] += 1;
+		}
+	}
+	return conti;
 }
 
 /**

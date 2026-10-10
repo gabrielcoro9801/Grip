@@ -54,6 +54,7 @@ export default async function iscrizioniRoutes(fastify) {
 	 *     certificato?: { file_url, file_name?, expiry_date },
 	 *     informativa_privacy: true,                  — l'informativa firmata in reception
 	 *     consensi?: { marketing_email?: bool, marketing_sms?: bool, marketing_push?: bool },
+	 *     modulo_consensi?: { file_url, file_name? }  — il modulo firmato: senza, nessun consenso "sì"
 	 *     portale?: { password }                      — l'accesso, con l'email dell'anagrafica
 	 *   }
 	 *
@@ -79,6 +80,13 @@ export default async function iscrizioniRoutes(fastify) {
 		if (sceltiConsensi.some(([tipo, valore]) => !tipoConsensoValido(tipo) || typeof valore !== 'boolean')) {
 			return reply.code(400).send({ error: 'Consensi non validi.' });
 		}
+		// Un consenso dato in reception vale solo con il modulo firmato caricato (shared/consensi.js).
+		const datiConsensi = sceltiConsensi.some(([, valore]) => valore);
+		if (datiConsensi && !corpo.modulo_consensi?.file_url) {
+			return reply.code(400).send({ error: 'Per le comunicazioni promozionali serve il modulo firmato: caricalo, o togli le caselle.' });
+		}
+		if (datiConsensi && !puo('MemberDocument')) return reply.code(403).send({ error: 'Il tuo ruolo non consente di caricare documenti.' });
+		verificaCampiFile({ file_url: corpo.modulo_consensi?.file_url });
 		const password = corpo.portale?.password;
 		if (corpo.portale) {
 			const nonValida = motivoPasswordNonValida(password);
@@ -142,7 +150,17 @@ export default async function iscrizioniRoutes(fastify) {
 			}
 
 			if (sceltiConsensi.length) {
-				await tx.insert(consensi).values(sceltiConsensi.map(([tipo, valore]) => ({ personaId: socio.personaId, tipo, valore, fonte: 'reception', autoreNome })));
+				let documentoId = null;
+				if (datiConsensi) {
+					const modulo = await applyWriteTransform('MemberDocument', {
+						...scegli(corpo.modulo_consensi, ['file_url', 'file_name']),
+						document_type: 'consenso_marketing', member_id: socio.id, caricato_da: autoreNome,
+					}, { conn: tx });
+					[{ id: documentoId }] = await tx.insert(memberDocuments).values(translateToJs(memberDocuments, modulo)).returning({ id: memberDocuments.id });
+				}
+				await tx.insert(consensi).values(sceltiConsensi.map(([tipo, valore]) => ({
+					personaId: socio.personaId, tipo, valore, fonte: 'reception', autoreNome, documentoId: valore ? documentoId : null,
+				})));
 			}
 
 			// L'accesso al portale: un account `member` collegato al socio, con la password scelta qui,

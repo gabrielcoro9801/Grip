@@ -10,7 +10,7 @@ import { MOTIVI_ABBANDONO, NOTA_DIARIO_MASSIMO } from "@/core/domain/lead";
 
 /**
  * "Se ne va": il socio si archivia con il suo motivo, da un elenco chiuso (shared/lead.js). Lo
- * stesso dalla scheda e da Oggi, per uno scaduto che non torna. Niente si cancella: scheda,
+ * stesso dalla scheda e da Da fare, per uno scaduto che non torna. Niente si cancella: scheda,
  * abbonamenti e storico restano, e lo si riattiva quando torna; il motivo resta nel diario e la
  * dashboard conta perché se ne vanno.
  *

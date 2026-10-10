@@ -1,7 +1,7 @@
 // Chi va seguito, e perché: il motore dei segnali (shared/segnali.js) per le schermate dello staff.
 //
-// Un endpoint per tutti: Oggi chiede le persone con qualcosa da fare, l'elenco dei soci filtra
-// per fase e segnale, la scheda chiede una persona sola. I conti li fa lib/segnali.js.
+// Un endpoint per tutti: Da fare chiede le persone con qualcosa da fare, l'elenco dei soci filtra
+// per stato e segnale, la scheda chiede una persona sola. I conti li fa lib/segnali.js.
 //
 // Chi può: chi vede i soci o i contatti, come il diario. Ognuno riceve solo la parte che vede:
 // chi segue i contatti ma non i soci non riceve i soci, e viceversa.
@@ -10,7 +10,7 @@ import { canAccess } from '../../../shared/permissions.js';
 import { situazioni } from '../lib/segnali.js';
 import { registerPgErrorHandler } from './errorHandler.js';
 import { firmaUrl } from '../lib/urlFirmati.js';
-import { daFare, perche, FASI } from '../../../shared/segnali.js';
+import { daFare, perche, FASI, lineaDi } from '../../../shared/segnali.js';
 
 const PUBBLICI = ['staff', 'socio', 'bancone'];
 
@@ -44,14 +44,14 @@ export default async function segnaliRoutes(fastify) {
 
 	/**
 	 * GET /api/segnali?persona=&tipo=soci|lead&fase=&segnale=&pubblico=staff&da_fare=1&entrati_oggi=1
-	 * → { oggi, persone, conteggi: { fasi, segnali } }
+	 * → { oggi, soglie, persone, conteggi: { fasi, segnali, linee } }
 	 *
-	 * - `da_fare=1`: solo chi ha un segnale da fare adesso (non nascosto da un contatto o da un
-	 *   rimando), dal più prezioso: è la lista di Oggi.
-	 * - `fase`, `segnale`: filtri dell'elenco; `segnale` cerca fra quelli da fare.
+	 * - `da_fare=1`: solo chi ha un segnale da fare adesso (non nascosto da un "Fatto"), dal più
+	 *   prezioso: è la lista di Da fare.
+	 * - `fase` (lo stato), `segnale`: filtri dell'elenco; `segnale` cerca fra quelli da fare.
 	 * - `entrati_oggi=1`: chi è entrato oggi e ha ancora un segnale del bancone da fare (`bancone`):
-	 *   il controllo degli ingressi è passivo, e chi passa dal tornello non lo vede nessuno. Oggi
-	 *   li mostra in cima.
+	 *   il controllo degli ingressi è passivo, e chi passa dal tornello non lo vede nessuno. Da
+	 *   fare li mostra in cima.
 	 * - `conteggi` si contano prima di `fase` e `segnale`, per le etichette dei filtri.
 	 */
 	fastify.get('/api/segnali', async (request, reply) => {
@@ -60,16 +60,18 @@ export default async function segnaliRoutes(fastify) {
 		if (!PUBBLICI.includes(pubblico)) return reply.code(400).send({ error: 'Pubblico non valido.' });
 		if (q.fase && !FASI.some((f) => f.valore === q.fase)) return reply.code(400).send({ error: 'Fase non valida.' });
 
-		const { oggi, persone } = await situazioni({ personaId: q.persona || null });
+		const { oggi, soglie, persone } = await situazioni({ personaId: q.persona || null });
 		let elenco = persone
 			.filter((p) => (p.socio_id ? request.vede.soci : request.vede.lead))
 			.filter((p) => !q.tipo || (q.tipo === 'soci' ? p.socio_id : !p.socio_id))
 			.map((p) => perLoSchermo(p, pubblico));
 
-		const conteggi = { fasi: {}, segnali: {} };
+		const conteggi = { fasi: {}, segnali: {}, linee: {} };
 		for (const p of elenco) {
 			conteggi.fasi[p.fase] = (conteggi.fasi[p.fase] ?? 0) + 1;
 			for (const s of p.da_fare) conteggi.segnali[s] = (conteggi.segnali[s] ?? 0) + 1;
+			// Le persone per linea di Da fare: una persona conta una volta per linea.
+			for (const l of new Set(p.da_fare.map(lineaDi).filter(Boolean))) conteggi.linee[l] = (conteggi.linee[l] ?? 0) + 1;
 		}
 
 		if (q.entrati_oggi === '1') elenco = elenco.filter((p) => p.bancone.length);
@@ -77,6 +79,6 @@ export default async function segnaliRoutes(fastify) {
 		if (q.fase) elenco = elenco.filter((p) => p.fase === q.fase);
 		if (q.segnale) elenco = elenco.filter((p) => p.da_fare.includes(q.segnale));
 		elenco.sort((a, b) => (q.da_fare === '1' ? b.priorita - a.priorita : 0) || String(a.nome).localeCompare(String(b.nome), 'it'));
-		return { oggi, persone: elenco, conteggi };
+		return { oggi, soglie, persone: elenco, conteggi };
 	});
 }

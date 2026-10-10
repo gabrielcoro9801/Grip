@@ -76,6 +76,10 @@ describe('iscrivi in un passo', () => {
 		assert.equal(senzaEmail.statusCode, 400);
 		const certificatoSenzaScadenza = await iscrivi({ anagrafica: anagrafica(CF_FALLITO), informativa_privacy: true, certificato: { file_url: '/uploads/cert.pdf' } });
 		assert.equal(certificatoSenzaScadenza.statusCode, 400);
+		// Un consenso promozionale dato in reception vale solo con il modulo firmato.
+		const consensoSenzaModulo = await iscrivi({ anagrafica: anagrafica(CF_FALLITO), informativa_privacy: true, consensi: { marketing_email: true } });
+		assert.equal(consensoSenzaModulo.statusCode, 400);
+		assert.match(consensoSenzaModulo.json().error, /modulo firmato/);
 		assert.deepEqual((await sociDiProva()).filter((s) => s.codiceFiscale === CF_FALLITO), []);
 	});
 
@@ -87,6 +91,7 @@ describe('iscrivi in un passo', () => {
 			certificato: { file_url: '/uploads/certificato-prova.pdf', file_name: 'certificato.pdf', expiry_date: spostaGiorni(inizio, 365) },
 			informativa_privacy: true,
 			consensi: { marketing_email: true, marketing_sms: false },
+			modulo_consensi: { file_url: '/uploads/modulo-consensi.pdf', file_name: 'modulo.pdf' },
 			portale: { password: PASSWORD },
 		});
 		assert.equal(res.statusCode, 201, res.body);
@@ -99,13 +104,17 @@ describe('iscrivi in un passo', () => {
 		const [abbonamento] = await db.select().from(subscriptions).where(eq(subscriptions.memberId, member.id));
 		assert.equal(abbonamento.endDate, dataFineAbbonamento(inizio, 1, 'mesi'));
 		assert.equal(Number(abbonamento.pricePaid), 45);
-		const [documento] = await db.select().from(memberDocuments).where(eq(memberDocuments.memberId, member.id));
-		assert.equal(documento.documentType, 'certificato_medico');
+		const documenti = await db.select().from(memberDocuments).where(eq(memberDocuments.memberId, member.id));
+		const documento = documenti.find((d) => d.documentType === 'certificato_medico');
 		assert.equal(documento.caricatoDa, 'Reception Iscrivi');
+		// Il modulo dei consensi finisce fra i documenti, ed è la prova del "sì".
+		const modulo = documenti.find((d) => d.documentType === 'consenso_marketing');
+		assert.ok(modulo);
 		const scelte = await db.select().from(consensi).where(eq(consensi.personaId, member.persona_id));
-		assert.deepEqual(scelte.map((c) => [c.tipo, c.valore, c.fonte]).sort(), [['marketing_email', true, 'reception'], ['marketing_sms', false, 'reception']]);
+		assert.deepEqual(scelte.map((c) => [c.tipo, c.valore, c.fonte, c.documentoId]).sort(), [['marketing_email', true, 'reception', modulo.id], ['marketing_sms', false, 'reception', null]]);
 		const diario = await db.select().from(attivita).where(eq(attivita.personaId, member.persona_id));
-		assert.deepEqual(diario.map((a) => [a.tipo, a.esito]), [['iscrizione', 'nuovo']]);
+		// Le righe "Da fare" del giro (se un altro file lo lancia intanto) non sono dell'iscrizione.
+		assert.deepEqual(diario.filter((a) => a.autoreNome !== 'Sistema').map((a) => [a.tipo, a.esito]), [['iscrizione', 'nuovo']]);
 
 		// Entra nel portale con la password data in reception, e deve cambiarla.
 		const login = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { email: emailNuovo, password: PASSWORD } });

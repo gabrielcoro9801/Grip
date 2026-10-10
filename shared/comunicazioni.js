@@ -95,7 +95,7 @@ export const PLAYBOOK = [
   },
   {
     codice: "assenza", titolo: "Assenza", tipo: "servizio", canali: ["app", "email"],
-    quando: "Dopo 21 giorni senza ingressi. Prima, dai 14, lo cerca una persona da Oggi.",
+    quando: "Dopo 21 giorni senza ingressi. Prima, dai 14, compare in Da fare.",
     testi: {
       oggetto: "Ci manchi, {nome}",
       testo: "Ciao {nome}, è un po' che non ti vediamo in palestra. Va tutto bene? Se ti serve una mano per ripartire, passa in reception o rispondi a questo messaggio." + FIRMA,
@@ -205,7 +205,7 @@ const CERTIFICATO_SCADUTO_FINO = 30;
 
 /**
  * L'occasione di un playbook per una persona, oggi: i suoi segnali dicono se è il momento.
- * Un segnale nascosto (un contatto dello staff, un rimando) non fa partire niente: se qualcuno
+ * Un segnale nascosto (un "Fatto" dello staff su quel segnale) non fa partire niente: se qualcuno
  * l'ha appena sentito, un messaggio automatico sopra sarebbe di troppo.
  *
  * @param p { segnali (dal motore), nome_proprio, scadenza, abbonamento }
@@ -249,12 +249,15 @@ export function occasione(codice, p, oggi) {
       return { riferimento: `iscritto:${spostaGiorni(oggi, -(s.dati?.giorni ?? 7))}`, canali: pb.canali, valori };
     }
     case "certificato": {
-      const s = segnale("certificato_in_scadenza") ?? segnale("certificato_scaduto");
-      const g = s?.dati?.giorni;
-      if (!s || g === null || g === undefined) return null;
-      const doc = s.dati.documento_id ?? "certificato";
+      // Il playbook parla del certificato medico: fra i documenti fuori regola, il suo.
+      const cert = ["documento_in_scadenza", "documento_scaduto"]
+        .flatMap((c) => segnale(c)?.dati?.documenti ?? [])
+        .find((d) => d.tipo === "certificato_medico");
+      const g = cert?.giorni;
+      if (!cert || g === null || g === undefined) return null;
+      const doc = cert.documento_id ?? "certificato";
       const scadenzaCert = valoreScadenza(oggi, g);
-      if (s.dati.scaduto) {
+      if (cert.stato === "scaduto") {
         if (-g > CERTIFICATO_SCADUTO_FINO) return null;
         return { riferimento: `${doc}:scaduto`, canali: pb.canali, valori: { ...valori, scadenza: scadenzaCert, quando: "è scaduto" } };
       }

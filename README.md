@@ -104,6 +104,57 @@ Tre punti che si sbagliano quasi sempre, spiegati lì per esteso:
 
 ## Stato del progetto
 
+### 11 ottobre 2026 — Da fare per linee, sei stati, consensi con la prova
+
+Il lavoro della segreteria esce dalla scheda del socio e si ordina; gli stati si separano da
+abbonamento e cose da fare; i consensi promozionali si cambiano solo con una prova.
+
+- **Da fare** (era *Oggi*, `/oggi` porta lì) è divisa in **linee**: Rinnovi, Chi non viene, Nuovi
+  soci, Documenti, Compleanni, Contatti. Ognuna si risolve con la sua azione: **Rinnova** e
+  **Carica** (il segnale sparisce da solo quando c'è l'abbonamento o il documento), **Non torna**
+  per uno scaduto, e il **box "Fatto"** — Di persona, Chiamato, Messaggio, Email, un tocco —
+  per tutto il resto. Un "Fatto" nasconde **solo il suo segnale** per qualche giorno: chiamato
+  perché non viene, il certificato scaduto resta in Documenti.
+- **Via "Registra contatto" e "Rimanda"** per i soci (la rotta `/rimanda` non c'è più). La
+  pipeline dei lead non cambia: "Contattato" muove ancora la trattativa.
+- **Documenti** segue ogni documento obbligatorio (`TIPI_DOCUMENTO` con `atteso`: certificato,
+  documento di identità, consenso dei genitori per i minorenni): mancante, scaduto, in scadenza.
+  Un tipo reso obbligatorio domani entra da solo. È la stessa regola del portale e degli
+  ingressi (`documentiDaSistemare`, `shared/avvisi.js`).
+- **Impostazioni › Da fare** (`/admin/da-fare`, l'amministratore): ogni segnale si accende o si
+  spegne, con la sua regola in parole e le sue soglie accanto. Uno spento non si calcola più —
+  né in Da fare, né nel diario, né per i messaggi automatici. Le soglie lasciano Comunicazioni;
+  quelle che erano costanti nel codice (media minima per il calo, no-show, traguardi, primo
+  controllo) diventano impostazioni. Ogni cambio va nel registro delle azioni.
+- **Sei stati del socio**, valutati in quest'ordine: Archiviato, Sospeso, Senza abbonamento,
+  Nuovo (primi 30 giorni di abbonamento), In calo (frequenza dimezzata o nessun ingresso da 14
+  giorni), Attivo. "In scadenza", "scaduto recuperabile", "ambientamento", "assente" non sono più
+  stati: sono cose da fare. I documenti non cambiano lo stato. Chi è **senza abbonamento da 180
+  giorni** (impostabile, 0 = mai) lo **archivia il giro**, con una riga nel diario.
+- **La scheda socio** non ha più azioni né il blocco "Da seguire": lo stato in testa, e nel
+  **diario** le cose da fare comparse e risolte (le scrive il giro) accanto ai "Fatto" e alle note.
+- **Elenco soci**: Socio · Stato (con il perché al passaggio del mouse e la legenda) · Stato
+  abbonamento · Scadenza · Ingressi in 4 settimane · **Contatta** (anche sulle tile): i recapiti
+  e un pulsante per telefono, WhatsApp, SMS ed email.
+- **Dashboard**: via le liste di rinnovi e certificati (erano doppioni); una tessera per linea di
+  Da fare, con il conteggio, che porta alla linea.
+- **Consensi promozionali**: dalla reception valgono solo con il **modulo firmato caricato** fra i
+  documenti (tipo nuovo `consenso_marketing`), anche nell'iscrizione in un passo; se il documento
+  viene eliminato il consenso decade (si calcola, `consensoProvato`). Nella scheda sono in sola
+  lettura con lo storico; "Registra consenso firmato" e "Registra revoca" (con il motivo) sono le
+  sole strade, e se il socio ha appena cambiato idea dal portale il server risponde 409. Solo chi
+  gestisce i soci. **Il portale non si blocca**: la legge vuole che togliere sia facile quanto dare,
+  e dallo stesso posto (GDPR art. 7.3, EDPB linee guida 05/2020): si toglie con un tocco, con
+  "Annulla" per qualche secondo; al primo accesso la home chiede, a caselle vuote. I consensi già
+  registrati in reception senza modulo (anche quelli migrati) da oggi non valgono: vanno
+  ricaricati col modulo.
+- Corretto: l'ultimo consenso si sceglieva confrontando le date come testo (con le `Date` del
+  database l'ordine era quello dei giorni della settimana); la soglia "documento in scadenza"
+  della palestra non arrivava al portale né agli ingressi.
+
+Verifica: `npm test` (197), `cd server && npm test` (420, con un PostgreSQL), `npm run
+verifica:da-fare` nel browser (38 controlli). Migrazione `0057_consensi_con_prova`.
+
 ### 10 ottobre 2026 — CRM, fase 4: i canali, costruiti e spenti
 
 GRIP sa mandare messaggi automatici ai soci, e **al primo deploy non ne manda nessuno**. La nuova

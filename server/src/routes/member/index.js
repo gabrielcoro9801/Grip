@@ -6,7 +6,7 @@ import {
 } from '../../db/schema/index.js';
 import { iscrizioniDelSocio } from '../../lib/iscrizioni.js';
 import { richiestaRinnovoAperta, TIPI_CONTATTO } from '../../../../shared/segnali.js';
-import { consensiDi } from '../persone.js';
+import { consensiDi } from '../../lib/consensi.js';
 import { tipoConsensoValido } from '../../../../shared/consensi.js';
 import { getUserFromRequest } from '../../auth/tokens.js';
 import { socioDiAccount } from '../../auth/socioCorrente.js';
@@ -182,7 +182,7 @@ export default async function memberRoutes(fastify) {
 	/**
 	 * "Richiedi il rinnovo": il socio dice che vuole rinnovare, la reception lo richiama e incassa
 	 * di persona. Non c'è un pagamento e non parte nessun messaggio: nasce una riga nel diario,
-	 * e il motore dei segnali (shared/segnali.js) la mette in cima a Oggi finché la reception non
+	 * e il motore dei segnali (shared/segnali.js) la mette in cima a Da fare finché la reception non
 	 * rinnova o non lo sente. Una seconda richiesta mentre la prima aspetta non ne crea un'altra.
 	 *
 	 * → 201 { richiesta_rinnovo: { il } } (200 se ce n'era già una aperta)

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { api } from "@/core/api/client";
 import { useStaffAuth } from "@/staff/lib/StaffAuthContext";
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, useSearchParams } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/ui/primitivi/card";
 import { Button } from "@/ui/primitivi/button";
 import { Badge } from "@/ui/primitivi/badge";
@@ -10,13 +10,13 @@ import { Label } from "@/ui/primitivi/label";
 import { Input } from "@/ui/primitivi/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/ui/primitivi/select";
 import StatusBadge from "@/ui/StatusBadge";
-import { ArrowLeft, Plus, CreditCard, QrCode, KeyRound, RefreshCw, Pencil, UserRound, Archive, ArchiveRestore, ListChecks } from "lucide-react";
+import { ArrowLeft, Plus, CreditCard, QrCode, KeyRound, RefreshCw, Pencil, UserRound, Archive, ArchiveRestore } from "lucide-react";
 import CampiAnagrafica, { anagraficaDi, motivoAnagraficaIncompleta } from "@/staff/components/soci/CampiAnagrafica";
 import FisseSocio from "@/staff/components/soci/FisseSocio";
 import IngressiSocio from "@/staff/components/soci/IngressiSocio";
 import DiarioSocio from "@/staff/components/soci/DiarioSocio";
 import DocumentiSocio from "@/staff/components/soci/DocumentiSocio";
-import SituazioneSocio from "@/staff/components/soci/SituazioneSocio";
+import ConsensiSocio from "@/staff/components/soci/ConsensiSocio";
 import SospensioniSocio from "@/staff/components/soci/SospensioniSocio";
 import DialogoAbbandono from "@/staff/components/soci/DialogoAbbandono";
 import { AvatarSocio, SceltaFoto } from "@/staff/components/soci/FotoSocio";
@@ -24,6 +24,7 @@ import { caricaFile } from "@/staff/lib/uploads";
 import { canAccess, canEdit } from "@/staff/lib/permissions";
 import { motivoPasswordNonValida, LUNGHEZZA_MINIMA_PASSWORD } from "@/core/domain/password";
 import { etichettaSesso, etaA } from "@/core/domain/anagrafica";
+import { fase as faseDi } from "@/core/domain/segnali";
 import { generateQRCode, generaPasswordTemporanea } from "@/staff/lib/qrUtils";
 import { qrDataUrl } from "@/ui/qr/qrImmagine";
 import { useQrDinamico } from "@/ui/hooks/useQrDinamico";
@@ -80,8 +81,13 @@ export default function MemberDetail() {
   const [generatedPassword, setGeneratedPassword] = useState("");
 
   const [loadError, setLoadError] = useState(null);
-  // Cresce a ogni contatto registrato dall'intestazione: il diario si ricarica e lo mostra.
+  // Lo stato del socio (Nuovo, Attivo, In calo, …): lo dice il motore dei segnali, come in elenco.
+  const [stato, setStato] = useState(null);
+  // Cresce quando un'azione della scheda scrive nel diario (l'archiviazione): il diario si ricarica.
   const [versioneDiario, setVersioneDiario] = useState(0);
+  // Da Da fare si arriva qui per fare la cosa: "Rinnova" apre il nuovo abbonamento, "Carica"
+  // porta ai documenti.
+  const [parametri, setParametri] = useSearchParams();
   // Il diario è lavoro della segreteria: lo vede chi segue i soci o i contatti.
   const vedeDiario = canAccess(staffUser?.ruolo, "crm_members", "view") || canAccess(staffUser?.ruolo, "crm_leads", "view");
 
@@ -119,6 +125,19 @@ export default function MemberDetail() {
   };
 
   useEffect(() => { loadData(); }, [id]);
+
+  useEffect(() => {
+    if (!member?.persona_id || !canAccess(staffUser?.ruolo, "crm_members", "view")) return;
+    api.segnali({ persona: member.persona_id }).then((d) => setStato(d.persone[0]?.fase ?? null)).catch(() => setStato(null));
+  }, [member?.persona_id, member?.archiviato_il, subscriptions, staffUser?.ruolo]);
+
+  const azione = parametri.get("azione");
+  useEffect(() => {
+    if (loading || !member || !azione) return;
+    if (azione === "rinnova" && puoModificare && !member.archiviato_il) setShowSubForm(true);
+    if (azione === "documenti") document.getElementById("documenti")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    setParametri({}, { replace: true });
+  }, [loading, member, azione]);
 
   // Lo stesso codice che il socio vede sul telefono, negli stessi secondi: lo firma il
   // server e lo consegna a entrambi, quindi alla reception basta confrontarli a vista.
@@ -325,17 +344,17 @@ export default function MemberDetail() {
           <span className="inline-block text-xs font-mono font-medium text-muted-foreground bg-muted px-2 py-0.5 rounded">
             Codice socio: {member.codice_socio}
           </span>
-          {member.archiviato_il && (
+          {member.archiviato_il ? (
             <StatusBadge status="archiviato" label={`Archiviato il ${formatData(member.archiviato_il, "breve")}`} tone="neutro" />
+          ) : stato && (
+            <StatusBadge status={stato} label={faseDi(stato).etichetta} tone={faseDi(stato).tono} />
           )}
 
         </div>
       </div>
 
       {/* La scheda com'era prima del CRM: l'anagrafica a tutta larghezza, poi abbonamenti,
-          documenti, fisse e accesso su due colonne. Il lavoro della segreteria (che cosa c'è
-          da fare, i contatti, il diario) è un blocco in più, in fondo: chi apre la scheda per
-          un dato lo trova subito, chi la apre per seguire il socio scende. */}
+          documenti, fisse, accesso e comunicazioni su due colonne, e il diario in fondo. */}
       <div className="grid lg:grid-cols-2 gap-6">
         {/* Anagrafica: la tile principale, a tutta larghezza. Stesso ordine del modulo, così
             chi corregge un dato lo ritrova dove l'ha visto. */}
@@ -416,7 +435,9 @@ export default function MemberDetail() {
         </Card>
 
         {puoVedereDocumenti && (
-          <DocumentiSocio socio={member} documenti={documents} puoModificare={puoModificareDocumenti} staffUser={staffUser} onCambio={loadData} />
+          <div id="documenti" className="scroll-mt-4">
+            <DocumentiSocio socio={member} documenti={documents} puoModificare={puoModificareDocumenti} staffUser={staffUser} onCambio={loadData} />
+          </div>
         )}
 
         {/* Le prenotazioni fisse: sono prenotazioni, quindi le vede chi vede il calendario. */}
@@ -507,21 +528,14 @@ export default function MemberDetail() {
           </CardContent>
         </Card>
 
-        {/* Il blocco del CRM: la situazione del socio con le azioni (chiama, WhatsApp, registra
-            un contatto, rimanda), e sotto il diario con la storia dei contatti. */}
+        {/* Le comunicazioni promozionali: un dato del socio, non lavoro da fare. Si leggono qui e
+            si cambiano solo con il modulo firmato o con il motivo (ConsensiSocio). */}
         {vedeDiario && (
-          <Card className="border-0 shadow-sm lg:col-span-2">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-heading flex items-center gap-2"><ListChecks className="w-4 h-4" /> Da seguire</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <SituazioneSocio
-                personaId={member.persona_id} onFatto={() => setVersioneDiario((v) => v + 1)}
-                puoModificare={puoModificare || canEdit(staffUser?.ruolo, "crm_leads")}
-              />
-            </CardContent>
-          </Card>
+          <ConsensiSocio socio={member} documenti={documents} puoModificare={puoModificare} />
         )}
+
+        {/* Il diario: le note e la storia del socio, in sola lettura. Il lavoro da fare sta in
+            Da fare, non qui: la scheda racconta, non chiede. */}
         {vedeDiario && (
           <div className="lg:col-span-2">
             <DiarioSocio key={versioneDiario} socio={member} puoModificare={puoModificare || canEdit(staffUser?.ruolo, "crm_leads")} />

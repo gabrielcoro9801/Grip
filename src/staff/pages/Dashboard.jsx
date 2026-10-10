@@ -1,16 +1,20 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { api } from "@/core/api/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/ui/primitivi/card";
-import { Badge } from "@/ui/primitivi/badge";
-import { Users, UserCheck, Calendar, AlertTriangle, Clock, FileWarning, UserX } from "lucide-react";
+import { Link } from "react-router-dom";
+import { Users, UserCheck, Calendar, Clock, FileWarning, UserX, ListChecks, ChevronRight } from "lucide-react";
 import StatusBadge from "@/ui/StatusBadge";
 import { LoadingState } from "@/ui/Spinner";
 import { ErrorState } from "@/ui/StateViews";
 import { formatData } from "@/core/domain/format";
 import { etichettaMotivoAbbandono } from "@/core/domain/lead";
+import { LINEE } from "@/core/domain/segnali";
 
 /**
- * La home del gestionale: numeri e avvisi.
+ * La home del gestionale: i numeri, e quante persone aspettano in ogni linea di Da fare.
+ *
+ * Il lavoro non si fa qui: le liste dei rinnovi e dei certificati erano doppioni di Da fare, e
+ * sono diventate tessere con il conteggio che portano alla linea. La dashboard è il quadro.
  *
  * Li conta il server (`GET /api/dashboard`). Prima questa pagina scaricava sette tabelle
  * intere — tutte le prenotazioni e tutte le lezioni comprese — e le incrociava qui. Le regole
@@ -37,11 +41,11 @@ export default function Dashboard() {
   if (loading) return <LoadingState minHeight="h-full" />;
   if (errore) return <ErrorState error={errore} onRetry={carica} className="h-full" />;
 
-  const { kpi, certificati, rinnovi, prossime, abbandoni } = dati;
+  const { kpi, da_fare: daFare, prossime, abbandoni } = dati;
   const kpis = [
     { label: "Soci attivi", value: kpi.soci_attivi, icon: UserCheck, color: "text-success", bg: "bg-success/10" },
     { label: "Soci iscritti", value: kpi.soci_iscritti, icon: Users, color: "text-info", bg: "bg-info/10" },
-    { label: "Certificati in scadenza", value: kpi.certificati_in_scadenza, icon: FileWarning, color: "text-warning", bg: "bg-warning/10" },
+    { label: "Documenti da sistemare", value: kpi.documenti_da_sistemare, icon: FileWarning, color: "text-warning", bg: "bg-warning/10" },
     { label: "Prossime lezioni", value: kpi.prossime_lezioni, icon: Calendar, color: "text-violet-600", bg: "bg-violet-50" },
   ].filter((k) => k.value !== null);
 
@@ -71,77 +75,27 @@ export default function Dashboard() {
         ))}
       </div>
 
-      {/* Alerts Grid */}
+      {/* Da fare: una tessera per linea, con quante persone aspettano. Il clic porta alla linea. */}
+      {daFare && (
+        <section aria-labelledby="dashboard-da-fare">
+          <h2 id="dashboard-da-fare" className="text-base font-heading font-semibold flex items-center gap-2 mb-3">
+            <ListChecks className="w-4 h-4 text-primary" aria-hidden="true" /> Da fare
+          </h2>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+            {LINEE.filter((l) => l.valore in daFare).map((l) => (
+              <Link key={l.valore} to={`/da-fare?linea=${l.valore}`}
+                className="group rounded-lg bg-card shadow-sm p-3 hover:shadow-md transition-shadow focus:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                <p className="text-xs font-medium text-muted-foreground flex items-center justify-between gap-1">
+                  {l.etichetta} <ChevronRight className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity" aria-hidden="true" />
+                </p>
+                <p className={`text-2xl font-bold tabular-nums mt-1 ${daFare[l.valore] ? "" : "text-muted-foreground/60"}`}>{daFare[l.valore]}</p>
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
+
       <div className="grid lg:grid-cols-2 gap-6">
-        {certificati && (
-          <Card className="border-0 shadow-sm">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base font-heading flex items-center gap-2">
-                <FileWarning className="w-4 h-4 text-warning" />
-                Avvisi certificati
-                {certificati.length > 0 && (
-                  <Badge variant="destructive" className="text-xs ml-auto">{certificati.length}</Badge>
-                )}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {certificati.length === 0 ? (
-                <p className="text-sm text-muted-foreground py-4 text-center">Tutti i certificati sono aggiornati</p>
-              ) : (
-                <div className="space-y-3">
-                  {certificati.map(cert => (
-                    <div key={cert.id} className={`flex items-center justify-between p-3 rounded-lg ${cert.scaduto ? "bg-destructive/10" : "bg-warning/10"}`}>
-                      <div>
-                        <p className="text-sm font-medium">{cert.member_name || "Sconosciuto"}</p>
-                        <p className="text-xs text-muted-foreground">{cert.file_name}</p>
-                      </div>
-                      <Badge variant="outline" className={`text-xs ${cert.scaduto ? "bg-destructive/10 text-destructive border-destructive/30" : "bg-warning/10 text-warning border-warning/30"}`}>
-                        {cert.scaduto ? `Scaduto da ${Math.abs(cert.giorni)}g` : `${cert.giorni}g residui`}
-                      </Badge>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        )}
-
-        {rinnovi && (
-          <Card className="border-0 shadow-sm">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base font-heading flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4 text-warning" />
-                Rinnovi abbonamenti
-                {rinnovi.length > 0 && (
-                  <Badge variant="destructive" className="text-xs ml-auto">{rinnovi.length}</Badge>
-                )}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {rinnovi.length === 0 ? (
-                <p className="text-sm text-muted-foreground py-4 text-center">Nessun rinnovo imminente</p>
-              ) : (
-                <div className="space-y-3">
-                  {rinnovi.map(sub => (
-                    <div key={sub.id} className={`flex items-center justify-between p-3 rounded-lg ${sub.giorni < 0 ? "bg-destructive/10" : "bg-warning/10"}`}>
-                      <div>
-                        <p className="text-sm font-medium">{sub.member_name || "Sconosciuto"}</p>
-                        <p className="text-xs text-muted-foreground">{sub.plan_name}</p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <StatusBadge status={sub.status} />
-                        <span className="text-xs text-muted-foreground">
-                          {sub.giorni < 0 ? `da ${Math.abs(sub.giorni)}g` : `${sub.giorni}g`}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        )}
-
         {/* Perché se ne vanno: i motivi scelti archiviando, negli ultimi 12 mesi. */}
         {abbandoni && abbandoni.length > 0 && (
           <Card className="border-0 shadow-sm">

@@ -1,34 +1,28 @@
 // La storia di una persona vista dalla segreteria: il diario (contatti, iscrizione, note) e i
 // consensi alle comunicazioni promozionali.
 //
-// Il diario lo scrivono il lavoro sui contatti (routes/lead.js) e, qui, le note, i contatti con
-// i soci e i rimandi di Oggi; i consensi li dà il socio dal portale (routes/member) o li
+// Il diario lo scrivono il lavoro sui contatti (routes/lead.js) e, qui, le note e i "Fatto" di
+// Da fare; i consensi li dà il socio dal portale (routes/member) o li
 // registra la reception da un modulo firmato. Qui sta anche la ricerca globale (Ctrl+K).
 //
 // Chi può: il diario è lavoro della segreteria, non anagrafica. Lo legge chi vede i soci o i
 // contatti — non chi apre i nomi dei soci solo per il calendario o per gli account.
 import { and, asc, eq, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { persone, attivita, consensi, staffAccounts, members, trattative } from '../db/schema/index.js';
+import { persone, attivita, consensi, staffAccounts, members, trattative, memberDocuments } from '../db/schema/index.js';
 import { getUserFromRequest } from '../auth/tokens.js';
 import { canAccess } from '../../../shared/permissions.js';
 import { translateToSnakeCase } from '../entities/columnMaps.js';
 import { registerPgErrorHandler } from './errorHandler.js';
 import { NOTA_DIARIO_MASSIMO, CANALI_CONTATTO, STATI_APERTI, esitoContattoValido } from '../../../shared/lead.js';
-import { RIMANDO_MASSIMO_GIORNI, daFare } from '../../../shared/segnali.js';
 import { situazioni } from '../lib/segnali.js';
-import { consensiAttuali, tipoConsensoValido } from '../../../shared/consensi.js';
+import { tipoConsensoValido, TIPI_CONSENSO } from '../../../shared/consensi.js';
+import { consensiDi, righeConsensi } from '../lib/consensi.js';
+import { registra } from '../lib/registro.js';
 import { normalizzaTelefono } from '../../../shared/anagrafica.js';
-import { oggiIso, spostaGiorni } from '../../../shared/giorni.js';
 
 const puoSu = (ruolo, azione) => canAccess(ruolo, 'crm_members', azione) || canAccess(ruolo, 'crm_leads', azione);
 
-/** I consensi attuali di una persona, letti dal registro. */
-export async function consensiDi(personaId, conn = db) {
-	const righe = await conn.select({ tipo: consensi.tipo, valore: consensi.valore, fonte: consensi.fonte, created_date: consensi.createdDate })
-		.from(consensi).where(eq(consensi.personaId, personaId));
-	return consensiAttuali(righe);
-}
 
 export default async function personeRoutes(fastify) {
 	registerPgErrorHandler(fastify);
@@ -103,14 +97,13 @@ export default async function personeRoutes(fastify) {
 		return autore?.nome ?? '';
 	};
 
-	/** GET /api/persone/:id/diario → { attivita, consensi }: il diario dal più vecchio, i consensi di oggi. */
+	/** GET /api/persone/:id/diario → { attivita }: il diario dal più vecchio. I consensi hanno la loro rotta. */
 	fastify.get('/api/persone/:id/diario', { preHandler: leggere }, async (request) => {
 		const righe = await db.select().from(attivita)
 			.where(eq(attivita.personaId, request.params.id))
 			.orderBy(asc(attivita.createdDate));
 		return {
 			attivita: righe.map((r) => translateToSnakeCase(attivita, r)),
-			consensi: await consensiDi(request.params.id),
 		};
 	});
 
@@ -127,64 +120,99 @@ export default async function personeRoutes(fastify) {
 	});
 
 	/**
-	 * POST /api/persone/:id/contatti { canale, esito, nota? } → 201 { attivita }
+	 * POST /api/persone/:id/contatti { canale, segnali: [codice] (o segnale), esito?, nota? } → 201 { attivita }
 	 *
-	 * Un contatto con un socio — una telefonata da Oggi, il rinnovo proposto al bancone. Finisce
-	 * nel diario, e per qualche giorno i suoi segnali non si ripropongono (shared/segnali.js).
-	 * Il contatto con un lead passa invece dalle azioni del lead, che ne cambiano lo stato.
+	 * Il "Fatto" di Da fare (di persona, chiamato, messaggio, email) o del bancone (salutato, rinnovo
+	 * proposto): una riga nel diario, che per qualche giorno nasconde **quel** segnale e solo lui
+	 * (shared/segnali.js). Il segnale dev'essere uno di quelli che la persona ha adesso: lo dice il
+	 * motore, non il client. È anche ciò che permette al giro di contare chi, contattato perché
+	 * assente, è poi tornato (giro.js). Il contatto con un lead passa dalle azioni del lead.
 	 */
 	fastify.post('/api/persone/:id/contatti', { preHandler: scrivere }, async (request, reply) => {
-		const { canale, esito } = request.body ?? {};
+		const { canale } = request.body ?? {};
+		// Uno o più segnali: una riga di Da fare può averne due della stessa linea (assente e no-show).
+		const segnali = [...new Set([request.body?.segnali ?? request.body?.segnale].flat().filter(Boolean))];
+		const esito = request.body?.esito ?? 'fatto';
 		const nota = String(request.body?.nota ?? '').trim() || null;
 		if (!CANALI_CONTATTO.some((c) => c.valore === canale)) return reply.code(400).send({ error: "Indica come l'hai contattato." });
 		if (!esitoContattoValido(esito)) return reply.code(400).send({ error: "Indica com'è andata." });
 		if (nota && nota.length > NOTA_DIARIO_MASSIMO) return reply.code(400).send({ error: `La nota sta in ${NOTA_DIARIO_MASSIMO} caratteri.` });
-		// Perché lo si è cercato, lo dice il motore e non il client: i segnali da fare adesso. È ciò
-		// che permette al giro di contare chi, contattato perché assente, è poi tornato (giro.js).
 		const [situazione] = (await situazioni({ personaId: request.params.id })).persone;
-		const segnali = daFare(situazione?.segnali ?? [], 'staff').map((s) => s.codice);
+		const attuali = (situazione?.segnali ?? []).filter((s) => s.pubblico === 'staff' || s.pubblico === 'bancone').map((s) => s.codice);
+		if (!segnali.length || segnali.some((s) => !attuali.includes(s))) {
+			return reply.code(400).send({ error: "Questa cosa da fare non c'è più: ricarica la pagina." });
+		}
 		const [riga] = await db.insert(attivita).values({
 			personaId: request.params.id, tipo: 'contatto', canale, esito, nota, autoreId: request.utente.sub, autoreNome: await nomeAutore(request),
-			riferimento: segnali.length ? { segnali } : null,
+			riferimento: { segnali },
 		}).returning();
 		reply.code(201);
 		return { attivita: translateToSnakeCase(attivita, riga) };
 	});
 
 	/**
-	 * POST /api/persone/:id/rimanda { giorni, nota? } → 201 { attivita }
+	 * GET /api/persone/:id/consensi → { consensi, storico }
 	 *
-	 * "Ci penso dopo": i segnali della persona spariscono da Oggi fino a quel giorno. È una riga
-	 * del diario, non un compito: chi apre la scheda vede chi ha rimandato e fino a quando.
+	 * I consensi di oggi e tutto il registro, dal più recente: chi, quando, da dove, con quale
+	 * modulo — è la prova da mostrare se qualcuno chiede.
 	 */
-	fastify.post('/api/persone/:id/rimanda', { preHandler: scrivere }, async (request, reply) => {
-		const giorni = Number(request.body?.giorni);
-		const nota = String(request.body?.nota ?? '').trim() || null;
-		if (!Number.isInteger(giorni) || giorni < 1 || giorni > RIMANDO_MASSIMO_GIORNI) {
-			return reply.code(400).send({ error: `Si rimanda da 1 a ${RIMANDO_MASSIMO_GIORNI} giorni.` });
-		}
-		if (nota && nota.length > NOTA_DIARIO_MASSIMO) return reply.code(400).send({ error: `La nota sta in ${NOTA_DIARIO_MASSIMO} caratteri.` });
-		const [riga] = await db.insert(attivita).values({
-			personaId: request.params.id, tipo: 'rimando', esito: spostaGiorni(oggiIso(), giorni), nota,
-			autoreId: request.utente.sub, autoreNome: await nomeAutore(request),
-		}).returning();
-		reply.code(201);
-		return { attivita: translateToSnakeCase(attivita, riga) };
+	fastify.get('/api/persone/:id/consensi', { preHandler: leggere }, async (request) => {
+		const righe = await righeConsensi([request.params.id]);
+		return {
+			consensi: await consensiDi(request.params.id),
+			storico: righe.reverse().map(({ persona_id: _p, ...r }) => r),
+		};
 	});
 
 	/**
-	 * POST /api/persone/:id/consensi { tipo, valore } → { consensi }
+	 * POST /api/persone/:id/consensi { tipi: [tipo], valore, documento_id?, nota?, atteso: { [tipo]: il|null } } → { consensi }
 	 *
-	 * Un consenso raccolto dalla reception, su un modulo firmato. Si aggiunge al registro: il
+	 * La reception registra un consenso — solo con il modulo firmato già caricato fra i documenti
+	 * del socio (tipo `consenso_marketing`): senza, non c'è la prova, e il consenso non vale — o
+	 * la sua revoca, con il motivo ("l'ha chiesto per email il 10/10"). Si aggiunge al registro: il
 	 * valore di prima resta nello storico.
+	 *
+	 * Il socio sceglie anche dal portale, nello stesso registro. `atteso` è quello che la scheda
+	 * mostrava: se nel frattempo il socio ha cambiato idea, 409, e si rilegge prima di decidere al
+	 * posto suo. Solo chi modifica i soci: chi segue i lead non tocca i consensi dei soci.
 	 */
 	fastify.post('/api/persone/:id/consensi', { preHandler: scrivere }, async (request, reply) => {
-		const { tipo, valore } = request.body ?? {};
-		if (!tipoConsensoValido(tipo)) return reply.code(400).send({ error: 'Tipo di consenso non valido.' });
+		if (!canAccess(request.utente.ruolo, 'crm_members', 'edit')) return reply.code(403).send({ error: 'I consensi li registra chi gestisce i soci.' });
+		const { valore, atteso = {} } = request.body ?? {};
+		const tipi = [...new Set(Array.isArray(request.body?.tipi) ? request.body.tipi : [request.body?.tipo].filter(Boolean))];
+		const nota = String(request.body?.nota ?? '').trim() || null;
+		if (!tipi.length || tipi.some((t) => !tipoConsensoValido(t))) return reply.code(400).send({ error: 'Scegli per quali comunicazioni.' });
 		if (typeof valore !== 'boolean') return reply.code(400).send({ error: 'Indica se il consenso è dato o tolto.' });
-		await db.insert(consensi).values({
-			personaId: request.params.id, tipo, valore, fonte: 'reception', autoreNome: await nomeAutore(request),
-		});
+		if (nota && nota.length > NOTA_DIARIO_MASSIMO) return reply.code(400).send({ error: `La nota sta in ${NOTA_DIARIO_MASSIMO} caratteri.` });
+		if (!valore && !nota) return reply.code(400).send({ error: 'Scrivi perché si toglie: es. «l\'ha chiesto per email il 10/10».' });
+
+		let documentoId = null;
+		if (valore) {
+			const [doc] = request.body?.documento_id ? await db.select({ id: memberDocuments.id })
+				.from(memberDocuments).innerJoin(members, eq(members.id, memberDocuments.memberId))
+				.where(and(
+					eq(memberDocuments.id, request.body.documento_id), eq(memberDocuments.documentType, 'consenso_marketing'),
+					eq(members.personaId, request.params.id),
+				)).limit(1) : [];
+			if (!doc) return reply.code(400).send({ error: 'Serve il modulo firmato: caricalo fra i documenti del socio (tipo «Consenso comunicazioni promozionali»), poi sceglilo qui.' });
+			documentoId = doc.id;
+		}
+
+		const istante = (d) => (d ? new Date(d).getTime() : null);
+		const ora = await consensiDi(request.params.id);
+		if (tipi.some((t) => istante(ora[t].il) !== istante(atteso[t] ?? null))) {
+			return reply.code(409).send({ error: 'Nel frattempo il socio ha cambiato le sue scelte dal portale: rileggile prima di registrare.', consensi: ora });
+		}
+
+		const autoreNome = await nomeAutore(request);
+		await db.insert(consensi).values(tipi.map((tipo) => ({
+			personaId: request.params.id, tipo, valore, fonte: 'reception', autoreNome, documentoId, nota,
+		})));
+		const etichette = tipi.map((t) => TIPI_CONSENSO.find((x) => x.valore === t).etichetta).join(', ');
+		await registra(request.utente, {
+			tipoAzione: 'update', entitaTipo: 'consensi', entitaId: request.params.id,
+			dettagli: `${valore ? 'Consenso registrato con modulo firmato' : 'Consenso tolto'}: ${etichette}${nota ? ` (${nota})` : ''}`,
+		}, request.log);
 		return { consensi: await consensiDi(request.params.id) };
 	});
 }

@@ -15,7 +15,7 @@ import { TemaProvider } from '@/ui/tema';
 const StaffShell = lazy(() => import('@/staff/StaffShell'));
 const PermissionGate = lazy(() => import('@/staff/components/PermissionGate'));
 const Dashboard = lazy(() => import('@/staff/pages/Dashboard'));
-const Oggi = lazy(() => import('@/staff/pages/Oggi'));
+const DaFare = lazy(() => import('@/staff/pages/DaFare'));
 const LeMieLezioni = lazy(() => import('@/staff/pages/LeMieLezioni'));
 const CrmLayout = lazy(() => import('@/staff/pages/crm/CrmLayout'));
 const MembersList = lazy(() => import('@/staff/pages/crm/MembersList'));
@@ -36,6 +36,7 @@ const Istruttori = lazy(() => import('@/staff/pages/corsi/Istruttori'));
 const Categorie = lazy(() => import('@/staff/pages/corsi/Categorie'));
 const Admin = lazy(() => import('@/staff/pages/admin/Admin'));
 const Comunicazioni = lazy(() => import('@/staff/pages/admin/Comunicazioni'));
+const ImpostazioniDaFare = lazy(() => import('@/staff/pages/admin/ImpostazioniDaFare'));
 const AuditLogPage = lazy(() => import('@/staff/pages/admin/AuditLogPage'));
 
 // Il vecchio /crm/members/:id porta alla stessa scheda del socio: il redirect
@@ -55,7 +56,9 @@ export default function App() {
             <Routes>
               <Route element={<StaffShell />}>
                 <Route path="/" element={<Dashboard />} />
-                <Route path="/oggi" element={<PermissionGate module={["crm_members", "crm_leads"]}><Oggi /></PermissionGate>} />
+                <Route path="/da-fare" element={<PermissionGate module={["crm_members", "crm_leads"]}><DaFare /></PermissionGate>} />
+                {/* Si chiamava Oggi: i preferiti e i link vecchi arrivano lo stesso. */}
+                <Route path="/oggi" element={<Navigate to="/da-fare" replace />} />
                 <Route path="/istruttore" element={<PermissionGate module="lezioni_istruttore"><LeMieLezioni /></PermissionGate>} />
                 {/* Gli slug del gestionale sono in italiano come le voci che li
                     nominano. I vecchi percorsi in inglese restano come redirect,
@@ -89,6 +92,7 @@ export default function App() {
                 <Route path="/calendar" element={<Navigate to="/calendario" replace />} />
                 <Route path="/admin" element={<PermissionGate module="admin_users"><Admin /></PermissionGate>} />
                 <Route path="/admin/comunicazioni" element={<PermissionGate module="crm_comunicazioni"><Comunicazioni /></PermissionGate>} />
+                <Route path="/admin/da-fare" element={<PermissionGate module="admin_users"><ImpostazioniDaFare /></PermissionGate>} />
                 <Route path="/log-audit" element={<PermissionGate module="audit_log"><AuditLogPage /></PermissionGate>} />
                 <Route path="/audit-log" element={<Navigate to="/log-audit" replace />} />
               </Route>

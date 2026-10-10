@@ -48,6 +48,8 @@ export default function Iscrivi({ aperto, lead = null, onChiudi }) {
   const [certificato, setCertificato] = useState({ file: null, expiry_date: spostaGiorni(oggiIso(), 365) });
   const [privacy, setPrivacy] = useState(false);
   const [consensi, setConsensi] = useState({});
+  // Il modulo firmato con le comunicazioni promozionali: senza, la casella non vale (shared/consensi.js).
+  const [moduloConsensi, setModuloConsensi] = useState(null);
   const [password, setPassword] = useState("");
   const [salvando, setSalvando] = useState(false);
 
@@ -60,6 +62,7 @@ export default function Iscrivi({ aperto, lead = null, onChiudi }) {
     setCertificato({ file: null, expiry_date: spostaGiorni(oggiIso(), 365) });
     setPrivacy(false);
     setConsensi({});
+    setModuloConsensi(null);
     setPassword(generaPasswordTemporanea());
     setAnagrafica(lead ? {
       ...ANAGRAFICA_VUOTA, nome: lead.nome ?? "", cognome: lead.cognome ?? "", sesso: lead.sesso ?? "",
@@ -77,10 +80,11 @@ export default function Iscrivi({ aperto, lead = null, onChiudi }) {
   const conEmail = Boolean(anagrafica.email.trim());
   const incompleto = motivoAnagraficaIncompleta(anagrafica);
   const corrente = PASSI[passo];
+  const consensiDati = Object.values(consensi).some(Boolean);
   const ultimo = passo === PASSI.length - 1;
   // Si va avanti solo con il passo completo; i facoltativi si saltano.
   const bloccato = (corrente.valore === "anagrafica" && incompleto)
-    || (corrente.valore === "privacy" && !privacy)
+    || (corrente.valore === "privacy" && (!privacy || (consensiDati && !moduloConsensi)))
     || (corrente.valore === "certificato" && certificato.file && !certificato.expiry_date);
 
   const salta = () => {
@@ -97,6 +101,7 @@ export default function Iscrivi({ aperto, lead = null, onChiudi }) {
       // ponytail: se poi l'iscrizione fallisce i file restano orfani; li toglie `npm run manutenzione:file-orfani`.
       const foto_url = foto.file ? (await caricaFile({ file: foto.file })).file_url : undefined;
       const doc = certificato.file ? await caricaFile({ file: certificato.file }) : null;
+      const modulo = consensiDati && moduloConsensi ? await caricaFile({ file: moduloConsensi }) : null;
       const accesso = password && conEmail && !senzaAccesso ? { password } : undefined;
       const { member, riattivato, accesso_portale: portale } = await api.iscrivi({
         lead_id: lead?.id,
@@ -105,6 +110,7 @@ export default function Iscrivi({ aperto, lead = null, onChiudi }) {
         certificato: doc ? { file_url: doc.file_url, file_name: doc.file_name ?? certificato.file.name, expiry_date: certificato.expiry_date } : undefined,
         informativa_privacy: privacy,
         consensi: Object.keys(consensi).length ? consensi : undefined,
+        modulo_consensi: modulo ? { file_url: modulo.file_url, file_name: modulo.file_name ?? moduloConsensi.name } : undefined,
         portale: accesso,
       });
       toast({
@@ -199,6 +205,14 @@ export default function Iscrivi({ aperto, lead = null, onChiudi }) {
                     {c.etichetta}
                   </label>
                 ))}
+                {consensiDati && (
+                  <div>
+                    <Label htmlFor="iscrivi-modulo-consensi">Il modulo firmato (foto o file) *</Label>
+                    <Input id="iscrivi-modulo-consensi" type="file" accept="image/*,application/pdf" capture="environment"
+                      onChange={(e) => setModuloConsensi(e.target.files?.[0] ?? null)} />
+                    <p className="text-xs text-muted-foreground mt-1">È la prova del consenso: finisce fra i documenti del socio. Senza, togli le caselle.</p>
+                  </div>
+                )}
                 <p className="text-xs text-muted-foreground">Il socio le può cambiare quando vuole dal portale.</p>
               </fieldset>
             </div>

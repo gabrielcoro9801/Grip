@@ -21,19 +21,34 @@ export const tipoConsensoValido = (v) => TIPI_CONSENSO.some((t) => t.valore === 
  */
 export const FONTI_CONSENSO = ["portale", "reception", "form", "disiscrizione"];
 
+const istante = (d) => (d ? new Date(d).getTime() : 0);
+
 /**
- * Il valore attuale di ogni consenso, dalle righe del registro: l'ultima per tipo. Senza righe
- * il consenso non c'è.
- * @param righe [{ tipo, valore, fonte, created_date }]
- * @returns { [tipo]: { valore, fonte, il } }
+ * Se una riga del registro dà davvero il consenso. Dal portale (o da un form) la prova è la riga
+ * stessa: chi, quando, da dove (GDPR art. 7.1 non chiede una forma scritta). Dalla reception la
+ * prova è il modulo firmato caricato fra i documenti del socio: finché non c'è, o se viene
+ * eliminato, il consenso non vale.
+ */
+export const consensoProvato = (r) => Boolean(r.valore) && (r.fonte !== "reception" || Boolean(r.documento_presente));
+
+/**
+ * Il valore attuale di ogni consenso, dalle righe del registro: l'ultima per tipo (per istante:
+ * le date arrivano dal database come Date, e come testo non si confrontano). Senza righe il
+ * consenso non c'è.
+ * @param righe [{ tipo, valore, fonte, created_date, documento_id?, documento_presente? }]
+ * @returns { [tipo]: { valore, fonte, il, senza_prova } } — `senza_prova`: dato in reception, ma
+ *   il modulo non c'è (più): vale come non dato.
  */
 export function consensiAttuali(righe = []) {
   const ultime = {};
   for (const r of righe) {
     const prima = ultime[r.tipo];
-    if (!prima || String(r.created_date) >= String(prima.il)) {
-      ultime[r.tipo] = { valore: Boolean(r.valore), fonte: r.fonte, il: r.created_date };
+    if (!prima || istante(r.created_date) >= istante(prima.il)) {
+      ultime[r.tipo] = {
+        valore: consensoProvato(r), fonte: r.fonte, il: r.created_date,
+        senza_prova: Boolean(r.valore) && !consensoProvato(r),
+      };
     }
   }
-  return Object.fromEntries(TIPI_CONSENSO.map((t) => [t.valore, ultime[t.valore] ?? { valore: false, fonte: null, il: null }]));
+  return Object.fromEntries(TIPI_CONSENSO.map((t) => [t.valore, ultime[t.valore] ?? { valore: false, fonte: null, il: null, senza_prova: false }]));
 }

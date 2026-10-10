@@ -1,4 +1,4 @@
-// "Richiedi il rinnovo" dal portale: il socio chiede per sé, la richiesta va in cima a Oggi, il
+// "Richiedi il rinnovo" dal portale: il socio chiede per sé, la richiesta va in cima a Da fare, il
 // socio vede che è arrivata, e la chiude un contatto riuscito (non un "non ha risposto").
 import test, { before, after, describe } from 'node:test';
 import assert from 'node:assert/strict';
@@ -6,7 +6,7 @@ import bcrypt from 'bcryptjs';
 import { eq, inArray } from 'drizzle-orm';
 import { buildApp } from '../src/app.js';
 import { db, pool } from '../src/db/client.js';
-import { members, staffAccounts, subscriptions, attivita, ingressi, auditLogs } from '../src/db/schema/index.js';
+import { members, staffAccounts, subscriptions, attivita, ingressi, auditLogs, memberDocuments } from '../src/db/schema/index.js';
 import { oggiIso, spostaGiorni } from '../../shared/giorni.js';
 
 const PASSWORD = 'prova-rinnovo-1234';
@@ -30,6 +30,10 @@ before(async () => {
 	// Valido per mesi ed entra spesso: senza la richiesta non avrebbe niente da fare.
 	await db.insert(subscriptions).values({ memberId: socio.id, planName: 'Trimestrale', startDate: '2025-01-01', endDate: fra(60) });
 	await db.insert(ingressi).values([1, 3, 6].map((g) => ({ memberId: socio.id, entratoAlle: new Date(`${fra(-g)}T08:00:00Z`), esito: 'ammesso', metodo: 'manuale', registratoDaNome: 'Test' })));
+	await db.insert(memberDocuments).values([
+		{ memberId: socio.id, documentType: 'certificato_medico', expiryDate: fra(300) },
+		{ memberId: socio.id, documentType: 'documento_identita', expiryDate: fra(3000) },
+	]);
 	const passwordHash = await bcrypt.hash(PASSWORD, 4);
 	const account = await db.insert(staffAccounts).values([
 		{ nome: 'Reception Rinnovo', email: `rinnovo.reception.${t}@test.local`, passwordHash, ruolo: 'reception' },
@@ -43,6 +47,7 @@ before(async () => {
 after(async () => {
 	await db.delete(attivita).where(eq(attivita.personaId, id.persona));
 	await db.delete(ingressi).where(eq(ingressi.memberId, id.socio));
+	await db.delete(memberDocuments).where(eq(memberDocuments.memberId, id.socio));
 	await db.delete(subscriptions).where(eq(subscriptions.memberId, id.socio));
 	await db.delete(auditLogs).where(eq(auditLogs.entitaId, id.socio));
 	await db.delete(staffAccounts).where(inArray(staffAccounts.id, id.account));
@@ -68,16 +73,16 @@ describe('richiedi il rinnovo', () => {
 		assert.ok((await come('socio', 'GET', '/api/member/v1/abbonamenti')).json().richiesta_rinnovo);
 	});
 
-	test('in Oggi è il primo segnale; un "non ha risposto" non la chiude', async () => {
+	test('in Da fare è il primo segnale; un "non ha risposto" non la chiude', async () => {
 		const p = await inOggi();
 		assert.equal(p.da_fare[0], 'rinnovo_richiesto');
-		const res = await come('reception', 'POST', `/api/persone/${id.persona}/contatti`, { canale: 'telefono', esito: 'nessuna_risposta' });
+		const res = await come('reception', 'POST', `/api/persone/${id.persona}/contatti`, { canale: 'telefono', esito: 'nessuna_risposta', segnale: 'rinnovo_richiesto' });
 		assert.equal(res.statusCode, 201);
 		assert.equal((await inOggi())?.da_fare[0], 'rinnovo_richiesto');
 	});
 
-	test('un contatto riuscito la chiude: sparisce da Oggi, e il socio può chiederla di nuovo', async () => {
-		const res = await come('reception', 'POST', `/api/persone/${id.persona}/contatti`, { canale: 'telefono', esito: 'proposto_rinnovo' });
+	test('un "Fatto" la chiude: sparisce da Da fare, e il socio può chiederla di nuovo', async () => {
+		const res = await come('reception', 'POST', `/api/persone/${id.persona}/contatti`, { canale: 'telefono', segnale: 'rinnovo_richiesto' });
 		assert.equal(res.statusCode, 201);
 		assert.equal(await inOggi(), undefined);
 		assert.equal((await come('socio', 'GET', '/api/member/v1/abbonamenti')).json().richiesta_rinnovo, null);

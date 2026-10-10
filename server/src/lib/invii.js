@@ -18,6 +18,7 @@ import {
 } from '../db/schema/index.js';
 import { config } from '../config.js';
 import { situazioni } from './segnali.js';
+import { righeConsensi } from './consensi.js';
 import { statoSegreti, leggiSegreto } from './segreti.js';
 import { linkDisiscrizione } from './urlFirmati.js';
 import * as finto from './canali/finto.js';
@@ -88,10 +89,8 @@ async function conRecapiti(conn, righe, oggi) {
 	const idPersone = righe.map((r) => r.persona_id);
 	const idSoci = righe.map((r) => r.socio_id).filter(Boolean);
 	// Una dopo l'altra: `conn` può essere una transazione, che non regge due query insieme.
-	const elencoConsensi = idPersone.length
-		? await conn.select({ persona_id: consensi.personaId, tipo: consensi.tipo, valore: consensi.valore, fonte: consensi.fonte, created_date: consensi.createdDate })
-			.from(consensi).where(inArray(consensi.personaId, idPersone))
-		: [];
+	// Con la prova: un consenso dato in reception senza il modulo firmato non vale (lib/consensi.js).
+	const elencoConsensi = await righeConsensi(idPersone, conn);
 	const account = idSoci.length
 		? await conn.select({ socio_id: staffAccounts.linkedMemberId }).from(staffAccounts)
 			.where(and(inArray(staffAccounts.linkedMemberId, idSoci), eq(staffAccounts.attivo, true)))

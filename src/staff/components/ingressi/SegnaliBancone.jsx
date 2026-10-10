@@ -11,8 +11,8 @@ const AZIONI = {
 
 /**
  * Accanto al semaforo: che cosa dire a chi sta entrando — il rinnovo da proporre, il bentornato,
- * gli auguri, il traguardo — e un tocco per segnarlo nel diario. Segnato, il segnale non si
- * ripropone (il rinnovo per qualche giorno, il saluto per oggi).
+ * gli auguri, il traguardo — e un tocco per segnarlo nel diario. Segnato, quel segnale non si
+ * ripropone (il rinnovo per qualche giorno, anche in Da fare; il saluto per oggi).
  *
  * @param segnali i segnali con pubblico "bancone" della verifica: [{ codice, motivo, azioni }]
  */
@@ -24,7 +24,7 @@ export default function SegnaliBancone({ personaId, segnali = [], puoRegistrare 
   const segna = async (s) => {
     const azione = AZIONI[s.azioni[0]] ?? AZIONI.saluto;
     try {
-      await api.persone.contatto(personaId, { canale: "di_persona", esito: azione.esito });
+      await api.persone.fatto(personaId, { canale: "di_persona", esito: azione.esito, segnale: s.codice });
       setFatti((f) => [...f, s.codice]);
     } catch (err) {
       toast({ title: "Non segnato nel diario", description: err.message, variant: "destructive" });
