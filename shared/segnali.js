@@ -2,71 +2,113 @@
 //
 // Prima c'erano quattro motori di "attenzione", ognuno con le sue soglie: i rinnovi e i
 // certificati della dashboard, il rischio degli ingressi, gli avvisi del portale, le condizioni
-// dei lead. Qui ce n'è uno: tutte le schermate — Oggi, la dashboard, l'elenco dei soci, la
+// dei lead. Qui ce n'è uno: tutte le schermate — Da fare, la dashboard, l'elenco dei soci, la
 // scheda, il bancone — leggono quello che dice questo file.
 //
-// Niente si salva. La fase di una persona e i suoi segnali si calcolano dalle date ogni volta:
+// Niente si salva. Lo stato di una persona e i suoi segnali si calcolano dalle date ogni volta:
 // un "in calo" salvato ieri oggi potrebbe essere falso. L'unica cosa scritta è il lavoro dello
-// staff (il diario, `attivita`): un contatto registrato nasconde i segnali per qualche giorno,
-// senza una tabella di compiti da tenere allineata.
+// staff (il diario, `attivita`): un "Fatto" nasconde per qualche giorno il segnale per cui è
+// stato fatto, senza una tabella di compiti da tenere allineata. La palestra sceglie quali
+// segnali seguire e con quali soglie (Impostazioni › Da fare, shared/soglie.js).
 //
 // Il rischio si spiega in parole, non con un punteggio: "3 ingressi in 4 settimane contro 9 di
 // media · scade tra 9 giorni · 2 no-show". Chi chiama deve sapere perché sta chiamando.
 // ponytail: regole esplicite; un modello statistico solo quando ci saranno i dati di molte palestre.
 import { oggiIso, oraIso, giorniFra, spostaGiorni, lezioneFinita } from './giorni.js';
 import { abbonamentoCopre, sospensioneIl } from './abbonamenti.js';
-import { avvisiSocio } from './avvisi.js';
-import { conStatoDocumenti } from './anagrafica.js';
+import { avvisiSocio, documentiDaSistemare } from './avvisi.js';
 import { condizioniLead, descriviTempoLead, FILTRI_LEAD, SOGLIE_LEAD } from './lead.js';
 import { SOGLIE } from './soglie.js';
 
-/** Le fasi del rapporto con una persona, dal contatto all'ex socio. */
+/**
+ * Lo stato di una persona: per un socio, il suo rapporto con la palestra. Sei valori, e solo
+ * quelli: l'abbonamento (in scadenza, scaduto) ha la sua colonna, e il lavoro da fare (rinnovi,
+ * documenti, ambientamento) sta nei segnali. Mescolarli faceva undici "fasi" che dicevano tre
+ * cose diverse. `lead` non è uno stato del socio: è chi non lo è ancora.
+ */
 export const FASI = [
 	{ valore: 'lead', etichetta: 'Contatto', tono: 'info' },
 	{ valore: 'nuovo', etichetta: 'Nuovo', tono: 'info' },
-	{ valore: 'ambientamento', etichetta: 'Ambientamento', tono: 'info' },
 	{ valore: 'attivo', etichetta: 'Attivo', tono: 'positivo' },
+	{ valore: 'in_calo', etichetta: 'In calo', tono: 'attesa' },
+	{ valore: 'senza_abbonamento', etichetta: 'Senza abbonamento', tono: 'negativo' },
 	// L'abbonamento è fermo fino alla ripresa: non entra, non prenota, e non va cercato.
 	{ valore: 'sospeso', etichetta: 'Sospeso', tono: 'neutro' },
-	{ valore: 'in_calo', etichetta: 'In calo', tono: 'attesa' },
-	{ valore: 'assente', etichetta: 'Assente', tono: 'attesa' },
-	{ valore: 'in_scadenza', etichetta: 'In scadenza', tono: 'attesa' },
-	{ valore: 'scaduto_recuperabile', etichetta: 'Scaduto, recuperabile', tono: 'negativo' },
-	{ valore: 'ex_socio', etichetta: 'Ex socio', tono: 'neutro' },
+	{ valore: 'archiviato', etichetta: 'Archiviato', tono: 'neutro' },
 ];
 const PER_FASE = Object.fromEntries(FASI.map((f) => [f.valore, f]));
 export const fase = (v) => PER_FASE[v] ?? PER_FASE.attivo;
 
+// Quando vale uno stato, in parole, con le soglie della palestra: la legenda dell'elenco soci.
+// Si valutano in quest'ordine, e vince il primo che vale (segnaliPersona).
+const REGOLE_FASI = {
+	archiviato: () => 'ha lasciato la palestra: archiviato a mano («Non torna») o in automatico',
+	sospeso: () => 'una sospensione dell\'abbonamento copre oggi',
+	senza_abbonamento: (s) => `nessun abbonamento valido oggi né già comprato per dopo; ${s.segnali.archiviazioneGiorni
+		? `dopo ${s.segnali.archiviazioneGiorni} giorni così viene archiviato in automatico` : 'non viene mai archiviato in automatico'}`,
+	nuovo: (s) => `abbonamento valido, socio da non più di ${s.segnali.nuovoGiorni} giorni`,
+	in_calo: (s) => `abbonamento valido, socio da più di ${s.segnali.nuovoGiorni} giorni, e non entra da ${s.segnali.assenzaGiorni} giorni o viene meno del ${s.segnali.caloPercentuale}% della sua media`,
+	attivo: (s) => `abbonamento valido, socio da più di ${s.segnali.nuovoGiorni} giorni, viene con regolarità`,
+	lead: () => 'non è ancora socio: è un contatto',
+};
+/** Gli stati dei soci nell'ordine in cui si valutano: [{ valore, etichetta, tono, regola }]. */
+export const regoleStati = (soglie = SOGLIE) => ['archiviato', 'sospeso', 'senza_abbonamento', 'nuovo', 'in_calo', 'attivo']
+	.map((v) => ({ ...PER_FASE[v], regola: REGOLE_FASI[v]({ ...soglie, segnali: { ...SOGLIE.segnali, ...soglie.segnali } }) }));
+
 // I segnali per lo staff, dal più prezioso: tenere chi sta andando via vale più di tutto il
-// resto. La priorità ordina la lista di Oggi.
+// resto. La priorità ordina la lista di Da fare. `regola` dice in parole quando scatta, con le
+// soglie della palestra: la leggono le Impostazioni e il "perché" di Da fare.
 const ETICHETTA_LEAD = Object.fromEntries(FILTRI_LEAD.map((f) => [f.valore, f.etichetta]));
+const REGOLA_LEAD = 'dalle condizioni della trattativa (pagina Contatti)';
 export const SEGNALI = [
 	// L'ha chiesto lui, dal portale: è il rinnovo più facile che ci sia, e non va lasciato aspettare.
-	{ valore: 'rinnovo_richiesto', etichetta: 'Chiede di rinnovare', priorita: 100 },
-	{ valore: 'scaduto_recuperabile', etichetta: 'Scaduto, da recuperare', priorita: 90 },
-	{ valore: 'in_scadenza', etichetta: 'Abbonamento in scadenza', priorita: 80 },
-	{ valore: 'assente', etichetta: 'Non viene da un po\'', priorita: 70 },
-	{ valore: 'in_calo', etichetta: 'Viene meno di prima', priorita: 60 },
-	{ valore: 'no_show_ripetuti', etichetta: 'Prenota e non viene', priorita: 55 },
-	{ valore: 'richiami_oggi', etichetta: ETICHETTA_LEAD.richiami_oggi, priorita: 50 },
-	{ valore: 'da_contattare', etichetta: ETICHETTA_LEAD.da_contattare, priorita: 50 },
-	{ valore: 'ultimo_tentativo', etichetta: ETICHETTA_LEAD.ultimo_tentativo, priorita: 46 },
-	{ valore: 'da_ricontattare', etichetta: ETICHETTA_LEAD.da_ricontattare, priorita: 45 },
-	{ valore: 'conversazioni_ferme', etichetta: ETICHETTA_LEAD.conversazioni_ferme, priorita: 40 },
-	{ valore: 'ambientamento_giorno_7', etichetta: 'Prima settimana: come va?', priorita: 35 },
-	{ valore: 'ambientamento_pochi_ingressi', etichetta: 'Fatica a ingranare', priorita: 34 },
-	{ valore: 'da_recuperare', etichetta: ETICHETTA_LEAD.da_recuperare, priorita: 30 },
-	{ valore: 'certificato_scaduto', etichetta: 'Certificato medico scaduto', priorita: 25 },
-	{ valore: 'certificato_in_scadenza', etichetta: 'Certificato medico in scadenza', priorita: 20 },
-	{ valore: 'compleanno', etichetta: 'Compie gli anni', priorita: 10 },
+	{ valore: 'rinnovo_richiesto', etichetta: 'Chiede di rinnovare', priorita: 100, regola: () => 'ha chiesto il rinnovo dal portale e nessuno gli ha ancora risposto' },
+	{ valore: 'scaduto_recuperabile', etichetta: 'Scaduto, da recuperare', priorita: 90, regola: (s) => `abbonamento scaduto da non più di ${s.segnali.recuperabileGiorni} giorni, senza rinnovo` },
+	{ valore: 'in_scadenza', etichetta: 'Abbonamento in scadenza', priorita: 80, regola: (s) => `l'abbonamento finisce entro ${s.abbonamentoInScadenzaGiorni} giorni e non ha ancora rinnovato` },
+	{ valore: 'assente', etichetta: 'Non viene da un po\'', priorita: 70, regola: (s) => `nessun ingresso da ${s.segnali.assenzaGiorni} giorni` },
+	{ valore: 'in_calo', etichetta: 'Viene meno di prima', priorita: 60, regola: (s) => `nelle ultime 4 settimane meno del ${s.segnali.caloPercentuale}% della sua media (se viene almeno ${s.segnali.mediaMinimaCalo} volte ogni 4 settimane)` },
+	{ valore: 'no_show_ripetuti', etichetta: 'Prenota e non viene', priorita: 55, regola: (s) => `almeno ${s.segnali.noShowSegnale} prenotazioni senza ingresso nelle ultime 4 settimane` },
+	{ valore: 'richiami_oggi', etichetta: ETICHETTA_LEAD.richiami_oggi, priorita: 50, regola: () => REGOLA_LEAD },
+	{ valore: 'da_contattare', etichetta: ETICHETTA_LEAD.da_contattare, priorita: 50, regola: () => REGOLA_LEAD },
+	{ valore: 'ultimo_tentativo', etichetta: ETICHETTA_LEAD.ultimo_tentativo, priorita: 46, regola: () => REGOLA_LEAD },
+	{ valore: 'da_ricontattare', etichetta: ETICHETTA_LEAD.da_ricontattare, priorita: 45, regola: () => REGOLA_LEAD },
+	{ valore: 'conversazioni_ferme', etichetta: ETICHETTA_LEAD.conversazioni_ferme, priorita: 40, regola: () => REGOLA_LEAD },
+	{ valore: 'ambientamento_giorno_7', etichetta: 'Prima settimana: come va?', priorita: 35, regola: (s) => `iscritto da ${s.segnali.primoControlloGiorni} giorni (per una settimana)` },
+	{ valore: 'ambientamento_pochi_ingressi', etichetta: 'Fatica a ingranare', priorita: 34, regola: (s) => `iscritto da 3 settimane a ${s.segnali.ambientamentoGiorni} giorni, meno di ${s.segnali.ingressiAmbientamento} ingressi in 4 settimane` },
+	{ valore: 'da_recuperare', etichetta: ETICHETTA_LEAD.da_recuperare, priorita: 30, regola: () => REGOLA_LEAD },
+	{ valore: 'documento_scaduto', etichetta: 'Documento scaduto', priorita: 26, regola: () => 'un documento obbligatorio è scaduto e non è stato sostituito' },
+	{ valore: 'documento_mancante', etichetta: 'Documento mancante', priorita: 25, regola: () => 'manca un documento obbligatorio (certificato, documento di identità, consenso dei genitori per i minorenni)' },
+	{ valore: 'documento_in_scadenza', etichetta: 'Documento in scadenza', priorita: 20, regola: (s) => `un documento obbligatorio scade entro ${s.documentoInScadenzaGiorni} giorni` },
+	{ valore: 'compleanno', etichetta: 'Compie gli anni', priorita: 10, regola: () => 'oggi è il suo compleanno' },
 ];
 // Quelli che servono solo al bancone, nel momento in cui la persona entra.
 const SOLO_BANCONE = [
-	{ valore: 'bentornato', etichetta: 'Bentornato', priorita: 40 },
-	{ valore: 'traguardo', etichetta: 'Traguardo', priorita: 30 },
+	{ valore: 'bentornato', etichetta: 'Bentornato', priorita: 40, regola: (s) => `entra dopo ${s.segnali.assenzaGiorni} giorni o più senza ingressi` },
+	{ valore: 'traguardo', etichetta: 'Traguardo', priorita: 30, regola: (s) => `ogni ${s.segnali.ogniTraguardo} ingressi` },
 ];
 const PER_SEGNALE = Object.fromEntries([...SEGNALI, ...SOLO_BANCONE].map((s) => [s.valore, s]));
 export const etichettaSegnale = (v) => PER_SEGNALE[v]?.etichetta ?? v;
+/** Quando scatta un segnale, in parole, con le soglie della palestra (soglieDi). */
+export const regolaSegnale = (v, soglie = SOGLIE) => PER_SEGNALE[v]?.regola?.(soglie) ?? '';
+
+/**
+ * Le linee di Da fare: i segnali raggruppati per il lavoro che chiedono. Ognuna si risolve a modo
+ * suo — un rinnovo con l'abbonamento, un documento caricandolo, gli altri con un "Fatto" — e la
+ * palestra può spegnere i segnali che non segue (Impostazioni › Da fare). Il bancone ha i suoi.
+ */
+export const LINEE = [
+	{ valore: 'rinnovi', etichetta: 'Rinnovi', segnali: ['rinnovo_richiesto', 'in_scadenza', 'scaduto_recuperabile'] },
+	{ valore: 'frequenza', etichetta: 'Chi non viene', segnali: ['assente', 'in_calo', 'no_show_ripetuti'] },
+	{ valore: 'nuovi', etichetta: 'Nuovi soci', segnali: ['ambientamento_giorno_7', 'ambientamento_pochi_ingressi'] },
+	{ valore: 'documenti', etichetta: 'Documenti', segnali: ['documento_scaduto', 'documento_mancante', 'documento_in_scadenza'] },
+	{ valore: 'compleanni', etichetta: 'Compleanni', segnali: ['compleanno'] },
+	{ valore: 'contatti', etichetta: 'Contatti', segnali: ['richiami_oggi', 'da_contattare', 'ultimo_tentativo', 'da_ricontattare', 'conversazioni_ferme', 'da_recuperare'] },
+	{ valore: 'bancone', etichetta: 'Al bancone', segnali: ['bentornato', 'traguardo'], soloImpostazioni: true },
+];
+const LINEA_DI = Object.fromEntries(LINEE.flatMap((l) => l.segnali.map((c) => [c, l.valore])));
+export const lineaDi = (codice) => LINEA_DI[codice] ?? null;
+/** Tutti i codici che la palestra può spegnere. */
+export const CODICI_SEGNALE = Object.keys(PER_SEGNALE);
 
 // I segnali del lead sono le sue condizioni (shared/lead.js), tolte quelle che sono solo viste.
 const CONDIZIONI_SEGNALE = new Set(['da_contattare', 'richiami_oggi', 'da_ricontattare', 'ultimo_tentativo', 'conversazioni_ferme', 'da_recuperare']);
@@ -74,20 +116,11 @@ const CONDIZIONI_SEGNALE = new Set(['da_contattare', 'richiami_oggi', 'da_ricont
 /** I tipi di riga del diario che contano come "l'abbiamo cercato". */
 export const TIPI_CONTATTO = ['contatto', 'tentativo', 'risposta'];
 
-/** Di quanti giorni si può rimandare un segnale, al massimo. */
-export const RIMANDO_MASSIMO_GIORNI = 60;
-
 // Gli ingressi da cui una lezione conta come frequentata: dall'ora prima dell'inizio alla fine.
 export const MINUTI_PRIMA_DELLA_LEZIONE = 60;
-// Sotto questa media (ingressi in 4 settimane) un calo non dice niente: chi viene una volta al
-// mese e salta un mese non sta andando via.
-const MEDIA_MINIMA_PER_IL_CALO = 4;
-// Quanti ingressi in 4 settimane servono a un nuovo socio per dire che ha ingranato.
-const INGRESSI_AMBIENTAMENTO = 4;
-// Quanti no-show nelle ultime 4 settimane fanno un segnale.
-const NO_SHOW_SEGNALE = 2;
-// Ogni quanti ingressi si festeggia al bancone.
-const OGNI_TRAGUARDO = 50;
+// Quanta storia serve per parlare di calo: la media si fa su 12 settimane, e un socio più giovane
+// (o ripreso da una sospensione più di recente) non ce l'ha. Non è una scelta della palestra.
+const GIORNI_STORIA_PER_IL_CALO = 84;
 
 const minuti = (hhmm) => { const [h, m] = String(hhmm).slice(0, 5).split(':').map(Number); return h * 60 + m; };
 
@@ -183,11 +216,12 @@ export function eCompleanno(nascita, oggi) {
 }
 
 /**
- * La fase e i segnali di una persona, oggi.
+ * Lo stato e i segnali di una persona, oggi.
  *
  * @param p.socio        { created_date, archiviato_il, date_of_birth } | null (non è socio)
  * @param p.trattativa   la trattativa attuale (aperta, o l'ultima chiusa), come in shared/lead.js | null
- * @param p.iscrizioni   [{ id?, plan_name?, start_date, end_date }]
+ * @param p.iscrizioni   [{ id?, plan_name?, start_date, end_date }], passate da `conSospensioni`
+ *                       (shared/abbonamenti.js), con `created_date`
  * @param p.documenti    [{ id?, file_name?, document_type, created_date, expiry_date }]
  * @param p.ingressi     { ultimo: 'AAAA-MM-GG'|null, quattro, dodici, totale, prima?, oggi? } — ingressi
  *                       nelle ultime 4 e 12 settimane e in tutto; `prima` l'ultimo giorno di ingresso
@@ -195,24 +229,30 @@ export function eCompleanno(nascita, oggi) {
  *                       entrato dal tornello). null se la palestra non li registra (senza
  *                       ingressi, tutti sembrerebbero assenti)
  * @param p.noShow       quante prenotazioni senza ingresso nelle ultime 4 settimane (esitoPrenotazione)
- * @param p.contatti     { ultimo: 'AAAA-MM-GG'|null, rimandatoAl: 'AAAA-MM-GG'|null, riscontro, richiestaRinnovo },
- *                       dal diario; gli ultimi due sono istanti: l'ultimo contatto riuscito e
- *                       l'ultima richiesta di rinnovo dal portale
- * @param p.iscrizioni   passate da `conSospensioni` (shared/abbonamenti.js), con `created_date`
+ * @param p.contatti     { perSegnale: { [codice]: 'AAAA-MM-GG' }, riscontro, richiestaRinnovo }, dal
+ *                       diario: l'ultimo "Fatto" per ogni segnale; gli altri due sono istanti,
+ *                       l'ultimo contatto riuscito e l'ultima richiesta di rinnovo dal portale
+ * @param p.soglie       quelle della palestra (soglieDi), con `segnaliSpenti`
  * @returns {{ fase, segnali: [{ codice, titolo, priorita, motivo, azioni, pubblico, nascostoFino, dati }], copertura }}
- *   `pubblico`: 'staff' (Oggi, la scheda), 'socio' (il portale), 'bancone' (chi entra adesso).
- *   `nascostoFino`: il segnale c'è ma non va riproposto prima di quel giorno; null se è da fare.
+ *   `fase`: lo stato (FASI). `pubblico`: 'staff' (Da fare), 'socio' (il portale), 'bancone' (chi
+ *   entra adesso). `nascostoFino`: il segnale c'è ma non va riproposto prima di quel giorno.
  */
 export function segnaliPersona({
 	socio = null, trattativa = null, iscrizioni = [], documenti = [], ingressi = null, noShow = 0,
 	contatti = {}, oggi = oggiIso(), soglie: tutte = SOGLIE,
 }) {
-	const soglie = tutte.segnali ?? SOGLIE.segnali;
+	const soglie = { ...SOGLIE.segnali, ...(tutte.segnali ?? {}) };
+	const spenti = new Set(tutte.segnaliSpenti ?? []);
 	const segnali = [];
-	const aggiungi = (codice, motivo, extra = {}) => segnali.push({
-		codice, titolo: etichettaSegnale(codice), priorita: PER_SEGNALE[codice]?.priorita ?? 0, motivo,
-		azioni: ['chiama', 'whatsapp', 'email', 'contatto', 'rimanda'], pubblico: 'staff', nascostoFino: null, dati: null, ...extra,
-	});
+	// Un segnale spento dalla palestra non si calcola: non compare da nessuna parte, e nessun
+	// playbook parte per lui. Lo stato invece sì: "In calo" resta vero anche se nessuno lo segue.
+	const aggiungi = (codice, motivo, extra = {}) => {
+		if (spenti.has(codice)) return;
+		segnali.push({
+			codice, titolo: etichettaSegnale(codice), priorita: PER_SEGNALE[codice]?.priorita ?? 0, motivo,
+			azioni: ['chiama', 'whatsapp', 'email', 'fatto'], pubblico: 'staff', nascostoFino: null, dati: null, ...extra,
+		});
+	};
 
 	// Chi non è socio: un contatto, con le condizioni della sua trattativa.
 	if (!socio) {
@@ -229,21 +269,13 @@ export function segnaliPersona({
 	const giorniSocio = giorniFra(inizio, oggi) ?? 0;
 	const piano = copertura.riferimento?.plan_name;
 	const datiAbbonamento = (giorni) => ({ iscrizione_id: copertura.riferimento?.id ?? null, abbonamento: piano ?? null, giorni });
-
-	// La fase: una sola, la più urgente.
-	let laFase;
 	const giorniScaduto = copertura.ultimaFine ? giorniFra(copertura.ultimaFine, oggi) : null;
 	const giorniAllaFine = copertura.fine ? giorniFra(oggi, copertura.fine) : null;
-	const inScadenza = !socio.archiviato_il && copertura.valido && !copertura.rinnovato && giorniAllaFine !== null && giorniAllaFine <= tutte.abbonamentoInScadenzaGiorni;
-	if (socio.archiviato_il) laFase = 'ex_socio';
-	else if (copertura.sospensione) laFase = 'sospeso';
-	else if (!copertura.valido && !copertura.rinnovato) {
-		if (giorniScaduto !== null && giorniScaduto <= soglie.recuperabileGiorni) laFase = 'scaduto_recuperabile';
-		// Appena iscritto, l'abbonamento ancora da fare: è nuovo, non ex.
-		else if (giorniScaduto === null && giorniSocio <= soglie.nuovoGiorni) laFase = 'nuovo';
-		else laFase = 'ex_socio';
-	}
-	const frequenta = !laFase;
+	const archiviato = Boolean(socio.archiviato_il);
+	const senzaAbbonamento = !copertura.valido && !copertura.rinnovato;
+	// Frequenta chi ha un abbonamento (anche già comprato per dopo un buco) e non è fermo.
+	const frequenta = !archiviato && !copertura.sospensione && !senzaAbbonamento;
+	const inScadenza = frequenta && copertura.valido && !copertura.rinnovato && giorniAllaFine !== null && giorniAllaFine <= tutte.abbonamentoInScadenzaGiorni;
 
 	// Quanto viene: assenza e calo, solo se la palestra registra gli ingressi.
 	let assente = false; let inCalo = false;
@@ -258,29 +290,30 @@ export function segnaliPersona({
 		const media = (Number(ingressi.dodici) || 0) / 3;
 		const quattro = Number(ingressi.quattro) || 0;
 		// Dopo una ripresa le 4 e le 12 settimane contengono la sospensione: il confronto non dice niente.
-		const ripresoDaPoco = copertura.ripresa && giorniFra(copertura.ripresa, oggi) < 84;
-		if (!assente && !ripresoDaPoco && giorniSocio >= 84 && media >= MEDIA_MINIMA_PER_IL_CALO && quattro < (media * soglie.caloPercentuale) / 100) {
+		const ripresoDaPoco = copertura.ripresa && giorniFra(copertura.ripresa, oggi) < GIORNI_STORIA_PER_IL_CALO;
+		if (!assente && !ripresoDaPoco && giorniSocio >= GIORNI_STORIA_PER_IL_CALO && media >= soglie.mediaMinimaCalo && quattro < (media * soglie.caloPercentuale) / 100) {
 			inCalo = true;
 			aggiungi('in_calo', `${plurale(quattro, 'ingresso', 'ingressi')} in 4 settimane contro ${Math.round(media)} di media`);
 		}
 	}
 
-	if (!laFase) {
-		if (inScadenza) laFase = 'in_scadenza';
-		else if (assente) laFase = 'assente';
-		else if (inCalo) laFase = 'in_calo';
-		else if (giorniSocio <= soglie.nuovoGiorni) laFase = 'nuovo';
-		else if (giorniSocio <= soglie.ambientamentoGiorni) laFase = 'ambientamento';
-		else laFase = 'attivo';
-	}
+	// Lo stato: uno solo, il primo che vale. Abbonamento e lavoro da fare non sono stati: stanno
+	// nella colonna dell'abbonamento e nei segnali. "Assente" è la forma grave di "In calo".
+	let laFase;
+	if (archiviato) laFase = 'archiviato';
+	else if (copertura.sospensione) laFase = 'sospeso';
+	else if (senzaAbbonamento) laFase = 'senza_abbonamento';
+	else if (giorniSocio <= soglie.nuovoGiorni) laFase = 'nuovo';
+	else if (assente || inCalo) laFase = 'in_calo';
+	else laFase = 'attivo';
 
-	// Chi chiede di rinnovare va richiamato in qualunque fase: anche un ex socio che vuole tornare.
-	if (!socio.archiviato_il && richiestaRinnovoAperta(contatti.richiestaRinnovo, { ultimoContatto: contatti.riscontro, iscrizioni })) {
+	// Chi chiede di rinnovare va richiamato in qualunque stato: anche uno scaduto da tanto che vuole tornare.
+	if (!archiviato && richiestaRinnovoAperta(contatti.richiestaRinnovo, { ultimoContatto: contatti.riscontro, iscrizioni })) {
 		const quando = giorniFra(oggiIso(new Date(contatti.richiestaRinnovo)), oggi);
 		aggiungi('rinnovo_richiesto', `l'ha chiesto dal portale ${quando === 0 ? 'oggi' : quando === 1 ? 'ieri' : `${quando} giorni fa`}${piano ? ` (${piano})` : ''}`,
 			{ dati: datiAbbonamento(null) });
 	}
-	if (laFase === 'scaduto_recuperabile') {
+	if (!archiviato && !copertura.sospensione && senzaAbbonamento && giorniScaduto !== null && giorniScaduto <= soglie.recuperabileGiorni) {
 		aggiungi('scaduto_recuperabile', `scaduto da ${plurale(giorniScaduto, 'giorno', 'giorni')}${piano ? ` (${piano})` : ''}`, { dati: datiAbbonamento(-giorniScaduto) });
 	}
 	if (inScadenza) {
@@ -289,21 +322,25 @@ export function segnaliPersona({
 	}
 
 	if (frequenta) {
-		if (noShow >= NO_SHOW_SEGNALE) aggiungi('no_show_ripetuti', `${noShow} no-show in 4 settimane`, { dati: { no_show: noShow } });
-		if (giorniSocio >= 7 && giorniSocio < 14) aggiungi('ambientamento_giorno_7', `iscritto da ${giorniSocio} giorni: come si trova?`, { dati: { giorni: giorniSocio } });
-		if (ingressi && !assente && giorniSocio >= 21 && giorniSocio <= soglie.ambientamentoGiorni && (Number(ingressi.quattro) || 0) < INGRESSI_AMBIENTAMENTO) {
+		if (noShow >= soglie.noShowSegnale) aggiungi('no_show_ripetuti', `${noShow} no-show in 4 settimane`, { dati: { no_show: noShow } });
+		if (giorniSocio >= soglie.primoControlloGiorni && giorniSocio < soglie.primoControlloGiorni + 7) {
+			aggiungi('ambientamento_giorno_7', `iscritto da ${giorniSocio} giorni: come si trova?`, { dati: { giorni: giorniSocio } });
+		}
+		if (ingressi && !assente && giorniSocio >= 21 && giorniSocio <= soglie.ambientamentoGiorni && (Number(ingressi.quattro) || 0) < soglie.ingressiAmbientamento) {
 			aggiungi('ambientamento_pochi_ingressi', `${plurale(Number(ingressi.quattro) || 0, 'ingresso', 'ingressi')} in 4 settimane, iscritto da ${giorniSocio} giorni`);
 		}
 
-		// I certificati medici che contano ancora: lo stesso conto dei documenti (anagrafica.js).
-		const certificati = conStatoDocumenti(documenti.filter((d) => d.document_type === 'certificato_medico'), (d) => (d ? giorniFra(oggi, giorno(d)) : null))
-			.filter((d) => d.stato === 'scaduto' || d.stato === 'in_scadenza');
-		if (certificati.length) {
-			const d = certificati.sort((a, b) => a.giorni_alla_scadenza - b.giorni_alla_scadenza)[0];
-			const scaduto = d.stato === 'scaduto';
-			aggiungi(scaduto ? 'certificato_scaduto' : 'certificato_in_scadenza',
-				scaduto ? `certificato scaduto il ${dataIt(giorno(d.expiry_date))}` : `certificato scade ${fra(d.giorni_alla_scadenza)}`,
-				{ dati: { documento_id: d.id ?? null, file_name: d.file_name ?? null, giorni: d.giorni_alla_scadenza, scaduto } });
+		// I documenti obbligatori fuori regola: la stessa regola del portale e degli ingressi
+		// (documentiDaSistemare). Un segnale per genere di problema, con tutti i documenti dentro.
+		const fuori = documentiDaSistemare({ socio, documenti, oggi, giorniInScadenza: tutte.documentoInScadenzaGiorni });
+		const descrivi = {
+			mancante: (d) => `manca ${d.nome.toLowerCase()}`,
+			scaduto: (d) => `${d.nome.toLowerCase()} scaduto${d.scadenza ? ` il ${dataIt(d.scadenza)}` : ''}`,
+			in_scadenza: (d) => `${d.nome.toLowerCase()} scade ${fra(d.giorni)}`,
+		};
+		for (const stato of ['scaduto', 'mancante', 'in_scadenza']) {
+			const questi = fuori.filter((d) => d.stato === stato);
+			if (questi.length) aggiungi(`documento_${stato}`, questi.map(descrivi[stato]).join(', '), { dati: { documenti: questi } });
 		}
 
 		if (eCompleanno(socio.date_of_birth, oggi)) {
@@ -320,13 +357,13 @@ export function segnaliPersona({
 			if (via >= soglie.assenzaGiorni) aggiungi('bentornato', `Bentornato: non veniva da ${via} giorni`, { pubblico: 'bancone', azioni: ['saluto'] });
 		}
 		const prossimo = (Number(ingressi?.totale) || 0) - entratoOggi + 1;
-		if (ingressi && prossimo % OGNI_TRAGUARDO === 0) {
+		if (ingressi && prossimo % soglie.ogniTraguardo === 0) {
 			aggiungi('traguardo', `Oggi è il suo ${prossimo}° ingresso!`, { pubblico: 'bancone', azioni: ['saluto'] });
 		}
 	}
 
 	// Quello che vede il socio nel portale: gli avvisi di sempre (shared/avvisi.js).
-	for (const a of avvisiSocio({ socio, iscrizioni, documenti, oggi })) {
+	for (const a of avvisiSocio({ socio, iscrizioni, documenti, oggi, soglie: tutte })) {
 		segnali.push({
 			codice: a.codice, titolo: a.titolo, priorita: a.gravita === 'rosso' ? 90 : 50, motivo: a.testo,
 			azioni: a.azione ? [a.azione] : [], pubblico: 'socio', nascostoFino: null, dati: null,
@@ -337,20 +374,19 @@ export function segnaliPersona({
 }
 
 /**
- * Quando un segnale torna da fare. Un contatto lo nasconde per qualche giorno; un "rimanda"
- * fino al giorno scelto. I segnali del lead seguono la loro trattativa (un contatto ne cambia
- * lo stato), quindi li nasconde solo il rimando. Al bancone un saluto basta per oggi; il
- * rinnovo proposto vale come un contatto.
+ * Quando un segnale torna da fare. Un "Fatto" nasconde **solo il segnale per cui è stato fatto**,
+ * per qualche giorno: chiamato perché non viene, il certificato scaduto resta in Documenti. I
+ * segnali del lead seguono la loro trattativa (un contatto ne cambia lo stato): non si nascondono.
+ * Al bancone un saluto basta per oggi; il rinnovo proposto vale come un Fatto sul rinnovo.
  */
-function nascondi(segnali, { ultimo = null, rimandatoAl = null } = {}, oggi, soglie, socio) {
-	const dopoContatto = ultimo ? spostaGiorni(giorno(ultimo), soglie.contattoNascondeGiorni) : null;
+function nascondi(segnali, { perSegnale = {} } = {}, oggi, soglie, socio) {
 	return segnali.map((s) => {
+		const il = perSegnale?.[s.codice] ? giorno(perSegnale[s.codice]) : null;
 		let fino = null;
-		// La richiesta di rinnovo la chiude il contatto stesso (richiestaRinnovoAperta): un
-		// contatto di prima, per un'altra ragione, non deve nasconderla.
-		if (s.codice === 'rinnovo_richiesto') fino = null;
-		else if (s.pubblico === 'staff') fino = socio ? piuTardi(dopoContatto, giorno(rimandatoAl)) : giorno(rimandatoAl);
-		if (s.pubblico === 'bancone') fino = s.codice === 'in_scadenza' ? dopoContatto : (ultimo ? spostaGiorni(giorno(ultimo), 1) : null);
+		// La richiesta di rinnovo la chiude il contatto riuscito (richiestaRinnovoAperta).
+		if (s.codice === 'rinnovo_richiesto' || !il) fino = null;
+		else if (s.pubblico === 'staff') fino = socio ? spostaGiorni(il, soglie.contattoNascondeGiorni) : null;
+		else if (s.pubblico === 'bancone') fino = spostaGiorni(il, s.codice === 'in_scadenza' ? soglie.contattoNascondeGiorni : 1);
 		return { ...s, nascostoFino: fino && fino > oggi ? fino : null };
 	});
 }

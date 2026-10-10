@@ -23,7 +23,6 @@ import {
 	improntaCanale, scegliCanale, chiaveMessaggio, occasione, segnapostoSconosciuti, LIMITI_TESTO, SEGNAPOSTO, testoPer,
 	emailValida, mittenteSmsValido, meseDi, etichettaCanale,
 } from '../../../shared/comunicazioni.js';
-import { SOGLIE, soglieDi } from '../../../shared/soglie.js';
 import { normalizzaTelefono } from '../../../shared/anagrafica.js';
 
 const MODULO = 'crm_comunicazioni';
@@ -88,7 +87,6 @@ async function vista() {
 		lista,
 		informativa: com.informativa,
 		testi_rivisti: com.testi_rivisti,
-		soglie: soglieDi(p.impostazioni),
 		segnaposto: SEGNAPOSTO,
 		limiti: LIMITI_TESTO,
 	};
@@ -128,36 +126,6 @@ export default async function comunicazioniRoutes(fastify) {
 			if (costo !== undefined) com.costo_sms_centesimi = costo;
 		});
 		await traccia(request, 'Regole', `Silenzio, budget o costo SMS cambiati`);
-		return vista();
-	});
-
-	/**
-	 * PUT /api/comunicazioni/soglie { segnali: { … }, abbonamentoInScadenzaGiorni, documentoInScadenzaGiorni, lead: { … } }
-	 * Le soglie del motore (shared/soglie.js), per questa palestra. Si salvano solo chiavi note e
-	 * valori sensati: una soglia sbagliata non deve svuotare né riempire le liste di lavoro.
-	 */
-	fastify.put('/api/comunicazioni/soglie', async (request, reply) => {
-		const scelte = request.body ?? {};
-		const valido = (v) => Number.isInteger(v) && v > 0 && v <= 3650;
-		const pulisci = (predefinite, date) => Object.fromEntries(Object.entries(predefinite).flatMap(([k, v]) => {
-			if (typeof v === 'object') return date?.[k] ? [[k, pulisci(v, date[k])]] : [];
-			return valido(date?.[k]) ? [[k, date[k]]] : [];
-		}));
-		const sbagliate = [];
-		const controlla = (predefinite, date, percorso) => Object.entries(date ?? {}).forEach(([k, v]) => {
-			if (!(k in predefinite)) sbagliate.push(`${percorso}${k}`);
-			else if (typeof predefinite[k] === 'object') controlla(predefinite[k], v, `${percorso}${k}.`);
-			else if (!valido(v)) sbagliate.push(`${percorso}${k}`);
-		});
-		controlla(SOGLIE, scelte, '');
-		if (sbagliate.length) return errore(reply, 400, `Soglie non valide: ${sbagliate.join(', ')} (numeri interi da 1 a 3650).`);
-		await db.transaction(async (tx) => {
-			const [p] = await tx.select().from(organizations).limit(1).for('update');
-			const attuali = p.impostazioni?.soglie ?? {};
-			const nuove = pulisci(SOGLIE, { ...attuali, ...scelte, segnali: { ...attuali.segnali, ...scelte.segnali }, lead: { ...attuali.lead, ...scelte.lead } });
-			await tx.update(organizations).set({ impostazioni: { ...(p.impostazioni ?? {}), soglie: nuove } }).where(eq(organizations.id, p.id));
-		});
-		await traccia(request, 'Soglie', 'Soglie del motore dei segnali cambiate');
 		return vista();
 	});
 

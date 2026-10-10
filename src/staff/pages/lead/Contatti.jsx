@@ -42,7 +42,7 @@ const ANNO_CORRENTE = new Date().getFullYear();
 
 const TIPO_DOPPIONE = {
   socio: "socio",
-  ex_socio: "ex socio",
+  ex_socio: "archiviato",
   contatto_aperto: "contatto già aperto",
   contatto: "contatto chiuso",
 };
@@ -74,7 +74,7 @@ export default function Contatti() {
   const [parametri, setParametri] = useSearchParams();
   const vista = FILTRI_LEAD.some((f) => f.valore === parametri.get("vista")) ? parametri.get("vista") : "aperti";
   const scegliVista = (v) => setParametri(v === "aperti" ? {} : { vista: v }, { replace: true });
-  // Da Oggi e da Ctrl+K si arriva qui con il nome già cercato (`?q=`).
+  // Da Da fare e da Ctrl+K si arriva qui con il nome già cercato (`?q=`).
   useEffect(() => { if (parametri.get("q")) setCerca(parametri.get("q")); }, [parametri]);
 
   // `lavoro` porta i lead e i conteggi dei filtri.
@@ -259,7 +259,7 @@ export default function Contatti() {
                       {l.cognome} {l.nome}
                     </button>
                     {l.socio_id && (
-                      <StatusBadge status="socio" label={l.socio_archiviato_il ? "Ex socio" : "Socio"} tone="neutro" className="ml-1.5 py-0" />
+                      <StatusBadge status="socio" label={l.socio_archiviato_il ? "Archiviato" : "Socio"} tone="neutro" className="ml-1.5 py-0" />
                     )}
                     {/* La nota non ha una colonna sua: è rara e corta. Si legge al passaggio del mouse. */}
                     {l.note && (

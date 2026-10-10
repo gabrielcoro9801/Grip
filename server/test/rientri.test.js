@@ -56,31 +56,30 @@ after(async () => {
 });
 
 describe('chi è entrato dal tornello', () => {
-	test('in cima a Oggi, con il bentornato; segnato il saluto, sparisce', async () => {
+	test('in cima a Da fare, con il bentornato; segnato il saluto, sparisce', async () => {
 		const come = (method, url, payload) => app.inject({ method, url, payload, headers: { authorization: `Bearer ${token}` } });
 		const entrati = async () => (await come('GET', '/api/segnali?entrati_oggi=1&tipo=soci')).json().persone.filter((p) => id.soci.includes(p.socio_id));
 		const [p] = await entrati();
 		assert.equal(p.socio_id, id.soci[2]);
 		assert.equal(p.bancone[0].codice, 'bentornato');
 		assert.match(p.bancone[0].motivo, /30 giorni/);
-		assert.equal((await come('POST', `/api/persone/${id.persone[2]}/contatti`, { canale: 'di_persona', esito: 'salutato' })).statusCode, 201);
+		assert.equal((await come('POST', `/api/persone/${id.persone[2]}/contatti`, { canale: 'di_persona', esito: 'salutato', segnale: 'bentornato' })).statusCode, 201);
 		assert.deepEqual(await entrati(), []);
 	});
 });
 
 describe('il rientro dopo un contatto', () => {
-	test('il contatto ricorda perché lo si è cercato, dal motore', async () => {
-		for (const persona of id.persone.slice(0, 2)) {
-			const res = await app.inject({
-				method: 'POST', url: `/api/persone/${persona}/contatti`, payload: { canale: 'telefono', esito: 'risposto' },
-				headers: { authorization: `Bearer ${token}` },
-			});
-			assert.equal(res.statusCode, 201, res.body);
-		}
+	test('il "Fatto" ricorda per che cosa: solo un segnale che la persona ha', async () => {
+		const fatto = (persona) => app.inject({
+			method: 'POST', url: `/api/persone/${persona}/contatti`, payload: { canale: 'telefono', segnale: 'assente' },
+			headers: { authorization: `Bearer ${token}` },
+		});
+		const res = await fatto(id.persone[0]);
+		assert.equal(res.statusCode, 201, res.body);
 		const [assente] = await db.select().from(attivita).where(and(eq(attivita.personaId, id.persone[0]), eq(attivita.tipo, 'contatto')));
 		assert.deepEqual(assente.riferimento, { segnali: ['assente'] });
-		const [regolare] = await db.select().from(attivita).where(and(eq(attivita.personaId, id.persone[1]), eq(attivita.tipo, 'contatto')));
-		assert.equal(regolare.riferimento, null);
+		// Il regolare non è assente: non c'è niente da segnare come fatto.
+		assert.equal((await fatto(id.persone[1])).statusCode, 400);
 	});
 
 	test('rientrato 3 giorni dopo: una riga nel diario, anche lanciando il giro due volte', async () => {

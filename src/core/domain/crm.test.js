@@ -38,8 +38,8 @@ describe('il telefono', () => {
 
 describe('le soglie della palestra', () => {
 	test('senza impostazioni valgono le predefinite', () => {
-		assert.deepEqual(soglieDi(undefined), SOGLIE);
-		assert.deepEqual(soglieDi({}), SOGLIE);
+		assert.deepEqual(soglieDi(undefined), { ...SOGLIE, segnaliSpenti: [] });
+		assert.deepEqual(soglieDi({}), { ...SOGLIE, segnaliSpenti: [] });
 	});
 
 	test('le sue dove sono giorni sensati, le predefinite per il resto', () => {
@@ -59,9 +59,26 @@ describe('i consensi', () => {
 			{ tipo: 'marketing_email', valore: false, fonte: 'portale', created_date: '2026-09-05T10:00:00Z' },
 			{ tipo: 'marketing_sms', valore: true, fonte: 'portale', created_date: '2026-09-02T10:00:00Z' },
 		]);
-		assert.deepEqual(attuali.marketing_email, { valore: false, fonte: 'portale', il: '2026-09-05T10:00:00Z' });
+		assert.deepEqual(attuali.marketing_email, { valore: false, fonte: 'portale', il: '2026-09-05T10:00:00Z', senza_prova: false });
 		assert.equal(attuali.marketing_sms.valore, true);
-		assert.deepEqual(attuali.marketing_push, { valore: false, fonte: null, il: null });
+		assert.deepEqual(attuali.marketing_push, { valore: false, fonte: null, il: null, senza_prova: false });
+	});
+
+	test('dalla reception vale solo con il modulo firmato, e decade se il modulo sparisce', () => {
+		const riga = (extra) => ({ tipo: 'marketing_email', valore: true, fonte: 'reception', created_date: '2026-09-01T10:00:00Z', ...extra });
+		assert.equal(consensiAttuali([riga({ documento_id: 'd1', documento_presente: true })]).marketing_email.valore, true);
+		const senza = consensiAttuali([riga({ documento_id: 'd1', documento_presente: false })]).marketing_email;
+		assert.equal(senza.valore, false);
+		assert.equal(senza.senza_prova, true);
+		assert.equal(consensiAttuali([riga({})]).marketing_email.valore, false, 'senza modulo non vale');
+	});
+
+	test("l'ultima scelta si trova anche con le date del database (Date, non testo)", () => {
+		const attuali = consensiAttuali([
+			{ tipo: 'marketing_sms', valore: true, fonte: 'portale', created_date: new Date('2026-09-05T10:00:00Z') },
+			{ tipo: 'marketing_sms', valore: false, fonte: 'portale', created_date: new Date('2026-09-07T10:00:00Z') }, // lunedì: come testo verrebbe prima di sabato
+		]);
+		assert.equal(attuali.marketing_sms.valore, false);
 	});
 });
 

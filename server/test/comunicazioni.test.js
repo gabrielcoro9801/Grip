@@ -6,7 +6,7 @@
 import test, { before, after, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import bcrypt from 'bcryptjs';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { buildApp } from '../src/app.js';
 import { db, pool } from '../src/db/client.js';
 import {
@@ -38,9 +38,14 @@ const adattatori = { email: spia, sms: spia };
 
 const come = (chi, method, url, payload) => app.inject({ method, url, payload, headers: chi ? { authorization: `Bearer ${tok[chi]}` } : {} });
 const deiMiei = async () => db.select().from(messaggi).where(inArray(messaggi.personaId, Object.values(id.persone)));
+// Solo la chiave delle comunicazioni, e in SQL: un altro file di test (le impostazioni di Da fare)
+// scrive nella stessa riga nello stesso momento, e un "leggi, cambia, riscrivi" gli cancellerebbe le sue.
 const impostaComunicazioni = async (com) => {
-	const [p] = await db.select().from(organizations).limit(1);
-	await db.update(organizations).set({ impostazioni: { ...(p.impostazioni ?? {}), comunicazioni: com } }).where(eq(organizations.id, p.id));
+	await db.update(organizations).set({
+		impostazioni: com === undefined
+			? sql`coalesce(${organizations.impostazioni}, '{}'::jsonb) - 'comunicazioni'`
+			: sql`coalesce(${organizations.impostazioni}, '{}'::jsonb) || jsonb_build_object('comunicazioni', ${JSON.stringify(com)}::jsonb)`,
+	});
 };
 
 before(async () => {
@@ -70,7 +75,7 @@ before(async () => {
 		{ memberId: id.soci.senza, planName: 'Annuale', startDate: fra(-100), endDate: fra(200) },
 		{ memberId: id.soci.con, planName: 'Annuale', startDate: fra(-100), endDate: fra(200) },
 	]);
-	await db.insert(consensi).values({ personaId: id.persone.con, tipo: 'marketing_email', valore: true, fonte: 'reception', autoreNome: 'Test' });
+	await db.insert(consensi).values({ personaId: id.persone.con, tipo: 'marketing_email', valore: true, fonte: 'portale', autoreNome: 'Test' });
 
 	const hash = await bcrypt.hash(PASSWORD, 4);
 	const account = await db.insert(staffAccounts).values([
@@ -98,7 +103,7 @@ after(async () => {
 	const [p] = await db.select().from(organizations).limit(1);
 	await db.delete(segretiCanali).where(eq(segretiCanali.organizationId, p.id));
 	await db.delete(modelliMessaggio).where(eq(modelliMessaggio.organizationId, p.id));
-	await db.update(organizations).set({ impostazioni: impostazioniPrima }).where(eq(organizations.id, p.id));
+	await impostaComunicazioni(impostazioniPrima.comunicazioni);
 	await app.close();
 	await pool.end();
 });
@@ -354,7 +359,8 @@ describe('dopo la revisione', () => {
 		const res = await come('admin', 'PUT', `/api/entities/Organization/${p.id}`, { impostazioni: { comunicazioni: { attive: true } } });
 		assert.ok(res.statusCode < 500, res.body);
 		const [dopo] = await db.select().from(organizations).limit(1);
-		assert.deepEqual(dopo.impostazioni, prima);
+		// La chiave che ha provato a scrivere: le altre le cambia, intanto, il test di Da fare.
+		assert.deepEqual(dopo.impostazioni.comunicazioni, prima.comunicazioni);
 	});
 
 	test('un\'email immediata parte anche in fascia di silenzio; il giro no', async () => {

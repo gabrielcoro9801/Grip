@@ -16,6 +16,7 @@ import bcrypt from 'bcryptjs';
 import { eq, inArray } from 'drizzle-orm';
 import { buildApp } from '../src/app.js';
 import { db, pool } from '../src/db/client.js';
+import { oggiIso, spostaGiorni } from '../../shared/giorni.js';
 import {
 	members, staffAccounts, subscriptions, memberDocuments, qrAccessi,
 	rooms, courses, events, sessions, bookings,
@@ -38,8 +39,10 @@ let idCorso;
 let idEvento;
 let idLezione;
 
-const oggi = new Date().toISOString().split('T')[0];
-const fraUnaSettimana = new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0];
+// I giorni di Roma, come li conta il server: con toISOString (UTC) fra mezzanotte e le due il
+// test sbagliava di un giorno.
+const oggi = oggiIso();
+const fraUnaSettimana = spostaGiorni(oggi, 7);
 
 async function login(email) {
 	const res = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { email, password: PASSWORD } });

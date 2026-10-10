@@ -198,6 +198,9 @@ export const TIPI_DOCUMENTO = [
   { valore: "certificato_medico", etichetta: "Certificato medico", atteso: true, scadenza: true },
   { valore: "documento_identita", etichetta: "Documento di identità", atteso: true, scadenza: true },
   { valore: "consenso_genitori", etichetta: "Consenso dei genitori", atteso: "minorenni", scadenza: false },
+  // Il modulo firmato con cui un socio dà in reception il consenso alle promozioni: è la prova
+  // (shared/consensi.js). Non è atteso: le promozioni sono una scelta.
+  { valore: "consenso_marketing", etichetta: "Consenso comunicazioni promozionali", atteso: false, scadenza: false },
   { valore: "altro", etichetta: "Altri documenti", atteso: false, scadenza: false },
 ];
 
@@ -291,7 +294,7 @@ function quandoCaricato(doc) {
  * il server nelle sue funzioni di rotta, e sono calcoli sul calendario che non vale la pena
  * riscrivere qui una terza volta.
  */
-export function conStatoDocumenti(documenti, giorniAllaScadenza) {
+export function conStatoDocumenti(documenti, giorniAllaScadenza, giorniInScadenza = GIORNI_IN_SCADENZA) {
   // Se un documento sia scaduto si decide una volta sola: serve sia per il suo stato, sia
   // per sapere se i suoi fratelli dello stesso tipo hanno qualcosa di meglio da mostrare.
   const valutati = documenti.map((doc) => {
@@ -321,7 +324,7 @@ export function conStatoDocumenti(documenti, giorniAllaScadenza) {
     let stato = "valido";
     if (archiviato) stato = "archiviato";
     else if (scaduto) stato = "scaduto";
-    else if (giorni !== null && giorni <= GIORNI_IN_SCADENZA) stato = "in_scadenza";
+    else if (giorni !== null && giorni <= giorniInScadenza) stato = "in_scadenza";
 
     return { ...doc, stato, giorni_alla_scadenza: giorni };
   });

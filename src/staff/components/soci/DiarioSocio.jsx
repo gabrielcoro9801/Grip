@@ -3,22 +3,29 @@ import { api } from "@/core/api/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/ui/primitivi/card";
 import { Button } from "@/ui/primitivi/button";
 import { Textarea } from "@/ui/primitivi/textarea";
-import { Checkbox } from "@/ui/primitivi/checkbox";
 import { useToast } from "@/ui/primitivi/use-toast";
-import { formatDataOra, formatData } from "@/core/domain/format";
+import { formatDataOra } from "@/core/domain/format";
 import { descriviAttivita, NOTA_DIARIO_MASSIMO } from "@/core/domain/lead";
-import { TIPI_CONSENSO } from "@/core/domain/consensi";
+import { etichettaSegnale } from "@/core/domain/segnali";
 import { BookOpen, Bot } from "lucide-react";
 
 // Quante righe si vedono prima di "mostra tutto": le ultime sono quelle che servono prima di
 // richiamare.
 const RIGHE_VISIBILI = 6;
-const FONTI = { portale: "dal portale", reception: "in reception", form: "dal modulo online" };
+// Le righe che scrive il sistema da solo: non hanno una nota da citare, ma un testo da leggere.
+const AUTOMATICHE = new Set(["segnale_aperto", "segnale_chiuso", "archiviazione_automatica"]);
+
+/** La riga in parole; un "Fatto" dice anche per che cosa: "Fatto: chiamato · Abbonamento in scadenza". */
+function titolo(a) {
+  const base = descriviAttivita(a);
+  const segnali = a.tipo === "contatto" ? a.riferimento?.segnali ?? [] : [];
+  return segnali.length ? `${base} · ${segnali.map(etichettaSegnale).join(", ")}` : base;
+}
 
 /**
- * Il diario del socio nella sua scheda: che cosa è successo (dai tempi in cui era un contatto, se
- * lo era), i contatti, le note della segreteria e i consensi promozionali. Chiamarlo, scrivergli
- * e registrare com'è andata si fa dall'intestazione della scheda (SituazioneSocio).
+ * Il diario del socio nella sua scheda: le note della segreteria e, in sola lettura, la sua
+ * storia — da quando era un contatto, l'iscrizione, i "Fatto" di Da fare, e le cose da fare
+ * comparse e risolte (le scrive il giro, giro.js). Il lavoro si fa in Da fare: qui si racconta.
  */
 export default function DiarioSocio({ socio, puoModificare }) {
   const { toast } = useToast();
@@ -45,15 +52,6 @@ export default function DiarioSocio({ socio, puoModificare }) {
       toast({ title: "Nota non salvata", description: err.message, variant: "destructive" });
     }
     setSalvando(false);
-  };
-
-  const scegliConsenso = async (tipo, valore) => {
-    try {
-      const { consensi } = await api.persone.consenso(socio.persona_id, tipo, valore);
-      setDiario((d) => ({ ...d, consensi }));
-    } catch (err) {
-      toast({ title: "Consenso non registrato", description: err.message, variant: "destructive" });
-    }
   };
 
   const righe = diario ? [...diario.attivita].reverse() : [];
@@ -86,8 +84,8 @@ export default function DiarioSocio({ socio, puoModificare }) {
             {visibili.map((a) => (
               <li key={a.id} className="pl-4">
                 <span className={`absolute -left-[5px] mt-1.5 w-2.5 h-2.5 rounded-full ${a.tipo === "nota" ? "bg-muted-foreground/40" : "bg-primary"}`} aria-hidden="true" />
-                {a.tipo !== "nota" && <p className="text-sm">{descriviAttivita(a)}</p>}
-                {a.nota && <p className={`text-sm ${a.tipo === "nota" ? "" : "text-muted-foreground"}`}>{a.tipo === "nota" ? a.nota : `«${a.nota}»`}</p>}
+                {a.tipo !== "nota" && <p className="text-sm">{titolo(a)}</p>}
+                {a.nota && <p className={`text-sm ${a.tipo === "nota" ? "" : "text-muted-foreground"}`}>{a.tipo === "nota" || AUTOMATICHE.has(a.tipo) ? a.nota : `«${a.nota}»`}</p>}
                 <p className="text-xs text-muted-foreground flex items-center gap-1">
                   {!a.autore_id && <Bot className="w-3 h-3" aria-hidden="true" />}
                   {formatDataOra(a.created_date)} · {a.autore_nome || "—"}
@@ -102,27 +100,6 @@ export default function DiarioSocio({ socio, puoModificare }) {
           </Button>
         )}
 
-        {diario && (
-          <section aria-labelledby="consensi-titolo" className="pt-3 border-t border-border space-y-2">
-            <h3 id="consensi-titolo" className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Comunicazioni promozionali</h3>
-            {TIPI_CONSENSO.map((t) => {
-              const c = diario.consensi[t.valore];
-              return (
-                <label key={t.valore} className="flex items-center gap-2 text-sm">
-                  <Checkbox
-                    checked={c.valore} disabled={!puoModificare}
-                    onCheckedChange={(v) => scegliConsenso(t.valore, v === true)}
-                  />
-                  <span>{t.etichetta}</span>
-                  {c.il && <span className="text-xs text-muted-foreground">· {c.valore ? "dato" : "tolto"} {FONTI[c.fonte] ?? ""} il {formatData(c.il, "breve")}</span>}
-                </label>
-              );
-            })}
-            <p className="text-xs text-muted-foreground">
-              Il socio li sceglie dal portale. Qui si registrano quelli raccolti su un modulo firmato.
-            </p>
-          </section>
-        )}
       </CardContent>
     </Card>
   );

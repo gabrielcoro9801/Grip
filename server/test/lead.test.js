@@ -12,7 +12,7 @@ import { buildApp } from '../src/app.js';
 import { db, pool } from '../src/db/client.js';
 import { enteDellaNumerazione } from '../src/lib/codiceSocio.js';
 import {
-	members, staffAccounts, canaliContatto, numberingCounters, ruoli, persone, trattative, attivita, consensi,
+	members, staffAccounts, canaliContatto, numberingCounters, ruoli, persone, trattative, attivita, consensi, memberDocuments,
 } from '../src/db/schema/index.js';
 import { caricaMatrice } from '../src/lib/ruoli.js';
 import { impostaMatrice, ripristinaMatricePredefinita, PERMESSI_PREDEFINITI } from '../../shared/permissions.js';
@@ -488,17 +488,35 @@ describe('il diario e i consensi di una persona', () => {
 		assert.equal((await post('reception', `${url}/note`, { nota: 'Si è trasferito in centro' })).statusCode, 201);
 		assert.equal((await post('istruttore', `${url}/note`, { nota: 'No' })).statusCode, 403);
 
-		assert.equal((await post('reception', `${url}/consensi`, { tipo: 'marketing_fax', valore: true })).statusCode, 400);
-		const dato = await post('reception', `${url}/consensi`, { tipo: 'marketing_sms', valore: true });
+		assert.equal((await post('reception', `${url}/consensi`, { tipi: ['marketing_fax'], valore: true })).statusCode, 400);
+		// Dalla reception un consenso si registra solo con il modulo firmato fra i documenti del socio.
+		const senzaModulo = await post('reception', `${url}/consensi`, { tipi: ['marketing_sms'], valore: true, atteso: { marketing_sms: null } });
+		assert.equal(senzaModulo.statusCode, 400);
+		assert.match(senzaModulo.json().error, /modulo firmato/);
+		const [modulo] = await db.insert(memberDocuments).values({ memberId: socio.id, documentType: 'consenso_marketing', fileName: 'modulo.pdf' }).returning();
+		const dato = await post('reception', `${url}/consensi`, { tipi: ['marketing_sms'], valore: true, documento_id: modulo.id, atteso: { marketing_sms: null } });
 		assert.equal(dato.statusCode, 200, dato.body);
 		assert.equal(dato.json().consensi.marketing_sms.valore, true);
 		assert.equal(dato.json().consensi.marketing_sms.fonte, 'reception');
 		assert.equal(dato.json().consensi.marketing_email.valore, false, 'senza una scelta, il consenso non c\'è');
 
+		// Chi aveva davanti una scelta vecchia non scrive sopra quella nuova: 409.
+		const vecchio = await post('reception', `${url}/consensi`, { tipi: ['marketing_sms'], valore: false, nota: 'per email', atteso: { marketing_sms: null } });
+		assert.equal(vecchio.statusCode, 409);
+		const il = dato.json().consensi.marketing_sms.il;
+		assert.equal((await post('reception', `${url}/consensi`, { tipi: ['marketing_sms'], valore: false, atteso: { marketing_sms: il } })).statusCode, 400, 'la revoca vuole il perché');
+
+		// Il modulo eliminato: il consenso decade, e lo storico lo dice.
+		await db.delete(memberDocuments).where(eq(memberDocuments.id, modulo.id));
+		const dopo = (await come('reception', { method: 'GET', url: `${url}/consensi` })).json();
+		assert.equal(dopo.consensi.marketing_sms.valore, false);
+		assert.equal(dopo.consensi.marketing_sms.senza_prova, true);
+		assert.equal(dopo.storico[0].documento_presente, false);
+		assert.equal((await post('istruttore', `${url}/consensi`, { tipi: ['marketing_sms'], valore: false, nota: 'x' })).statusCode, 403);
+
 		const letto = await come('reception', { method: 'GET', url: `${url}/diario` });
 		assert.equal(letto.statusCode, 200, letto.body);
 		assert.equal(letto.json().attivita.at(-1).nota, 'Si è trasferito in centro');
-		assert.equal(letto.json().consensi.marketing_sms.valore, true);
 		assert.equal((await come('reception', { method: 'GET', url: '/api/persone/00000000-0000-0000-0000-000000000000/diario' })).statusCode, 404);
 	});
 

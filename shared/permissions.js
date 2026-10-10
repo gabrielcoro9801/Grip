@@ -193,8 +193,8 @@ export function canEdit(role, module) {
 
 /** Mappa percorso sidebar → modulo permesso (null = tutti i ruoli; un elenco = basta uno dei moduli) */
 export const SIDEBAR_PERMISSIONS = {
-  // Oggi è il lavoro su soci e contatti: la vede chi segue gli uni o gli altri.
-  "/oggi": ["crm_members", "crm_leads"],
+  // Da fare è il lavoro su soci e contatti: la vede chi segue gli uni o gli altri.
+  "/da-fare": ["crm_members", "crm_leads"],
   "/": null,
   "/crm": "crm_members",
   "/lead": "crm_leads",
@@ -202,5 +202,6 @@ export const SIDEBAR_PERMISSIONS = {
   "/istruttore": "lezioni_istruttore",
   "/admin": "admin_users",
   "/admin/comunicazioni": "crm_comunicazioni",
+  "/admin/da-fare": "admin_users",
   "/log-audit": "audit_log",
 };

@@ -1,8 +1,8 @@
-// Le persone della palestra con la loro fase e i loro segnali, calcolati in blocco.
+// Le persone della palestra con il loro stato e i loro segnali, calcolati in blocco.
 //
 // Le regole stanno in shared/segnali.js; qui si raccolgono i dati con poche query aggregate —
 // abbonamenti, documenti, ultimo ingresso e conteggi a 4 e 12 settimane, prenotazioni recenti,
-// ultimo contatto del diario — e si passa ogni persona al motore, in memoria. Lo leggono Oggi,
+// l'ultimo "Fatto" per segnale dal diario — e si passa ogni persona al motore, in memoria. Lo leggono Da fare,
 // l'elenco dei soci, la scheda e la dashboard: un solo conto per tutti.
 //
 // ponytail: tutto in memoria, per palestra; regge migliaia di persone. Una vista materializzata
@@ -57,7 +57,7 @@ export async function situazioni({ personaId = null, conn = db, adesso = new Dat
 	// Con una persona sola si legge solo quello che è suo.
 	const suoi = (colonna) => (personaId ? inArray(colonna, idSoci.length ? idSoci : ['00000000-0000-0000-0000-000000000000']) : undefined);
 
-	const [elencoTrattative, iscrizioni, documenti, conteggi, misurati, prenotazioni, recenti, contatti] = await Promise.all([
+	const [elencoTrattative, iscrizioni, documenti, conteggi, misurati, prenotazioni, recenti, contatti, fatti] = await Promise.all([
 		conn.select().from(trattative)
 			.where(and(ne(trattative.stato, 'iscritto'), personaId ? eq(trattative.personaId, personaId) : undefined)),
 		// Con le date dopo le sospensioni (lib/iscrizioni.js).
@@ -86,12 +86,18 @@ export async function situazioni({ personaId = null, conn = db, adesso = new Dat
 			.from(ingressi).where(and(gte(ingressi.entratoAlle, mezzanotteRoma(dal4)), suoi(ingressi.memberId))),
 		conn.select({
 			persona_id: attivita.personaId,
-			ultimo: sql`max(${attivita.createdDate}) filter (where ${inArray(attivita.tipo, TIPI_CONTATTO)})`.mapWith((v) => (v ? oggiIso(new Date(v)) : null)),
-			rimandato_al: sql`max(${attivita.esito}) filter (where ${attivita.tipo} = 'rimando')`,
 			// Istanti, non giorni: richiesta e telefonata possono essere dello stesso giorno.
 			riscontro: sql`max(${attivita.createdDate}) filter (where ${inArray(attivita.tipo, TIPI_CONTATTO)} and ${attivita.esito} is distinct from 'nessuna_risposta')`,
 			richiesta: sql`max(${attivita.createdDate}) filter (where ${attivita.tipo} = 'richiesta_rinnovo')`,
 		}).from(attivita).where(personaId ? eq(attivita.personaId, personaId) : undefined).groupBy(attivita.personaId),
+		// L'ultimo "Fatto" per ogni segnale: il contatto salva per quali segnali è stato fatto
+		// (`riferimento.segnali`), e nasconde solo quelli.
+		conn.execute(sql`
+			select a.persona_id, s.codice, max(a.created_date) as il
+			from ${attivita} a cross join lateral jsonb_array_elements_text(a.riferimento->'segnali') as s(codice)
+			where a.tipo = 'contatto' and jsonb_typeof(a.riferimento->'segnali') = 'array'
+				${personaId ? sql`and a.persona_id = ${personaId}` : sql``}
+			group by a.persona_id, s.codice`),
 	]);
 
 	const trattativaDi = new Map();
@@ -109,6 +115,11 @@ export async function situazioni({ personaId = null, conn = db, adesso = new Dat
 	const recentiDi = raggruppa(recenti, 'member_id');
 	const conteggiDi = new Map(conteggi.map((c) => [c.member_id, c]));
 	const contattiDi = new Map(contatti.map((c) => [c.persona_id, c]));
+	const fattiDi = new Map();
+	for (const f of fatti.rows ?? fatti) {
+		if (!fattiDi.has(f.persona_id)) fattiDi.set(f.persona_id, {});
+		fattiDi.get(f.persona_id)[f.codice] = oggiIso(new Date(f.il));
+	}
 	const misura = misurati.length > 0;
 
 	const elenco = [];
@@ -134,7 +145,7 @@ export async function situazioni({ personaId = null, conn = db, adesso = new Dat
 			documenti: documentiDi.get(a.socio_id) ?? [],
 			ingressi: ingressiSocio, noShow,
 			contatti: {
-				ultimo: diario?.ultimo ?? null, rimandatoAl: diario?.rimandato_al ?? null,
+				perSegnale: fattiDi.get(a.persona_id) ?? {},
 				riscontro: diario?.riscontro ?? null, richiestaRinnovo: diario?.richiesta ?? null,
 			},
 			oggi, soglie,
@@ -151,6 +162,9 @@ export async function situazioni({ personaId = null, conn = db, adesso = new Dat
 			scadenza: copertura?.scadenza ?? null,
 			// L'ultima scadenza passata: le tile dell'elenco mostrano "scaduto il…" a chi non ha rinnovato.
 			ultima_fine: copertura?.ultimaFine ?? null,
+			// Il giorno dell'iscrizione: per chi non ha mai avuto un abbonamento, è da lì che si
+			// contano i giorni prima dell'archiviazione automatica (giro.js).
+			iscritto_il: a.created_date ? oggiIso(new Date(a.created_date)) : null,
 			// Non firmata: la firma la mette la rotta che la manda al browser (routes/segnali.js).
 			foto_url: a.foto_url ?? null,
 			abbonamento: copertura?.riferimento?.plan_name ?? null,

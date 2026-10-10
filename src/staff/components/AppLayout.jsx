@@ -20,8 +20,8 @@ import SelettoreTema from "@/ui/SelettoreTema";
 // i soci non aveva motivo di aprirlo. Ogni voce porta alla pagina che si intitola
 // come lei — l'intestazione della pagina non deve mai smentire il menu.
 const navItems = [
-  // Il lavoro del giorno viene prima di tutto: chi seguire oggi, e perché.
-  { label: "Oggi", path: "/oggi", icon: ListChecks },
+  // Il lavoro del giorno viene prima di tutto: chi seguire, e perché, per linee.
+  { label: "Da fare", path: "/da-fare", icon: ListChecks },
   { label: "Dashboard", path: "/", icon: LayoutDashboard },
   { label: "Gestione membri", path: "/crm", icon: Users },
   // I lead sono contatti, non soci: non hanno scheda, abbonamento né accesso. Stanno in una

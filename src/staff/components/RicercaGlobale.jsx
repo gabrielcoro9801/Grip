@@ -8,7 +8,7 @@ import { Search } from "lucide-react";
 
 const TIPI = {
   socio: { etichetta: "Socio", tono: "positivo" },
-  ex_socio: { etichetta: "Ex socio", tono: "neutro" },
+  ex_socio: { etichetta: "Archiviato", tono: "neutro" },
   contatto_aperto: { etichetta: "Contatto", tono: "info" },
   contatto: { etichetta: "Contatto chiuso", tono: "neutro" },
 };

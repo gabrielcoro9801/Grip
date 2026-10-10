@@ -241,7 +241,7 @@ export default async function ingressiRoutes(fastify) {
 		const soci = new Set(nelPeriodo.map((r) => r.memberId)).size;
 
 		// Chi non viene più lo dice il motore dei segnali: è "assente" (shared/segnali.js), con la
-		// stessa soglia di Oggi e dell'elenco dei soci.
+		// stessa soglia di Da fare e dell'elenco dei soci.
 		const motore = await situazioni();
 		const rischio = motore.persone
 			.filter((p) => p.socio_id && p.segnali.some((s) => s.pubblico === 'staff' && s.codice === 'assente'))

@@ -30,7 +30,7 @@ export function caricaAbbonamenti() {
 	return api.richiesta(`${BASE}/abbonamenti`);
 }
 
-/** "Voglio rinnovare": la reception lo vede in cima a Oggi e lo richiama. Niente pagamenti. → { richiesta_rinnovo: { il } } */
+/** "Voglio rinnovare": la reception lo vede in cima a Da fare e lo richiama. Niente pagamenti. → { richiesta_rinnovo: { il } } */
 export function richiediRinnovo() {
 	return api.richiesta(`${BASE}/abbonamento/richiesta-rinnovo`, { method: 'POST' });
 }

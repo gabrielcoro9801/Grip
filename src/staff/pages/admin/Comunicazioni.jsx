@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
+import { Link } from "react-router-dom";
 import { api } from "@/core/api/client";
 import PageHeader from "@/staff/components/PageHeader";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/ui/primitivi/card";
@@ -79,7 +80,6 @@ export default function Comunicazioni() {
           <TabsTrigger value="canali">Canali</TabsTrigger>
           <TabsTrigger value="playbook">Playbook</TabsTrigger>
           <TabsTrigger value="registro">Registro</TabsTrigger>
-          <TabsTrigger value="soglie">Soglie</TabsTrigger>
         </TabsList>
         <TabsContent value="stato" className="mt-4 space-y-4">
           <Interruttore dati={dati} scrivi={scrivi} />
@@ -89,13 +89,14 @@ export default function Comunicazioni() {
           {dati.canali.map((c) => <Canale key={c.canale} canale={c} dati={dati} scrivi={scrivi} />)}
         </TabsContent>
         <TabsContent value="playbook" className="mt-4 space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Ogni playbook parte da una cosa da fare: quando scatta lo decidono le soglie, e un segnale spento non manda niente.{" "}
+            <Link to="/admin/da-fare" className="text-primary hover:underline">Impostazioni di Da fare</Link>
+          </p>
           {dati.playbook.map((p) => <Playbook key={p.codice} pb={p} dati={dati} scrivi={scrivi} />)}
         </TabsContent>
         <TabsContent value="registro" className="mt-4">
           <Registro />
-        </TabsContent>
-        <TabsContent value="soglie" className="mt-4">
-          <Soglie dati={dati} scrivi={scrivi} />
         </TabsContent>
       </Tabs>
     </div>
@@ -515,51 +516,6 @@ function Registro() {
             </ul>
           </>
         )}
-      </CardContent>
-    </Card>
-  );
-}
-
-// --- Soglie ----------------------------------------------------------------------------------
-
-const VOCI_SOGLIE = [
-  ["abbonamentoInScadenzaGiorni", "Abbonamento «in scadenza» da quanti giorni prima"],
-  ["documentoInScadenzaGiorni", "Certificato «in scadenza» da quanti giorni prima"],
-  ["segnali.nuovoGiorni", "Socio «nuovo» per quanti giorni"],
-  ["segnali.ambientamentoGiorni", "«Ambientamento» fino a quanti giorni"],
-  ["segnali.assenzaGiorni", "«Assente» dopo quanti giorni senza ingressi"],
-  ["segnali.caloPercentuale", "«In calo» sotto quale percentuale della media"],
-  ["segnali.recuperabileGiorni", "Scaduto «recuperabile» per quanti giorni"],
-  ["segnali.contattoNascondeGiorni", "Dopo un contatto, per quanti giorni non riproporlo"],
-];
-const leggiSoglia = (s, chiave) => chiave.split(".").reduce((o, k) => o?.[k], s);
-
-function Soglie({ dati, scrivi }) {
-  const [v, setV] = useState(() => Object.fromEntries(VOCI_SOGLIE.map(([k]) => [k, String(leggiSoglia(dati.soglie, k))])));
-  const salva = () => {
-    const corpo = { segnali: {} };
-    for (const [k] of VOCI_SOGLIE) {
-      const n = Number(v[k]);
-      if (k.startsWith("segnali.")) corpo.segnali[k.slice(8)] = n; else corpo[k] = n;
-    }
-    return scrivi(() => api.comunicazioni.soglie(corpo), "Soglie salvate");
-  };
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Soglie del motore</CardTitle>
-        <CardDescription>Decidono chi compare in Oggi e quando partono i playbook. Cambiarle cambia tutte le liste, subito.</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="grid gap-3 sm:grid-cols-2">
-          {VOCI_SOGLIE.map(([k, etichetta]) => (
-            <div key={k} className="space-y-1">
-              <Label htmlFor={`soglia-${k}`}>{etichetta}</Label>
-              <Input id={`soglia-${k}`} type="number" min={1} value={v[k]} onChange={(e) => setV({ ...v, [k]: e.target.value })} />
-            </div>
-          ))}
-        </div>
-        <Button onClick={salva}>Salva le soglie</Button>
       </CardContent>
     </Card>
   );

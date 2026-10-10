@@ -12,7 +12,10 @@ const OGGI = '2026-10-10';
 const g = (n) => spostaGiorni(OGGI, n);
 const socio = { created_date: '2025-01-01', archiviato_il: null, date_of_birth: '1990-05-20' };
 const regolare = { ultimo: g(-2), quattro: 8, dodici: 24, totale: 120 };
-const certificatoBuono = [{ id: 'c1', document_type: 'certificato_medico', created_date: '2026-01-01', expiry_date: '2027-06-01' }];
+const certificatoBuono = [
+	{ id: 'c1', document_type: 'certificato_medico', created_date: '2026-01-01', expiry_date: '2027-06-01' },
+	{ id: 'i1', document_type: 'documento_identita', created_date: '2026-01-01', expiry_date: '2030-01-01' },
+];
 // Una persona come la passa il server: i segnali dal motore, più nome e scadenza.
 const persona = (extra = {}) => {
 	const r = segnaliPersona({ socio, documenti: certificatoBuono, ingressi: regolare, oggi: OGGI, ...extra });
@@ -47,8 +50,8 @@ describe('le occasioni dei playbook', () => {
 		assert.equal(occasione('rinnovo', p, OGGI), null);
 	});
 
-	test('un contatto dello staff tace il messaggio automatico', () => {
-		const p = persona({ iscrizioni: abbonamentoFino(g(3)), contatti: { ultimo: g(-1) } });
+	test('un "Fatto" dello staff sul rinnovo tace il messaggio automatico', () => {
+		const p = persona({ iscrizioni: abbonamentoFino(g(3)), contatti: { perSegnale: { in_scadenza: g(-1) } } });
 		assert.equal(occasione('rinnovo', p, OGGI), null);
 	});
 
@@ -71,7 +74,7 @@ describe('le occasioni dei playbook', () => {
 
 	test('certificato: 30 e 7 giorni prima, e scaduto', () => {
 		const iscrizioni = abbonamentoFino('2027-01-01');
-		const doc = (scade) => [{ id: 'c9', document_type: 'certificato_medico', created_date: '2025-10-01', expiry_date: scade }];
+		const doc = (scade) => [{ id: 'c9', document_type: 'certificato_medico', created_date: '2025-10-01', expiry_date: scade }, certificatoBuono[1]];
 		assert.equal(occasione('certificato', persona({ iscrizioni, documenti: doc(g(25)) }), OGGI).riferimento, 'c9:30');
 		assert.equal(occasione('certificato', persona({ iscrizioni, documenti: doc(g(5)) }), OGGI).riferimento, 'c9:7');
 		const scaduto = occasione('certificato', persona({ iscrizioni, documenti: doc(g(-2)) }), OGGI);

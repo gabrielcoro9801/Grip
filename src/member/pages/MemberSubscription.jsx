@@ -11,7 +11,7 @@ import { formatData, formatDataOra, formatEuro } from "@/core/domain/format";
 /**
  * "Richiedi il rinnovo": il socio dice che vuole rinnovare, e la reception lo richiama e incassa
  * di persona. Niente pagamenti online e nessun messaggio che parte: una riga nel suo diario, e lui
- * in cima alla lista di Oggi. Finché la reception non lo sente, qui legge che la richiesta è arrivata.
+ * in cima alla lista di Da fare. Finché la reception non lo sente, qui legge che la richiesta è arrivata.
  */
 function RichiestaRinnovo({ richiesta, onInviata }) {
   const { toast } = useToast();

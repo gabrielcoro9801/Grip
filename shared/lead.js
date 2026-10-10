@@ -272,10 +272,12 @@ export const CANALI_CONTATTO = [
 ];
 
 /**
- * Com'è andato un contatto con una persona — un socio da Oggi, dalla scheda o dal bancone. Il
- * contatto con un lead passa invece dalle sue azioni (`applicaAzione`), che ne cambiano lo stato.
+ * Com'è andato un contatto con un socio. Oggi da Da fare si segna solo "fatto", e il bancone
+ * "salutato" o "proposto il rinnovo"; gli altri restano per le righe già scritte. Il contatto con
+ * un lead passa invece dalle sue azioni (`applicaAzione`), che ne cambiano lo stato.
  */
 export const ESITI_CONTATTO = [
+  { valore: "fatto", etichetta: "fatto" },
   { valore: "risposto", etichetta: "ha risposto" },
   { valore: "nessuna_risposta", etichetta: "non ha risposto" },
   { valore: "proposto_rinnovo", etichetta: "proposto il rinnovo" },
@@ -451,6 +453,9 @@ export function contaFiltriLead(leads = [], oggi, soglie = SOGLIE_LEAD) {
 const quanto = (giorni) => (giorni <= 0 ? "oggi" : giorni === 1 ? "ieri" : `${giorni} giorni fa`);
 const dataBreve = (iso) => { const [a, m, g] = String(iso).slice(0, 10).split("-"); return `${g}/${m}/${a}`; };
 
+/** Come si dice un "Fatto" di Da fare, per mezzo: "Fatto: chiamato". */
+const FATTO_COME = { telefono: "chiamato", whatsapp: "messaggio", sms: "messaggio", email: "email", di_persona: "di persona" };
+
 /** Il massimo di una nota scritta nel diario di una persona. */
 export const NOTA_DIARIO_MASSIMO = 500;
 
@@ -467,7 +472,10 @@ export function descriviAttivita(a) {
     case "riapertura": return "Riaperto";
     case "stato_automatico": return `Passato a «${statoLead(a.esito).etichetta}»`;
     case "iscrizione": return a.esito === "riattivato" ? "Tornato socio" : "Diventato socio";
-    case "contatto": return `${etichettaCanaleContatto(a.canale)}: ${etichetta(ESITI_CONTATTO, a.esito)}`;
+    case "contatto":
+      // Il "Fatto" di Da fare: come, e per che cosa lo dice la riga (il segnale sta nel riferimento).
+      if (a.esito === "fatto") return `Fatto: ${FATTO_COME[a.canale] ?? etichettaCanaleContatto(a.canale).toLowerCase()}`;
+      return `${etichettaCanaleContatto(a.canale)}: ${etichetta(ESITI_CONTATTO, a.esito)}`;
     case "rimando": return `Rimandato al ${dataBreve(a.esito)}`;
     case "nota": return "Nota";
     case "nota_istruttore": return "Nota dell'istruttore";
@@ -479,6 +487,11 @@ export function descriviAttivita(a) {
     case "fine_sospensione": return `Sospensione finita: riprende il ${dataBreve(a.esito)}`;
     case "abbandono": return `Ha lasciato la palestra: ${etichettaMotivoAbbandono(a.esito)}`;
     case "riattivazione": return "Tornato socio";
+    // Archiviato dal giro: senza abbonamento da troppo tempo (shared/soglie.js, archiviazioneGiorni).
+    case "archiviazione_automatica": return "Archiviato automaticamente";
+    // Le cose da fare, come le scrive il giro (giro.js): quando compaiono e quando non ci sono più.
+    case "segnale_aperto": return "Da fare";
+    case "segnale_chiuso": return "Non più da fare";
     // Un messaggio automatico di un playbook (lib/invii.js), partito davvero.
     case "messaggio": return `Messaggio automatico «${playbook(a.esito)?.titolo ?? a.esito}»: ${etichettaCanale(a.canale)}`;
     case "ingresso_dopo_contatto": {

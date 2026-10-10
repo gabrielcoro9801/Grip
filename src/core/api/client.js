@@ -337,29 +337,43 @@ export const api = {
 
 	/** La storia di una persona per la segreteria: diario e consensi. */
 	persone: {
-		/** { attivita, consensi } */
+		/** { attivita } */
 		diario(personaId) {
 			return request(`/api/persone/${personaId}/diario`);
 		},
 		nota(personaId, nota) {
 			return request(`/api/persone/${personaId}/note`, { method: 'POST', body: { nota } });
 		},
-		/** Un consenso raccolto in reception. → { consensi } */
-		consenso(personaId, tipo, valore) {
-			return request(`/api/persone/${personaId}/consensi`, { method: 'POST', body: { tipo, valore } });
+		/** I consensi di oggi e il registro intero. → { consensi, storico } */
+		consensi(personaId) {
+			return request(`/api/persone/${personaId}/consensi`);
 		},
-		/** Un contatto con un socio: { canale, esito, nota? } → { attivita }. Nasconde i suoi segnali per qualche giorno. */
-		contatto(personaId, corpo) {
+		/**
+		 * Un consenso raccolto in reception (con il modulo firmato già fra i documenti) o la sua
+		 * revoca (con il motivo): { tipi, valore, documento_id?, nota?, atteso } → { consensi }.
+		 * 409 se il socio ha cambiato le sue scelte dal portale nel frattempo.
+		 */
+		registraConsensi(personaId, corpo) {
+			return request(`/api/persone/${personaId}/consensi`, { method: 'POST', body: corpo });
+		},
+		/**
+		 * Il "Fatto" su una cosa da fare: { canale, segnale, esito? } → { attivita }. Nasconde per
+		 * qualche giorno quel segnale, e solo lui.
+		 */
+		fatto(personaId, corpo) {
 			return request(`/api/persone/${personaId}/contatti`, { method: 'POST', body: corpo });
 		},
-		/** I segnali della persona tornano fra `giorni` giorni. → { attivita } */
-		rimanda(personaId, giorni) {
-			return request(`/api/persone/${personaId}/rimanda`, { method: 'POST', body: { giorni } });
-		},
+
 		/** La ricerca di Ctrl+K: nome, telefono, codice fiscale o codice socio. → { risultati } */
 		cerca(q) {
 			return request(`/api/persone/cerca?q=${encodeURIComponent(q)}`);
 		},
+	},
+
+	/** Le impostazioni di Da fare: soglie e segnali spenti. → { soglie, predefinite, segnali_spenti } */
+	impostazioni: {
+		daFare() { return request('/api/impostazioni/da-fare'); },
+		salvaDaFare(corpo) { return request('/api/impostazioni/da-fare', { method: 'PUT', body: corpo }); },
 	},
 
 	/**
@@ -369,7 +383,6 @@ export const api = {
 	comunicazioni: {
 		leggi() { return request('/api/comunicazioni'); },
 		regole(corpo) { return request('/api/comunicazioni/regole', { method: 'PUT', body: corpo }); },
-		soglie(corpo) { return request('/api/comunicazioni/soglie', { method: 'PUT', body: corpo }); },
 		canale(canale, corpo) { return request(`/api/comunicazioni/canali/${canale}`, { method: 'PUT', body: corpo }); },
 		/** L'invio di prova: → { simulato, a, testo? } (il testo solo se simulato, per leggerne il codice). */
 		prova(canale, a) { return request(`/api/comunicazioni/canali/${canale}/prova`, { method: 'POST', body: { a } }); },

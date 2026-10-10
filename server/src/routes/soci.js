@@ -140,7 +140,7 @@ export default async function sociRoutes(fastify) {
 	 *
 	 * Il motivo (MOTIVI_ABBANDONO, shared/lead.js) è obbligatorio: finisce nel diario e la
 	 * dashboard conta perché se ne vanno. È anche il modo di chiudere uno "scaduto da recuperare"
-	 * che non torna: archiviato, esce da Oggi.
+	 * che non torna: archiviato, esce da Da fare.
 	 *
 	 * Le prenotazioni alle lezioni che devono ancora finire si disdicono: tenere il posto a chi
 	 * non verrà più lo toglierebbe a chi è in lista d'attesa, che così viene promosso.

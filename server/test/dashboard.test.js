@@ -1,7 +1,7 @@
 // La dashboard contata dal server.
 //
 // La pagina scaricava sette tabelle intere e le incrociava nel browser. Ora chiede numeri e
-// avvisi, e ogni parte arriva solo a chi può leggerla.
+// quante persone ci sono in ogni linea di Da fare, e ogni parte arriva solo a chi può leggerla.
 import test, { before, after, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import bcrypt from 'bcryptjs';
@@ -58,46 +58,37 @@ after(async () => {
 const leggi = (chi) => app.inject({ method: 'GET', url: '/api/dashboard', headers: { authorization: `Bearer ${token[chi]}` } });
 
 describe('i numeri li conta il server', () => {
-	test('gli avvisi di rinnovo: chi scade sì, chi ha già rinnovato no', async () => {
+	test('le linee di Da fare: una tessera per linea, contate dal motore dei segnali', async () => {
 		const dati = (await leggi('admin')).json();
-		const nomi = dati.rinnovi.map((r) => r.member_name);
-		assert.ok(nomi.includes('Rinnovo Vicino'));
-		assert.ok(!nomi.includes('Rinnovato Già'), 'chi ha già rinnovato non va richiamato');
-		assert.equal(dati.rinnovi.find((r) => r.member_name === 'Rinnovo Vicino').giorni, 5);
-	});
-
-	test('il certificato in scadenza è un avviso', async () => {
-		const dati = (await leggi('admin')).json();
-		const suo = dati.certificati.find((c) => c.member_name === 'Rinnovo Vicino');
-		assert.ok(suo);
-		assert.equal(suo.giorni, 10);
-		assert.equal(suo.scaduto, false);
-	});
-
-	test('rinnovi e certificati sono quelli del motore dei segnali', async () => {
-		const dati = (await leggi('admin')).json();
-		const motore = (await app.inject({ method: 'GET', url: '/api/segnali?tipo=soci', headers: { authorization: `Bearer ${token.admin}` } })).json();
-		const nostri = (elenco) => elenco.filter((id) => idSoci.includes(id)).sort();
-		const conSegnale = (codici) => motore.persone.filter((p) => p.segnali.some((s) => codici.includes(s.codice))).map((p) => p.socio_id);
-		assert.deepEqual(nostri(dati.rinnovi.map((r) => r.member_id)), nostri(conSegnale(['in_scadenza', 'scaduto_recuperabile'])));
-		assert.deepEqual(nostri(dati.certificati.map((c) => c.member_id)), nostri(conSegnale(['certificato_scaduto', 'certificato_in_scadenza'])));
-		assert.equal(nostri(dati.rinnovi.map((r) => r.member_id)).length, 1);
+		const motore = (await app.inject({ method: 'GET', url: '/api/segnali?da_fare=1', headers: { authorization: `Bearer ${token.admin}` } })).json();
+		assert.deepEqual(Object.keys(dati.da_fare).sort(), ['compleanni', 'contatti', 'documenti', 'frequenza', 'nuovi', 'rinnovi']);
+		// Gli altri file di test aggiungono soci mentre questo gira: i totali si confrontano solo nel tipo.
+		assert.ok(Object.values(dati.da_fare).every((n) => Number.isInteger(n) && n >= 0));
+		// Il nostro in scadenza c'è; chi ha già rinnovato no.
+		const rinnovi = motore.persone.filter((p) => p.da_fare.includes('in_scadenza')).map((p) => p.socio_id);
+		assert.ok(rinnovi.includes(idSoci[0]));
+		assert.ok(!rinnovi.includes(idSoci[1]), 'chi ha già rinnovato non va richiamato');
+		assert.ok(dati.da_fare.rinnovi >= 1);
 	});
 
 	test('i numeri ci sono tutti', async () => {
 		const { kpi } = (await leggi('admin')).json();
-		for (const campo of ['soci_attivi', 'soci_iscritti', 'certificati_in_scadenza', 'prossime_lezioni']) {
+		for (const campo of ['soci_attivi', 'soci_iscritti', 'documenti_da_sistemare', 'prossime_lezioni']) {
 			assert.equal(typeof kpi[campo], 'number', campo);
 		}
 	});
 });
 
 describe('ogni parte a chi può leggerla', () => {
-	test('un ruolo senza documenti non riceve gli avvisi sui certificati', async () => {
+	test('un ruolo senza documenti non riceve il loro numero; senza contatti, niente linea dei contatti', async () => {
 		impostaMatrice({ permessi: { ...PERMESSI_PREDEFINITI, istruttore: { crm_members: ['view'], calendar: ['view'] } }, capacita: {} });
 		const dati = (await leggi('istruttore')).json();
-		assert.equal(dati.certificati, null);
-		assert.equal(dati.kpi.certificati_in_scadenza, null);
-		assert.ok(Array.isArray(dati.rinnovi));
+		assert.equal(dati.kpi.documenti_da_sistemare, null);
+		assert.ok(dati.da_fare && !('contatti' in dati.da_fare));
+	});
+
+	test('chi non segue né soci né contatti non riceve Da fare', async () => {
+		impostaMatrice({ permessi: { ...PERMESSI_PREDEFINITI, istruttore: { calendar: ['view'] } }, capacita: {} });
+		assert.equal((await leggi('istruttore')).json().da_fare, null);
 	});
 });
