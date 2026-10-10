@@ -104,10 +104,29 @@ Tre punti che si sbagliano quasi sempre, spiegati lì per esteso:
 
 ## Stato del progetto
 
+### 10 ottobre 2026 — Ingressi: il registro al posto del bancone
+
+Alle palestre interessa un controllo accessi **passivo**: un lettore QR collegato al tornello.
+Finché il dispositivo non c'è, in Gestione membri → Ingressi non c'è più il Bancone (lettore USB,
+fotocamera, ricerca da bancone, e con loro la libreria `jsqr`), ma il **Registro**:
+
+- gli ingressi di un giorno, con esito, metodo e chi li ha registrati;
+- **Registra ingresso** per le eccezioni (telefono dimenticato, abbonamento appena scaduto), anche
+  con un orario passato: il semaforo si calcola **al giorno dell'ingresso**, e un rosso si
+  registra "in deroga";
+- **annulla** un ingresso sbagliato; l'annullamento resta nel registro delle azioni.
+
+La verifica del QR dinamico resta sul server: è quella che userà il tornello, che dovrà
+interrogare il server online (il codice cambia ogni minuto).
+
+Corretto anche un controllo dei permessi: `POST /api/ingressi?x=1` veniva trattato come una
+lettura, perché si guardava l'indirizzo con la query string invece della rotta, e bastava vedere
+i soci per registrare un ingresso.
+
 ### 10 ottobre 2026 — CRM, fase 2: chi seguire oggi, e perché
 
 Un **solo motore** decide chi va seguito (`shared/segnali.js`), e tutte le schermate lo leggono:
-Oggi, l'elenco dei soci, la scheda, la dashboard, il bancone e le statistiche degli ingressi.
+Oggi, l'elenco dei soci, la scheda, la dashboard, gli ingressi e le loro statistiche.
 Prima c'erano quattro conti separati, con soglie diverse.
 
 - **Fase di ogni persona**, calcolata e mai salvata: contatto, nuovo (primi 30 giorni),
@@ -126,8 +145,9 @@ Prima c'erano quattro conti separati, con soglie diverse.
   tutti gli abbonamenti nel browser.
 - **Scheda del socio**: in testa la fase, i segnali e le azioni; il diario al centro.
 - **Ctrl+K** da ogni pagina: nome, telefono scritto come capita, codice fiscale o codice socio.
-- **Il bancone**: accanto al semaforo, "scade tra 3 giorni: proponi il rinnovo", "bentornato",
-  gli auguri, il 50° ingresso; un tocco lo segna nel diario.
+- **Chi entra**: registrando un ingresso di oggi, accanto al semaforo compaiono "scade tra 3
+  giorni: proponi il rinnovo", "bentornato", gli auguri, il 50° ingresso; un tocco lo segna nel
+  diario.
 - **Il giro quotidiano** (`server/src/giro.js`, `npm run giro`, un Railway Cron: vedi
   [`docs/deploy.md`](docs/deploy.md), 2.7) chiude i contatti non raggiungibili. Prima lo faceva
   la lettura dei contatti: una GET non scrive più.

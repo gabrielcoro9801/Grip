@@ -9,3 +9,9 @@ server/.env
 # uno storage esterno.
 server/uploads/
 
+
+# --- dev-squad (Claude Code) — file locali, non versionare ---
+.claude/settings.local.json
+graphify-out/
+.dev-squad/
+# --- fine dev-squad ---

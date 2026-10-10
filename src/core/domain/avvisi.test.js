@@ -1,4 +1,4 @@
-// Gli avvisi di un socio: la stessa regola al bancone e nel portale.
+// Gli avvisi di un socio: la stessa regola agli ingressi e nel portale.
 import test, { describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { avvisiSocio, semaforo } from './avvisi.js';

@@ -1,8 +1,9 @@
 /**
- * Il giro del CRM, provato in un browser vero: Oggi, il bancone, il diario, la dashboard e Ctrl+K.
+ * Il giro del CRM, provato in un browser vero: Oggi, l'ingresso, il diario, la dashboard e Ctrl+K.
  *
- * Un socio con l'abbonamento che scade fra tre giorni deve comparire in Oggi e al bancone; il
- * "proposto il rinnovo" segnato al bancone finisce nel diario e lo toglie da Oggi; la dashboard
+ * Un socio con l'abbonamento che scade fra tre giorni deve comparire in Oggi e quando entra (la
+ * registrazione dell'ingresso); il "proposto il rinnovo" segnato lì finisce nel diario e lo toglie
+ * da Oggi; la dashboard
  * conta gli stessi rinnovi del motore; Ctrl+K lo trova da un numero scritto in un altro formato.
  *
  * Come si usa:
@@ -80,7 +81,7 @@ try {
 	controlla('Oggi: niente scorrimento orizzontale a 390 px', larghezza <= 390, `${larghezza}px`);
 	await pagina.screenshot({ path: path.join(os.tmpdir(), 'verifica-oggi-telefono.png'), fullPage: true });
 
-	// Il bancone, da desktop.
+	// L'ingresso registrato dallo staff, da desktop: è lì che si propone il rinnovo.
 	await pagina.setViewportSize({ width: 1280, height: 900 });
 
 	// L'elenco dei soci, filtrato dal server e con il filtro nell'indirizzo.
@@ -91,15 +92,16 @@ try {
 	await pagina.screenshot({ path: path.join(os.tmpdir(), 'verifica-oggi-elenco.png') });
 
 	await pagina.goto(`${BASE}/crm/ingressi`, { waitUntil: 'networkidle' });
-	await pagina.getByLabel('Cerca socio per nome').fill(NOME);
+	await pagina.getByRole('button', { name: 'Registra ingresso' }).click();
+	await pagina.getByLabel('Cerca socio').fill(NOME);
 	await pagina.locator('ul li button', { hasText: NOME }).first().click();
 	const proposta = pagina.getByText('Scade tra 3 giorni: proponi il rinnovo');
 	await proposta.waitFor();
-	controlla('Bancone: "scade tra 3 giorni: proponi il rinnovo" accanto al semaforo', await proposta.isVisible());
+	controlla('Ingresso: "scade tra 3 giorni: proponi il rinnovo" accanto al semaforo', await proposta.isVisible());
 	await pagina.getByRole('button', { name: 'Proposto il rinnovo' }).click();
 	await pagina.getByText('Nel diario').waitFor();
 	await pagina.screenshot({ path: path.join(os.tmpdir(), 'verifica-oggi-bancone.png') });
-	controlla('Bancone: un tocco lo segna nel diario', true);
+	controlla('Ingresso: un tocco lo segna nel diario', true);
 
 	await pagina.goto(`${BASE}/oggi`, { waitUntil: 'networkidle' });
 	await pagina.getByRole('heading', { name: 'Oggi' }).waitFor();
@@ -110,7 +112,7 @@ try {
 	const diario = pagina.getByText('Di persona: proposto il rinnovo');
 	await diario.waitFor();
 	controlla('Scheda: il diario ha "Di persona: proposto il rinnovo"', await diario.isVisible());
-	controlla('Scheda: il segnale c\'è ancora, con il giorno in cui torna', await pagina.getByText(/già seguito, torna il/).isVisible());
+	controlla('Scheda: il segnale c\'è ancora, con il giorno in cui torna', await pagina.getByText(/già seguito, torna il/).first().isVisible());
 	await pagina.screenshot({ path: path.join(os.tmpdir(), 'verifica-oggi-scheda.png'), fullPage: true });
 
 	// La dashboard conta come il motore.

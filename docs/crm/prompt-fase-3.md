@@ -93,15 +93,14 @@ React 18 + Vite in `src/`, regole condivise in `shared/`, deploy su Railway. L'o
    settimana, chi è prenotato, presenti e no-show (`esitoPrenotazione`, già pronta), chi salta
    spesso, e una nota nel diario del socio ("si è fatto male al ginocchio"). L'istruttore vede
    solo i soci delle sue lezioni: verifica il permesso con `app.inject`, ruolo per ruolo.
-6. **Il bancone e il tornello.** Nella Fase 2 la verifica dell'ingresso porta i segnali
-   "bancone" e il Bancone li mostra. Ma l'utente sta passando a un controllo passivo (un lettore
-   QR sul tornello, ramo `ingressi-registro-manuale`): il componente `Bancone.jsx` sparisce e
-   arriva `RegistroIngressi.jsx`. **Prima di toccare gli ingressi** guarda `git log main` e
-   chiedi all'utente se quel lavoro è stato unito. Se sì, porta `main` dentro il tuo ramo,
-   risolvi i conflitti in `routes/ingressi.js` (gli import e `schedaIngresso`) e sposta
-   `SegnaliBancone` dove ha senso: probabilmente nel registro manuale e nella scheda, e i
-   segnali "bancone" letti in Oggi come "è entrato oggi: proponi il rinnovo". Chiedi all'utente
-   dove li vuole prima di decidere tu.
+6. **I segnali di chi entra, con il tornello.** Il controllo degli ingressi è passivo: un
+   lettore QR sul tornello, che ancora non c'è, e lo staff che registra a mano le eccezioni
+   (`RegistroIngressi.jsx`, già in `main`; il Bancone non c'è più). La verifica di un ingresso
+   di oggi porta i segnali "bancone" e `SegnaliBancone` li mostra nella finestra "Registra
+   ingresso". Ma chi passa dal tornello non lo vede nessuno: quei segnali ("è entrato oggi:
+   proponi il rinnovo", "bentornato", gli auguri) vanno portati dove lo staff li legge —
+   probabilmente in cima a Oggi e nella scheda. **Chiedi all'utente dove li vuole** prima di
+   decidere tu.
 7. **Il giro misura l'efficacia**: registra `ingresso_dopo_contatto` quando un socio contattato
    per assenza o calo rientra entro 14 giorni (idempotente: una riga per contatto). È la base del
    "dei 40 soci contattati, 26 sono tornati" della Fase 5; per ora basta che il dato ci sia.

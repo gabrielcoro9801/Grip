@@ -208,15 +208,19 @@ export const api = {
 		},
 	},
 
-	/** Gli ingressi al bancone (routes/ingressi.js). */
+	/** Gli ingressi in palestra (routes/ingressi.js). */
 	ingressi: {
-		/** { codice } | { member_id } → { valido, motivo? | socio, semaforo, avvisi, lezioni_oggi, ultimo_ingresso, metodo } */
+		/** { codice } | { member_id, alle? } → { valido, motivo? | socio, semaforo, avvisi, lezioni_oggi, ultimo_ingresso, metodo } */
 		verifica(corpo) {
 			return request('/api/ingressi/verifica', { method: 'POST', body: corpo });
 		},
-		/** { member_id, metodo, deroga? } → { ingresso } */
+		/** { member_id, metodo, deroga?, entrato_alle? } → { ingresso } */
 		registra(corpo) {
 			return request('/api/ingressi', { method: 'POST', body: corpo });
+		},
+		/** Un ingresso registrato per errore. */
+		annulla(id) {
+			return request(`/api/ingressi/${encodeURIComponent(id)}`, { method: 'DELETE' });
 		},
 		/** { dal?, al?, member_id? } → { ingressi } (senza date: oggi) */
 		elenco(filtri = {}) {

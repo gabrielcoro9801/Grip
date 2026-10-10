@@ -254,7 +254,7 @@ Ogni modifica passa da `lib/registro.js`.
 
 Fuori ambito per decisione: pagamenti. Più avanti: assistente AI sul diario e sui testi; tesseramento EPS con scadenza.
 
-**Fase 2, cosa resta fuori** (rimandato, non scartato): il filtro "i miei" e l'aggiornamento in tempo reale (SSE) di Oggi; le liste salvate e le azioni multiple dell'elenco; l'elenco unico persone (soci e contatti restano due pagine); `ingresso_dopo_contatto` nel giro; `rinnovo_richiesto`, che nasce con "Richiedi il rinnovo" (Fase 3). Il bancone legge i segnali, ma il controllo degli ingressi sta passando al tornello (ramo `ingressi-registro-manuale`): dove mostrarli quando nessuno sta al bancone è una scelta della Fase 3.
+**Fase 2, cosa resta fuori** (rimandato, non scartato): il filtro "i miei" e l'aggiornamento in tempo reale (SSE) di Oggi; le liste salvate e le azioni multiple dell'elenco; l'elenco unico persone (soci e contatti restano due pagine); `ingresso_dopo_contatto` nel giro; `rinnovo_richiesto`, che nasce con "Richiedi il rinnovo" (Fase 3). Il bancone non c'è più: il controllo degli ingressi è passivo (tornello) e lo staff registra a mano solo le eccezioni. I segnali "bancone" compaiono nella finestra "Registra ingresso"; dove mostrarli per chi entra dal tornello è una scelta della Fase 3.
 
 ## File chiave toccati
 - Schema: `server/src/db/schema/{crm,lead,courses,common}.js`, più i nuovi `persone.js` e `messaggi.js`; le migrazioni in `server/drizzle/`.

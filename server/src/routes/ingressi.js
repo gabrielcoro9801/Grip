@@ -1,16 +1,18 @@
-// Gli ingressi in palestra: il controllo al bancone e il registro.
+// Gli ingressi in palestra: il registro, e il controllo di chi è in regola.
 //
-// La reception legge il QR del socio (o lo cerca per nome), vede chi è e se è in regola —
-// semaforo verde, giallo o rosso, con gli avvisi di shared/avvisi.js — e l'ingresso si registra.
-// Non sono presenze alle lezioni: dicono chi è entrato e quando, e servono a controllare
-// l'accesso e alle statistiche della palestra.
+// Il controllo pensato è passivo, un lettore QR sul tornello; finché non c'è, lo staff registra
+// a mano le eccezioni (telefono dimenticato, abbonamento appena scaduto), anche a posteriori, e
+// può annullare un ingresso sbagliato. Il semaforo — verde, giallo o rosso, con gli avvisi di
+// shared/avvisi.js — si calcola al giorno dell'ingresso. Non sono presenze alle lezioni: dicono
+// chi è entrato e quando, e servono a controllare l'accesso e alle statistiche della palestra.
 //
-// Il bancone è anche il momento migliore per tenere un socio: la verifica porta i segnali del
-// motore (shared/segnali.js) con pubblico "bancone" — il rinnovo da proporre, il bentornato, gli
-// auguri, il traguardo — e chi non viene più lo dice lo stesso motore, non un conto a parte.
+// Chi entra è anche il momento migliore per tenere un socio: la verifica di un ingresso di oggi
+// porta i segnali del motore (shared/segnali.js) con pubblico "bancone" — il rinnovo da
+// proporre, il bentornato, gli auguri, il traguardo — e chi non viene più lo dice lo stesso
+// motore, non un conto a parte.
 //
 // Permessi: chi vede le anagrafiche dei soci verifica e legge il registro; chi le modifica
-// registra gli ingressi. Il socio non passa di qui.
+// registra e annulla gli ingressi. Il socio non passa di qui.
 import { and, desc, eq, gte, lte, ne } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
@@ -31,6 +33,16 @@ import { oggiIso, oraIso, spostaGiorni, eUnGiorno, giorniFra } from '../../../sh
 const FASCE = [6, 8, 10, 12, 14, 16, 18, 20];
 const GIORNI_SETTIMANA = ['Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab', 'Dom'];
 const ESITO = { verde: 'ammesso', giallo: 'ammesso_con_avvisi', rosso: 'ammesso_in_deroga' };
+// Un orario "adesso" scritto dal browser può essere avanti di qualche secondo sull'orologio del server.
+const TOLLERANZA_FUTURO_MS = 2 * 60_000;
+
+/** L'orario di un ingresso: adesso, o uno passato scelto dallo staff. null se non è una data o è nel futuro. */
+function orarioIngresso(alle) {
+	if (alle == null || alle === '') return new Date();
+	const quando = new Date(alle);
+	if (Number.isNaN(quando.getTime()) || quando.getTime() > Date.now() + TOLLERANZA_FUTURO_MS) return null;
+	return quando;
+}
 
 /** Lunedì = 0 … domenica = 6, da "AAAA-MM-GG". */
 const giornoSettimana = (iso) => {
@@ -38,11 +50,10 @@ const giornoSettimana = (iso) => {
 	return (new Date(Date.UTC(a, m - 1, g)).getUTCDay() + 6) % 7;
 };
 
-/** Tutto quello che il bancone deve sapere di un socio, a oggi. */
-async function schedaIngresso(memberId) {
+/** Tutto quello che serve sapere di un socio per farlo entrare, al giorno dell'ingresso. */
+async function schedaIngresso(memberId, oggi = oggiIso()) {
 	const [socio] = await db.select().from(members).where(eq(members.id, memberId)).limit(1);
 	if (!socio) return null;
-	const oggi = oggiIso();
 	const [iscrizioni, documenti, lezioni, [ultimo]] = await Promise.all([
 		db.select({ start_date: subscriptions.startDate, end_date: subscriptions.endDate }).from(subscriptions).where(eq(subscriptions.memberId, memberId)),
 		db.select({ document_type: memberDocuments.documentType, created_date: memberDocuments.createdDate, expiry_date: memberDocuments.expiryDate })
@@ -59,7 +70,8 @@ async function schedaIngresso(memberId) {
 	const avvisi = avvisiSocio({
 		socio: { date_of_birth: socio.dateOfBirth, archiviato_il: socio.archiviatoIl }, iscrizioni, documenti, oggi,
 	});
-	const [situazione] = (await situazioni({ personaId: socio.personaId })).persone;
+	// I segnali valgono per chi entra adesso: un ingresso segnato a posteriori non ne ha.
+	const [situazione] = oggi === oggiIso() ? (await situazioni({ personaId: socio.personaId })).persone : [];
 	return {
 		socio: {
 			id: socio.id, persona_id: socio.personaId, nome: socio.fullName, codice_socio: socio.codiceSocio,
@@ -67,7 +79,7 @@ async function schedaIngresso(memberId) {
 		},
 		semaforo: semaforo(avvisi),
 		avvisi,
-		// Prima di registrare l'ingresso: "scade tra 3 giorni: proponi il rinnovo", "bentornato".
+		// Prima di registrare l'ingresso di oggi: "scade tra 3 giorni: proponi il rinnovo", "bentornato".
 		segnali: daFare(situazione?.segnali ?? [], 'bancone').map((s) => ({ codice: s.codice, motivo: s.motivo, azioni: s.azioni })),
 		lezioni_oggi: lezioni.map((l) => ({ corso: l.corso, inizio: String(l.inizio).slice(0, 5), fine: String(l.fine).slice(0, 5), stato: l.stato })),
 		ultimo_ingresso: ultimo?.alle ?? null,
@@ -93,50 +105,57 @@ export default async function ingressiRoutes(fastify) {
 		const utente = getUserFromRequest(request);
 		if (!utente) return reply.code(401).send({ error: 'Non autenticato.' });
 		if (utente.ruolo === 'member') return reply.code(403).send({ error: 'Non consentito.' });
-		// Registrare un ingresso è scrivere; verificare e leggere no.
-		const scrive = request.method === 'POST' && request.url === '/api/ingressi';
+		// Registrare e annullare un ingresso è scrivere; verificare e leggere no.
+		// Si guarda la rotta, non l'indirizzo: `request.url` comprende la query string, e con
+		// "POST /api/ingressi?x=1" bastava il permesso di lettura per registrare un ingresso.
+		const scrive = request.method === 'DELETE' || (request.method === 'POST' && request.routeOptions.url === '/api/ingressi');
 		const ok = scrive ? canWriteEntity(utente.ruolo, 'Member') : canReadEntity(utente.ruolo, 'Member');
 		if (!ok) return reply.code(403).send({ error: 'Il tuo ruolo non consente questa operazione.' });
 		request.utente = utente;
 	});
 
 	/**
-	 * POST /api/ingressi/verifica { codice } | { member_id }
+	 * POST /api/ingressi/verifica { codice } | { member_id, alle? }
 	 * → { valido: false, motivo } | { valido: true, metodo, socio, semaforo, avvisi, lezioni_oggi, ultimo_ingresso }
 	 *
-	 * Non scrive niente: il bancone decide se registrare (verde e giallo da soli, rosso solo
-	 * con la deroga).
+	 * Non scrive niente. Con `member_id` è lo staff che sta per registrare a mano, con `alle` se
+	 * l'ingresso è di un altro momento; con `codice` è la stessa verifica che farà il tornello.
 	 */
-	fastify.post('/api/ingressi/verifica', async (request) => {
-		const { codice, member_id: diretto } = request.body ?? {};
+	fastify.post('/api/ingressi/verifica', async (request, reply) => {
+		const { codice, member_id: diretto, alle } = request.body ?? {};
+		const quando = orarioIngresso(alle);
+		if (!quando) return reply.code(400).send({ error: 'Orario non valido.' });
 		let memberId = diretto;
 		if (!memberId) {
 			const esito = await socioDalCodice(codice);
 			if (!esito.memberId) return { valido: false, motivo: esito.motivo };
 			memberId = esito.memberId;
 		}
-		const scheda = await schedaIngresso(memberId);
+		const scheda = await schedaIngresso(memberId, oggiIso(quando));
 		if (!scheda) return { valido: false, motivo: 'Socio inesistente.' };
 		return { valido: true, metodo: diretto ? 'manuale' : 'qr', ...scheda };
 	});
 
 	/**
-	 * POST /api/ingressi { member_id, metodo: 'qr'|'manuale', deroga? } → { ingresso }
+	 * POST /api/ingressi { member_id, metodo: 'qr'|'manuale', deroga?, entrato_alle? } → { ingresso }
 	 *
-	 * Il semaforo si ricalcola qui, non si prende dal client. Rosso si registra solo con la
-	 * deroga, che finisce anche nel registro delle azioni.
+	 * Il semaforo si ricalcola qui, al giorno dell'ingresso, non si prende dal client. Rosso si
+	 * registra solo con la deroga, che finisce anche nel registro delle azioni. `entrato_alle`
+	 * serve a segnare dopo un ingresso già avvenuto: nel futuro no.
 	 */
 	fastify.post('/api/ingressi', async (request, reply) => {
-		const { member_id: memberId, metodo = 'qr', deroga = false } = request.body ?? {};
+		const { member_id: memberId, metodo = 'qr', deroga = false, entrato_alle: alle } = request.body ?? {};
 		if (!memberId) return reply.code(400).send({ error: 'Indica il socio.' });
-		const scheda = await schedaIngresso(memberId);
+		const quando = orarioIngresso(alle);
+		if (!quando) return reply.code(400).send({ error: "L'orario non è valido, o è nel futuro." });
+		const scheda = await schedaIngresso(memberId, oggiIso(quando));
 		if (!scheda) return reply.code(404).send({ error: 'Socio inesistente.' });
 		if (scheda.semaforo === 'rosso' && !deroga) {
 			return reply.code(409).send({ error: scheda.avvisi[0]?.titolo ?? 'Ingresso non consentito.', semaforo: 'rosso' });
 		}
 		const [chi] = await db.select({ nome: staffAccounts.nome }).from(staffAccounts).where(eq(staffAccounts.id, request.utente.sub)).limit(1);
 		const [ingresso] = await db.insert(ingressi).values({
-			memberId, esito: ESITO[scheda.semaforo], avvisi: scheda.avvisi.map((a) => a.codice),
+			memberId, entratoAlle: quando, esito: ESITO[scheda.semaforo], avvisi: scheda.avvisi.map((a) => a.codice),
 			metodo: metodo === 'manuale' ? 'manuale' : 'qr', registratoDaId: request.utente.sub, registratoDaNome: chi?.nome ?? '',
 		}).returning();
 		if (scheda.semaforo === 'rosso') {
@@ -147,6 +166,23 @@ export default async function ingressiRoutes(fastify) {
 		}
 		reply.code(201);
 		return { ingresso: { id: ingresso.id, esito: ingresso.esito, entrato_alle: ingresso.entratoAlle } };
+	});
+
+	/**
+	 * DELETE /api/ingressi/:id → 204
+	 * Un ingresso registrato per errore (il socio sbagliato, due volte). Resta traccia nel
+	 * registro delle azioni.
+	 */
+	fastify.delete('/api/ingressi/:id', async (request, reply) => {
+		const [tolto] = await db.delete(ingressi).where(eq(ingressi.id, request.params.id)).returning();
+		if (!tolto) return reply.code(404).send({ error: 'Ingresso inesistente.' });
+		const [socio] = await db.select({ nome: members.fullName }).from(members).where(eq(members.id, tolto.memberId)).limit(1);
+		const [a, m, g] = oggiIso(tolto.entratoAlle).split('-');
+		await registra(request.utente, {
+			tipoAzione: 'delete', entitaTipo: 'member', entitaNome: socio?.nome ?? '', entitaId: tolto.memberId,
+			dettagli: `Ingresso annullato (era delle ${oraIso(tolto.entratoAlle)} del ${g}/${m}/${a})`,
+		}, request.log);
+		return reply.code(204).send();
 	});
 
 	/**
