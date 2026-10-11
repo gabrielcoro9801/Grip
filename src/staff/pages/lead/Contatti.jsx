@@ -312,16 +312,14 @@ export default function Contatti() {
               const stato = statoLead(l.stato);
               return (
                 <li key={l.id} className="rounded-lg border border-border bg-card p-4 space-y-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      {nomeContatto(l)}
-                      <p className="text-xs text-muted-foreground break-words">{[l.telefono, l.email].filter(Boolean).join(" · ") || "Nessun recapito"}</p>
-                      <p className="text-xs text-muted-foreground">{nomeCanale.get(l.canale_id) ?? "—"} · {formatData(l.data_contatto, "breve")}</p>
+                  <div>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">{nomeContatto(l)}</div>
+                      <StatusBadge status={l.stato} label={stato.etichetta} tone={stato.tono} className="shrink-0" />
                     </div>
-                    <div className="text-right shrink-0">
-                      <StatusBadge status={l.stato} label={stato.etichetta} tone={stato.tono} />
-                      <p className="text-xs text-muted-foreground mt-1">{descriviTempoLead(l, oggi)}</p>
-                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">{descriviTempoLead(l, oggi)}</p>
+                    <p className="text-xs text-muted-foreground break-words">{[l.telefono, l.email].filter(Boolean).join(" · ") || "Nessun recapito"}</p>
+                    <p className="text-xs text-muted-foreground">{nomeCanale.get(l.canale_id) ?? "—"} · {formatData(l.data_contatto, "breve")}</p>
                   </div>
                   {azioniContatto(l, "justify-start")}
                 </li>
