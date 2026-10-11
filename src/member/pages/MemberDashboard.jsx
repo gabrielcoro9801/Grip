@@ -102,7 +102,7 @@ export default function MemberDashboard() {
           <ChevronRight className="w-4 h-4 shrink-0" aria-hidden="true" />
         </Link>
       )}
-      <h1 className="text-2xl font-heading font-bold">
+      <h1 className="text-xl font-heading font-bold">
         Ciao, {member?.nome?.split(" ")[0] || memberUser.nome}
       </h1>
 
@@ -148,11 +148,10 @@ export default function MemberDashboard() {
                   In scadenza tra {daysToExpiry} giorni
                 </div>
               )}
-              <Link to="/member-portal/abbonamento">
-                <Button variant="ghost" size="sm" className="w-full mt-1">
-                  Dettagli <ChevronRight className="w-4 h-4" />
-                </Button>
-              </Link>
+              {/* Un link con l'aspetto di un pulsante, non un pulsante dentro un link (HTML non valido). */}
+              <Button asChild variant="ghost" className="w-full mt-1 min-h-11">
+                <Link to="/member-portal/abbonamento">Dettagli <ChevronRight className="w-4 h-4" /></Link>
+              </Button>
             </div>
           )}
         </CardContent>

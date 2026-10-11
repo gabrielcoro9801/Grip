@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { caricaAbbonamenti, richiediRinnovo } from "@/core/api/portale";
 import { Card, CardContent } from "@/ui/primitivi/card";
 import { Button } from "@/ui/primitivi/button";
 import { Calendar, AlertCircle, CheckCircle, Clock, CreditCard, PauseCircle, Send } from "lucide-react";
 import StatusBadge from "@/ui/StatusBadge";
 import { LoadingState } from "@/ui/Spinner";
+import { ErrorState } from "@/ui/StateViews";
 import { useToast } from "@/ui/primitivi/use-toast";
 import { formatData, formatDataOra, formatEuro } from "@/core/domain/format";
 
@@ -54,13 +55,16 @@ function RichiestaRinnovo({ richiesta, onInviata }) {
 
 export default function MemberSubscription() {
   const [dati, setDati] = useState(null);
+  const [errore, setErrore] = useState(null);
 
-  useEffect(() => {
-    caricaAbbonamenti()
-      .then(setDati)
-      .catch(() => setDati({ abbonamenti: [], richiesta_rinnovo: null }));
+  // Un errore di rete si dice: prima diventava "Nessun abbonamento valido", a chi ce l'ha.
+  const carica = useCallback(() => {
+    setErrore(null);
+    caricaAbbonamenti().then(setDati).catch(setErrore);
   }, []);
+  useEffect(() => { carica(); }, [carica]);
 
+  if (errore) return <ErrorState error={errore} onRetry={carica} className="p-8" />;
   if (!dati) {
     return <LoadingState minHeight="p-8" />;
   }

@@ -144,4 +144,12 @@
   :focus-visible {
     @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
   }
+
+  /* Il portale si usa col pollice: ogni pulsante e ogni scheda è alto e largo almeno 44 px
+     (WCAG 2.5.5). Misurati, i pulsanti "sm" erano di 32 px, le schede di 28, le frecce della
+     settimana di 36. Caselle e interruttori hanno la loro area (label e pseudo-elemento). */
+  .portale :is(button, [role="tab"]):not([role="checkbox"]):not([role="switch"]) {
+    min-height: 2.75rem;
+    min-width: 2.75rem;
+  }
 }

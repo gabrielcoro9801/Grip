@@ -6,6 +6,7 @@ import { caricaAgenda, prenotaLezione, disdiciPrenotazione, caricaFisse, prenota
 import { FisseContext, LeMieFisse } from "@/member/components/fisse";
 import { useToast } from "@/ui/primitivi/use-toast";
 import { LoadingState } from "@/ui/Spinner";
+import { ErrorState } from "@/ui/StateViews";
 import { oggiIso, spostaGiorni } from "@/core/domain/giorni";
 
 /**
@@ -26,6 +27,7 @@ export default function MemberCoursesCalendar() {
   const [fisse, setFisse] = useState([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
+  const [errore, setErrore] = useState(null);
 
   const loadData = useCallback(async () => {
     try {
@@ -38,9 +40,10 @@ export default function MemberCoursesCalendar() {
       const [agenda, mieFisse] = await Promise.all([caricaAgenda({ dal: oggi, al: spostaGiorni(oggi, 60) }), caricaFisse()]);
       setLezioni(agenda.giorni.flatMap((g) => g.lezioni));
       setFisse(mieFisse);
-    } catch {
-      // La schermata resta vuota con il suo messaggio: un errore qui non deve far cadere
-      // l'intera pagina.
+      setErrore(null);
+    } catch (err) {
+      // Si dice, con "Riprova": una lista vuota faceva credere che non ci fossero lezioni.
+      setErrore(err);
     }
     setLoading(false);
   }, []);
@@ -183,6 +186,7 @@ export default function MemberCoursesCalendar() {
       <LoadingState minHeight="h-64" />
     );
   }
+  if (errore) return <ErrorState error={errore} onRetry={() => { setLoading(true); loadData(); }} className="p-8" />;
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-4xl mx-auto space-y-4">
@@ -195,7 +199,7 @@ export default function MemberCoursesCalendar() {
       {/* Si apre sui giorni, a partire da oggi: chi entra qui vuole sapere che cosa c'è e
           prenotare. Prima si apriva sulle categorie, e per vedere una lezione servivano tre tocchi. */}
       <Tabs defaultValue="calendario">
-        <TabsList className="w-full">
+        <TabsList className="w-full h-auto">
           <TabsTrigger value="calendario" className="flex-1">Giorno per giorno</TabsTrigger>
           <TabsTrigger value="categorie" className="flex-1">Per corso</TabsTrigger>
         </TabsList>

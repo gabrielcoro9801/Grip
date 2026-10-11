@@ -10,24 +10,28 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter
 } from "@/ui/primitivi/dialog";
 import { LoadingState } from "@/ui/Spinner";
+import { ErrorState } from "@/ui/StateViews";
 import { formatData } from "@/core/domain/format";
 
 export default function MemberProfile() {
   const { logout, aggiornaUtente } = useMemberAuth();
   const [member, setMember] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [errore, setErrore] = useState(null);
   const [showReport, setShowReport] = useState(false);
   const [cambioPassword, setCambioPassword] = useState(false);
 
   useEffect(() => {
     caricaProfilo()
       .then((profilo) => setMember(profilo?.socio ?? null))
+      .catch(setErrore)
       .finally(() => setLoading(false));
   }, []);
 
   if (loading) {
     return <LoadingState minHeight="p-8" />;
   }
+  if (errore) return <ErrorState error={errore} onRetry={() => window.location.reload()} className="p-8" />;
 
   const fields = [
     { icon: Hash, label: "Codice socio", value: member?.codice_socio },

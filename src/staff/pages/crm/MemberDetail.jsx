@@ -353,7 +353,7 @@ export default function MemberDetail() {
       {/* Intestazione: chi è, e basta. I dati stanno tutti nella tile dell'anagrafica qui
           sotto; ripeterli qui voleva dire leggerli due volte. */}
       <div>
-        <h1 className="text-xl font-heading font-bold">{member.full_name}</h1>
+        <h1 className="text-2xl font-heading font-bold">{member.full_name}</h1>
         <div className="flex flex-wrap items-center gap-2 mt-1">
           <span className="inline-block text-xs font-mono font-medium text-muted-foreground bg-muted px-2 py-0.5 rounded">
             Codice socio: {member.codice_socio}

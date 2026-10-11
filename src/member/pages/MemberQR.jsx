@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { caricaProfilo, caricaAccesso } from "@/core/api/portale";
 import { useMemberAuth } from "@/member/session/MemberAuthContext";
 import { Card, CardContent } from "@/ui/primitivi/card";
@@ -9,6 +9,7 @@ import { useQrDinamico } from "@/ui/hooks/useQrDinamico";
 import { DURATA_FINESTRA_MS } from "../../../shared/qrDinamico.js";
 import StatusBadge from "@/ui/StatusBadge";
 import { LoadingState } from "@/ui/Spinner";
+import { ErrorState } from "@/ui/StateViews";
 import { formatData } from "@/core/domain/format";
 
 const SECONDI_FINESTRA = DURATA_FINESTRA_MS / 1000;
@@ -19,8 +20,12 @@ export default function MemberQR() {
   const [member, setMember] = useState(null);
   const [activeSub, setActiveSub] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [erroreCaricamento, setErroreCaricamento] = useState(null);
 
-  useEffect(() => {
+  // Se la rete cade si dice, con "Riprova": prima la rotella girava per sempre.
+  const carica = useCallback(() => {
+    setLoading(true);
+    setErroreCaricamento(null);
     (async () => {
       // La credenziale la emette la palestra, non il socio.
       //
@@ -28,13 +33,18 @@ export default function MemberQR() {
       // nessuno controllava lo `stato` dichiarato, bastava aprirla dopo essere stati
       // revocati per rifarsene una attiva: la revoca durava fino alla successiva visita
       // del socio. Ora se non c'è, non c'è, e lo si dice.
-      const [profilo, statoAccesso] = await Promise.all([caricaProfilo(), caricaAccesso()]);
-      setMember(profilo?.socio ?? null);
-      setActiveSub(profilo?.abbonamento ?? null);
-      setAccesso(statoAccesso);
+      try {
+        const [profilo, statoAccesso] = await Promise.all([caricaProfilo(), caricaAccesso()]);
+        setMember(profilo?.socio ?? null);
+        setActiveSub(profilo?.abbonamento ?? null);
+        setAccesso(statoAccesso);
+      } catch (err) {
+        setErroreCaricamento(err);
+      }
       setLoading(false);
     })();
   }, []);
+  useEffect(() => { carica(); }, [carica]);
 
   const isRevoked = accesso?.stato === "revocato";
   // Il codice lo firma il server: qui si dice solo per chi (sé stessi) e se ha senso
@@ -55,6 +65,7 @@ export default function MemberQR() {
   if (loading) {
     return <LoadingState minHeight="p-8" />;
   }
+  if (erroreCaricamento) return <ErrorState error={erroreCaricamento} onRetry={carica} className="p-8" />;
 
   // Se l'abbonamento sia ancora buono lo dice il server, con i giorni già contati.
   const daysToExpiry = activeSub?.giorni_alla_scadenza ?? null;
