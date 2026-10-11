@@ -14,7 +14,7 @@ import { useStaffAuth } from "@/staff/lib/StaffAuthContext";
 import { canEdit } from "@/staff/lib/permissions";
 import { formatData, formatDataOra } from "@/core/domain/format";
 import { NOTA_DIARIO_MASSIMO } from "@/core/domain/lead";
-import { oggiIso, spostaGiorni } from "@/core/domain/giorni";
+import { oggiIso, spostaGiorni, lezioneFinita } from "@/core/domain/giorni";
 import { GraduationCap, NotebookPen } from "lucide-react";
 
 // Le prossime lezioni, o le ultime: è lì che si vede chi è venuto e chi no.
@@ -119,6 +119,11 @@ export default function LeMieLezioni() {
   }
 
   const oggi = oggiIso();
+  // "Prossime" sono quelle che devono ancora finire: la lezione di stamattina, con i suoi presenti,
+  // sta in "Ultimi 7 giorni". In cima spingeva la prossima lezione sotto lo schermo del telefono.
+  const lezioni = vista.valore === "passate"
+    ? [...dati.lezioni].reverse()
+    : dati.lezioni.filter((l) => !lezioneFinita({ date: l.data, end_time: l.fine }));
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-3xl mx-auto space-y-6">
       <PageHeader title="Le mie lezioni" description={`${dati.istruttore.nome} · dal ${formatData(dati.dal, "breve")} al ${formatData(dati.al, "breve")}`} />
@@ -134,11 +139,11 @@ export default function LeMieLezioni() {
         ))}
       </div>
 
-      {dati.lezioni.length === 0 ? (
+      {lezioni.length === 0 ? (
         <EmptyState icon={GraduationCap} title="Nessuna lezione" description={vista.valore === "prossime" ? "Non hai lezioni in calendario nei prossimi giorni." : "Nessuna lezione negli ultimi sette giorni."} />
       ) : (
         <ol className="space-y-3">
-          {(vista.valore === "passate" ? [...dati.lezioni].reverse() : dati.lezioni).map((l) => {
+          {lezioni.map((l) => {
             const venuti = l.prenotati.filter((p) => p.esito === "presente").length;
             const attesi = l.prenotati.filter((p) => p.stato === "confirmed").length;
             return (

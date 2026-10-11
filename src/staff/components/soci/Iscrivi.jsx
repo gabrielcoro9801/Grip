@@ -232,11 +232,12 @@ export default function Iscrivi({ aperto, lead = null, onChiudi }) {
             )
           )}
 
-          <p role="status" aria-live="polite" className="text-sm text-muted-foreground sm:text-right min-h-5">{bloccato}</p>
-          <div className="flex flex-col-reverse sm:flex-row sm:justify-between gap-2">
+          <div className="flex flex-col-reverse sm:flex-row sm:items-center gap-2">
             <Button type="button" variant="outline" onClick={() => (passo ? setPasso((p) => p - 1) : onChiudi(false))} disabled={salvando}>
               {passo ? "Indietro" : "Annulla"}
             </Button>
+            {/* Nella stessa riga dei pulsanti, accanto ad "Avanti": è lì che si guarda. */}
+            <p role="status" aria-live="polite" className="flex-1 text-sm text-muted-foreground sm:text-right">{bloccato}</p>
             <div className="flex flex-col-reverse sm:flex-row gap-2">
               {corrente.facoltativo && <Button type="button" variant="ghost" onClick={salta} disabled={salvando}>Salta</Button>}
               <Button type="submit" disabled={Boolean(bloccato) || salvando}>
