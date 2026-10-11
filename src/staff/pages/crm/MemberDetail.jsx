@@ -582,6 +582,7 @@ export default function MemberDetail() {
               )}
               <CampiAnagrafica valori={anagrafica} onChange={setAnagrafica} />
               <SceltaFoto socio={anagrafica} attuale={member.foto_url} file={foto.file} rimossa={foto.rimossa} onChange={setFoto} />
+              <p role="status" aria-live="polite" className="text-sm text-muted-foreground">{motivoAnagraficaIncompleta(anagrafica)}</p>
               <Button type="submit" className="w-full" disabled={Boolean(motivoAnagraficaIncompleta(anagrafica)) || saving}>
                 {saving ? "Salvataggio..." : "Salva"}
               </Button>

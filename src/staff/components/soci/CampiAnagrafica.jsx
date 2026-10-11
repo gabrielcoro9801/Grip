@@ -27,6 +27,9 @@ export function anagraficaDi(socio) {
   return Object.fromEntries(Object.keys(ANAGRAFICA_VUOTA).map((k) => [k, socio?.[k] ?? ANAGRAFICA_VUOTA[k]]));
 }
 
+// "sesso, codice fiscale e data di nascita"
+const elenco = (voci) => (voci.length < 2 ? voci.join("") : `${voci.slice(0, -1).join(", ")} e ${voci.at(-1)}`);
+
 /**
  * Cosa manca perché l'anagrafica si possa salvare, o null.
  *
@@ -34,9 +37,16 @@ export function anagraficaDi(socio) {
  * invece di far partire una richiesta destinata a tornare indietro.
  */
 export function motivoAnagraficaIncompleta(v) {
-  if (!v.nome.trim() || !v.cognome.trim()) return "Nome e cognome sono obbligatori.";
-  if (!v.sesso) return "Indica il sesso.";
-  if (!v.codice_fiscale.trim()) return "Il codice fiscale è obbligatorio.";
+  // Tutto quello che manca insieme: uno alla volta, chi compila scopriva il campo successivo
+  // solo dopo aver riempito quello prima ("Nome e cognome sono obbligatori", e basta).
+  const mancano = [
+    !v.nome.trim() && "nome",
+    !v.cognome.trim() && "cognome",
+    !v.sesso && "sesso",
+    !v.codice_fiscale.trim() && "codice fiscale",
+    !v.date_of_birth && "data di nascita",
+  ].filter(Boolean);
+  if (mancano.length) return `${mancano.length === 1 ? "Manca" : "Mancano"}: ${elenco(mancano)}.`;
   if (!codiceFiscaleValido(v.codice_fiscale)) return "Il codice fiscale non è valido.";
   const nascita = motivoDataNascitaNonValida(v.date_of_birth);
   if (nascita) return nascita;
