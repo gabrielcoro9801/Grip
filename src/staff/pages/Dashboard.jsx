@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { api } from "@/core/api/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/ui/primitivi/card";
-import { Link } from "react-router-dom";
+import { Link, Navigate } from "react-router-dom";
+import { useStaffAuth } from "@/staff/lib/StaffAuthContext";
+import { soloLeSueLezioni } from "@/staff/lib/permissions";
 import { Users, UserCheck, Calendar, Clock, UserX, ListChecks, ChevronRight } from "lucide-react";
 import { LoadingState } from "@/ui/Spinner";
 import { ErrorState } from "@/ui/StateViews";
@@ -23,6 +25,8 @@ import { LINEE } from "@/core/domain/segnali";
  * Una parte che il ruolo non può vedere arriva `null` e non si mostra.
  */
 export default function Dashboard() {
+  const { staffUser } = useStaffAuth();
+  const versoLezioni = soloLeSueLezioni(staffUser?.ruolo);
   const [dati, setDati] = useState(null);
   const [loading, setLoading] = useState(true);
   const [errore, setErrore] = useState(null);
@@ -35,8 +39,9 @@ export default function Dashboard() {
     api.dashboard().then(setDati).catch(setErrore).finally(() => setLoading(false));
   }, []);
 
-  useEffect(() => { carica(); }, [carica]);
+  useEffect(() => { if (!versoLezioni) carica(); }, [carica, versoLezioni]);
 
+  if (versoLezioni) return <Navigate to="/istruttore" replace />;
   if (loading) return <LoadingState minHeight="h-full" />;
   if (errore) return <ErrorState error={errore} onRetry={carica} className="h-full" />;
 

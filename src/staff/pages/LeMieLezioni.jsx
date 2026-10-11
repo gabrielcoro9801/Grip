@@ -134,21 +134,6 @@ export default function LeMieLezioni() {
         ))}
       </div>
 
-      {dati.spesso.length > 0 && (
-        <section aria-labelledby="salta-spesso">
-          <h2 id="salta-spesso" className="text-sm font-heading font-semibold mb-2">Saltano spesso (ultime 4 settimane)</h2>
-          <ul className="flex flex-wrap gap-2">
-            {dati.spesso.map((s) => (
-              <li key={s.socio_id}>
-                <button type="button" onClick={() => setAperto(s)} className="text-sm rounded-full border px-3 py-1 hover:bg-muted/50">
-                  {s.nome} · {s.no_show} no-show
-                </button>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-
       {dati.lezioni.length === 0 ? (
         <EmptyState icon={GraduationCap} title="Nessuna lezione" description={vista.valore === "prossime" ? "Non hai lezioni in calendario nei prossimi giorni." : "Nessuna lezione negli ultimi sette giorni."} />
       ) : (
@@ -201,6 +186,24 @@ export default function LeMieLezioni() {
           })}
         </ol>
       )}
+      {/* Dopo le lezioni, non prima: chi apre la pagina cerca chi viene stasera, e la lista di
+          chi salta spesso spingeva la prima lezione sotto lo schermo del telefono. Nelle
+          lezioni chi salta spesso è già segnato accanto al nome. */}
+      {dati.spesso.length > 0 && (
+        <section aria-labelledby="salta-spesso">
+          <h2 id="salta-spesso" className="text-sm font-heading font-semibold mb-2">Saltano spesso (ultime 4 settimane)</h2>
+          <ul className="flex flex-wrap gap-2">
+            {dati.spesso.map((s) => (
+              <li key={s.socio_id}>
+                <button type="button" onClick={() => setAperto(s)} className="text-sm rounded-full border px-3 py-1 hover:bg-muted/50">
+                  {s.nome} · {s.no_show} no-show
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       <NoteSocio socio={aperto} puoScrivere={puoScrivere} onChiudi={() => setAperto(null)} />
     </div>
   );

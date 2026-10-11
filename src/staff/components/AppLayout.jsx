@@ -1,7 +1,7 @@
 import React, { useState, Suspense } from "react";
 import { Outlet, Link, useLocation } from "react-router-dom";
 import { useStaffAuth } from "@/staff/lib/StaffAuthContext";
-import { canAccess, ROLES, SIDEBAR_PERMISSIONS } from "@/staff/lib/permissions";
+import { canAccess, ROLES, SIDEBAR_PERMISSIONS, soloLeSueLezioni } from "@/staff/lib/permissions";
 import StaffLogin from "@/staff/pages/StaffLogin";
 import {
   LayoutDashboard, Users, Calendar,
@@ -71,6 +71,8 @@ export default function AppLayout() {
   // Filter nav items by permissions
   const visibleNavItems = navItems.filter(item => {
     if (item.roles && !item.roles.includes(staffUser.ruolo)) return false;
+    // Per chi ha solo le sue lezioni la dashboard porta a "Le mie lezioni": due voci per un posto.
+    if (item.path === "/" && soloLeSueLezioni(staffUser.ruolo)) return false;
     const requiredModule = SIDEBAR_PERMISSIONS[item.path];
     if (!requiredModule) return true; // no permission required
     return [requiredModule].flat().some((m) => canAccess(staffUser.ruolo, m, "view"));
