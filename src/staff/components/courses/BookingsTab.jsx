@@ -135,13 +135,13 @@ export default function BookingsTab({ data, reload }) {
 
   const annulla = async (b) => {
     const ok = await conferma({
-      title: `Annullare la prenotazione di ${b.member_name}?`,
+      title: `Disdire la prenotazione di ${b.member_name}?`,
       description: b.status === "confirmed" ? "Il posto si libera, e il primo in lista d'attesa viene confermato." : undefined,
-      confirmLabel: "Annulla prenotazione",
+      confirmLabel: "Disdici",
       cancelLabel: "Lascia com'è",
       destructive: true,
     });
-    if (ok) await esegui(() => api.prenotazioni.cambiaStato(b.id, "cancelled"), `${b.member_name}: prenotazione annullata`);
+    if (ok) await esegui(() => api.prenotazioni.cambiaStato(b.id, "cancelled"), `${b.member_name}: prenotazione disdetta`);
   };
 
   // Una disdetta torna confermata se c'è posto, altrimenti in coda alla lista.
@@ -158,7 +158,7 @@ export default function BookingsTab({ data, reload }) {
   const elimina = async (b) => {
     const ok = await conferma({
       title: `Eliminare la prenotazione di ${b.member_name}?`,
-      description: "Sparisce anche dallo storico, come se non fosse mai stata fatta: serve per quelle inserite per errore. Per una disdetta usa «Annulla».",
+      description: "Sparisce anche dallo storico, come se non fosse mai stata fatta: serve per quelle inserite per errore. Per una disdetta usa «Disdici»: la riga resta.",
       confirmLabel: "Elimina",
       destructive: true,
     });
@@ -284,7 +284,7 @@ export default function BookingsTab({ data, reload }) {
                         <span className="flex-1 min-w-[10rem] text-sm font-medium truncate">{b.member_name}</span>
                         <StatusBadge
                           status={b.status}
-                          label={b.status === "waitlisted" ? `In lista · ${b.waitlist_position ?? "?"}°` : b.status === "cancelled" ? "Annullata" : "Confermata"}
+                          label={b.status === "waitlisted" ? `In lista · ${b.waitlist_position ?? "?"}°` : b.status === "cancelled" ? "Disdetta" : "Confermata"}
                         />
                         {modificabile && (
                           <div className="flex items-center gap-0.5">
@@ -313,17 +313,22 @@ export default function BookingsTab({ data, reload }) {
                               </Button>
                             )}
                             {b.status === "cancelled" ? (
-                              <Button variant="ghost" size="icon" className="h-8 w-8" title="Riattiva" aria-label={`Riattiva ${b.member_name}`} disabled={inCorso || lezione.status === "cancelled"} onClick={() => riattiva(b, lezione)}>
-                                <RotateCcw className="w-3.5 h-3.5" />
+                              <Button variant="ghost" size="sm" className="h-8 px-2" aria-label={`Riattiva ${b.member_name}`} disabled={inCorso || lezione.status === "cancelled"} onClick={() => riattiva(b, lezione)}>
+                                <RotateCcw className="w-3.5 h-3.5 mr-1" aria-hidden="true" /> Riattiva
                               </Button>
                             ) : (
-                              <Button variant="ghost" size="icon" className="h-8 w-8" title="Annulla prenotazione" aria-label={`Annulla ${b.member_name}`} disabled={inCorso} onClick={() => annulla(b)}>
-                                <X className="w-3.5 h-3.5" />
+                              <Button variant="ghost" size="sm" className="h-8 px-2" aria-label={`Disdici ${b.member_name}`} disabled={inCorso} onClick={() => annulla(b)}>
+                                <X className="w-3.5 h-3.5 mr-1" aria-hidden="true" /> Disdici
                               </Button>
                             )}
-                            <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" title="Elimina (inserita per errore)" aria-label={`Elimina ${b.member_name}`} disabled={inCorso} onClick={() => elimina(b)}>
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </Button>
+                            {/* Disdire lascia la riga (il socio aveva prenotato); eliminare la cancella, per
+                                quella inserita per errore. Erano una "✕" e un cestino affiancati, senza testo:
+                                il cestino ora sta in fondo, staccato, e dice che cosa fa. */}
+                            <span className="ml-1 pl-1 border-l border-border">
+                              <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" title="Elimina: inserita per errore" aria-label={`Elimina la prenotazione di ${b.member_name}, inserita per errore`} disabled={inCorso} onClick={() => elimina(b)}>
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </Button>
+                            </span>
                           </div>
                         )}
                       </li>
