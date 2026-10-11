@@ -31,6 +31,7 @@ const SPIEGAZIONE_STATO = {
 };
 
 const ORDINE_STATO = { attivo: 0, sospeso: 1, annullato: 2 };
+const TONO_STATO = { attivo: "positivo", sospeso: "attesa", annullato: "neutro" };
 
 /**
  * Il catalogo dei tipi di abbonamento.
@@ -80,12 +81,12 @@ export default function PlansCatalog() {
         vendibile_fino_al: form.vendibile_fino_al || null,
         description: form.description.trim() || null,
       });
-      toast({ title: "Abbonamento creato" });
+      toast({ title: "Tipo aggiunto al listino" });
       setShowForm(false);
       setForm(MODULO_VUOTO);
       loadData();
     } catch (err) {
-      toast({ title: "Abbonamento non creato", description: err.message, variant: "destructive" });
+      toast({ title: "Tipo non aggiunto", description: err.message, variant: "destructive" });
     }
     setSalvando(false);
   };
@@ -107,7 +108,7 @@ export default function PlansCatalog() {
         title: `Annullare «${tipo.name}»?`,
         description:
           "Non si venderà più, e lo stato non si può riportare indietro: per rimetterlo in " +
-          "catalogo bisognerà creare un abbonamento nuovo. Le iscrizioni già vendute restano valide.",
+          "listino bisognerà creare un tipo nuovo. Gli abbonamenti già venduti restano validi.",
         confirmLabel: "Annulla definitivamente",
         cancelLabel: "Non annullare",
         destructive: true,
@@ -134,10 +135,10 @@ export default function PlansCatalog() {
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
       {dialogoConferma}
-      <PageHeader title="Catalogo abbonamenti" description="I tipi di abbonamento da vendere ai soci">
+      <PageHeader title="Listino" description="I tipi di abbonamento che la palestra vende: si vendono ai soci dalla loro scheda">
         {puoModificare && (
           <Button size="sm" onClick={() => { setForm(MODULO_VUOTO); setShowForm(true); }}>
-            <Plus className="w-4 h-4 mr-1" /> Nuovo abbonamento
+            <Plus className="w-4 h-4 mr-1" /> Nuovo tipo
           </Button>
         )}
       </PageHeader>
@@ -145,7 +146,7 @@ export default function PlansCatalog() {
       {plans.length === 0 ? (
         <EmptyState
           icon={BookOpen}
-          title="Nessun abbonamento in catalogo"
+          title="Il listino è vuoto"
           description="Qui si definiscono i tipi di abbonamento — prezzo, durata, fino a quando si vendono — da assegnare poi ai soci."
         />
       ) : (
@@ -160,7 +161,7 @@ export default function PlansCatalog() {
                 <div className="flex items-start justify-between gap-2">
                   <h3 className="font-heading font-semibold truncate" title={plan.name}>{plan.name}</h3>
                   <div className="flex items-center gap-1 flex-shrink-0">
-                    <StatusBadge status={plan.stato} />
+                    <StatusBadge status={plan.stato} label={STATI_TIPO.find((s) => s.valore === plan.stato)?.etichetta} tone={TONO_STATO[plan.stato]} />
                     {puoModificare && plan.stato !== "annullato" && (
                       <Button
                         variant="ghost"
@@ -199,7 +200,7 @@ export default function PlansCatalog() {
       <Dialog open={showForm} onOpenChange={setShowForm}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>Nuovo abbonamento</DialogTitle>
+            <DialogTitle>Nuovo tipo di abbonamento</DialogTitle>
             <DialogDescription>Dopo la creazione non si modifica: se ne cambia solo lo stato.</DialogDescription>
           </DialogHeader>
           <form onSubmit={crea} className="space-y-3">
@@ -237,7 +238,7 @@ export default function PlansCatalog() {
               <Textarea id="piano-note" rows={3} maxLength={NOTE_MASSIMO} value={form.description} onChange={imposta("description")} className="resize-none" />
             </div>
             <Button type="submit" className="w-full" disabled={!moduloCompleto || salvando}>
-              {salvando ? "Creazione..." : "Crea abbonamento"}
+              {salvando ? "Creazione..." : "Aggiungi al listino"}
             </Button>
           </form>
         </DialogContent>
@@ -246,7 +247,7 @@ export default function PlansCatalog() {
       <Dialog open={!!cambioStato} onOpenChange={(aperta) => !aperta && setCambioStato(null)}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>Stato dell'abbonamento</DialogTitle>
+            <DialogTitle>Stato del tipo</DialogTitle>
             <DialogDescription>{cambioStato?.tipo.name}</DialogDescription>
           </DialogHeader>
           {cambioStato && (
@@ -265,14 +266,14 @@ export default function PlansCatalog() {
                   {SPIEGAZIONE_STATO[cambioStato.stato]}
                 </p>
               </div>
-              <p className="text-xs text-muted-foreground">Le iscrizioni già vendute non cambiano.</p>
+              <p className="text-xs text-muted-foreground">Gli abbonamenti già venduti non cambiano.</p>
               <Button
                 type="submit"
                 className="w-full"
                 variant={cambioStato.stato === "annullato" ? "destructive" : "default"}
                 disabled={cambioStato.stato === cambioStato.tipo.stato || salvando}
               >
-                {salvando ? "Salvataggio..." : cambioStato.stato === "annullato" ? "Annulla definitivamente" : "Salva stato"}
+                {salvando ? "Salvataggio..." : cambioStato.stato === "annullato" ? "Ritira definitivamente" : "Salva stato"}
               </Button>
             </form>
           )}

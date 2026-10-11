@@ -113,9 +113,9 @@ export default function AccountSoci({ accounts, members, reload }) {
 								<td className="py-3 px-4 text-muted-foreground">{acc.email || "—"}</td>
 								<td className="py-3 px-4">
 									{acc.attivo ? (
-										<Badge className="bg-success/10 text-success border-success/30">Attivo</Badge>
+										<Badge className="bg-success/10 text-success border-success/30">Abilitato</Badge>
 									) : (
-										<Badge className="bg-destructive/10 text-destructive border-destructive/30">Sospeso</Badge>
+										<Badge className="bg-destructive/10 text-destructive border-destructive/30">Disabilitato</Badge>
 									)}
 								</td>
 								<td className="py-3 px-4 text-muted-foreground text-xs">

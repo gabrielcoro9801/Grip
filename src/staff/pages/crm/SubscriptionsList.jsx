@@ -40,12 +40,12 @@ export default function SubscriptionsList() {
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
-      <PageHeader title="Iscrizioni" description={`${subscriptions.length} iscrizioni totali`}>
+      <PageHeader title="Abbonamenti venduti" description={`${subscriptions.length} in tutto`}>
         <Select value={filter} onValueChange={setFilter}>
           <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Tutti</SelectItem>
-            <SelectItem value="active">Attivi</SelectItem>
+            <SelectItem value="active">Validi</SelectItem>
             <SelectItem value="expiring">In scadenza</SelectItem>
             <SelectItem value="expired">Scaduti</SelectItem>
           </SelectContent>
@@ -55,8 +55,8 @@ export default function SubscriptionsList() {
       {filtered.length === 0 ? (
         <EmptyState
           icon={CreditCard}
-          title="Nessuna iscrizione"
-          description="Le iscrizioni nascono dalla scheda di un socio, assegnandogli un abbonamento del catalogo."
+          title="Nessun abbonamento venduto"
+          description="Un abbonamento si vende dalla scheda di un socio, scegliendo un tipo dal listino."
         />
       ) : (
       <div className="overflow-x-auto">

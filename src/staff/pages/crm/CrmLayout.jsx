@@ -4,12 +4,13 @@ import { Users, BookOpen, CreditCard, DoorOpen } from "lucide-react";
 import SectionTabs from "@/staff/components/SectionTabs";
 import PageContainer from "@/staff/components/PageContainer";
 
-// "Elenco soci" e non "Gestione membri": la sezione si chiama già così nel menu laterale,
-// e una voce che ripete il nome della sezione non dice dove porta.
+// "Elenco soci" e non "Soci": la sezione si chiama già così nel menu laterale, e una voce che
+// ripete il nome della sezione non dice dove porta. Listino e abbonamenti venduti: il glossario
+// (docs/ux/glossario.md) — "Abbonamenti" era il listino e "Iscrizioni" gli abbonamenti venduti.
 const tabs = [
   { label: "Elenco soci", path: "/crm", icon: Users, end: true },
-  { label: "Abbonamenti", path: "/crm/abbonamenti", icon: BookOpen },
-  { label: "Iscrizioni", path: "/crm/iscrizioni", icon: CreditCard },
+  { label: "Listino", path: "/crm/listino", icon: BookOpen },
+  { label: "Abbonamenti venduti", path: "/crm/venduti", icon: CreditCard },
   { label: "Ingressi", path: "/crm/ingressi", icon: DoorOpen },
 ];
 
@@ -24,7 +25,7 @@ export default function CrmLayout() {
 
   return (
     <div className="flex flex-col h-full">
-      {!schedaSocio && <SectionTabs tabs={tabs} label="Sezioni di Gestione membri" />}
+      {!schedaSocio && <SectionTabs tabs={tabs} label="Sezioni di Soci" />}
       <div className="flex-1 overflow-y-auto">
         <PageContainer>
           <Outlet />

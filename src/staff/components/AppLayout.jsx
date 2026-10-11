@@ -23,7 +23,7 @@ const navItems = [
   // Il lavoro del giorno viene prima di tutto: chi seguire, e perché, per linee.
   { label: "Da fare", path: "/da-fare", icon: ListChecks },
   { label: "Dashboard", path: "/", icon: LayoutDashboard },
-  { label: "Gestione membri", path: "/crm", icon: Users },
+  { label: "Soci", path: "/crm", icon: Users },
   // I lead sono contatti, non soci: non hanno scheda, abbonamento né accesso. Stanno in una
   // sezione loro per non mescolarsi con chi è già iscritto.
   { label: "Lead", path: "/lead", icon: UserPlus },

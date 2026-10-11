@@ -50,7 +50,7 @@ export const CREATE_FORBIDDEN = { Booking: SOLO_DA_PRENOTAZIONI };
 export const UPDATE_FORBIDDEN = { Booking: SOLO_DA_PRENOTAZIONI };
 export const DELETE_FORBIDDEN = {
 	// Le iscrizioni vendute puntano al tipo: cancellarlo lascerebbe iscrizioni senza origine.
-	Plan: "Un abbonamento del catalogo non si elimina: si sospende o si annulla.",
+	Plan: "Un tipo del listino non si elimina: si sospende o si ritira.",
 	Booking: SOLO_DA_PRENOTAZIONI,
 };
 
@@ -357,7 +357,7 @@ const WRITE_TRANSFORMS = {
 		const rest = { ...(body ?? {}) };
 		if (!creazione) {
 			const campi = Object.keys(rest).filter((k) => !['id', 'stato', 'created_date', 'updated_date'].includes(k));
-			if (campi.length) throw rifiuta("Di un abbonamento del catalogo si cambia solo lo stato.");
+			if (campi.length) throw rifiuta("Di un tipo del listino si cambia solo lo stato.");
 			if (!statoTipoValido(rest.stato)) throw rifiuta('Stato non valido: attivo, sospeso o annullato.');
 			return { stato: rest.stato, updated_date: new Date().toISOString() };
 		}
@@ -404,7 +404,7 @@ const WRITE_TRANSFORMS = {
 					.innerJoin(plans, eq(subscriptions.planId, plans.id))
 					.where(eq(subscriptions.id, id))
 					.limit(1);
-				if (!attuale) throw rifiuta("Quest'iscrizione non ha un tipo da cui ricalcolare la scadenza.");
+				if (!attuale) throw rifiuta("Questo abbonamento non ha un tipo da cui ricalcolare la scadenza.");
 				rest.end_date = dataFineAbbonamento(rest.start_date, attuale.durataValore, attuale.durataUnita);
 				if (!rest.end_date) throw rifiuta("La data di inizio non è valida.");
 			}

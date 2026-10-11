@@ -109,7 +109,7 @@ export default function MemberQR() {
                 <div className="absolute inset-0 bg-white/80 rounded-xl flex items-center justify-center">
                   <div className="text-center">
                     <AlertCircle className="w-10 h-10 text-destructive mx-auto mb-1" />
-                    <p className="text-xs text-destructive font-medium">Abbonamento non attivo</p>
+                    <p className="text-xs text-destructive font-medium">Abbonamento non valido</p>
                   </div>
                 </div>
               )}

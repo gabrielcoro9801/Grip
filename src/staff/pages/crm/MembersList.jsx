@@ -127,7 +127,7 @@ export default function MembersList() {
   const [ordine, setOrdine] = useState("nome");
   const [vista, setVista] = useState(vistaSalvata);
   const scegliVista = (v) => { setVista(v); salvaVista(v); };
-  // "Aggiungi socio" è il flusso Iscrivi, per chi entra direttamente senza essere stato un contatto.
+  // "Iscrivi", per chi entra direttamente senza essere stato un contatto.
   const [showForm, setShowForm] = useState(false);
   const [errore, setErrore] = useState(null);
   const [daContattare, setDaContattare] = useState(null);
@@ -165,9 +165,9 @@ export default function MembersList() {
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
-      <PageHeader title="Gestione membri" description={`${frequentano} ${frequentano === 1 ? "socio" : "soci"}${exSoci ? ` · ${exSoci} ${exSoci === 1 ? "archiviato" : "archiviati"}` : ""}`}>
+      <PageHeader title="Soci" description={`${frequentano} ${frequentano === 1 ? "socio" : "soci"}${exSoci ? ` · ${exSoci} ${exSoci === 1 ? "archiviato" : "archiviati"}` : ""}`}>
         <Button onClick={() => setShowForm(true)} size="sm">
-          <Plus className="w-4 h-4 mr-1" /> Aggiungi socio
+          <Plus className="w-4 h-4 mr-1" /> Iscrivi
         </Button>
       </PageHeader>
 

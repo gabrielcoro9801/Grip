@@ -81,7 +81,7 @@ export default function MemberDashboard() {
         </CardHeader>
         <CardContent>
           {!activeSub ? (
-            <p className="text-sm text-muted-foreground text-center py-3">Nessun abbonamento attivo</p>
+            <p className="text-sm text-muted-foreground text-center py-3">Nessun abbonamento valido</p>
           ) : (
             <div className="space-y-2">
               <div className="flex items-center justify-between">

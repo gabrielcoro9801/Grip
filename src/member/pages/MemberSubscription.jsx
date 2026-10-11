@@ -83,7 +83,7 @@ export default function MemberSubscription() {
         <Card className="border-0 shadow-sm">
           <CardContent className="p-8 text-center">
             <CreditCard className="w-10 h-10 text-muted-foreground/40 mx-auto mb-2" />
-            <p className="text-sm text-muted-foreground">Nessun abbonamento attivo</p>
+            <p className="text-sm text-muted-foreground">Nessun abbonamento valido</p>
           </CardContent>
         </Card>
       ) : (
@@ -127,7 +127,7 @@ export default function MemberSubscription() {
                     </div>
                   ) : (
                     <div className="flex items-center gap-2 p-2 rounded-lg bg-success/10 border border-success/30 text-success text-xs">
-                      <CheckCircle className="w-4 h-4" /> Attivo — scade tra {daysToExpiry} giorni
+                      <CheckCircle className="w-4 h-4" /> Valido — scade tra {daysToExpiry} giorni
                     </div>
                   )}
                   {sub.giorni_sospesi > 0 && (

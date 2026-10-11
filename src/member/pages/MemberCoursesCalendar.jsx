@@ -97,7 +97,7 @@ export default function MemberCoursesCalendar() {
     setActionLoading(true);
     try {
       await disdiciPrenotazione(bookingId);
-      toast({ title: "Prenotazione annullata" });
+      toast({ title: "Prenotazione disdetta" });
       loadData();
     } catch (err) {
       toast({ title: "Errore", description: err.message, variant: "destructive" });

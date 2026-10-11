@@ -64,7 +64,7 @@ export default function CourseSessionsList({
         )}
         {memberActiveBookings.length > 0 && (
           <Button size="sm" variant="outline" onClick={() => setShowCancelAllPreview(true)} disabled={actionLoading}>
-            <XCircle className="w-4 h-4 mr-1" /> Annulla tutte ({memberActiveBookings.length})
+            <XCircle className="w-4 h-4 mr-1" /> Disdici tutte ({memberActiveBookings.length})
           </Button>
         )}
       </div>
@@ -136,15 +136,15 @@ export default function CourseSessionsList({
       {/* Preview Annulla tutte */}
       <Dialog open={showCancelAllPreview} onOpenChange={setShowCancelAllPreview}>
         <DialogContent className="max-w-sm">
-          <DialogHeader><DialogTitle>Annulla tutte le prenotazioni</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>Disdici tutte le prenotazioni</DialogTitle></DialogHeader>
           <DialogDescription>
-            Verranno annullate <strong>{memberActiveBookings.length}</strong> prenotazioni su "{course?.name}".
+            Verranno disdette <strong>{memberActiveBookings.length}</strong> prenotazioni su "{course?.name}".
             Le eventuali promozioni dalla lista d'attesa avverranno automaticamente.
           </DialogDescription>
           <div className="flex gap-2 justify-end">
             <Button variant="outline" onClick={() => setShowCancelAllPreview(false)}>Annulla</Button>
             <Button variant="destructive" onClick={handleConfirmCancelAll} disabled={actionLoading}>
-              {actionLoading ? "Cancellazione..." : "Conferma"}
+              {actionLoading ? "Disdetta..." : "Disdici tutte"}
             </Button>
           </div>
         </DialogContent>

@@ -24,21 +24,21 @@ const TONI = {
 // Le chiavi Pending/Shipped/Delivered che stavano qui erano residui del
 // template e-commerce da cui nasce il progetto: nessuna era mai usata.
 const STATI = {
-  // Abbonamenti e iscrizioni
-  active: { label: "Attivo", tono: "positivo" },
+  // Abbonamenti venduti. "Valido" e non "Attivo": attivo è il socio (docs/ux/glossario.md).
+  active: { label: "Valido", tono: "positivo" },
   expiring: { label: "In scadenza", tono: "attesa" },
   expired: { label: "Scaduto", tono: "negativo" },
 
   // Prenotazioni ai corsi
   confirmed: { label: "Confermato", tono: "positivo" },
   waitlisted: { label: "In lista d'attesa", tono: "attesa" },
-  cancelled: { label: "Cancellato", tono: "neutro" },
+  cancelled: { label: "Disdetta", tono: "neutro" },
 
   // Sessioni dei corsi
   annullata: { label: "Annullata", tono: "negativo" },
 
   // Codici di accesso
-  attivo: { label: "Attivo", tono: "positivo" },
+  attivo: { label: "Valido", tono: "positivo" },
 
   // Tipi di abbonamento del catalogo (attivo è già sopra)
   sospeso: { label: "Sospeso", tono: "attesa" },

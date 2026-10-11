@@ -28,7 +28,7 @@ const ACTION_LABELS = {
 // della contabilità sono sparite con la contabilità.
 const ENTITY_LABELS = {
   member: "Socio",
-  subscription: "Iscrizione",
+  subscription: "Abbonamento",
   plan: "Abbonamento",
   member_document: "Documento",
   qraccesso: "Codice d'accesso",

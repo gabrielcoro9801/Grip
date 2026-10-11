@@ -183,7 +183,7 @@ export default function MemberDetail() {
       setShowSubForm(false);
       setSubForm({ plan_id: "", start_date: oggiIso() });
       loadData();
-      toast({ title: "Abbonamento creato" });
+      toast({ title: "Abbonamento venduto" });
     } catch (err) {
       toast({ title: "Errore", description: err.message, variant: "destructive" });
     } finally {
@@ -347,7 +347,7 @@ export default function MemberDetail() {
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-5xl mx-auto space-y-6">
       <Link to="/crm" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
-        <ArrowLeft className="w-4 h-4" /> Torna a Gestione membri
+        <ArrowLeft className="w-4 h-4" /> Torna ai soci
       </Link>
 
       {/* Intestazione: chi è, e basta. I dati stanno tutti nella tile dell'anagrafica qui
@@ -421,7 +421,7 @@ export default function MemberDetail() {
             <CardTitle className="text-sm font-heading flex items-center gap-2"><CreditCard className="w-4 h-4" /> Abbonamenti</CardTitle>
             {/* Un socio archiviato non compra abbonamenti: prima lo si riattiva. */}
             {puoModificare && !member.archiviato_il && (
-              <Button size="sm" variant="outline" onClick={apriVendita}><Plus className="w-3 h-3 mr-1" /> Nuovo</Button>
+              <Button size="sm" variant="outline" onClick={apriVendita}><Plus className="w-3 h-3 mr-1" /> Vendi</Button>
             )}
           </CardHeader>
           <CardContent>
@@ -487,7 +487,7 @@ export default function MemberDetail() {
                     </p>
                     <p className="text-xs text-muted-foreground">Generata il {formatData(qrAccess.data_generazione, "lungo")}</p>
                     <Badge variant="outline" className={`mt-1 text-xs ${qrAccess.stato === "attivo" ? "bg-success/10 text-success border-success/30" : "bg-destructive/10 text-destructive border-destructive/30"}`}>
-                      {qrAccess.stato === "attivo" ? "Attivo" : "Revocato"}
+                      {qrAccess.stato === "attivo" ? "Valido" : "Revocato"}
                     </Badge>
                   </div>
                 </div>
@@ -560,12 +560,12 @@ export default function MemberDetail() {
       {/* New Subscription Dialog */}
       <Dialog open={showSubForm} onOpenChange={setShowSubForm}>
         <DialogContent className="max-w-sm">
-          <DialogHeader><DialogTitle>Nuovo abbonamento</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>Vendi un abbonamento</DialogTitle></DialogHeader>
           <form onSubmit={handleNewSubscription} className="space-y-3">
             <div>
-              <Label>Abbonamento *</Label>
+              <Label>Tipo, dal listino *</Label>
               <Select value={subForm.plan_id} onValueChange={v => setSubForm({...subForm, plan_id: v})}>
-                <SelectTrigger><SelectValue placeholder="Seleziona un abbonamento" /></SelectTrigger>
+                <SelectTrigger><SelectValue placeholder="Scegli un tipo" /></SelectTrigger>
                 <SelectContent>
                   {plans.map(p => (
                     <SelectItem key={p.id} value={p.id}>{p.name} — {descriviDurata(p.durata_valore, p.durata_unita)} — {formatEuro(p.price)}</SelectItem>
@@ -576,9 +576,9 @@ export default function MemberDetail() {
             <div><Label>Data inizio abbonamento</Label><Input type="date" value={subForm.start_date} onChange={e => setSubForm({...subForm, start_date: e.target.value})} /></div>
             {dateError && <p className="text-xs text-destructive font-medium -mt-1">{dateError}</p>}
             {scadenzaProposta && <p className="text-xs text-muted-foreground">Valido fino al {formatData(scadenzaProposta, "lungo")} compreso.</p>}
-            {showSubForm && plans.length === 0 && <p className="text-xs text-muted-foreground">Nessun abbonamento in vendita: controlla stato e data massima nel catalogo.</p>}
+            {showSubForm && plans.length === 0 && <p className="text-xs text-muted-foreground">Nessun tipo in vendita: controlla stato e data massima nel listino.</p>}
             <Button type="submit" className="w-full" disabled={!subForm.plan_id || saving}>
-              {saving ? "Registrazione..." : "Crea abbonamento"}
+              {saving ? "Vendita..." : "Vendi"}
             </Button>
           </form>
         </DialogContent>

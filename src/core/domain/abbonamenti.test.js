@@ -46,6 +46,6 @@ test("si vende solo un tipo attivo, entro la sua data massima", () => {
 test("annullato è definitivo, sospeso no", () => {
   assert.equal(motivoCambioStatoNonValido("sospeso", "attivo"), null);
   assert.equal(motivoCambioStatoNonValido("attivo", "annullato"), null);
-  assert.match(motivoCambioStatoNonValido("annullato", "attivo"), /non si riattiva/);
+  assert.match(motivoCambioStatoNonValido("annullato", "attivo"), /non torna in vendita/);
   assert.ok(motivoCambioStatoNonValido("attivo", "chiuso"));
 });
