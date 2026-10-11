@@ -78,7 +78,7 @@ export default function CoursesByCategory({ enrichedSessions, onBook, onCancel, 
               className="p-4 rounded-xl bg-card border border-border hover:border-primary hover:shadow-md transition-all text-left w-full">
               <p className="font-heading font-semibold">{course.name}</p>
               {course.nextSession ? (
-                <p className="text-xs text-muted-foreground mt-1">Prossima sessione: {formatData(course.nextSession.date, "giornoBreve")}, {course.nextSession.start_time}</p>
+                <p className="text-xs text-muted-foreground mt-1">Prossima sessione: {formatData(course.nextSession.date, "giorno")}, {course.nextSession.start_time}</p>
               ) : (
                 <p className="text-xs text-muted-foreground mt-1">{course.sessionCount} sessioni disponibili</p>
               )}

@@ -171,7 +171,7 @@ export default function Iscrivi({ aperto, lead = null, onChiudi }) {
                 <Label htmlFor="iscrivi-inizio">Dal</Label>
                 <Input id="iscrivi-inizio" type="date" value={abbonamento.start_date} onChange={(e) => setAbbonamento((a) => ({ ...a, start_date: e.target.value }))} />
               </div>
-              {scadenza && <p className="text-sm text-muted-foreground">Scade il {formatData(scadenza, "media")}. L'incasso resta in reception, come sempre.</p>}
+              {scadenza && <p className="text-sm text-muted-foreground">Scade il {formatData(scadenza, "lungo")}. L'incasso resta in reception, come sempre.</p>}
             </div>
           )}
 

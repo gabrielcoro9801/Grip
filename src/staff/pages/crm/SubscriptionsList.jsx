@@ -77,7 +77,7 @@ export default function SubscriptionsList() {
                   <Link to={`/crm/soci/${sub.member_id}`} className="font-medium text-primary hover:underline">{getMemberName(sub.member_id)}</Link>
                 </td>
                 <td className="py-3 px-4">{sub.plan_name}</td>
-                <td className="py-3 px-4 text-muted-foreground">{formatData(sub.start_date, "giornoBreve")} — {formatData(sub.end_date, "media")}</td>
+                <td className="py-3 px-4 text-muted-foreground">{formatData(sub.start_date, "breve")} – {formatData(sub.end_date, "breve")}</td>
                 <td className="py-3 px-4"><StatusBadge status={sub.status} /></td>
                 <td className="py-3 px-4 text-right font-medium">{formatEuro(sub.price_paid)}</td>
               </tr>

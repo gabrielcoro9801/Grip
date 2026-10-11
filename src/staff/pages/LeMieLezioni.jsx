@@ -164,7 +164,7 @@ export default function LeMieLezioni() {
                       <div>
                         <p className="font-medium">{l.corso}</p>
                         <p className="text-sm text-muted-foreground">
-                          {l.data === oggi ? "Oggi" : formatData(l.data, "giornoBreve")} · {l.inizio}–{l.fine}{l.sala ? ` · ${l.sala}` : ""}
+                          {l.data === oggi ? "Oggi" : formatData(l.data, "giorno")} · {l.inizio}–{l.fine}{l.sala ? ` · ${l.sala}` : ""}
                         </p>
                       </div>
                       <p className="text-sm tabular-nums text-muted-foreground">

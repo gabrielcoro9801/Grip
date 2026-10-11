@@ -46,6 +46,33 @@ const STATI = {
   revocato: { label: "Revocato", tono: "negativo" },
 };
 
+const PUNTI = {
+  positivo: "bg-success",
+  attesa: "bg-warning",
+  negativo: "bg-destructive",
+  info: "bg-info",
+  neutro: "bg-muted-foreground",
+};
+
+/**
+ * Lo stato del socio (Nuovo, Attivo, In calo…): un punto colorato e la parola, su fondo neutro.
+ *
+ * Ha una forma sua perché dice un'altra cosa. Con lo stesso badge verde "Attivo" voleva dire il
+ * socio, l'abbonamento, un tipo del listino e un account, e "Nuovo" un socio o un contatto:
+ * accanto, nella stessa riga, non si capiva quale fosse quale. I badge colorati restano agli
+ * oggetti (abbonamenti, prenotazioni, documenti); le persone hanno il punto.
+ *
+ * @param tone uno dei toni dei badge, per il colore del punto.
+ */
+export function StatoSocio({ label, tone, title, className }) {
+  return (
+    <span title={title} className={cn("inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-2 py-0.5 text-xs font-medium text-foreground whitespace-nowrap", className)}>
+      <span aria-hidden="true" className={cn("h-2 w-2 rounded-full shrink-0", PUNTI[tone] ?? PUNTI.neutro)} />
+      {label}
+    </span>
+  );
+}
+
 /**
  * @param status chiave dello stato (vedi STATI).
  * @param label  etichetta alternativa, quando il contesto ne chiede una diversa.

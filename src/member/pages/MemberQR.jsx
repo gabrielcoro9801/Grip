@@ -151,7 +151,7 @@ export default function MemberQR() {
           </div>
           {activeSub && (
             <p className="text-xs text-muted-foreground mt-1">
-              {activeSub.piano} — scade il {formatData(activeSub.fine, "media")}
+              {activeSub.piano} — scade il {formatData(activeSub.fine, "lungo")}
             </p>
           )}
           {canAccess ? (

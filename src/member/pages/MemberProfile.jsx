@@ -34,7 +34,7 @@ export default function MemberProfile() {
     { icon: User, label: "Nome completo", value: member?.nome },
     { icon: Mail, label: "Email", value: member?.email },
     { icon: Phone, label: "Telefono", value: member?.telefono },
-    { icon: Calendar, label: "Data di nascita", value: member?.data_nascita ? formatData(member.data_nascita, "media") : null },
+    { icon: Calendar, label: "Data di nascita", value: member?.data_nascita ? formatData(member.data_nascita, "lungo") : null },
     { icon: MapPin, label: "Residenza", value: member?.indirizzo },
     {
       icon: Heart,

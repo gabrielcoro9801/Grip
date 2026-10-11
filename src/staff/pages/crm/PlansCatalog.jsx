@@ -182,8 +182,8 @@ export default function PlansCatalog() {
                     {!plan.vendibile_fino_al
                       ? "In vendita senza scadenza"
                       : venditaChiusa
-                        ? `Vendita chiusa il ${formatData(plan.vendibile_fino_al, "media")}`
-                        : `In vendita fino al ${formatData(plan.vendibile_fino_al, "media")}`}
+                        ? `Vendita chiusa il ${formatData(plan.vendibile_fino_al, "lungo")}`
+                        : `In vendita fino al ${formatData(plan.vendibile_fino_al, "lungo")}`}
                   </span>
                 </div>
                 <p className="text-sm text-muted-foreground mt-3 line-clamp-3 break-words leading-5 h-[3.75rem]" title={plan.description || undefined}>

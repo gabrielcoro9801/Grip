@@ -100,11 +100,11 @@ export default function MemberSubscription() {
                   <div className="grid grid-cols-2 gap-2 text-sm">
                     <div className="flex items-center gap-1.5 text-muted-foreground">
                       <Calendar className="w-4 h-4" /> Inizio
-                      <span className="font-medium text-foreground ml-1">{formatData(sub.inizio, "media")}</span>
+                      <span className="font-medium text-foreground ml-1">{formatData(sub.inizio, "lungo")}</span>
                     </div>
                     <div className="flex items-center gap-1.5 text-muted-foreground">
                       <Calendar className="w-4 h-4" /> Scadenza
-                      <span className="font-medium text-foreground ml-1">{formatData(sub.fine, "media")}</span>
+                      <span className="font-medium text-foreground ml-1">{formatData(sub.fine, "lungo")}</span>
                     </div>
                   </div>
                   {sospensione && (

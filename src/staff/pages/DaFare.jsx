@@ -3,7 +3,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { api } from "@/core/api/client";
 import { Card, CardContent } from "@/ui/primitivi/card";
 import PageHeader from "@/staff/components/PageHeader";
-import StatusBadge from "@/ui/StatusBadge";
+import { StatoSocio } from "@/ui/StatusBadge";
 import { LoadingState } from "@/ui/Spinner";
 import { EmptyState, ErrorState } from "@/ui/StateViews";
 import AzioniPersona from "@/staff/components/segnali/AzioniPersona";
@@ -148,7 +148,7 @@ export default function DaFare() {
                               </p>
                             ))}
                           </div>
-                          <StatusBadge status={p.fase} label={f.etichetta} tone={f.tono} className="shrink-0" />
+                          <StatoSocio label={f.etichetta} tone={f.tono} className="shrink-0" />
                         </div>
                         <AzioniPersona persona={p} linea={scelta.valore} segnali={suoi.map((s) => s.codice)} puoModificare={puoModificare(p)} onFatto={carica} />
                       </CardContent>

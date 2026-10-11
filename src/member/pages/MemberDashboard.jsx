@@ -89,8 +89,8 @@ export default function MemberDashboard() {
                 <StatusBadge status={activeSub.stato} />
               </div>
               <div className="grid grid-cols-2 gap-1 text-xs text-muted-foreground">
-                <div className="flex items-center gap-1"><Calendar className="w-3 h-3" /> Inizio: {formatData(activeSub.inizio, "media")}</div>
-                <div className="flex items-center gap-1"><Calendar className="w-3 h-3" /> Fine: {formatData(activeSub.fine, "media")}</div>
+                <div className="flex items-center gap-1"><Calendar className="w-3 h-3" /> Inizio: {formatData(activeSub.inizio, "lungo")}</div>
+                <div className="flex items-center gap-1"><Calendar className="w-3 h-3" /> Fine: {formatData(activeSub.fine, "lungo")}</div>
               </div>
               {expiringSoon && (
                 <div className="flex items-center gap-2 p-2 rounded-lg bg-warning/10 border border-warning/30 text-warning text-xs">

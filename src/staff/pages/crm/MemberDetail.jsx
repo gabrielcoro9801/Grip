@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/ui/primitivi
 import { Label } from "@/ui/primitivi/label";
 import { Input } from "@/ui/primitivi/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/ui/primitivi/select";
-import StatusBadge from "@/ui/StatusBadge";
+import StatusBadge, { StatoSocio } from "@/ui/StatusBadge";
 import { ArrowLeft, Plus, CreditCard, QrCode, KeyRound, RefreshCw, Pencil, UserRound, Archive, ArchiveRestore } from "lucide-react";
 import CampiAnagrafica, { anagraficaDi, motivoAnagraficaIncompleta } from "@/staff/components/soci/CampiAnagrafica";
 import FisseSocio from "@/staff/components/soci/FisseSocio";
@@ -345,9 +345,9 @@ export default function MemberDetail() {
             Codice socio: {member.codice_socio}
           </span>
           {member.archiviato_il ? (
-            <StatusBadge status="archiviato" label={`Archiviato il ${formatData(member.archiviato_il, "breve")}`} tone="neutro" />
+            <StatoSocio label={`Archiviato il ${formatData(member.archiviato_il, "breve")}`} tone="neutro" />
           ) : stato && (
-            <StatusBadge status={stato} label={faseDi(stato).etichetta} tone={faseDi(stato).tono} />
+            <StatoSocio label={faseDi(stato).etichetta} tone={faseDi(stato).tono} />
           )}
 
         </div>
@@ -370,7 +370,7 @@ export default function MemberDetail() {
                 <DatoAnagrafico etichetta="Cognome">{member.cognome}</DatoAnagrafico>
                 <DatoAnagrafico etichetta="Codice fiscale">{member.codice_fiscale}</DatoAnagrafico>
                 <DatoAnagrafico etichetta="Data di nascita">
-                  {member.date_of_birth && `${formatData(member.date_of_birth, "media")} (${etaA(member.date_of_birth)} anni)`}
+                  {member.date_of_birth && `${formatData(member.date_of_birth, "breve")} (${etaA(member.date_of_birth)} anni)`}
                 </DatoAnagrafico>
                 <DatoAnagrafico etichetta="Sesso">{etichettaSesso(member.sesso)}</DatoAnagrafico>
                 <DatoAnagrafico etichetta="Residenza">{member.address}</DatoAnagrafico>
@@ -378,7 +378,7 @@ export default function MemberDetail() {
                 <DatoAnagrafico etichetta="Email">{member.email}</DatoAnagrafico>
                 <DatoAnagrafico etichetta="Contatto di emergenza">{member.emergency_contact_name}</DatoAnagrafico>
                 <DatoAnagrafico etichetta="Telefono di emergenza">{member.emergency_contact_phone}</DatoAnagrafico>
-                <DatoAnagrafico etichetta="Socio dal">{formatData(member.created_date, "media")}</DatoAnagrafico>
+                <DatoAnagrafico etichetta="Socio dal">{formatData(member.created_date, "breve")}</DatoAnagrafico>
                 <DatoAnagrafico etichetta="Note" className="sm:col-span-2 lg:col-span-3">{member.notes}</DatoAnagrafico>
               </dl>
             </div>
@@ -419,7 +419,7 @@ export default function MemberDetail() {
                   <div key={sub.id} className="p-3 rounded-lg bg-muted/50 flex items-center justify-between">
                     <div>
                       <p className="text-sm font-medium">{sub.plan_name}</p>
-                      <p className="text-xs text-muted-foreground">{formatData(sub.start_date, "giornoBreve")} — {formatData(sub.end_date, "media")}</p>
+                      <p className="text-xs text-muted-foreground">{formatData(sub.start_date, "breve")} – {formatData(sub.end_date, "breve")}</p>
                       {sub.giorni_sospesi > 0 && <p className="text-xs text-muted-foreground">+{sub.giorni_sospesi} giorni di sospensione</p>}
                     </div>
                     <div className="text-right">
@@ -471,7 +471,7 @@ export default function MemberDetail() {
                     <p className="text-[11px] text-muted-foreground font-mono break-all mt-1">
                       Credenziale: {qrAccess.codice}
                     </p>
-                    <p className="text-xs text-muted-foreground">Generata il {formatData(qrAccess.data_generazione, "media")}</p>
+                    <p className="text-xs text-muted-foreground">Generata il {formatData(qrAccess.data_generazione, "lungo")}</p>
                     <Badge variant="outline" className={`mt-1 text-xs ${qrAccess.stato === "attivo" ? "bg-success/10 text-success border-success/30" : "bg-destructive/10 text-destructive border-destructive/30"}`}>
                       {qrAccess.stato === "attivo" ? "Attivo" : "Revocato"}
                     </Badge>
@@ -561,7 +561,7 @@ export default function MemberDetail() {
             </div>
             <div><Label>Data inizio abbonamento</Label><Input type="date" value={subForm.start_date} onChange={e => setSubForm({...subForm, start_date: e.target.value})} /></div>
             {dateError && <p className="text-xs text-destructive font-medium -mt-1">{dateError}</p>}
-            {scadenzaProposta && <p className="text-xs text-muted-foreground">Valido fino al {formatData(scadenzaProposta, "media")} compreso.</p>}
+            {scadenzaProposta && <p className="text-xs text-muted-foreground">Valido fino al {formatData(scadenzaProposta, "lungo")} compreso.</p>}
             {showSubForm && plans.length === 0 && <p className="text-xs text-muted-foreground">Nessun abbonamento in vendita: controlla stato e data massima nel catalogo.</p>}
             <Button type="submit" className="w-full" disabled={!subForm.plan_id || saving}>
               {saving ? "Registrazione..." : "Crea abbonamento"}

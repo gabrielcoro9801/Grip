@@ -73,7 +73,7 @@ export default function MemberDocuments() {
                     <div className="flex-1 min-w-0">
                       <h3 className="font-medium text-sm">{doc.nome ?? doc.tipo}</h3>
                       <p className="text-xs text-muted-foreground">
-                        Caricato il {formatData(doc.caricato_il, "media")}
+                        Caricato il {formatData(doc.caricato_il, "lungo")}
                         {doc.caricato_da && ` da ${doc.caricato_da}`}
                       </p>
                       {doc.note && <p className="text-xs text-muted-foreground mt-1">{doc.note}</p>}

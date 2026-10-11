@@ -71,15 +71,20 @@ export function formatEuro(value, { vuoto = PLACEHOLDER } = {}) {
  * I modi ammessi di scrivere una data. Erano dodici e più, per la stessa
  * informazione, con dentro anche formati americani ("MMM D, YYYY") in un
  * gestionale italiano.
+ *
+ * Per un giorno sul calendario (una scadenza, una nascita, un'iscrizione) ce ne sono due:
+ * - `breve`, 21/10/2026: nel gestionale, in tabelle, tile e campi, dove si confronta a colpo
+ *   d'occhio;
+ * - `lungo`, 21 ott 2026: nelle frasi ("scade il 21 ott 2026") e nel portale dei soci.
+ * Le lezioni portano il giorno della settimana (`giorno`, "lun 12 ott"): una lezione si
+ * ricorda per quello. Gli altri servono alle intestazioni dei calendari.
  */
 export const FORMATI_DATA = {
   breve: "DD/MM/YYYY",
-  media: "D MMM YYYY",
+  lungo: "D MMM YYYY",
   estesa: "dddd D MMMM YYYY",
   estesaBreve: "dddd D MMMM",
   giorno: "ddd D MMM",
-  giornoBreve: "D MMM",
-  giornoMese: "DD/MM",
   mese: "MMMM YYYY",
   iso: "YYYY-MM-DD",
   // I tre qui sotto servono alle intestazioni del calendario, che mostrano un pezzo di data
@@ -136,7 +141,7 @@ const COSTRUTTORI = {
     const p = pezziData(d, { day: "2-digit", month: "2-digit", year: "numeric" });
     return `${p.day}/${p.month}/${p.year}`;
   },
-  media: (d) => {
+  lungo: (d) => {
     const p = pezziData(d, { day: "numeric", month: "short", year: "numeric" });
     return `${p.day} ${senzaPunto(p.month)} ${p.year}`;
   },
@@ -151,14 +156,6 @@ const COSTRUTTORI = {
   giorno: (d) => {
     const p = pezziData(d, { weekday: "short", day: "numeric", month: "short" });
     return `${senzaPunto(p.weekday)} ${p.day} ${senzaPunto(p.month)}`;
-  },
-  giornoBreve: (d) => {
-    const p = pezziData(d, { day: "numeric", month: "short" });
-    return `${p.day} ${senzaPunto(p.month)}`;
-  },
-  giornoMese: (d) => {
-    const p = pezziData(d, { day: "2-digit", month: "2-digit" });
-    return `${p.day}/${p.month}`;
   },
   mese: (d) => {
     const p = pezziData(d, { month: "long", year: "numeric" });
