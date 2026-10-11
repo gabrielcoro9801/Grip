@@ -148,9 +148,12 @@ scorrimenti. Il piano e le decisioni stanno in [`docs/ux/`](docs/ux/).
 | Prenotare e mostrare il QR (390 px) | 5 tocchi, QR a 572 px | 3 tocchi, QR a 120 px |
 | L'istruttore vede la prossima lezione | 2 tocchi (uno intercettato), lezione a 954 px | 0 tocchi, a 278 px |
 
-Verifica: `npm test` (197), `cd server && npm test` (421; i file `da-fare` e `comunicazioni`
-si disturbano se girano insieme sullo stesso database, già su main: da soli passano),
-`npm run verifica:da-fare` (38), `verifica:fase4` (24). Due ipotesi restano proposte, da
+Verifica: `npm test` (197), `cd server && npm test` (421, stabile: dieci giri di fila senza
+errori), `npm run verifica:da-fare` (38), `verifica:fase4` (24), `verifica:fase3` (24),
+`verifica:pagine` (28). Corretto anche: due giri lanciati insieme scrivevano due volte la stessa
+riga nel diario (ora si mettono in fila con un lock di Postgres); i test che usano il giro si
+disturbavano fra file; `verifica:pagine` e `verifica:fase3` erano rimasti indietro (la tabella
+`leads`, "Trasforma in socio", "Registra contatto"). Due ipotesi restano proposte, da
 decidere: il calendario a settimana (nessuno dei sei compiti passa dal calendario) e la
 striscia riassuntiva della scheda.
 

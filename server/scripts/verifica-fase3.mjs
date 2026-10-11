@@ -189,7 +189,7 @@ try {
 
 	const telefono = await nuovaPagina({ width: 390, height: 844 });
 	await entra(telefono, '/oggi', reception.email);
-	await telefono.getByRole('heading', { name: 'Oggi' }).waitFor();
+	await telefono.getByRole('heading', { name: 'Da fare', exact: true }).waitFor();
 	const primo = telefono.locator('ol > li').first();
 	await primo.waitFor();
 	controlla('Oggi: chi ha chiesto il rinnovo è in cima', (await primo.innerText()).includes(`Rita Rinnovo${lettere}`), await primo.innerText());
@@ -199,12 +199,10 @@ try {
 	controlla('Oggi: "Entrati oggi" con il bentornato per chi è passato dal tornello', /Bentornato: non veniva da 31 giorni/.test(await entrati.innerText().catch(() => '')), await entrati.innerText().catch(() => 'assente'));
 	await senzaScorrimento(telefono, 'Oggi');
 	await telefono.screenshot({ path: schermata('oggi-telefono'), fullPage: true });
-	await primo.getByRole('button', { name: 'Registra contatto' }).click();
-	const dialogo = telefono.getByRole('dialog');
-	await dialogo.getByRole('button', { name: 'Ha risposto', exact: true }).click();
-	await dialogo.getByRole('button', { name: 'Registra' }).click();
+	// Dall'11 ottobre non c'è più "Registra contatto": la riga si chiude con il box "Fatto".
+	await primo.getByRole('button', { name: 'Chiamato' }).click();
 	await telefono.waitForTimeout(1200);
-	controlla('Oggi: registrato il contatto, la richiesta sparisce', await telefono.locator('ol > li', { hasText: `Rita Rinnovo${lettere}` }).count() === 0);
+	controlla('Da fare: segnato "Fatto · Chiamato", la richiesta sparisce', await telefono.locator('ol > li', { hasText: `Rita Rinnovo${lettere}` }).count() === 0);
 	await entrati.getByRole('button', { name: 'Salutato' }).click();
 	await telefono.getByText('Nel diario').waitFor();
 	controlla('Oggi: il bentornato si segna nel diario con un tocco', true);
@@ -212,7 +210,10 @@ try {
 	// --- 3. La sospensione ----------------------------------------------------------------
 	console.log('\nSOSPENSIONE');
 	await staff.goto(`${BASE}/crm/soci/${fermo.id}`, { waitUntil: 'networkidle' });
-	controlla('Scheda: prima della sospensione è assente', await staff.getByText('Non viene da un po\'').first().isVisible().catch(() => false));
+	// Lo stato si chiede al motore: la scheda lo carica dopo, e il diario tiene anche la storia.
+	const statoDiFermo = async () => (await (await fetch(`${BASE}/api/segnali?persona=${fermo.personaId}`, { headers: { authorization: `Bearer ${await staff.evaluate(() => localStorage.getItem('grip_staff_token'))}` } })).json()).persone[0];
+	await staff.getByRole('button', { name: 'Sospendi abbonamento' }).waitFor();
+	controlla('Scheda: prima della sospensione va cercato perché non viene', (await statoDiFermo()).da_fare.includes('assente'));
 	await staff.getByRole('button', { name: 'Sospendi abbonamento' }).click();
 	await staff.locator('#sosp-ripresa').fill(fra(14));
 	await staff.locator('#sosp-nota').fill('Infortunio al ginocchio');
@@ -222,13 +223,14 @@ try {
 	const scadenzaAttesa = fra(42).split('-').reverse().join('/');
 	controlla('Sospensione: la scadenza slitta di 14 giorni', (await db.select().from(subscriptions).where(eq(subscriptions.memberId, fermo.id)))[0].endDate === fra(28)
 		&& (await (await fetch(`${BASE}/api/segnali?persona=${fermo.personaId}`, { headers: { authorization: `Bearer ${await staff.evaluate(() => localStorage.getItem('grip_staff_token'))}` } })).json()).persone[0].scadenza === fra(42), scadenzaAttesa);
-	controlla('Sospensione: la fase è "Sospeso", non assente', /Sospeso/.test(testoScheda) && !/Non viene da un po'/.test(testoScheda));
+	const sospeso = await statoDiFermo();
+	controlla('Sospensione: lo stato è "Sospeso", e non va più cercato', sospeso.fase === 'sospeso' && !sospeso.da_fare.includes('assente'), sospeso.fase);
 	controlla('Sospensione: nel diario, con il motivo', /Abbonamento sospeso dal/.test(testoScheda) && /Infortunio al ginocchio/.test(testoScheda));
 	await staff.screenshot({ path: schermata('sospensione-scheda'), fullPage: true });
-	await staff.goto(`${BASE}/oggi`, { waitUntil: 'networkidle' });
-	await staff.getByRole('heading', { name: 'Oggi' }).waitFor();
+	await staff.goto(`${BASE}/da-fare?linea=frequenza`, { waitUntil: 'networkidle' });
+	await staff.getByRole('heading', { name: 'Da fare', exact: true }).waitFor();
 	await staff.waitForTimeout(500);
-	controlla('Oggi: il socio sospeso non c\'è', await staff.locator('li', { hasText: `Sandro Sospeso${lettere}` }).count() === 0);
+	controlla('Da fare: il socio sospeso non c\'è', await staff.locator('li', { hasText: `Sandro Sospeso${lettere}` }).count() === 0);
 
 	// --- 4. La vista istruttore -----------------------------------------------------------
 	console.log('\nISTRUTTORE');
