@@ -6,7 +6,7 @@ import StaffLogin from "@/staff/pages/StaffLogin";
 import {
   LayoutDashboard, Users, Calendar,
   ChevronLeft, ChevronRight, LogOut, Menu, Dumbbell,
-  ShieldCheck, ScrollText, UserPlus, KeyRound, ListChecks, Search, GraduationCap, Send
+  ShieldCheck, ScrollText, UserPlus, KeyRound, ListChecks, Search, GraduationCap, Send, Settings2
 } from "lucide-react";
 import RicercaGlobale from "@/staff/components/RicercaGlobale";
 import { CambioPasswordObbligatorio, DialogCambioPassword } from "@/ui/CambioPassword";
@@ -30,10 +30,14 @@ const navItems = [
   { label: "Gestione corsi", path: "/calendario", icon: Calendar },
   // L'istruttore: le sue lezioni, chi viene e chi no.
   { label: "Le mie lezioni", path: "/istruttore", icon: GraduationCap },
-  { label: "Utenti e ruoli", path: "/admin", icon: ShieldCheck },
+  // Le impostazioni stanno in fondo, sotto il loro titolo: prima erano mescolate al lavoro di
+  // ogni giorno (Utenti accanto a Soci e Corsi), e quelle di Da fare si raggiungevano solo da un
+  // link dentro Da fare. Le vede l'amministratore.
+  { label: "Utenti e ruoli", path: "/admin", icon: ShieldCheck, impostazioni: true },
   // Le comunicazioni automatiche ai soci: arrivano spente, le accende l'amministratore da qui.
-  { label: "Comunicazioni", path: "/admin/comunicazioni", icon: Send },
-  { label: "Log audit", path: "/log-audit", icon: ScrollText },
+  { label: "Comunicazioni", path: "/admin/comunicazioni", icon: Send, impostazioni: true },
+  { label: "Da fare", path: "/admin/da-fare", icon: Settings2, impostazioni: true },
+  { label: "Registro delle azioni", path: "/log-audit", icon: ScrollText, impostazioni: true },
 ];
 
 export default function AppLayout() {
@@ -127,9 +131,14 @@ export default function AppLayout() {
 
         {/* Nav */}
         <nav aria-label="Navigazione principale" className="flex-1 py-4 px-2 space-y-1 overflow-y-auto">
-          {visibleNavItems.map(item => (
+          {visibleNavItems.map((item, i) => (
+            <React.Fragment key={item.path}>
+            {item.impostazioni && !visibleNavItems[i - 1]?.impostazioni && (
+              collapsed
+                ? <hr className="my-3 border-sidebar-border" />
+                : <p className="px-3 pt-4 pb-1 text-xs font-medium uppercase tracking-wide text-sidebar-foreground/70">Impostazioni</p>
+            )}
             <Link
-              key={item.path}
               to={item.path}
               onClick={() => setMobileOpen(false)}
               aria-current={isActive(item.path) ? "page" : undefined}
@@ -146,8 +155,9 @@ export default function AppLayout() {
               <item.icon className="w-5 h-5 flex-shrink-0" aria-hidden="true" />
               {/* Quando la sidebar è stretta resta la sola icona: il nome
                   serve comunque a chi naviga con uno screen reader. */}
-              <span className={collapsed ? "sr-only" : undefined}>{item.label}</span>
+              <span className={collapsed ? "sr-only" : undefined}>{collapsed && item.impostazioni ? `Impostazioni: ${item.label}` : item.label}</span>
             </Link>
+            </React.Fragment>
           ))}
         </nav>
 

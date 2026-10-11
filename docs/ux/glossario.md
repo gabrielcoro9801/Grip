@@ -70,6 +70,8 @@ distinguono dalla forma, punto per il socio e badge per il contatto.
 | **Fatto** | Un tocco che dice "l'abbiamo cercato" (Di persona, Chiamato, Messaggio, Email): nasconde la riga per qualche giorno. |
 | **Diario** | La storia di una persona: contatti, note, cose da fare comparse e risolte. |
 | **Ingresso** | Un passaggio dal tornello o registrato a mano. |
+| **Impostazioni** | La sezione in fondo al menu, per l'amministratore: Utenti e ruoli, Comunicazioni, Da fare (le regole), Registro delle azioni. |
+| **Registro delle azioni** | Chi ha fatto che cosa, e quando (era "Log audit"). |
 
 ## Date e nomi
 
