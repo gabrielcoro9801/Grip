@@ -135,7 +135,7 @@ try {
 
 	// --- 3. Il playbook in anteprima ------------------------------------------------------
 	console.log('\nPLAYBOOK');
-	await pg.getByRole('tab', { name: 'Playbook' }).click();
+	await pg.getByRole('tab', { name: 'Messaggi' }).click();
 	const rinnovo = pg.getByRole('group', { name: 'Stato di Rinnovo' });
 	await rinnovo.getByRole('button', { name: 'Anteprima' }).click();
 	await pg.waitForFunction(() => document.querySelector('[aria-label="Stato di Rinnovo"] [aria-pressed="true"]')?.textContent === 'Anteprima');
@@ -190,7 +190,7 @@ try {
 	await tel.getByRole('heading', { name: 'Comunicazioni', exact: true }).waitFor();
 	const larghezza = await tel.evaluate(() => document.documentElement.scrollWidth);
 	controlla('Niente scorrimento orizzontale a 390 px', larghezza <= 390, `${larghezza}px`);
-	await tel.getByRole('tab', { name: 'Playbook' }).click();
+	await tel.getByRole('tab', { name: 'Messaggi' }).click();
 	await tel.screenshot({ path: schermata('7-telefono'), fullPage: true });
 
 	const rec = await nuovaPagina();

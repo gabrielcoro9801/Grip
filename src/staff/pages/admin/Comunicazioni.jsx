@@ -15,6 +15,7 @@ import { LoadingState } from "@/ui/Spinner";
 import { ErrorState, EmptyState } from "@/ui/StateViews";
 import { useToast } from "@/ui/primitivi/use-toast";
 import { etichettaCanale, statoMessaggio, STATI_PLAYBOOK, playbook as playbookDi } from "@/core/domain/comunicazioni";
+import { formatEuro, formatDataOra } from "@/core/domain/format";
 import { CheckCircle2, Circle, FlaskConical, Power, Send, Inbox } from "lucide-react";
 
 // La sezione Comunicazioni: l'amministratore configura i canali, rilegge i testi, guarda
@@ -24,8 +25,11 @@ import { CheckCircle2, Circle, FlaskConical, Power, Send, Inbox } from "lucide-r
 const TONO_CANALE = { non_configurato: "neutro", da_verificare: "attesa", pronto: "positivo" };
 const ETICHETTA_CANALE = { non_configurato: "Non configurato", da_verificare: "Da verificare", pronto: "Pronto" };
 const TONO_PLAYBOOK = { spento: "neutro", anteprima: "info", attivo: "positivo" };
-const euro = (cent) => `${(Number(cent || 0) / 100).toFixed(2).replace(".", ",")} €`;
-const dataOra = (iso) => (iso ? new Date(iso).toLocaleString("it-IT", { dateStyle: "short", timeStyle: "short" }) : "");
+// I soldi in euro, sempre: il server li tiene in centesimi, chi legge no.
+const euro = (cent) => formatEuro(Number(cent || 0) / 100);
+const dataOra = (iso) => formatDataOra(iso, { vuoto: "" });
+const centesimi = (testo) => Math.round(Number(String(testo).replace(",", ".")) * 100);
+const inEuro = (cent) => (Number(cent || 0) / 100).toFixed(2).replace(".", ",");
 
 /** Esegue una scrittura, aggiorna la sezione e dice com'è andata. */
 function useScrittura(setDati) {
@@ -68,8 +72,9 @@ export default function Comunicazioni() {
         <div role="status" className="flex gap-3 rounded-lg border border-info/30 bg-info/10 p-4 text-sm">
           <FlaskConical className="h-5 w-5 shrink-0 text-info" aria-hidden="true" />
           <p>
-            <strong>Modalità simulazione.</strong> Questo server non manda messaggi veri: puoi configurare tutto, verificare i canali e
-            guardare le anteprime, ma ogni messaggio resta «simulato». Gli invii veri si accendono sul server (INVII_REALI).
+            <strong>Modalità prova.</strong> Per ora non parte nessun messaggio vero: puoi preparare tutto, provare i canali e
+            guardare le anteprime, e ogni messaggio resta «simulato». Gli invii veri li accende chi gestisce il server
+            (per lui: <span className="font-mono text-xs">INVII_REALI</span>).
           </p>
         </div>
       )}
@@ -78,7 +83,7 @@ export default function Comunicazioni() {
         <TabsList className="flex-wrap h-auto">
           <TabsTrigger value="stato">Stato</TabsTrigger>
           <TabsTrigger value="canali">Canali</TabsTrigger>
-          <TabsTrigger value="playbook">Playbook</TabsTrigger>
+          <TabsTrigger value="playbook">Messaggi</TabsTrigger>
           <TabsTrigger value="registro">Registro</TabsTrigger>
         </TabsList>
         <TabsContent value="stato" className="mt-4 space-y-4">
@@ -90,7 +95,7 @@ export default function Comunicazioni() {
         </TabsContent>
         <TabsContent value="playbook" className="mt-4 space-y-3">
           <p className="text-sm text-muted-foreground">
-            Ogni playbook parte da una cosa da fare: quando scatta lo decidono le soglie, e un segnale spento non manda niente.{" "}
+            Ogni messaggio parte da una cosa da fare: quando lo decidono le soglie, e una cosa da fare spenta non manda niente.{" "}
             <Link to="/admin/da-fare" className="text-primary hover:underline">Impostazioni di Da fare</Link>
           </p>
           {dati.playbook.map((p) => <Playbook key={p.codice} pb={p} dati={dati} scrivi={scrivi} />)}
@@ -117,7 +122,7 @@ function Interruttore({ dati, scrivi }) {
           Comunicazioni {dati.attive ? "accese" : "spente"}
         </CardTitle>
         <CardDescription>
-          L'interruttore si accende solo con la lista di controllo completa. Anche accese, partono soltanto i playbook in «Attivo».
+          Si accendono solo con la lista qui sotto completa. Anche accese, partono soltanto i messaggi in «Attivo».
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -147,18 +152,18 @@ function Interruttore({ dati, scrivi }) {
 function Regole({ dati, scrivi }) {
   const [f, setF] = useState({
     dalle: dati.silenzio.dalle, alle: dati.silenzio.alle,
-    budget: (dati.budget_sms_centesimi / 100).toString(), costo: String(dati.costo_sms_centesimi),
+    budget: inEuro(dati.budget_sms_centesimi), costo: inEuro(dati.costo_sms_centesimi),
   });
   const salva = () => scrivi(() => api.comunicazioni.regole({
     silenzio: { dalle: Number(f.dalle), alle: Number(f.alle) },
-    budget_sms_centesimi: Math.round(Number(String(f.budget).replace(",", ".")) * 100),
-    costo_sms_centesimi: Number(f.costo),
+    budget_sms_centesimi: centesimi(f.budget),
+    costo_sms_centesimi: centesimi(f.costo),
   }), "Regole salvate");
   return (
     <Card>
       <CardHeader>
         <CardTitle>Regole</CardTitle>
-        <CardDescription>Quando si tace, e quanto si può spendere in SMS ogni mese. Il budget è un tetto: raggiunto, gli SMS si fermano.</CardDescription>
+        <CardDescription>Quando non si scrive a nessuno, e quanto si può spendere in SMS ogni mese. La spesa massima è un tetto: raggiunta, gli SMS si fermano fino al mese dopo.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-2">
@@ -172,13 +177,14 @@ function Regole({ dati, scrivi }) {
             </div>
           </fieldset>
           <div className="space-y-2">
-            <Label htmlFor="budget-sms">Budget SMS al mese (€)</Label>
+            <Label htmlFor="budget-sms">Spesa massima per gli SMS, al mese (€)</Label>
             <Input id="budget-sms" inputMode="decimal" value={f.budget} onChange={(e) => setF({ ...f, budget: e.target.value })} />
             <p className="text-xs text-muted-foreground">Speso questo mese: {euro(dati.spesa_sms_mese)}. Zero vuol dire nessun SMS.</p>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="costo-sms">Costo di un SMS (centesimi)</Label>
-            <Input id="costo-sms" type="number" min={0} value={f.costo} onChange={(e) => setF({ ...f, costo: e.target.value })} />
+            <Label htmlFor="costo-sms">Costo di un SMS (€)</Label>
+            <Input id="costo-sms" inputMode="decimal" value={f.costo} onChange={(e) => setF({ ...f, costo: e.target.value })} />
+            <p className="text-xs text-muted-foreground">Quello del vostro fornitore, per esempio 0,06.</p>
           </div>
         </div>
         <Button onClick={salva}>Salva le regole</Button>
@@ -266,7 +272,7 @@ function Canale({ canale, dati, scrivi }) {
               <Label htmlFor={`${canale.canale}-segreto`}>{fornitore.segreto}</Label>
               <Input id={`${canale.canale}-segreto`} type="password" autoComplete="new-password" value={segreto} onChange={(e) => setSegreto(e.target.value)}
                 placeholder={canale.segreto.impostato ? "Impostata: lascia vuoto per non cambiarla" : ""} disabled={!dati.cifratura} />
-              {!dati.cifratura && <p className="text-xs text-destructive">Manca CHIAVE_SEGRETI sul server: le credenziali non si possono salvare.</p>}
+              {!dati.cifratura && <p className="text-xs text-destructive">Le password non si possono salvare finché chi gestisce il server non imposta la chiave per cifrarle (per lui: <span className="font-mono">CHIAVE_SEGRETI</span>).</p>}
             </div>
           )}
         </div>
@@ -353,7 +359,7 @@ function AnteprimaDomani({ pb, onChiudi }) {
       <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Anteprima: {pb.titolo}</DialogTitle>
-          <DialogDescription>Calcolata per domani, come se il playbook fosse attivo. Non parte niente.</DialogDescription>
+          <DialogDescription>Calcolata per domani, come se il messaggio fosse attivo. Non parte niente.</DialogDescription>
         </DialogHeader>
         {errore && <p className="text-sm text-destructive">{errore.message}</p>}
         {!r && !errore && <LoadingState />}
@@ -494,7 +500,7 @@ function Registro() {
           {r && <p className="text-sm text-muted-foreground">Spesa SMS del mese: {euro(r.costo_sms)}</p>}
         </div>
         {!r ? <LoadingState /> : r.messaggi.length === 0 ? (
-          <EmptyState icon={Inbox} title="Nessun messaggio" description="In questo mese i playbook non hanno scritto niente." />
+          <EmptyState icon={Inbox} title="Nessun messaggio" description="In questo mese non è partito, né è stato simulato, nessun messaggio." />
         ) : (
           <>
             <p className="text-sm flex flex-wrap gap-2">
