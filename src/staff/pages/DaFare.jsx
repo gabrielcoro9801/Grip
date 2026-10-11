@@ -73,7 +73,9 @@ export default function DaFare() {
   const puoModificare = (p) => canEdit(ruolo, p.socio_id ? "crm_members" : "crm_leads");
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 max-w-3xl mx-auto">
+    // Sugli schermi larghi la colonna si allarga: a 768 px i pulsanti di una riga andavano su due
+    // righe, e in una schermata a 1366×768 stavano tre persone. Da 1280 px in su stanno su una.
+    <div className="p-4 sm:p-6 lg:p-8 max-w-3xl xl:max-w-6xl mx-auto">
       <PageHeader title="Da fare" description="Chi seguire, e perché: una linea di lavoro alla volta.">
         {canEdit(ruolo, "admin_users") && (
           <Link to="/admin/da-fare" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">

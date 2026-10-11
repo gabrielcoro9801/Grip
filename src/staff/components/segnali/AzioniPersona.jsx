@@ -56,6 +56,9 @@ function BoxFatto({ persona, segnali, onFatto }) {
  *
  * Un contatto (lead) si lavora con le sue azioni, che ne cambiano lo stato (AzioneLead).
  *
+ * Chiama, WhatsApp ed Email sono senza bordo: aprono un'altra app e non chiudono niente. Il peso
+ * va a quello che risolve la riga (Rinnova, Carica, il box "Fatto").
+ *
  * @param persona una riga di GET /api/segnali
  * @param linea   la linea della riga (shared/segnali.js, LINEE)
  * @param segnali i codici della riga, quelli di questa linea
@@ -70,13 +73,13 @@ export default function AzioniPersona({ persona, linea, segnali = [], puoModific
   return (
     <div className={`flex flex-wrap items-center gap-2 ${className}`}>
       {persona.telefono && (
-        <Button asChild size="sm" variant="outline" className="h-9"><a href={`tel:${persona.telefono}`}><Phone className="w-4 h-4 sm:mr-1" /><span className="sr-only sm:not-sr-only">Chiama</span></a></Button>
+        <Button asChild size="sm" variant="ghost" className="h-9 px-2.5"><a href={`tel:${persona.telefono}`}><Phone className="w-4 h-4 sm:mr-1" /><span className="sr-only sm:not-sr-only">Chiama</span></a></Button>
       )}
       {whatsapp && (
-        <Button asChild size="sm" variant="outline" className="h-9"><a href={whatsapp} target="_blank" rel="noreferrer"><MessageCircle className="w-4 h-4 sm:mr-1" /><span className="sr-only sm:not-sr-only">WhatsApp</span></a></Button>
+        <Button asChild size="sm" variant="ghost" className="h-9 px-2.5"><a href={whatsapp} target="_blank" rel="noreferrer"><MessageCircle className="w-4 h-4 sm:mr-1" /><span className="sr-only sm:not-sr-only">WhatsApp</span></a></Button>
       )}
       {persona.email && (
-        <Button asChild size="sm" variant="outline" className="h-9"><a href={`mailto:${persona.email}`}><Mail className="w-4 h-4 sm:mr-1" /><span className="sr-only sm:not-sr-only">Email</span></a></Button>
+        <Button asChild size="sm" variant="ghost" className="h-9 px-2.5"><a href={`mailto:${persona.email}`}><Mail className="w-4 h-4 sm:mr-1" /><span className="sr-only sm:not-sr-only">Email</span></a></Button>
       )}
 
       {puoModificare && scheda && linea === "rinnovi" && (
