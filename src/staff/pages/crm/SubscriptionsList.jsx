@@ -40,12 +40,12 @@ export default function SubscriptionsList() {
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
-      <PageHeader title="Iscrizioni" description={`${subscriptions.length} iscrizioni totali`}>
+      <PageHeader title="Abbonamenti venduti" description={`${subscriptions.length} in tutto`}>
         <Select value={filter} onValueChange={setFilter}>
           <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Tutti</SelectItem>
-            <SelectItem value="active">Attivi</SelectItem>
+            <SelectItem value="active">Validi</SelectItem>
             <SelectItem value="expiring">In scadenza</SelectItem>
             <SelectItem value="expired">Scaduti</SelectItem>
           </SelectContent>
@@ -55,8 +55,8 @@ export default function SubscriptionsList() {
       {filtered.length === 0 ? (
         <EmptyState
           icon={CreditCard}
-          title="Nessuna iscrizione"
-          description="Le iscrizioni nascono dalla scheda di un socio, assegnandogli un abbonamento del catalogo."
+          title="Nessun abbonamento venduto"
+          description="Un abbonamento si vende dalla scheda di un socio, scegliendo un tipo dal listino."
         />
       ) : (
       <div className="overflow-x-auto">
@@ -77,7 +77,7 @@ export default function SubscriptionsList() {
                   <Link to={`/crm/soci/${sub.member_id}`} className="font-medium text-primary hover:underline">{getMemberName(sub.member_id)}</Link>
                 </td>
                 <td className="py-3 px-4">{sub.plan_name}</td>
-                <td className="py-3 px-4 text-muted-foreground">{formatData(sub.start_date, "giornoBreve")} — {formatData(sub.end_date, "media")}</td>
+                <td className="py-3 px-4 text-muted-foreground">{formatData(sub.start_date, "breve")} – {formatData(sub.end_date, "breve")}</td>
                 <td className="py-3 px-4"><StatusBadge status={sub.status} /></td>
                 <td className="py-3 px-4 text-right font-medium">{formatEuro(sub.price_paid)}</td>
               </tr>

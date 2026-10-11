@@ -32,12 +32,14 @@ before(async () => {
 	const [p] = await db.select().from(organizations).limit(1);
 	impostazioniPrima = p.impostazioni ?? {};
 
-	const nomi = ['lontano', 'recente', 'scade'];
-	const soci = await db.insert(members).values(nomi.map((n, i) => ({ nome: n, cognome: `DaFare${lettere}`, codiceSocio: `DF${'ABC'[i]}${lettere}` }))).returning();
+	// "lontano" (scaduto da 200 giorni) nasce dentro il test del giro, dopo aver spento
+	// l'archiviazione: gli altri file lanciano il giro in parallelo con le soglie predefinite, e un
+	// socio da archiviare creato qui lo avrebbero archiviato loro prima del controllo.
+	const nomi = ['recente', 'scade'];
+	const soci = await db.insert(members).values(nomi.map((n, i) => ({ nome: n, cognome: `DaFare${lettere}`, codiceSocio: `DF${'BC'[i]}${lettere}` }))).returning();
 	soci.forEach((s, i) => { id.soci[nomi[i]] = s.id; id.persone[nomi[i]] = s.personaId; });
 	await db.insert(subscriptions).values([
-		// Scaduto da 200 giorni: da archiviare. Scaduto da 10: ancora da recuperare.
-		{ memberId: id.soci.lontano, planName: 'Vecchio', startDate: fra(-400), endDate: fra(-200) },
+		// Scaduto da 10 giorni: ancora da recuperare.
 		{ memberId: id.soci.recente, planName: 'Mensile', startDate: fra(-40), endDate: fra(-10) },
 		{ memberId: id.soci.scade, planName: 'Mensile', startDate: fra(-27), endDate: fra(3) },
 	]);
@@ -111,6 +113,13 @@ describe('le impostazioni di Da fare', () => {
 describe('il giro', () => {
 	test('con "mai" non archivia nessuno; con 180 giorni archivia chi è senza abbonamento da tanto, una volta sola', async () => {
 		await come('admin', 'PUT', '/api/impostazioni/da-fare', { soglie: { segnali: { archiviazioneGiorni: 0 } } });
+		const [lontano] = await db.insert(members).values({ nome: 'lontano', cognome: `DaFare${lettere}`, codiceSocio: `DFA${lettere}` }).returning();
+		id.soci.lontano = lontano.id; id.persone.lontano = lontano.personaId;
+		await db.insert(subscriptions).values({ memberId: lontano.id, planName: 'Vecchio', startDate: fra(-400), endDate: fra(-200) });
+		await db.insert(memberDocuments).values([
+			{ memberId: lontano.id, documentType: 'certificato_medico', expiryDate: fra(300) },
+			{ memberId: lontano.id, documentType: 'documento_identita', expiryDate: fra(3000) },
+		]);
 		await giro();
 		assert.equal(await statoDi('lontano'), null);
 
@@ -125,8 +134,8 @@ describe('il giro', () => {
 	});
 
 	test('scrive le cose da fare quando compaiono e quando non ci sono più, senza doppioni', async () => {
-		await giro();
-		await giro();
+		// Due giri insieme (e gli altri file ne lanciano altri in parallelo): una riga sola.
+		await Promise.all([giro(), giro()]);
 		// Solo il rinnovo: assenza e ambientamento dipendono dagli ingressi che gli altri test registrano.
 		const aperti = (await diarioDi('scade')).filter((r) => r.tipo === 'segnale_aperto' && r.esito === 'in_scadenza');
 		assert.equal(aperti.length, 1);

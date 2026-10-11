@@ -1,12 +1,12 @@
 import React, { useState, Suspense } from "react";
 import { Outlet, Link, useLocation } from "react-router-dom";
 import { useStaffAuth } from "@/staff/lib/StaffAuthContext";
-import { canAccess, ROLES, SIDEBAR_PERMISSIONS } from "@/staff/lib/permissions";
+import { canAccess, ROLES, SIDEBAR_PERMISSIONS, soloLeSueLezioni } from "@/staff/lib/permissions";
 import StaffLogin from "@/staff/pages/StaffLogin";
 import {
   LayoutDashboard, Users, Calendar,
   ChevronLeft, ChevronRight, LogOut, Menu, Dumbbell,
-  ShieldCheck, ScrollText, UserPlus, KeyRound, ListChecks, Search, GraduationCap, Send
+  ShieldCheck, ScrollText, UserPlus, KeyRound, ListChecks, Search, GraduationCap, Send, Settings2
 } from "lucide-react";
 import RicercaGlobale from "@/staff/components/RicercaGlobale";
 import { CambioPasswordObbligatorio, DialogCambioPassword } from "@/ui/CambioPassword";
@@ -23,17 +23,21 @@ const navItems = [
   // Il lavoro del giorno viene prima di tutto: chi seguire, e perché, per linee.
   { label: "Da fare", path: "/da-fare", icon: ListChecks },
   { label: "Dashboard", path: "/", icon: LayoutDashboard },
-  { label: "Gestione membri", path: "/crm", icon: Users },
+  { label: "Soci", path: "/crm", icon: Users },
   // I lead sono contatti, non soci: non hanno scheda, abbonamento né accesso. Stanno in una
   // sezione loro per non mescolarsi con chi è già iscritto.
   { label: "Lead", path: "/lead", icon: UserPlus },
   { label: "Gestione corsi", path: "/calendario", icon: Calendar },
   // L'istruttore: le sue lezioni, chi viene e chi no.
   { label: "Le mie lezioni", path: "/istruttore", icon: GraduationCap },
-  { label: "Utenti e ruoli", path: "/admin", icon: ShieldCheck },
+  // Le impostazioni stanno in fondo, sotto il loro titolo: prima erano mescolate al lavoro di
+  // ogni giorno (Utenti accanto a Soci e Corsi), e quelle di Da fare si raggiungevano solo da un
+  // link dentro Da fare. Le vede l'amministratore.
+  { label: "Utenti e ruoli", path: "/admin", icon: ShieldCheck, impostazioni: true },
   // Le comunicazioni automatiche ai soci: arrivano spente, le accende l'amministratore da qui.
-  { label: "Comunicazioni", path: "/admin/comunicazioni", icon: Send },
-  { label: "Log audit", path: "/log-audit", icon: ScrollText },
+  { label: "Comunicazioni", path: "/admin/comunicazioni", icon: Send, impostazioni: true },
+  { label: "Da fare", path: "/admin/da-fare", icon: Settings2, impostazioni: true },
+  { label: "Registro delle azioni", path: "/log-audit", icon: ScrollText, impostazioni: true },
 ];
 
 export default function AppLayout() {
@@ -71,6 +75,8 @@ export default function AppLayout() {
   // Filter nav items by permissions
   const visibleNavItems = navItems.filter(item => {
     if (item.roles && !item.roles.includes(staffUser.ruolo)) return false;
+    // Per chi ha solo le sue lezioni la dashboard porta a "Le mie lezioni": due voci per un posto.
+    if (item.path === "/" && soloLeSueLezioni(staffUser.ruolo)) return false;
     const requiredModule = SIDEBAR_PERMISSIONS[item.path];
     if (!requiredModule) return true; // no permission required
     return [requiredModule].flat().some((m) => canAccess(staffUser.ruolo, m, "view"));
@@ -125,9 +131,14 @@ export default function AppLayout() {
 
         {/* Nav */}
         <nav aria-label="Navigazione principale" className="flex-1 py-4 px-2 space-y-1 overflow-y-auto">
-          {visibleNavItems.map(item => (
+          {visibleNavItems.map((item, i) => (
+            <React.Fragment key={item.path}>
+            {item.impostazioni && !visibleNavItems[i - 1]?.impostazioni && (
+              collapsed
+                ? <hr className="my-3 border-sidebar-border" />
+                : <p className="px-3 pt-4 pb-1 text-xs font-medium uppercase tracking-wide text-sidebar-foreground/70">Impostazioni</p>
+            )}
             <Link
-              key={item.path}
               to={item.path}
               onClick={() => setMobileOpen(false)}
               aria-current={isActive(item.path) ? "page" : undefined}
@@ -144,8 +155,12 @@ export default function AppLayout() {
               <item.icon className="w-5 h-5 flex-shrink-0" aria-hidden="true" />
               {/* Quando la sidebar è stretta resta la sola icona: il nome
                   serve comunque a chi naviga con uno screen reader. */}
-              <span className={collapsed ? "sr-only" : undefined}>{item.label}</span>
+              <span className={collapsed ? "sr-only" : undefined}>
+                {/* Due "Da fare" nel menu: per chi non vede il titolo, questa è quella delle impostazioni. */}
+                {item.impostazioni && <span className="sr-only">Impostazioni: </span>}{item.label}
+              </span>
             </Link>
+            </React.Fragment>
           ))}
         </nav>
 

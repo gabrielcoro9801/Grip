@@ -102,7 +102,7 @@ try {
 	await pg.getByRole('heading', { name: 'Comunicazioni', exact: true }).waitFor();
 	controlla('Il menu porta a Comunicazioni', await pg.getByRole('link', { name: 'Comunicazioni' }).isVisible());
 	controlla('Le comunicazioni sono spente', await pg.getByText('Comunicazioni spente').isVisible());
-	controlla('Avvisa che il server è in simulazione', await pg.getByText('Modalità simulazione.').isVisible());
+	controlla('Avvisa che il server è in simulazione', await pg.getByText('Modalità prova.').isVisible());
 	controlla('L\'interruttore è chiuso', await pg.getByRole('button', { name: 'Accendi le comunicazioni' }).isDisabled());
 	await pg.screenshot({ path: schermata('1-stato'), fullPage: true });
 
@@ -135,7 +135,7 @@ try {
 
 	// --- 3. Il playbook in anteprima ------------------------------------------------------
 	console.log('\nPLAYBOOK');
-	await pg.getByRole('tab', { name: 'Playbook' }).click();
+	await pg.getByRole('tab', { name: 'Messaggi' }).click();
 	const rinnovo = pg.getByRole('group', { name: 'Stato di Rinnovo' });
 	await rinnovo.getByRole('button', { name: 'Anteprima' }).click();
 	await pg.waitForFunction(() => document.querySelector('[aria-label="Stato di Rinnovo"] [aria-pressed="true"]')?.textContent === 'Anteprima');
@@ -190,13 +190,13 @@ try {
 	await tel.getByRole('heading', { name: 'Comunicazioni', exact: true }).waitFor();
 	const larghezza = await tel.evaluate(() => document.documentElement.scrollWidth);
 	controlla('Niente scorrimento orizzontale a 390 px', larghezza <= 390, `${larghezza}px`);
-	await tel.getByRole('tab', { name: 'Playbook' }).click();
+	await tel.getByRole('tab', { name: 'Messaggi' }).click();
 	await tel.screenshot({ path: schermata('7-telefono'), fullPage: true });
 
 	const rec = await nuovaPagina();
 	await entra(rec, '/admin/comunicazioni', reception.email);
 	controlla('La reception non vede la voce di menu', !(await rec.getByRole('link', { name: 'Comunicazioni' }).isVisible().catch(() => false)));
-	controlla('La reception non apre la sezione', !(await rec.getByText('Modalità simulazione.').isVisible().catch(() => false)));
+	controlla('La reception non apre la sezione', !(await rec.getByText('Modalità prova.').isVisible().catch(() => false)));
 	await rec.screenshot({ path: schermata('8-reception'), fullPage: true });
 
 	const { linkDisiscrizione } = await import('../src/lib/urlFirmati.js');

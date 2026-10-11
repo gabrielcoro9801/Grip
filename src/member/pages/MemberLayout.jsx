@@ -72,7 +72,7 @@ export default function MemberLayout() {
   };
 
   return (
-    <div className="min-h-screen bg-background flex">
+    <div className="portale min-h-screen bg-background flex">
       {/* Desktop sidebar */}
       <aside className="hidden lg:flex flex-col w-60 bg-sidebar text-sidebar-foreground fixed inset-y-0 left-0">
         <div className="flex items-center gap-3 px-4 h-16 border-b border-sidebar-border">
@@ -131,7 +131,7 @@ export default function MemberLayout() {
             to={PERCORSO_NOTIFICHE}
             aria-label={nonLette > 0 ? `Notifiche e avvisi, ${nonLette} da vedere` : "Notifiche e avvisi"}
             aria-current={isActive(PERCORSO_NOTIFICHE) ? "page" : undefined}
-            className={`relative ml-auto mr-3 p-2 rounded-lg ${isActive(PERCORSO_NOTIFICHE) ? "text-primary" : "text-muted-foreground hover:text-foreground"}`}
+            className={`relative ml-auto mr-1 p-3 rounded-lg ${isActive(PERCORSO_NOTIFICHE) ? "text-primary" : "text-muted-foreground hover:text-foreground"}`}
           >
             <Bell className="w-5 h-5" aria-hidden="true" />
             <Contatore n={nonLette} className="absolute -top-0.5 -right-1" />

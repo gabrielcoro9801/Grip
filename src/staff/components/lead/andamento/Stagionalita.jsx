@@ -56,7 +56,7 @@ export default function Stagionalita({ matrice }) {
                       <td
                         key={i}
                         tabIndex={v > 0 ? 0 : -1}
-                        className={`h-7 min-w-[1.75rem] rounded-[4px] text-center tabular-nums focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring ${g === 0 ? "bg-muted/50 text-muted-foreground/60" : ""}`}
+                        className={`h-7 min-w-[1.75rem] rounded-[4px] text-center tabular-nums focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring ${g === 0 ? "bg-muted/50 text-muted-foreground" : ""}`}
                         style={g ? { background: `var(--viz-scala-${g})`, color: testoChiaro(g) ? "#ffffff" : "#0b0b0b" } : undefined}
                         {...eventi(<p><span className="font-medium">{r.nome}</span>, {MESI[i].toLowerCase()}: {n(v)} contatti</p>)}
                       >

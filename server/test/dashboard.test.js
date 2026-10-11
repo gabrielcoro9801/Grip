@@ -72,18 +72,21 @@ describe('i numeri li conta il server', () => {
 	});
 
 	test('i numeri ci sono tutti', async () => {
-		const { kpi } = (await leggi('admin')).json();
-		for (const campo of ['soci_attivi', 'soci_iscritti', 'documenti_da_sistemare', 'prossime_lezioni']) {
+		const { kpi, prossime } = (await leggi('admin')).json();
+		for (const campo of ['soci_attivi', 'soci_iscritti', 'prossime_lezioni']) {
 			assert.equal(typeof kpi[campo], 'number', campo);
 		}
+		// Una riga per lezione, con i posti: non una per prenotazione.
+		assert.equal(kpi.prossime_lezioni, prossime.length);
+		assert.equal(new Set(prossime.map((l) => l.id)).size, prossime.length);
+		for (const l of prossime) assert.ok(Number.isInteger(l.confermati) && Number.isInteger(l.capacity), JSON.stringify(l));
 	});
 });
 
 describe('ogni parte a chi può leggerla', () => {
-	test('un ruolo senza documenti non riceve il loro numero; senza contatti, niente linea dei contatti', async () => {
+	test('senza contatti, niente linea dei contatti', async () => {
 		impostaMatrice({ permessi: { ...PERMESSI_PREDEFINITI, istruttore: { crm_members: ['view'], calendar: ['view'] } }, capacita: {} });
 		const dati = (await leggi('istruttore')).json();
-		assert.equal(dati.kpi.documenti_da_sistemare, null);
 		assert.ok(dati.da_fare && !('contatti' in dati.da_fare));
 	});
 

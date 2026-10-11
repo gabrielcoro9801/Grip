@@ -6,7 +6,7 @@ import { Input } from "@/ui/primitivi/input";
 import { Label } from "@/ui/primitivi/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/ui/primitivi/select";
 import PageHeader from "@/staff/components/PageHeader";
-import StatusBadge from "@/ui/StatusBadge";
+import StatusBadge, { StatoSocio } from "@/ui/StatusBadge";
 import { Plus, Search, Users, LayoutGrid, List, MessageCircle, HelpCircle } from "lucide-react";
 import { Card, CardContent } from "@/ui/primitivi/card";
 import { AvatarSocio } from "@/staff/components/soci/FotoSocio";
@@ -52,10 +52,10 @@ function RigaTile({ etichetta, children }) {
 }
 
 /** Lo stato dell'abbonamento: archiviato, sospeso, attivo, in scadenza, scaduto, nessuno. */
-function StatoTile({ socio }) {
+function StatoTile({ socio, soglie }) {
   if (socio.archiviato_il) return <StatusBadge status="archiviato" label={`Archiviato il ${formatData(socio.archiviato_il, "breve")}`} tone="neutro" className="py-0" />;
   if (socio.sospensione) return <StatusBadge status="sospeso" label={`Sospeso fino al ${formatData(socio.sospensione.al, "breve")}`} tone="neutro" className="py-0" />;
-  if (socio.scadenza) return <StatusBadge status={statoIscrizione({ end_date: socio.scadenza })} className="py-0" />;
+  if (socio.scadenza) return <StatusBadge status={statoIscrizione({ end_date: socio.scadenza }, undefined, soglie?.abbonamentoInScadenzaGiorni)} className="py-0" />;
   if (socio.valido) return <StatusBadge status="active" className="py-0" />;
   if (socio.ultima_fine) return <StatusBadge status="expired" className="py-0" />;
   return <StatusBadge status="nessuno" label="Senza abbonamento" tone="neutro" className="py-0" />;
@@ -68,10 +68,10 @@ function Frequenza({ socio }) {
 }
 
 /** Il badge dello stato, con il perché al passaggio del mouse (le cose da fare, o la regola). */
-function BadgeStato({ socio, soglie }) {
+function BadgeStato({ socio, soglie, className }) {
   const f = faseDi(socio.fase);
   const regola = regoleStati(soglie).find((r) => r.valore === socio.fase)?.regola;
-  return <span title={socio.perche || regola}><StatusBadge status={socio.fase} label={f.etichetta} tone={f.tono} className="py-0" /></span>;
+  return <StatoSocio title={socio.perche || regola} label={f.etichetta} tone={f.tono} className={className} />;
 }
 
 /** La legenda degli stati: che cosa vuol dire ognuno, con le soglie della palestra. */
@@ -86,7 +86,7 @@ function LegendaStati({ aperta, onChiudi, soglie }) {
         <dl className="space-y-3">
           {regoleStati(soglie).map((r) => (
             <div key={r.valore}>
-              <dt><StatusBadge status={r.valore} label={r.etichetta} tone={r.tono} className="py-0" /></dt>
+              <dt><StatoSocio label={r.etichetta} tone={r.tono} /></dt>
               <dd className="text-sm text-muted-foreground mt-1">{r.regola}.</dd>
             </div>
           ))}
@@ -127,7 +127,7 @@ export default function MembersList() {
   const [ordine, setOrdine] = useState("nome");
   const [vista, setVista] = useState(vistaSalvata);
   const scegliVista = (v) => { setVista(v); salvaVista(v); };
-  // "Aggiungi socio" è il flusso Iscrivi, per chi entra direttamente senza essere stato un contatto.
+  // "Iscrivi", per chi entra direttamente senza essere stato un contatto.
   const [showForm, setShowForm] = useState(false);
   const [errore, setErrore] = useState(null);
   const [daContattare, setDaContattare] = useState(null);
@@ -165,9 +165,9 @@ export default function MembersList() {
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
-      <PageHeader title="Gestione membri" description={`${frequentano} ${frequentano === 1 ? "socio" : "soci"}${exSoci ? ` · ${exSoci} ${exSoci === 1 ? "archiviato" : "archiviati"}` : ""}`}>
+      <PageHeader title="Soci" description={`${frequentano} ${frequentano === 1 ? "socio" : "soci"}${exSoci ? ` · ${exSoci} ${exSoci === 1 ? "archiviato" : "archiviati"}` : ""}`}>
         <Button onClick={() => setShowForm(true)} size="sm">
-          <Plus className="w-4 h-4 mr-1" /> Aggiungi socio
+          <Plus className="w-4 h-4 mr-1" /> Iscrivi
         </Button>
       </PageHeader>
 
@@ -240,7 +240,7 @@ export default function MembersList() {
             <div key={s.socio_id} className="relative">
               {/* Tutte le tile hanno la stessa altezza e le stesse righe, piene o con un
                   trattino: si confrontano a colpo d'occhio, e la griglia non balla. */}
-              <Card className="border-0 shadow-sm hover:shadow-md transition-shadow h-[200px]">
+              <Card className="border-0 shadow-sm hover:shadow-md transition-shadow h-[224px]">
                 <CardContent className="p-4 h-full flex flex-col">
                   <div className="flex items-start gap-3 pr-8">
                     <AvatarSocio socio={{ full_name: s.nome, nome: s.nome_proprio, cognome: s.nome?.slice((s.nome_proprio ?? "").length), foto_url: s.foto_url }} />
@@ -249,12 +249,13 @@ export default function MembersList() {
                         <Link to={`/crm/soci/${s.socio_id}`} className="after:absolute after:inset-0 after:rounded-lg focus:outline-none focus-visible:after:ring-2 focus-visible:after:ring-ring">{s.nome}</Link>
                       </h3>
                       <p className="text-xs text-muted-foreground font-mono">{s.codice_socio}</p>
+                      <BadgeStato socio={s} soglie={dati.soglie} className="mt-1" />
                     </div>
                   </div>
                   <dl className="mt-auto space-y-1.5">
-                    <RigaTile etichetta="Stato"><StatoTile socio={s} /></RigaTile>
-                    <RigaTile etichetta="Abbonamento">{s.abbonamento || "—"}</RigaTile>
-                    <RigaTile etichetta="Scadenza">{s.scadenza || s.ultima_fine ? formatData(s.scadenza ?? s.ultima_fine, "media") : "—"}</RigaTile>
+                    <RigaTile etichetta="Abbonamento"><StatoTile socio={s} soglie={dati.soglie} /></RigaTile>
+                    <RigaTile etichetta="Tipo">{s.abbonamento || "—"}</RigaTile>
+                    <RigaTile etichetta="Scadenza">{s.scadenza || s.ultima_fine ? formatData(s.scadenza ?? s.ultima_fine, "breve") : "—"}</RigaTile>
                     <RigaTile etichetta="Telefono">{s.telefono || "—"}</RigaTile>
                     <RigaTile etichetta="Email">{s.email || "—"}</RigaTile>
                   </dl>
@@ -292,7 +293,7 @@ export default function MembersList() {
                     <span className="block text-xs text-muted-foreground font-mono">{s.codice_socio}</span>
                   </td>
                   <td className="py-3 px-4"><BadgeStato socio={s} soglie={dati.soglie} /></td>
-                  <td className="py-3 px-4 hidden sm:table-cell"><StatoTile socio={s} /></td>
+                  <td className="py-3 px-4 hidden sm:table-cell"><StatoTile socio={s} soglie={dati.soglie} /></td>
                   <td className="py-3 px-4 hidden md:table-cell">
                     {s.scadenza || s.ultima_fine ? formatData(s.scadenza ?? s.ultima_fine, "breve") : "—"}
                     {s.abbonamento && <span className="block text-xs text-muted-foreground">{s.abbonamento}</span>}

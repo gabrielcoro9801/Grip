@@ -38,7 +38,7 @@ export default function SospensioniSocio({ socio, puoModificare, onCambio }) {
     setSalvando(true);
     try {
       const { prenotazioni_disdette: disdette } = await api.soci.sospendi(socio.id, valori);
-      toast({ title: "Abbonamento sospeso", description: `Riprende il ${formatData(valori.riprende_il, "media")}.${disdette ? ` Disdette ${disdette} prenotazioni di quei giorni.` : ""}` });
+      toast({ title: "Abbonamento sospeso", description: `Riprende il ${formatData(valori.riprende_il, "lungo")}.${disdette ? ` Disdette ${disdette} prenotazioni di quei giorni.` : ""}` });
       setAperta(false);
       setValori({ dal: oggiIso(), riprende_il: spostaGiorni(oggiIso(), 14), nota: "" });
       fatto();

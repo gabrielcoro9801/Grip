@@ -10,7 +10,7 @@ export default function CatalogoCorsi() {
     <>
       <PageHeader
         title="Catalogo corsi"
-        description="Cos'è un corso: il nome, la durata, quante persone entrano. Non quando si tiene — quello è il calendario."
+        description="Cos'è un corso: il nome, la categoria, chi lo tiene, fino a quando si disdice. Orari, sala e posti stanno nel calendario."
       />
       <CoursesTab data={data} reload={reload} />
     </>

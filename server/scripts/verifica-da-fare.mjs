@@ -156,7 +156,7 @@ try {
 	await pg.goto(`${BASE}/crm/soci/${sara.id}?azione=documenti`, { waitUntil: 'networkidle' });
 	controlla('"Carica" porta ai documenti, e l\'indirizzo si pulisce', !pg.url().includes('azione='), pg.url());
 	await pg.goto(`${BASE}/crm/soci/${marco.id}?azione=rinnova`, { waitUntil: 'networkidle' });
-	controlla('"Rinnova" apre il nuovo abbonamento', await pg.getByRole('heading', { name: 'Nuovo abbonamento' }).isVisible());
+	controlla('"Rinnova" apre la vendita', await pg.getByRole('heading', { name: 'Vendi un abbonamento' }).isVisible());
 	await pg.keyboard.press('Escape');
 
 	// --- 3. L'elenco dei soci --------------------------------------------------------------------

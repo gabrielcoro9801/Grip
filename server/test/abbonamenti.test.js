@@ -84,7 +84,7 @@ describe('il catalogo', () => {
 		assert.equal((await modificaTipo(res.json().id, { stato: 'annullato' })).statusCode, 200);
 		const riattiva = await modificaTipo(res.json().id, { stato: 'attivo' });
 		assert.equal(riattiva.statusCode, 400);
-		assert.match(riattiva.json().error, /non si riattiva/);
+		assert.match(riattiva.json().error, /non torna in vendita/);
 	});
 });
 

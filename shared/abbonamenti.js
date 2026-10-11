@@ -30,9 +30,10 @@ export function descriviDurata(valore, unita) {
 // Un tipo nasce attivo. Sospeso: non si vende per ora, e si può riattivare. Annullato: non si
 // vende più, ed è definitivo — è la ragione per cui esistono due stati e non uno.
 export const STATI_TIPO = [
-	{ valore: 'attivo', etichetta: 'Attivo' },
+	// Le parole del glossario (docs/ux/glossario.md): "Attivo" è uno stato del socio.
+	{ valore: 'attivo', etichetta: 'In vendita' },
 	{ valore: 'sospeso', etichetta: 'Sospeso' },
-	{ valore: 'annullato', etichetta: 'Annullato' },
+	{ valore: 'annullato', etichetta: 'Ritirato' },
 ];
 const PER_STATO = Object.fromEntries(STATI_TIPO.map((s) => [s.valore, s]));
 export const statoTipoValido = (v) => v in PER_STATO;
@@ -41,8 +42,8 @@ export const statoTipoValido = (v) => v in PER_STATO;
 export function motivoCambioStatoNonValido(attuale, nuovo) {
 	return motivoCambioStato(attuale, nuovo, {
 		valido: statoTipoValido,
-		nonValido: 'Stato non valido: attivo, sospeso o annullato.',
-		definitivo: 'Un abbonamento annullato non si riattiva: creane uno nuovo.',
+		nonValido: 'Stato non valido: in vendita, sospeso o ritirato.',
+		definitivo: 'Un tipo ritirato non torna in vendita: creane uno nuovo.',
 	});
 }
 
@@ -75,11 +76,11 @@ export const GIORNI_ABBONAMENTO_IN_SCADENZA = SOGLIE.abbonamentoInScadenzaGiorni
  * attivi abbonamenti scaduti da mesi. Lo stato è una conseguenza delle date — la stessa scelta
  * fatta per i documenti — e chi legge un'iscrizione dal server lo riceve già calcolato così.
  */
-export function statoIscrizione(iscrizione, oggi = oggiIso()) {
+export function statoIscrizione(iscrizione, oggi = oggiIso(), giorniInScadenza = GIORNI_ABBONAMENTO_IN_SCADENZA) {
 	const fine = iscrizione?.end_date ? String(iscrizione.end_date).slice(0, 10) : null;
 	if (!fine) return 'active';
 	if (fine < oggi) return 'expired';
-	return giorniFra(oggi, fine) <= GIORNI_ABBONAMENTO_IN_SCADENZA ? 'expiring' : 'active';
+	return giorniFra(oggi, fine) <= giorniInScadenza ? 'expiring' : 'active';
 }
 
 /**

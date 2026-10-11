@@ -19,7 +19,7 @@ export { oggiIso };
 // definitivo, l'unico modo di togliere di mezzo una sala sarebbe eliminarla, e con lei il
 // calendario di chi ci si è allenato.
 export const STATI_SALA = [
-	{ valore: 'attivo', etichetta: 'Attiva' },
+	{ valore: 'attivo', etichetta: 'Disponibile' },
 	{ valore: 'sospeso', etichetta: 'Sospesa' },
 	{ valore: 'annullato', etichetta: 'Annullata' },
 ];
@@ -107,7 +107,7 @@ export function statoSala(sala, oggi = oggiIso()) {
 
 /** Etichetta e tono del distintivo, per `statoSala`. */
 export const ETICHETTA_STATO_SALA = {
-	attiva: { etichetta: 'Attiva', tono: 'positivo' },
+	attiva: { etichetta: 'Disponibile', tono: 'positivo' },
 	sospesa: { etichetta: 'Sospesa', tono: 'attesa' },
 	programmata: { etichetta: 'Sospensione programmata', tono: 'info' },
 	conclusa: { etichetta: 'Sospensione conclusa', tono: 'neutro' },

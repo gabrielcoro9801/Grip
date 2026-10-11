@@ -41,23 +41,26 @@ export default function MemberLogin() {
           <CardContent className="p-5">
             <form onSubmit={handleLogin} className="space-y-3">
               <div>
-                <Label>Email</Label>
+                <Label htmlFor="socio-email">Email</Label>
                 <Input
+                  id="socio-email"
                   type="email"
+                  autoComplete="username"
                   required
                   value={email}
                   onChange={e => setEmail(e.target.value)}
-                  placeholder="nome@email.it"
+                  placeholder="nome@esempio.it"
                 />
               </div>
               <div>
-                <Label>Password</Label>
+                <Label htmlFor="socio-password">Password</Label>
                 <Input
+                  id="socio-password"
                   type="password"
+                  autoComplete="current-password"
                   required
                   value={password}
                   onChange={e => setPassword(e.target.value)}
-                  placeholder="••••••••"
                 />
               </div>
 

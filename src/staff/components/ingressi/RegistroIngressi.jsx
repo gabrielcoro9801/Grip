@@ -11,6 +11,7 @@ import SegnaliBancone from "@/staff/components/ingressi/SegnaliBancone";
 import { useToast } from "@/ui/primitivi/use-toast";
 import { useConfirm } from "@/ui/ConfirmDialog";
 import { oggiIso, oraIso } from "@/core/domain/giorni";
+import { formatData } from "@/core/domain/format";
 import { CheckCircle2, AlertTriangle, XCircle, Search, Plus, Trash2 } from "lucide-react";
 
 // Il semaforo: colore di stato, icona ed etichetta insieme, mai il colore da solo.
@@ -170,7 +171,7 @@ function RegistraIngresso({ giorno, onChiudi, onRegistrato }) {
         <DialogHeader>
           <DialogTitle>Registra ingresso</DialogTitle>
           <DialogDescription>
-            Per chi non può usare il QR, o entra lo stesso. {giorno === oggiIso() ? "Oggi" : `Il ${giorno.split("-").reverse().join("/")}`}.
+            Per chi non può usare il QR, o entra lo stesso. {giorno === oggiIso() ? "Oggi" : `Il ${formatData(giorno, "breve")}`}.
           </DialogDescription>
         </DialogHeader>
 

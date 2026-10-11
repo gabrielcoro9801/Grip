@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { caricaAbbonamenti, richiediRinnovo } from "@/core/api/portale";
 import { Card, CardContent } from "@/ui/primitivi/card";
 import { Button } from "@/ui/primitivi/button";
 import { Calendar, AlertCircle, CheckCircle, Clock, CreditCard, PauseCircle, Send } from "lucide-react";
 import StatusBadge from "@/ui/StatusBadge";
 import { LoadingState } from "@/ui/Spinner";
+import { ErrorState } from "@/ui/StateViews";
 import { useToast } from "@/ui/primitivi/use-toast";
 import { formatData, formatDataOra, formatEuro } from "@/core/domain/format";
 
@@ -54,13 +55,16 @@ function RichiestaRinnovo({ richiesta, onInviata }) {
 
 export default function MemberSubscription() {
   const [dati, setDati] = useState(null);
+  const [errore, setErrore] = useState(null);
 
-  useEffect(() => {
-    caricaAbbonamenti()
-      .then(setDati)
-      .catch(() => setDati({ abbonamenti: [], richiesta_rinnovo: null }));
+  // Un errore di rete si dice: prima diventava "Nessun abbonamento valido", a chi ce l'ha.
+  const carica = useCallback(() => {
+    setErrore(null);
+    caricaAbbonamenti().then(setDati).catch(setErrore);
   }, []);
+  useEffect(() => { carica(); }, [carica]);
 
+  if (errore) return <ErrorState error={errore} onRetry={carica} className="p-8" />;
   if (!dati) {
     return <LoadingState minHeight="p-8" />;
   }
@@ -73,13 +77,17 @@ export default function MemberSubscription() {
         <p className="text-sm text-muted-foreground">Stato del tuo abbonamento</p>
       </div>
 
-      <RichiestaRinnovo richiesta={dati.richiesta_rinnovo} onInviata={(r) => setDati((d) => ({ ...d, richiesta_rinnovo: r }))} />
+      {/* La domanda solo a chi sta per scadere o è scaduto (lo dice il server, con la soglia della
+          palestra); una richiesta già fatta si vede sempre. */}
+      {(dati.richiesta_rinnovo || dati.rinnovo_proponibile) && (
+        <RichiestaRinnovo richiesta={dati.richiesta_rinnovo} onInviata={(r) => setDati((d) => ({ ...d, richiesta_rinnovo: r }))} />
+      )}
 
       {subscriptions.length === 0 ? (
         <Card className="border-0 shadow-sm">
           <CardContent className="p-8 text-center">
             <CreditCard className="w-10 h-10 text-muted-foreground/40 mx-auto mb-2" />
-            <p className="text-sm text-muted-foreground">Nessun abbonamento attivo</p>
+            <p className="text-sm text-muted-foreground">Nessun abbonamento valido</p>
           </CardContent>
         </Card>
       ) : (
@@ -88,7 +96,7 @@ export default function MemberSubscription() {
             // Quanto manca alla scadenza lo conta il server: qui resta solo come dirlo.
             const daysToExpiry = sub.giorni_alla_scadenza;
             const expired = daysToExpiry != null && daysToExpiry < 0;
-            const expiringSoon = daysToExpiry != null && daysToExpiry <= 7 && daysToExpiry >= 0;
+            const expiringSoon = Boolean(sub.in_scadenza);
             const sospensione = sub.sospensioni?.[0];
             return (
               <Card key={sub.id} className="border-0 shadow-sm">
@@ -100,11 +108,11 @@ export default function MemberSubscription() {
                   <div className="grid grid-cols-2 gap-2 text-sm">
                     <div className="flex items-center gap-1.5 text-muted-foreground">
                       <Calendar className="w-4 h-4" /> Inizio
-                      <span className="font-medium text-foreground ml-1">{formatData(sub.inizio, "media")}</span>
+                      <span className="font-medium text-foreground ml-1">{formatData(sub.inizio, "lungo")}</span>
                     </div>
                     <div className="flex items-center gap-1.5 text-muted-foreground">
                       <Calendar className="w-4 h-4" /> Scadenza
-                      <span className="font-medium text-foreground ml-1">{formatData(sub.fine, "media")}</span>
+                      <span className="font-medium text-foreground ml-1">{formatData(sub.fine, "lungo")}</span>
                     </div>
                   </div>
                   {sospensione && (
@@ -123,7 +131,7 @@ export default function MemberSubscription() {
                     </div>
                   ) : (
                     <div className="flex items-center gap-2 p-2 rounded-lg bg-success/10 border border-success/30 text-success text-xs">
-                      <CheckCircle className="w-4 h-4" /> Attivo — scade tra {daysToExpiry} giorni
+                      <CheckCircle className="w-4 h-4" /> Valido — scade tra {daysToExpiry} giorni
                     </div>
                   )}
                   {sub.giorni_sospesi > 0 && (

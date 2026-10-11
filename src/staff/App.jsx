@@ -66,12 +66,15 @@ export default function App() {
                 <Route path="/crm" element={<PermissionGate module="crm_members"><CrmLayout /></PermissionGate>}>
                   <Route index element={<MembersList />} />
                   <Route path="soci/:id" element={<MemberDetail />} />
-                  <Route path="abbonamenti" element={<PlansCatalog />} />
-                  <Route path="iscrizioni" element={<SubscriptionsList />} />
+                  <Route path="listino" element={<PlansCatalog />} />
+                  <Route path="venduti" element={<SubscriptionsList />} />
+                  {/* Si chiamavano Abbonamenti e Iscrizioni (docs/ux/glossario.md). */}
+                  <Route path="abbonamenti" element={<Navigate to="/crm/listino" replace />} />
+                  <Route path="iscrizioni" element={<Navigate to="/crm/venduti" replace />} />
                   <Route path="ingressi" element={<Ingressi />} />
                   <Route path="members/:id" element={<RedirectSocio />} />
-                  <Route path="plans" element={<Navigate to="/crm/abbonamenti" replace />} />
-                  <Route path="subscriptions" element={<Navigate to="/crm/iscrizioni" replace />} />
+                  <Route path="plans" element={<Navigate to="/crm/listino" replace />} />
+                  <Route path="subscriptions" element={<Navigate to="/crm/venduti" replace />} />
                 </Route>
                 <Route path="/lead" element={<PermissionGate module="crm_leads"><LeadLayout /></PermissionGate>}>
                   <Route index element={<Contatti />} />

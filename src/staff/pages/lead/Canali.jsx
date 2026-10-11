@@ -126,7 +126,7 @@ export default function Canali() {
               {/* Larghezze fisse per badge e "Disattiva/Riattiva": le righe si allineano in colonna
                   qualunque sia lo stato del canale. */}
               <StatusBadge
-                status={c.attivo ? "attivo" : "disattivato"} label={c.attivo ? "Attivo" : "Disattivato"} tone={c.attivo ? "positivo" : "neutro"}
+                status={c.attivo ? "attivo" : "disattivato"} label={c.attivo ? "In uso" : "Non in uso"} tone={c.attivo ? "positivo" : "neutro"}
                 className="w-24 justify-center"
               />
               {puoModificare && !modifica && (

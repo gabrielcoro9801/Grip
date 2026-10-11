@@ -28,7 +28,7 @@ const ACTION_LABELS = {
 // della contabilità sono sparite con la contabilità.
 const ENTITY_LABELS = {
   member: "Socio",
-  subscription: "Iscrizione",
+  subscription: "Abbonamento",
   plan: "Abbonamento",
   member_document: "Documento",
   qraccesso: "Codice d'accesso",
@@ -112,7 +112,7 @@ export default function AuditLogPage() {
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-6xl mx-auto space-y-6">
-      <PageHeader title="Log audit" description="Registro delle azioni sensibili: chi ha fatto cosa, e quando" />
+      <PageHeader title="Registro delle azioni" description="Le azioni delicate: chi ha fatto cosa, e quando" />
 
       {/* Filtri */}
       <div className="flex flex-wrap gap-3">

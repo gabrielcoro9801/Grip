@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/ui/primitivi
 import { Label } from "@/ui/primitivi/label";
 import { Input } from "@/ui/primitivi/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/ui/primitivi/select";
-import StatusBadge from "@/ui/StatusBadge";
+import StatusBadge, { StatoSocio } from "@/ui/StatusBadge";
 import { ArrowLeft, Plus, CreditCard, QrCode, KeyRound, RefreshCw, Pencil, UserRound, Archive, ArchiveRestore } from "lucide-react";
 import CampiAnagrafica, { anagraficaDi, motivoAnagraficaIncompleta } from "@/staff/components/soci/CampiAnagrafica";
 import FisseSocio from "@/staff/components/soci/FisseSocio";
@@ -34,6 +34,7 @@ import { ErrorState } from "@/ui/StateViews";
 import { useConfirm } from "@/ui/ConfirmDialog";
 import { formatData, formatDataOra, formatEuro } from "@/core/domain/format";
 import { dataFineAbbonamento, descriviDurata, motivoNonVendibile, oggiIso } from "@/core/domain/abbonamenti";
+import { spostaGiorni } from "@/core/domain/giorni";
 
 
 /** Un dato della tile anagrafica: un trattino quando manca, così ogni scheda ha le stesse righe. */
@@ -134,7 +135,7 @@ export default function MemberDetail() {
   const azione = parametri.get("azione");
   useEffect(() => {
     if (loading || !member || !azione) return;
-    if (azione === "rinnova" && puoModificare && !member.archiviato_il) setShowSubForm(true);
+    if (azione === "rinnova" && puoModificare && !member.archiviato_il) apriVendita();
     if (azione === "documenti") document.getElementById("documenti")?.scrollIntoView({ behavior: "smooth", block: "start" });
     setParametri({}, { replace: true });
   }, [loading, member, azione]);
@@ -150,6 +151,19 @@ export default function MemberDetail() {
     qrDataUrl(codiceDinamico, 120).then((url) => { if (vivo) setImmagineQr(url); }).catch(() => {});
     return () => { vivo = false; };
   }, [codiceDinamico]);
+
+  // Un rinnovo, quasi sempre: lo stesso tipo di prima, dal giorno dopo la fine. Si apriva vuoto e
+  // da oggi, e a chi scadeva fra cinque giorni si vendevano cinque giorni già pagati.
+  function apriVendita() {
+    const ultima = [...subscriptions].sort((a, b) => String(b.end_date).localeCompare(String(a.end_date)))[0];
+    const oggi = oggiIso();
+    setSubForm({
+      plan_id: plans.some((p) => p.id === ultima?.plan_id) ? ultima.plan_id : "",
+      start_date: ultima?.end_date && ultima.end_date >= oggi ? spostaGiorni(ultima.end_date, 1) : oggi,
+    });
+    setDateError("");
+    setShowSubForm(true);
+  }
 
   const pianoScelto = plans.find(p => p.id === subForm.plan_id);
   const scadenzaProposta = pianoScelto ? dataFineAbbonamento(subForm.start_date, pianoScelto.durata_valore, pianoScelto.durata_unita) : null;
@@ -169,7 +183,7 @@ export default function MemberDetail() {
       setShowSubForm(false);
       setSubForm({ plan_id: "", start_date: oggiIso() });
       loadData();
-      toast({ title: "Abbonamento creato" });
+      toast({ title: "Abbonamento venduto" });
     } catch (err) {
       toast({ title: "Errore", description: err.message, variant: "destructive" });
     } finally {
@@ -333,21 +347,21 @@ export default function MemberDetail() {
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-5xl mx-auto space-y-6">
       <Link to="/crm" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
-        <ArrowLeft className="w-4 h-4" /> Torna a Gestione membri
+        <ArrowLeft className="w-4 h-4" /> Torna ai soci
       </Link>
 
       {/* Intestazione: chi è, e basta. I dati stanno tutti nella tile dell'anagrafica qui
           sotto; ripeterli qui voleva dire leggerli due volte. */}
       <div>
-        <h1 className="text-xl font-heading font-bold">{member.full_name}</h1>
+        <h1 className="text-2xl font-heading font-bold">{member.full_name}</h1>
         <div className="flex flex-wrap items-center gap-2 mt-1">
           <span className="inline-block text-xs font-mono font-medium text-muted-foreground bg-muted px-2 py-0.5 rounded">
             Codice socio: {member.codice_socio}
           </span>
           {member.archiviato_il ? (
-            <StatusBadge status="archiviato" label={`Archiviato il ${formatData(member.archiviato_il, "breve")}`} tone="neutro" />
+            <StatoSocio label={`Archiviato il ${formatData(member.archiviato_il, "breve")}`} tone="neutro" />
           ) : stato && (
-            <StatusBadge status={stato} label={faseDi(stato).etichetta} tone={faseDi(stato).tono} />
+            <StatoSocio label={faseDi(stato).etichetta} tone={faseDi(stato).tono} />
           )}
 
         </div>
@@ -370,7 +384,7 @@ export default function MemberDetail() {
                 <DatoAnagrafico etichetta="Cognome">{member.cognome}</DatoAnagrafico>
                 <DatoAnagrafico etichetta="Codice fiscale">{member.codice_fiscale}</DatoAnagrafico>
                 <DatoAnagrafico etichetta="Data di nascita">
-                  {member.date_of_birth && `${formatData(member.date_of_birth, "media")} (${etaA(member.date_of_birth)} anni)`}
+                  {member.date_of_birth && `${formatData(member.date_of_birth, "breve")} (${etaA(member.date_of_birth)} anni)`}
                 </DatoAnagrafico>
                 <DatoAnagrafico etichetta="Sesso">{etichettaSesso(member.sesso)}</DatoAnagrafico>
                 <DatoAnagrafico etichetta="Residenza">{member.address}</DatoAnagrafico>
@@ -378,7 +392,7 @@ export default function MemberDetail() {
                 <DatoAnagrafico etichetta="Email">{member.email}</DatoAnagrafico>
                 <DatoAnagrafico etichetta="Contatto di emergenza">{member.emergency_contact_name}</DatoAnagrafico>
                 <DatoAnagrafico etichetta="Telefono di emergenza">{member.emergency_contact_phone}</DatoAnagrafico>
-                <DatoAnagrafico etichetta="Socio dal">{formatData(member.created_date, "media")}</DatoAnagrafico>
+                <DatoAnagrafico etichetta="Socio dal">{formatData(member.created_date, "breve")}</DatoAnagrafico>
                 <DatoAnagrafico etichetta="Note" className="sm:col-span-2 lg:col-span-3">{member.notes}</DatoAnagrafico>
               </dl>
             </div>
@@ -407,7 +421,7 @@ export default function MemberDetail() {
             <CardTitle className="text-sm font-heading flex items-center gap-2"><CreditCard className="w-4 h-4" /> Abbonamenti</CardTitle>
             {/* Un socio archiviato non compra abbonamenti: prima lo si riattiva. */}
             {puoModificare && !member.archiviato_il && (
-              <Button size="sm" variant="outline" onClick={() => setShowSubForm(true)}><Plus className="w-3 h-3 mr-1" /> Nuovo</Button>
+              <Button size="sm" variant="outline" onClick={apriVendita}><Plus className="w-3 h-3 mr-1" /> Vendi</Button>
             )}
           </CardHeader>
           <CardContent>
@@ -419,7 +433,7 @@ export default function MemberDetail() {
                   <div key={sub.id} className="p-3 rounded-lg bg-muted/50 flex items-center justify-between">
                     <div>
                       <p className="text-sm font-medium">{sub.plan_name}</p>
-                      <p className="text-xs text-muted-foreground">{formatData(sub.start_date, "giornoBreve")} — {formatData(sub.end_date, "media")}</p>
+                      <p className="text-xs text-muted-foreground">{formatData(sub.start_date, "breve")} – {formatData(sub.end_date, "breve")}</p>
                       {sub.giorni_sospesi > 0 && <p className="text-xs text-muted-foreground">+{sub.giorni_sospesi} giorni di sospensione</p>}
                     </div>
                     <div className="text-right">
@@ -471,9 +485,9 @@ export default function MemberDetail() {
                     <p className="text-[11px] text-muted-foreground font-mono break-all mt-1">
                       Credenziale: {qrAccess.codice}
                     </p>
-                    <p className="text-xs text-muted-foreground">Generata il {formatData(qrAccess.data_generazione, "media")}</p>
+                    <p className="text-xs text-muted-foreground">Generata il {formatData(qrAccess.data_generazione, "lungo")}</p>
                     <Badge variant="outline" className={`mt-1 text-xs ${qrAccess.stato === "attivo" ? "bg-success/10 text-success border-success/30" : "bg-destructive/10 text-destructive border-destructive/30"}`}>
-                      {qrAccess.stato === "attivo" ? "Attivo" : "Revocato"}
+                      {qrAccess.stato === "attivo" ? "Valido" : "Revocato"}
                     </Badge>
                   </div>
                 </div>
@@ -546,12 +560,12 @@ export default function MemberDetail() {
       {/* New Subscription Dialog */}
       <Dialog open={showSubForm} onOpenChange={setShowSubForm}>
         <DialogContent className="max-w-sm">
-          <DialogHeader><DialogTitle>Nuovo abbonamento</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>Vendi un abbonamento</DialogTitle></DialogHeader>
           <form onSubmit={handleNewSubscription} className="space-y-3">
             <div>
-              <Label>Abbonamento *</Label>
+              <Label>Tipo, dal listino *</Label>
               <Select value={subForm.plan_id} onValueChange={v => setSubForm({...subForm, plan_id: v})}>
-                <SelectTrigger><SelectValue placeholder="Seleziona un abbonamento" /></SelectTrigger>
+                <SelectTrigger><SelectValue placeholder="Scegli un tipo" /></SelectTrigger>
                 <SelectContent>
                   {plans.map(p => (
                     <SelectItem key={p.id} value={p.id}>{p.name} — {descriviDurata(p.durata_valore, p.durata_unita)} — {formatEuro(p.price)}</SelectItem>
@@ -561,10 +575,10 @@ export default function MemberDetail() {
             </div>
             <div><Label>Data inizio abbonamento</Label><Input type="date" value={subForm.start_date} onChange={e => setSubForm({...subForm, start_date: e.target.value})} /></div>
             {dateError && <p className="text-xs text-destructive font-medium -mt-1">{dateError}</p>}
-            {scadenzaProposta && <p className="text-xs text-muted-foreground">Valido fino al {formatData(scadenzaProposta, "media")} compreso.</p>}
-            {showSubForm && plans.length === 0 && <p className="text-xs text-muted-foreground">Nessun abbonamento in vendita: controlla stato e data massima nel catalogo.</p>}
+            {scadenzaProposta && <p className="text-xs text-muted-foreground">Valido fino al {formatData(scadenzaProposta, "lungo")} compreso.</p>}
+            {showSubForm && plans.length === 0 && <p className="text-xs text-muted-foreground">Nessun tipo in vendita: controlla stato e data massima nel listino.</p>}
             <Button type="submit" className="w-full" disabled={!subForm.plan_id || saving}>
-              {saving ? "Registrazione..." : "Crea abbonamento"}
+              {saving ? "Vendita..." : "Vendi"}
             </Button>
           </form>
         </DialogContent>
@@ -582,6 +596,7 @@ export default function MemberDetail() {
               )}
               <CampiAnagrafica valori={anagrafica} onChange={setAnagrafica} />
               <SceltaFoto socio={anagrafica} attuale={member.foto_url} file={foto.file} rimossa={foto.rimossa} onChange={setFoto} />
+              <p role="status" aria-live="polite" className="text-sm text-muted-foreground">{motivoAnagraficaIncompleta(anagrafica)}</p>
               <Button type="submit" className="w-full" disabled={Boolean(motivoAnagraficaIncompleta(anagrafica)) || saving}>
                 {saving ? "Salvataggio..." : "Salva"}
               </Button>

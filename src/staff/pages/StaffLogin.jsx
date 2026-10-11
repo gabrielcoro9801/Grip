@@ -37,23 +37,26 @@ export default function StaffLogin() {
           <CardContent className="p-5">
             <form onSubmit={handleLogin} className="space-y-3">
               <div>
-                <Label>Email</Label>
+                <Label htmlFor="staff-email">Email</Label>
                 <Input
+                  id="staff-email"
                   type="email"
+                  autoComplete="username"
                   required
                   value={email}
                   onChange={e => setEmail(e.target.value)}
-                  placeholder="nome@fitgym.it"
+                  placeholder="nome@palestra.it"
                 />
               </div>
               <div>
-                <Label>Password</Label>
+                <Label htmlFor="staff-password">Password</Label>
                 <Input
+                  id="staff-password"
                   type="password"
+                  autoComplete="current-password"
                   required
                   value={password}
                   onChange={e => setPassword(e.target.value)}
-                  placeholder="••••••••"
                 />
               </div>
 
@@ -71,6 +74,12 @@ export default function StaffLogin() {
             </form>
           </CardContent>
         </Card>
+
+        {/* Non c'è un recupero per email: la password di un account staff la reimposta
+            l'amministratore. Dirlo evita di cercare un link che non esiste. */}
+        <p className="text-xs text-muted-foreground text-center">
+          Password dimenticata? La reimposta l'amministratore, da Utenti e ruoli.
+        </p>
 
       </div>
     </div>

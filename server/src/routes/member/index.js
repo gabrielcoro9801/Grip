@@ -20,6 +20,7 @@ import { oggiIso, eUnGiorno, giorniFra, giorniDaOggi, spostaGiorni, lezioneFinit
 import { limiteDisdetta, motivoDisdettaChiusa } from '../../../../shared/corsi.js';
 import { applicaFisse, creaFissa, terminaFissa, elencoFisse } from '../../lib/prenotazioniFisse.js';
 import { avvisiSocio } from '../../../../shared/avvisi.js';
+import { soglieEnte } from '../../lib/impostazioni.js';
 
 /**
  * L'API del portale soci.
@@ -94,12 +95,15 @@ export default async function memberRoutes(fastify) {
 		if (!socio) return { socio: null, abbonamento: null, documenti: null };
 
 		// Con le date dopo le sospensioni, dalla più recente.
-		const abbonamenti = (await iscrizioniDelSocio(request.idSocio)).reverse();
+		const [iscrizioni, soglie] = await Promise.all([iscrizioniDelSocio(request.idSocio), soglieEnte()]);
+		const abbonamenti = iscrizioni.reverse();
 
 		// Servono anche tipo e data di caricamento, non solo la scadenza: un certificato
 		// scaduto e già sostituito è archiviato, e non va contato fra quelli scaduti —
 		// altrimenti il socio che ha rinnovato si vede un avviso rosso che non sa come
 		// togliere. La regola sta in shared/anagrafica.js, la stessa della segreteria.
+		// Le soglie della palestra, per lo stato come per "in scadenza": il badge e il riquadro
+		// sotto devono dire la stessa cosa.
 		const documenti = conStatoDocumenti(
 			await db
 				.select({
@@ -109,13 +113,14 @@ export default async function memberRoutes(fastify) {
 				})
 				.from(memberDocuments)
 				.where(eq(memberDocuments.memberId, request.idSocio)),
-			giorniDaOggi
+			giorniDaOggi,
+			soglie.documentoInScadenzaGiorni
 		);
 
 		// La corrente è la più recente ancora valida oggi; se non ce n'è, l'ultima scaduta. La
 		// colonna `status` non si guarda: nessuno la aggiorna, e sceglieva come "corrente" anche
 		// un abbonamento scaduto da mesi.
-		const statoDi = (a) => statoIscrizione(a);
+		const statoDi = (a) => statoIscrizione(a, oggiIso(), soglie.abbonamentoInScadenzaGiorni);
 		const corrente = abbonamenti.find((a) => statoDi(a) !== 'expired') ?? abbonamenti[0] ?? null;
 		const sospensione = sospensioneIl(abbonamenti, oggiIso());
 
@@ -144,7 +149,8 @@ export default async function memberRoutes(fastify) {
 				// Dopo le sospensioni: è la scadenza vera.
 				fine: corrente.end_date,
 				giorni_alla_scadenza: giorniDaOggi(corrente.end_date),
-				in_scadenza: entroGiorni(corrente.end_date, 7),
+				// La soglia della palestra, la stessa di Da fare: prima qui c'era un 7 scritto a mano.
+				in_scadenza: entroGiorni(corrente.end_date, soglie.abbonamentoInScadenzaGiorni),
 				// Fermo oggi: fino a quando, e il giorno in cui riprende.
 				sospeso: sospensione ? { fino_al: sospensione.al, riprende_il: spostaGiorni(sospensione.al, 1) } : null,
 			},
@@ -157,18 +163,23 @@ export default async function memberRoutes(fastify) {
 	});
 
 	fastify.get('/abbonamenti', async (request) => {
-		const [righe, richiesta] = await Promise.all([iscrizioniDelSocio(request.idSocio), richiestaRinnovoDi(request.idSocio)]);
+		const [righe, richiesta, soglie] = await Promise.all([iscrizioniDelSocio(request.idSocio), richiestaRinnovoDi(request.idSocio), soglieEnte()]);
 		const oggi = oggiIso();
+		// "Vuoi rinnovare?" ha senso quando la copertura sta per finire (la soglia di Da fare) o è
+		// già finita: a chi scade fra 200 giorni la domanda in cima alla pagina era rumore.
+		const ultimaFine = righe.map((a) => a.end_date).filter(Boolean).sort().at(-1);
+		const rinnovoProponibile = !ultimaFine || giorniDaOggi(ultimaFine) <= soglie.abbonamentoInScadenzaGiorni;
 
 		return {
 			abbonamenti: righe.reverse().map((a) => ({
 				id: a.id,
 				piano: a.plan_name,
-				stato: statoIscrizione(a),
+				stato: statoIscrizione(a, oggi, soglie.abbonamentoInScadenzaGiorni),
 				inizio: a.start_date,
 				// La scadenza dopo le sospensioni; `giorni_sospesi` dice di quanto si è allungata.
 				fine: a.end_date,
 				giorni_alla_scadenza: giorniDaOggi(a.end_date),
+				in_scadenza: entroGiorni(a.end_date, soglie.abbonamentoInScadenzaGiorni) && giorniDaOggi(a.end_date) >= 0,
 				prezzo_pagato: a.price_paid,
 				giorni_sospesi: a.giorni_sospesi,
 				// Quelle in corso o in arrivo: le passate sono già nella scadenza.
@@ -176,6 +187,7 @@ export default async function memberRoutes(fastify) {
 			})),
 			// La richiesta di rinnovo che aspetta la reception, o null.
 			richiesta_rinnovo: richiesta,
+			rinnovo_proponibile: rinnovoProponibile,
 		};
 	});
 
@@ -199,6 +211,7 @@ export default async function memberRoutes(fastify) {
 	});
 
 	fastify.get('/documenti', async (request) => {
+		const soglie = await soglieEnte();
 		const righe = await db
 			.select()
 			.from(memberDocuments)
@@ -216,7 +229,8 @@ export default async function memberRoutes(fastify) {
 					created_date: d.createdDate,
 					expiry_date: d.expiryDate,
 				})),
-				giorniDaOggi
+				giorniDaOggi,
+				soglie.documentoInScadenzaGiorni
 			).map((d) => [d.id, d.stato])
 		);
 
@@ -236,7 +250,7 @@ export default async function memberRoutes(fastify) {
 				// c'erano prima. `stato` è la lettura completa — valido, in_scadenza,
 				// scaduto, archiviato — ed è quella che le schermate usano per il bollino.
 				scaduto: scaduto(d.expiryDate),
-				in_scadenza: entroGiorni(d.expiryDate, 30) && !scaduto(d.expiryDate),
+				in_scadenza: entroGiorni(d.expiryDate, soglie.documentoInScadenzaGiorni) && !scaduto(d.expiryDate),
 				stato: stati.get(d.id),
 				caricato_il: d.createdDate,
 				caricato_da: d.caricatoDa,

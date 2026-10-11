@@ -75,7 +75,7 @@ export default function ConsensiComunicazioni({ primaVolta = false }) {
         </div>
         {errore && <p className="text-sm text-destructive">{errore.message}</p>}
         {consensi && TIPI_CONSENSO.map((t) => (
-          <label key={t.valore} className="flex items-center gap-3 text-sm">
+          <label key={t.valore} className="flex items-center gap-3 text-sm min-h-11">
             {primaVolta ? (
               <Checkbox checked={scelte[t.valore] === true} onCheckedChange={(v) => setScelte((s) => ({ ...s, [t.valore]: v === true }))} />
             ) : (

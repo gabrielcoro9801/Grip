@@ -19,7 +19,7 @@ import { useToast } from "@/ui/primitivi/use-toast";
 import { useStaffAuth } from "@/staff/lib/StaffAuthContext";
 import { canEdit } from "@/staff/lib/permissions";
 import { formatData, toIsoDate } from "@/core/domain/format";
-import { SESSI } from "@/core/domain/anagrafica";
+import { SESSI, nomeCompleto } from "@/core/domain/anagrafica";
 import { oggiIso } from "@/core/domain/giorni";
 import {
   NOTE_LEAD_MASSIMO, FILTRI_LEAD, SOGLIE_LEAD, condizioniLead, statoLead, statoAperto, descriviTempoLead, motivoLeadIncompleto,
@@ -184,6 +184,74 @@ export default function Contatti() {
     : motivoLeadIncompleto(modulo));
   const nessunCanaleAttivo = !canali.some((c) => c.attivo);
 
+  // Il nome apre il diario: stato, contatti e tutto quello che è successo. Nome e poi cognome,
+  // come ovunque si mostri una persona.
+  const nomeContatto = (l) => (
+    <>
+      <button type="button" onClick={() => setInDiario(l)} className="font-medium text-left hover:text-primary hover:underline">
+        {nomeCompleto(l)}
+      </button>
+      {l.socio_id && (
+        <StatusBadge status="socio" label={l.socio_archiviato_il ? "Archiviato" : "Socio"} tone="neutro" className="ml-1.5 py-0" />
+      )}
+      {/* La nota non ha una colonna sua: è rara e corta. Si legge al passaggio del mouse. */}
+      {l.note && (
+        <span title={l.note} className="inline-flex align-middle ml-1.5 text-muted-foreground">
+          <StickyNote className="w-3.5 h-3.5" aria-hidden="true" />
+          <span className="sr-only">Nota: {l.note}</span>
+        </span>
+      )}
+    </>
+  );
+
+  // Le azioni di un contatto, con il loro nome scritto: a sola icona, sul telefono il significato
+  // non si vedeva, e la "✕" di "non interessato" si leggeva come chiudi o elimina. Modifica ed
+  // elimina restano icone (matita e cestino), in fondo e staccate.
+  const azioniContatto = (l, allinea) => {
+    const nome = nomeCompleto(l);
+    const aperto = statoAperto(l.stato);
+    return (
+      <div className={`flex flex-wrap items-center gap-1 ${allinea}`}>
+        {puoModificare && aperto && (
+          <>
+            <Button size="sm" variant="outline" className="h-8 whitespace-nowrap" aria-label={`Contattato: ${nome}`} onClick={() => setAzione({ lead: l, tipo: "contatto" })}>
+              <Phone className="w-3.5 h-3.5 mr-1" aria-hidden="true" /> Contattato
+            </Button>
+            <Button size="sm" variant="ghost" className="h-8 whitespace-nowrap" aria-label={`Richiama ${nome}`} onClick={() => setAzione({ lead: l, tipo: "richiamo" })}>
+              <CalendarClock className="w-3.5 h-3.5 mr-1" aria-hidden="true" /> Richiama
+            </Button>
+            <Button size="sm" variant="ghost" className="h-8 whitespace-nowrap" aria-label={`Non interessato: ${nome}`} onClick={() => setAzione({ lead: l, tipo: "chiudi" })}>
+              <XCircle className="w-3.5 h-3.5 mr-1" aria-hidden="true" /> Non interessato
+            </Button>
+          </>
+        )}
+        {puoModificare && !aperto && (
+          <Button size="sm" variant="outline" className="h-8" onClick={() => setInDiario(l)}>
+            <RotateCcw className="w-3.5 h-3.5 mr-1" aria-hidden="true" /> Riapri
+          </Button>
+        )}
+        {puoTrasformare && aperto && (
+          <Button size="sm" variant="ghost" className="h-8 whitespace-nowrap text-primary" aria-label={`Iscrivi ${nome}`} onClick={() => setDaTrasformare(l)}>
+            <UserCheck className="w-3.5 h-3.5 mr-1" aria-hidden="true" /> Iscrivi
+          </Button>
+        )}
+        {puoModificare && (
+          <span className="inline-flex ml-1 pl-1 border-l border-border">
+            <Button
+              size="icon" variant="ghost" className="h-8 w-8" title="Modifica" aria-label={`Modifica ${nome}`}
+              onClick={() => apriModulo({ ...l, cognome: l.cognome ?? "", sesso: l.sesso ?? "", telefono: l.telefono ?? "", email: l.email ?? "", anno_nascita: l.anno_nascita ?? "", note: l.note ?? "" })}
+            >
+              <Pencil className="w-3.5 h-3.5" />
+            </Button>
+            <Button size="icon" variant="ghost" className="h-8 w-8 text-destructive" title="Elimina" aria-label={`Elimina ${nome}`} onClick={() => elimina(l)}>
+              <Trash2 className="w-3.5 h-3.5" />
+            </Button>
+          </span>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
       {dialogoConferma}
@@ -236,97 +304,63 @@ export default function Contatti() {
             : cerca ? `Nessun risultato per «${cerca}».` : "In questo filtro non c'è nessun contatto, oggi."}
         />
       ) : (
-        <div className="overflow-x-auto border border-border rounded-lg">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border text-left bg-muted/30">
-                <th className="py-3 px-4 font-medium text-muted-foreground">Contatto</th>
-                <th className="py-3 px-4 font-medium text-muted-foreground">Stato</th>
-                <th className="py-3 px-4 font-medium text-muted-foreground">Arrivato da</th>
-                <th className="py-3 px-4"><span className="sr-only">Azioni</span></th>
-              </tr>
-            </thead>
-            <tbody>
-              {visibili.map((l) => {
-                const stato = statoLead(l.stato);
-                const aperto = statoAperto(l.stato);
-                const nome = `${l.nome} ${l.cognome}`;
-                return (
-                <tr key={l.id} className="border-b border-border/50 hover:bg-muted/30">
-                  <td className="py-3 px-4">
-                    {/* Il nome apre il diario: stato, contatti e tutto quello che è successo. */}
-                    <button type="button" onClick={() => setInDiario(l)} className="font-medium text-left hover:text-primary hover:underline">
-                      {l.cognome} {l.nome}
-                    </button>
-                    {l.socio_id && (
-                      <StatusBadge status="socio" label={l.socio_archiviato_il ? "Archiviato" : "Socio"} tone="neutro" className="ml-1.5 py-0" />
-                    )}
-                    {/* La nota non ha una colonna sua: è rara e corta. Si legge al passaggio del mouse. */}
-                    {l.note && (
-                      <span title={l.note} className="inline-flex align-middle ml-1.5 text-muted-foreground">
-                        <StickyNote className="w-3.5 h-3.5" aria-hidden="true" />
-                        <span className="sr-only">Nota: {l.note}</span>
-                      </span>
-                    )}
-                    <p className="text-xs text-muted-foreground">{[l.telefono, l.email].filter(Boolean).join(" · ") || "Nessun recapito"}</p>
-                  </td>
-                  <td className="py-3 px-4">
-                    <StatusBadge status={l.stato} label={stato.etichetta} tone={stato.tono} />
-                    <p className="text-xs text-muted-foreground mt-1">{descriviTempoLead(l, oggi)}</p>
-                  </td>
-                  <td className="py-3 px-4 whitespace-nowrap">
-                    {nomeCanale.get(l.canale_id) ?? "—"}
-                    <p className="text-xs text-muted-foreground">{formatData(l.data_contatto, "breve")}</p>
-                  </td>
-                  <td className="py-3 px-4">
-                    <div className="flex items-center justify-end gap-1">
-                      {puoModificare && aperto && (
-                        <>
-                          <Button size="sm" variant="outline" className="h-8 whitespace-nowrap" onClick={() => setAzione({ lead: l, tipo: "contatto" })}>
-                            <Phone className="w-3.5 h-3.5 mr-1" /> Contattato
-                          </Button>
-                          <Button size="icon" variant="ghost" className="h-8 w-8" title="Da richiamare" aria-label={`Richiama ${nome}`} onClick={() => setAzione({ lead: l, tipo: "richiamo" })}>
-                            <CalendarClock className="w-3.5 h-3.5" />
-                          </Button>
-                          <Button size="icon" variant="ghost" className="h-8 w-8" title="Non interessato" aria-label={`${nome} non è interessato`} onClick={() => setAzione({ lead: l, tipo: "chiudi" })}>
-                            <XCircle className="w-3.5 h-3.5" />
-                          </Button>
-                        </>
-                      )}
-                      {puoModificare && !aperto && (
-                        <Button size="sm" variant="outline" className="h-8" onClick={() => setInDiario(l)}>
-                          <RotateCcw className="w-3.5 h-3.5 mr-1" /> Riapri
-                        </Button>
-                      )}
-                      {puoTrasformare && aperto && (
-                        <Button size="icon" variant="ghost" className="h-8 w-8 text-primary" title="Iscrivi" aria-label={`Iscrivi ${nome}`} onClick={() => setDaTrasformare(l)}>
-                          <UserCheck className="w-3.5 h-3.5" />
-                        </Button>
-                      )}
-                      {puoModificare && (
-                        <>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="h-8 w-8"
-                            aria-label={`Modifica ${l.nome} ${l.cognome}`}
-                            onClick={() => apriModulo({ ...l, cognome: l.cognome ?? "", sesso: l.sesso ?? "", telefono: l.telefono ?? "", email: l.email ?? "", anno_nascita: l.anno_nascita ?? "", note: l.note ?? "" })}
-                          >
-                            <Pencil className="w-3.5 h-3.5" />
-                          </Button>
-                          <Button size="icon" variant="ghost" className="h-8 w-8 text-destructive" aria-label={`Elimina ${l.nome} ${l.cognome}`} onClick={() => elimina(l)}>
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </Button>
-                        </>
-                      )}
+        <>
+          {/* Sul telefono una scheda per contatto: la tabella scorreva di lato e le azioni
+              finivano fuori dallo schermo. */}
+          <ul className="md:hidden space-y-3">
+            {visibili.map((l) => {
+              const stato = statoLead(l.stato);
+              return (
+                <li key={l.id} className="rounded-lg border border-border bg-card p-4 space-y-3">
+                  <div>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">{nomeContatto(l)}</div>
+                      <StatusBadge status={l.stato} label={stato.etichetta} tone={stato.tono} className="shrink-0" />
                     </div>
-                  </td>
+                    <p className="text-xs text-muted-foreground mt-1">{descriviTempoLead(l, oggi)}</p>
+                    <p className="text-xs text-muted-foreground break-words">{[l.telefono, l.email].filter(Boolean).join(" · ") || "Nessun recapito"}</p>
+                    <p className="text-xs text-muted-foreground">{nomeCanale.get(l.canale_id) ?? "—"} · {formatData(l.data_contatto, "breve")}</p>
+                  </div>
+                  {azioniContatto(l, "justify-start")}
+                </li>
+              );
+            })}
+          </ul>
+          <div className="hidden md:block overflow-x-auto border border-border rounded-lg">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border text-left bg-muted/30">
+                  <th className="py-3 px-4 font-medium text-muted-foreground">Contatto</th>
+                  <th className="py-3 px-4 font-medium text-muted-foreground">Stato</th>
+                  <th className="py-3 px-4 font-medium text-muted-foreground">Arrivato da</th>
+                  <th className="py-3 px-4"><span className="sr-only">Azioni</span></th>
                 </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {visibili.map((l) => {
+                  const stato = statoLead(l.stato);
+                  return (
+                  <tr key={l.id} className="border-b border-border/50 hover:bg-muted/30">
+                    <td className="py-3 px-4">
+                      {nomeContatto(l)}
+                      <p className="text-xs text-muted-foreground">{[l.telefono, l.email].filter(Boolean).join(" · ") || "Nessun recapito"}</p>
+                    </td>
+                    <td className="py-3 px-4">
+                      <StatusBadge status={l.stato} label={stato.etichetta} tone={stato.tono} />
+                      <p className="text-xs text-muted-foreground mt-1">{descriviTempoLead(l, oggi)}</p>
+                    </td>
+                    <td className="py-3 px-4 whitespace-nowrap">
+                      {nomeCanale.get(l.canale_id) ?? "—"}
+                      <p className="text-xs text-muted-foreground">{formatData(l.data_contatto, "breve")}</p>
+                    </td>
+                    <td className="py-3 px-4">{azioniContatto(l, "justify-end")}</td>
+                  </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
 
       <Dialog open={!!modulo} onOpenChange={(aperto) => !aperto && apriModulo(null)}>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { caricaProfilo, caricaAccesso } from "@/core/api/portale";
 import { useMemberAuth } from "@/member/session/MemberAuthContext";
 import { Card, CardContent } from "@/ui/primitivi/card";
@@ -9,6 +9,7 @@ import { useQrDinamico } from "@/ui/hooks/useQrDinamico";
 import { DURATA_FINESTRA_MS } from "../../../shared/qrDinamico.js";
 import StatusBadge from "@/ui/StatusBadge";
 import { LoadingState } from "@/ui/Spinner";
+import { ErrorState } from "@/ui/StateViews";
 import { formatData } from "@/core/domain/format";
 
 const SECONDI_FINESTRA = DURATA_FINESTRA_MS / 1000;
@@ -19,8 +20,12 @@ export default function MemberQR() {
   const [member, setMember] = useState(null);
   const [activeSub, setActiveSub] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [erroreCaricamento, setErroreCaricamento] = useState(null);
 
-  useEffect(() => {
+  // Se la rete cade si dice, con "Riprova": prima la rotella girava per sempre.
+  const carica = useCallback(() => {
+    setLoading(true);
+    setErroreCaricamento(null);
     (async () => {
       // La credenziale la emette la palestra, non il socio.
       //
@@ -28,13 +33,18 @@ export default function MemberQR() {
       // nessuno controllava lo `stato` dichiarato, bastava aprirla dopo essere stati
       // revocati per rifarsene una attiva: la revoca durava fino alla successiva visita
       // del socio. Ora se non c'è, non c'è, e lo si dice.
-      const [profilo, statoAccesso] = await Promise.all([caricaProfilo(), caricaAccesso()]);
-      setMember(profilo?.socio ?? null);
-      setActiveSub(profilo?.abbonamento ?? null);
-      setAccesso(statoAccesso);
+      try {
+        const [profilo, statoAccesso] = await Promise.all([caricaProfilo(), caricaAccesso()]);
+        setMember(profilo?.socio ?? null);
+        setActiveSub(profilo?.abbonamento ?? null);
+        setAccesso(statoAccesso);
+      } catch (err) {
+        setErroreCaricamento(err);
+      }
       setLoading(false);
     })();
   }, []);
+  useEffect(() => { carica(); }, [carica]);
 
   const isRevoked = accesso?.stato === "revocato";
   // Il codice lo firma il server: qui si dice solo per chi (sé stessi) e se ha senso
@@ -55,11 +65,16 @@ export default function MemberQR() {
   if (loading) {
     return <LoadingState minHeight="p-8" />;
   }
+  if (erroreCaricamento) return <ErrorState error={erroreCaricamento} onRetry={carica} className="p-8" />;
 
   // Se l'abbonamento sia ancora buono lo dice il server, con i giorni già contati.
   const daysToExpiry = activeSub?.giorni_alla_scadenza ?? null;
   // "In scadenza" vale ancora: solo scaduto ferma l'accesso.
-  const canAccess = Boolean(activeSub) && activeSub.stato !== "expired" && daysToExpiry >= 0 && !isRevoked;
+  const abbonamentoValido = Boolean(activeSub) && activeSub.stato !== "expired" && daysToExpiry >= 0;
+  // Senza un codice non si entra dal tornello, anche con l'abbonamento valido: lo si dice, invece
+  // di mostrare un conto alla rovescia vuoto e "Accesso consentito".
+  const senzaCodice = stato === "assente";
+  const canAccess = abbonamentoValido && !isRevoked && !senzaCodice;
 
   return (
     <div className="min-h-[calc(100vh-3.5rem)] lg:min-h-screen flex flex-col items-center justify-center p-4 sm:p-6 space-y-6">
@@ -105,14 +120,14 @@ export default function MemberQR() {
                 <div className="absolute inset-0 bg-white/80 rounded-xl flex items-center justify-center">
                   <div className="text-center">
                     <AlertCircle className="w-10 h-10 text-destructive mx-auto mb-1" />
-                    <p className="text-xs text-destructive font-medium">Abbonamento non attivo</p>
+                    <p className="text-xs text-destructive font-medium">Abbonamento non valido</p>
                   </div>
                 </div>
               )}
             </div>
           )}
 
-          {!isRevoked && !errore && (
+          {!isRevoked && !errore && !senzaCodice && (
             <div className="w-full space-y-2">
               {/* Il conto alla rovescia non è un vezzo: dice a chi lo mostra che il codice
                   sta per cambiare, invece di farglielo scoprire alla porta. */}
@@ -151,12 +166,16 @@ export default function MemberQR() {
           </div>
           {activeSub && (
             <p className="text-xs text-muted-foreground mt-1">
-              {activeSub.piano} — scade il {formatData(activeSub.fine, "media")}
+              {activeSub.piano} — scade il {formatData(activeSub.fine, "lungo")}
             </p>
           )}
           {canAccess ? (
             <div className="flex items-center gap-2 mt-3 p-2 rounded-lg bg-success/10 border border-success/30 text-success text-xs">
               <CheckCircle className="w-4 h-4" /> Accesso consentito
+            </div>
+          ) : abbonamentoValido && senzaCodice ? (
+            <div className="flex items-center gap-2 mt-3 p-2 rounded-lg bg-muted border border-border text-muted-foreground text-xs">
+              <AlertCircle className="w-4 h-4 shrink-0" /> Abbonamento valido: per entrare chiedi il codice alla reception
             </div>
           ) : (
             <div className="flex items-center gap-2 mt-3 p-2 rounded-lg bg-destructive/10 border border-destructive/30 text-destructive text-xs">
@@ -166,10 +185,10 @@ export default function MemberQR() {
         </CardContent>
       </Card>
 
-      <p className="text-xs text-muted-foreground text-center max-w-xs">
+      {!senzaCodice && <p className="text-xs text-muted-foreground text-center max-w-xs">
         Il codice cambia ogni minuto: uno screenshot inviato a qualcun altro scade prima di
         poter essere usato. Mostralo dal telefono al momento dell'ingresso.
-      </p>
+      </p>}
     </div>
   );
 }

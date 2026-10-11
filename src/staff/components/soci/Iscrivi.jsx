@@ -83,9 +83,12 @@ export default function Iscrivi({ aperto, lead = null, onChiudi }) {
   const consensiDati = Object.values(consensi).some(Boolean);
   const ultimo = passo === PASSI.length - 1;
   // Si va avanti solo con il passo completo; i facoltativi si saltano.
+  // Perché "Avanti" è spento, in parole, accanto al pulsante: spento e basta non diceva niente.
   const bloccato = (corrente.valore === "anagrafica" && incompleto)
-    || (corrente.valore === "privacy" && (!privacy || (consensiDati && !moduloConsensi)))
-    || (corrente.valore === "certificato" && certificato.file && !certificato.expiry_date);
+    || (corrente.valore === "privacy" && !privacy && "Serve l'informativa privacy firmata.")
+    || (corrente.valore === "privacy" && consensiDati && !moduloConsensi && "Con le comunicazioni promozionali serve il modulo firmato: caricalo, o togli le caselle.")
+    || (corrente.valore === "certificato" && certificato.file && !certificato.expiry_date && "Indica quando scade il certificato.")
+    || null;
 
   const salta = () => {
     if (corrente.valore === "abbonamento") setAbbonamento(INIZIO);
@@ -152,7 +155,6 @@ export default function Iscrivi({ aperto, lead = null, onChiudi }) {
               <CampiAnagrafica valori={anagrafica} onChange={setAnagrafica}
                 suggerimentoNascita={lead?.anno_nascita ? `Il contatto aveva indicato il ${lead.anno_nascita}.` : null} />
               {!lead?.socio_id && <SceltaFoto socio={anagrafica} file={foto.file} onChange={setFoto} />}
-              {incompleto && <p className="text-xs text-muted-foreground">{incompleto}</p>}
             </>
           )}
 
@@ -171,7 +173,7 @@ export default function Iscrivi({ aperto, lead = null, onChiudi }) {
                 <Label htmlFor="iscrivi-inizio">Dal</Label>
                 <Input id="iscrivi-inizio" type="date" value={abbonamento.start_date} onChange={(e) => setAbbonamento((a) => ({ ...a, start_date: e.target.value }))} />
               </div>
-              {scadenza && <p className="text-sm text-muted-foreground">Scade il {formatData(scadenza, "media")}. L'incasso resta in reception, come sempre.</p>}
+              {scadenza && <p className="text-sm text-muted-foreground">Scade il {formatData(scadenza, "lungo")}. L'incasso resta in reception, come sempre.</p>}
             </div>
           )}
 
@@ -230,10 +232,12 @@ export default function Iscrivi({ aperto, lead = null, onChiudi }) {
             )
           )}
 
-          <div className="flex flex-col-reverse sm:flex-row sm:justify-between gap-2 pt-2">
+          <div className="flex flex-col-reverse sm:flex-row sm:items-center gap-2">
             <Button type="button" variant="outline" onClick={() => (passo ? setPasso((p) => p - 1) : onChiudi(false))} disabled={salvando}>
               {passo ? "Indietro" : "Annulla"}
             </Button>
+            {/* Nella stessa riga dei pulsanti, accanto ad "Avanti": è lì che si guarda. */}
+            <p role="status" aria-live="polite" className="flex-1 text-sm text-muted-foreground sm:text-right">{bloccato}</p>
             <div className="flex flex-col-reverse sm:flex-row gap-2">
               {corrente.facoltativo && <Button type="button" variant="ghost" onClick={salta} disabled={salvando}>Salta</Button>}
               <Button type="submit" disabled={Boolean(bloccato) || salvando}>

@@ -63,8 +63,7 @@ describe('le date', () => {
 
   test('i formati previsti, in italiano', () => {
     assert.equal(formatData('2026-01-31', 'breve'), '31/01/2026');
-    assert.equal(formatData('2026-01-31', 'giornoMese'), '31/01');
-    assert.match(formatData('2026-01-31', 'media'), /31 gen/i);
+    assert.match(formatData('2026-01-31', 'lungo'), /31 gen/i);
     assert.match(formatData('2026-01-31', 'estesa'), /sabato 31 gennaio 2026/i);
     assert.match(formatData('2026-01-31', 'estesaBreve'), /sabato 31 gennaio/i);
     assert.match(formatData('2026-01-31', 'giorno'), /sab 31 gen/i);
@@ -77,8 +76,8 @@ describe('le date', () => {
     assert.deepEqual(
       Object.keys(FORMATI_DATA).sort(),
       [
-        'breve', 'estesa', 'estesaBreve', 'giorno', 'giornoBreve', 'giornoMese',
-        'giornoMeseLungo', 'giornoNumero', 'iso', 'media', 'mese', 'settimanaBreve',
+        'breve', 'estesa', 'estesaBreve', 'giorno',
+        'giornoMeseLungo', 'giornoNumero', 'iso', 'lungo', 'mese', 'settimanaBreve',
       ]
     );
   });
@@ -94,8 +93,7 @@ describe('le date', () => {
     // Intl in italiano abbrevia con il punto ("gen."), moment senza. Le schermate sono
     // sempre state senza: "sab. 31 gen." sembra un refuso, non un'abbreviazione.
     assert.equal(formatData('2026-01-31', 'giorno'), 'sab 31 gen');
-    assert.equal(formatData('2026-01-31', 'giornoBreve'), '31 gen');
-    assert.equal(formatData('2026-01-31', 'media'), '31 gen 2026');
+    assert.equal(formatData('2026-01-31', 'lungo'), '31 gen 2026');
   });
 
   test('quando manca, o non è una data, si scrive il trattino', () => {

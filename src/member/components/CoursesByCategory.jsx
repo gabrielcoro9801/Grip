@@ -56,7 +56,7 @@ export default function CoursesByCategory({ enrichedSessions, onBook, onCancel, 
               {cat.color && <div className="w-3 h-3 rounded" style={{ background: cat.color }} />}
               <p className="font-heading font-semibold">{cat.name}</p>
             </div>
-            <p className="text-xs text-muted-foreground mt-1">{cat.courseCount} corsi · {cat.sessionCount} sessioni</p>
+            <p className="text-xs text-muted-foreground mt-1">{cat.courseCount} {cat.courseCount === 1 ? "corso" : "corsi"} · {cat.sessionCount} {cat.sessionCount === 1 ? "lezione" : "lezioni"} in programma</p>
           </button>
         ))}
         {categoryList.length === 0 && <p className="text-sm text-muted-foreground text-center py-8">Nessun corso disponibile</p>}
@@ -78,9 +78,9 @@ export default function CoursesByCategory({ enrichedSessions, onBook, onCancel, 
               className="p-4 rounded-xl bg-card border border-border hover:border-primary hover:shadow-md transition-all text-left w-full">
               <p className="font-heading font-semibold">{course.name}</p>
               {course.nextSession ? (
-                <p className="text-xs text-muted-foreground mt-1">Prossima sessione: {formatData(course.nextSession.date, "giornoBreve")}, {course.nextSession.start_time}</p>
+                <p className="text-xs text-muted-foreground mt-1">Prossima lezione: {formatData(course.nextSession.date, "giorno")}, {course.nextSession.start_time}</p>
               ) : (
-                <p className="text-xs text-muted-foreground mt-1">{course.sessionCount} sessioni disponibili</p>
+                <p className="text-xs text-muted-foreground mt-1">{course.sessionCount} {course.sessionCount === 1 ? "lezione" : "lezioni"} in programma</p>
               )}
             </button>
           ))}

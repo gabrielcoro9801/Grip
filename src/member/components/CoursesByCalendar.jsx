@@ -59,9 +59,9 @@ export default function CoursesByCalendar({ enrichedSessions, onBook, onCancel, 
   return (
     <div className="space-y-4 mt-4">
       <div className="flex items-center justify-between">
-        <Button variant="outline" size="icon" onClick={prevWeek}><ChevronLeft className="w-4 h-4" /></Button>
-        <span className="font-heading font-semibold text-sm capitalize">{weekRangeLabel}</span>
-        <Button variant="outline" size="icon" onClick={nextWeek}><ChevronRight className="w-4 h-4" /></Button>
+        <Button variant="outline" size="icon" className="h-11 w-11" onClick={prevWeek} aria-label="Settimana precedente"><ChevronLeft className="w-4 h-4" aria-hidden="true" /></Button>
+        <span className="font-heading font-semibold text-sm">{weekRangeLabel}</span>
+        <Button variant="outline" size="icon" className="h-11 w-11" onClick={nextWeek} aria-label="Settimana successiva"><ChevronRight className="w-4 h-4" aria-hidden="true" /></Button>
       </div>
 
       <div className="grid grid-cols-7 gap-1">
@@ -88,7 +88,7 @@ export default function CoursesByCalendar({ enrichedSessions, onBook, onCancel, 
       </div>
 
       <div className="space-y-3">
-        <h2 className="font-heading font-semibold capitalize">{formatData(selectedDate, "estesaBreve")}</h2>
+        <h2 className="font-heading font-semibold first-letter:uppercase">{formatData(selectedDate, "estesaBreve")}</h2>
         {daySessions.length === 0 ? (
           <p className="text-sm text-muted-foreground text-center py-8">Nessun corso programmato per questa data</p>
         ) : (

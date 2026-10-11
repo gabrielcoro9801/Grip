@@ -59,7 +59,7 @@ export default function CourseSessionCard({
           {!memberBooking && isFull && <Button size="sm" variant="outline" className="w-full" onClick={onBook} disabled={actionLoading}>Entra in lista d'attesa</Button>}
           {/* Oltre il termine del corso il pulsante sparisce e resta il perché: un "Annulla" che
               risponde "non puoi" dopo il clic non aiuta nessuno. */}
-          {memberBooking && !session._motivoDisdettaChiusa && <Button size="sm" variant="outline" className="w-full" onClick={onCancel} disabled={actionLoading}>Annulla</Button>}
+          {memberBooking && !session._motivoDisdettaChiusa && <Button size="sm" variant="outline" className="w-full" onClick={onCancel} disabled={actionLoading}>Disdici</Button>}
           {memberBooking && session._motivoDisdettaChiusa && <p className="text-xs text-muted-foreground">{session._motivoDisdettaChiusa}</p>}
         </div>
       )}

@@ -26,6 +26,8 @@ export default function SelettoreTema({ className }) {
       onClick={() => imposta(scuro ? "chiaro" : "scuro")}
       className={cn(
         "relative inline-flex items-center shrink-0 h-6 w-11 rounded-full bg-muted text-muted-foreground transition-colors",
+        // L'area del tocco è più grande del disegno: 44 px di altezza, come ogni bersaglio tattile.
+        "after:absolute after:-inset-x-1 after:-inset-y-2.5 after:content-['']",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         className
       )}
