@@ -124,34 +124,40 @@ async function scriviDaFare(conn, soglie, persone) {
 	const soci = persone.filter((p) => p.socio_id);
 	if (!soci.length) return { aperti: 0, chiusi: 0 };
 	const spenti = new Set(soglie.segnaliSpenti ?? []);
-	const righe = await conn.select({ personaId: attivita.personaId, tipo: attivita.tipo, codice: attivita.esito })
-		.from(attivita).where(inArray(attivita.tipo, ['segnale_aperto', 'segnale_chiuso']))
-		.orderBy(attivita.createdDate, attivita.id);
-	const aperti = new Map();
-	for (const r of righe) {
-		if (!aperti.has(r.personaId)) aperti.set(r.personaId, new Set());
-		if (r.tipo === 'segnale_aperto') aperti.get(r.personaId).add(r.codice);
-		else aperti.get(r.personaId).delete(r.codice);
-	}
-	const nuove = [];
-	let nAperti = 0; let nChiusi = 0;
-	for (const p of soci) {
-		const ora = new Map(p.segnali.filter((s) => s.pubblico === 'staff').map((s) => [s.codice, s]));
-		const prima = aperti.get(p.persona_id) ?? new Set();
-		for (const [codice, s] of ora) {
-			if (prima.has(codice)) continue;
-			nuove.push({ personaId: p.persona_id, tipo: 'segnale_aperto', esito: codice, nota: `${s.titolo} — ${s.motivo}`, autoreNome: AUTORE_SISTEMA });
-			nAperti += 1;
+	// Due giri insieme (quello pianificato e uno lanciato a mano) leggevano lo stesso diario e
+	// scrivevano due volte la stessa riga: il lock fa aspettare il secondo, che poi trova le righe
+	// del primo. È legato alla transazione, e si libera da solo.
+	return conn.transaction(async (tx) => {
+		await tx.execute(sql`select pg_advisory_xact_lock(hashtext('giro:da-fare'))`);
+		const righe = await tx.select({ personaId: attivita.personaId, tipo: attivita.tipo, codice: attivita.esito })
+			.from(attivita).where(inArray(attivita.tipo, ['segnale_aperto', 'segnale_chiuso']))
+			.orderBy(attivita.createdDate, attivita.id);
+		const aperti = new Map();
+		for (const r of righe) {
+			if (!aperti.has(r.personaId)) aperti.set(r.personaId, new Set());
+			if (r.tipo === 'segnale_aperto') aperti.get(r.personaId).add(r.codice);
+			else aperti.get(r.personaId).delete(r.codice);
 		}
-		for (const codice of prima) {
-			if (ora.has(codice) || spenti.has(codice)) continue;
-			nuove.push({ personaId: p.persona_id, tipo: 'segnale_chiuso', esito: codice, nota: etichettaSegnale(codice), autoreNome: AUTORE_SISTEMA });
-			nChiusi += 1;
+		const nuove = [];
+		let nAperti = 0; let nChiusi = 0;
+		for (const p of soci) {
+			const ora = new Map(p.segnali.filter((s) => s.pubblico === 'staff').map((s) => [s.codice, s]));
+			const prima = aperti.get(p.persona_id) ?? new Set();
+			for (const [codice, s] of ora) {
+				if (prima.has(codice)) continue;
+				nuove.push({ personaId: p.persona_id, tipo: 'segnale_aperto', esito: codice, nota: `${s.titolo} — ${s.motivo}`, autoreNome: AUTORE_SISTEMA });
+				nAperti += 1;
+			}
+			for (const codice of prima) {
+				if (ora.has(codice) || spenti.has(codice)) continue;
+				nuove.push({ personaId: p.persona_id, tipo: 'segnale_chiuso', esito: codice, nota: etichettaSegnale(codice), autoreNome: AUTORE_SISTEMA });
+				nChiusi += 1;
+			}
 		}
-	}
-	// A blocchi: il primo giro su una palestra già avviata scrive una riga per ogni cosa da fare.
-	for (let i = 0; i < nuove.length; i += 500) await conn.insert(attivita).values(nuove.slice(i, i + 500));
-	return { aperti: nAperti, chiusi: nChiusi };
+		// A blocchi: il primo giro su una palestra già avviata scrive una riga per ogni cosa da fare.
+		for (let i = 0; i < nuove.length; i += 500) await tx.insert(attivita).values(nuove.slice(i, i + 500));
+		return { aperti: nAperti, chiusi: nChiusi };
+	});
 }
 
 /**
