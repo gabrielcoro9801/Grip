@@ -70,8 +70,9 @@ try {
 		return s;
 	};
 	// Chi chiede il rinnovo dal portale: valido, entra spesso, niente da fare finché non chiede.
+	// Scade fra 10 giorni: il portale propone il rinnovo solo dentro la soglia di Da fare (14).
 	const rinnova = await nuovoSocio('Rita', 'Rinnovo', { email: `rita.${t}@test.local` });
-	await db.insert(subscriptions).values({ memberId: rinnova.id, planName: 'Mensile', startDate: '2025-01-01', endDate: fra(40) });
+	await db.insert(subscriptions).values({ memberId: rinnova.id, planName: 'Mensile', startDate: '2025-01-01', endDate: fra(10) });
 	await db.insert(ingressi).values([1, 3, 6].map((g) => ({ memberId: rinnova.id, entratoAlle: new Date(`${fra(-g)}T08:00:00Z`), esito: 'ammesso', metodo: 'qr', registratoDaNome: 'Verifica' })));
 	// Chi si sospende: non entra da 20 giorni, sarebbe assente.
 	const fermo = await nuovoSocio('Sandro', 'Sospeso');
@@ -155,6 +156,8 @@ try {
 	await staff.getByRole('button', { name: 'Avanti' }).click();
 	await staff.getByRole('checkbox', { name: 'Informativa privacy firmata' }).click();
 	await staff.getByRole('checkbox', { name: 'Email promozionali' }).click();
+	// Dall'11 ottobre il consenso dato in reception vale solo con il modulo firmato caricato.
+	await staff.locator('#iscrivi-modulo-consensi').setInputFiles(certificato);
 	await staff.getByRole('button', { name: 'Avanti' }).click();
 	const password = (await staff.locator('p.font-mono').innerText()).trim();
 	await staff.screenshot({ path: schermata('iscrivi-portale') });

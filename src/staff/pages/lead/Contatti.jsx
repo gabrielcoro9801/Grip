@@ -214,13 +214,13 @@ export default function Contatti() {
       <div className={`flex flex-wrap items-center gap-1 ${allinea}`}>
         {puoModificare && aperto && (
           <>
-            <Button size="sm" variant="outline" className="h-8 whitespace-nowrap" onClick={() => setAzione({ lead: l, tipo: "contatto" })}>
+            <Button size="sm" variant="outline" className="h-8 whitespace-nowrap" aria-label={`Contattato: ${nome}`} onClick={() => setAzione({ lead: l, tipo: "contatto" })}>
               <Phone className="w-3.5 h-3.5 mr-1" aria-hidden="true" /> Contattato
             </Button>
-            <Button size="sm" variant="ghost" className="h-8 whitespace-nowrap" onClick={() => setAzione({ lead: l, tipo: "richiamo" })}>
+            <Button size="sm" variant="ghost" className="h-8 whitespace-nowrap" aria-label={`Richiama ${nome}`} onClick={() => setAzione({ lead: l, tipo: "richiamo" })}>
               <CalendarClock className="w-3.5 h-3.5 mr-1" aria-hidden="true" /> Richiama
             </Button>
-            <Button size="sm" variant="ghost" className="h-8 whitespace-nowrap" onClick={() => setAzione({ lead: l, tipo: "chiudi" })}>
+            <Button size="sm" variant="ghost" className="h-8 whitespace-nowrap" aria-label={`Non interessato: ${nome}`} onClick={() => setAzione({ lead: l, tipo: "chiudi" })}>
               <XCircle className="w-3.5 h-3.5 mr-1" aria-hidden="true" /> Non interessato
             </Button>
           </>
@@ -231,7 +231,7 @@ export default function Contatti() {
           </Button>
         )}
         {puoTrasformare && aperto && (
-          <Button size="sm" variant="ghost" className="h-8 whitespace-nowrap text-primary" onClick={() => setDaTrasformare(l)}>
+          <Button size="sm" variant="ghost" className="h-8 whitespace-nowrap text-primary" aria-label={`Iscrivi ${nome}`} onClick={() => setDaTrasformare(l)}>
             <UserCheck className="w-3.5 h-3.5 mr-1" aria-hidden="true" /> Iscrivi
           </Button>
         )}

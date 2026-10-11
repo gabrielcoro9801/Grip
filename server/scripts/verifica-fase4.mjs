@@ -102,7 +102,7 @@ try {
 	await pg.getByRole('heading', { name: 'Comunicazioni', exact: true }).waitFor();
 	controlla('Il menu porta a Comunicazioni', await pg.getByRole('link', { name: 'Comunicazioni' }).isVisible());
 	controlla('Le comunicazioni sono spente', await pg.getByText('Comunicazioni spente').isVisible());
-	controlla('Avvisa che il server è in simulazione', await pg.getByText('Modalità simulazione.').isVisible());
+	controlla('Avvisa che il server è in simulazione', await pg.getByText('Modalità prova.').isVisible());
 	controlla('L\'interruttore è chiuso', await pg.getByRole('button', { name: 'Accendi le comunicazioni' }).isDisabled());
 	await pg.screenshot({ path: schermata('1-stato'), fullPage: true });
 
@@ -196,7 +196,7 @@ try {
 	const rec = await nuovaPagina();
 	await entra(rec, '/admin/comunicazioni', reception.email);
 	controlla('La reception non vede la voce di menu', !(await rec.getByRole('link', { name: 'Comunicazioni' }).isVisible().catch(() => false)));
-	controlla('La reception non apre la sezione', !(await rec.getByText('Modalità simulazione.').isVisible().catch(() => false)));
+	controlla('La reception non apre la sezione', !(await rec.getByText('Modalità prova.').isVisible().catch(() => false)));
 	await rec.screenshot({ path: schermata('8-reception'), fullPage: true });
 
 	const { linkDisiscrizione } = await import('../src/lib/urlFirmati.js');
