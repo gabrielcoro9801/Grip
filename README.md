@@ -73,7 +73,7 @@ dai diversi punti di vista.
 | Email | Password | Ruolo | A cosa serve |
 |---|---|---|---|
 | `admin@grip.local` | `admin1234` | Admin | Vede tutto |
-| `reception@grip.local` | `reception1234` | Reception | Gestione membri e corsi, non il log audit né gli account |
+| `reception@grip.local` | `reception1234` | Reception | Soci e corsi, non il registro delle azioni né gli account |
 | `giulia@grip.local` | `socio1234` | Socio | Portale soci, con abbonamento |
 
 La *Reception* è utile per due prove: che il menu si riduca davvero secondo i permessi, e che
@@ -103,6 +103,56 @@ Tre punti che si sbagliano quasi sempre, spiegati lì per esteso:
   redirect, con un errore che non dice perché.
 
 ## Stato del progetto
+
+### 11 ottobre 2026 (sera) — Migliorie UI/UX: le parole, i compiti, il pollice
+
+Un giro sull'interfaccia partendo da sei compiti di tutti i giorni, misurati in un browser vero
+con dati realistici (22 soci, 257 lezioni, 9 contatti), prima e dopo: clic, schermate,
+scorrimenti. Il piano e le decisioni stanno in [`docs/ux/`](docs/ux/).
+
+- **Il vocabolario** ([`docs/ux/glossario.md`](docs/ux/glossario.md)): **Soci** (era Gestione
+  membri), **Listino** (i tipi di abbonamento, era "Abbonamenti"), **Abbonamenti venduti** (era
+  "Iscrizioni"), **Vendi** dalla scheda, **Iscrivi** per un socio nuovo, **Disdici** per una
+  prenotazione. "Attivo" è solo uno stato del socio: l'abbonamento è *Valido*, il tipo del
+  listino *In vendita* o *Ritirato*, il QR *Valido*, l'account *Abilitato*, la sala
+  *Disponibile*. Lo stato del socio ha una forma sua (un punto e la parola), i badge colorati
+  restano agli oggetti. `/crm/abbonamenti` e `/crm/iscrizioni` portano a `/crm/listino` e
+  `/crm/venduti`.
+- **Rinnova** propone lo stesso tipo e il giorno dopo la scadenza (prima: vuoto e da oggi, cioè
+  giorni già pagati venduti due volte). **Iscrivi** dice tutto quello che manca accanto ad
+  "Avanti".
+- **Da fare** su schermi da 1280 px: più larga, ogni riga su una sola fila di pulsanti; Chiama,
+  WhatsApp ed Email senza bordo.
+- **Dashboard**: una card per lezione con "5/12 posti" (erano una per prenotazione) e il numero
+  delle lezioni, non delle prenotazioni; via il doppione "Documenti da sistemare".
+- **Istruttore**: entra in "Le mie lezioni", e "Prossime" mostra le lezioni da tenere.
+- **Contatti** sul telefono come schede, con le azioni scritte ("Non interessato", non "✕").
+  **Prenotazioni**: "Disdici" scritto, il cestino staccato.
+- **Menu**: in fondo la sezione **Impostazioni** (Utenti e ruoli, Comunicazioni, Da fare,
+  Registro delle azioni). **Comunicazioni** parla da titolare e tiene i soldi in euro.
+- **Portale**: il QR è il primo pulsante della home, sotto le prossime lezioni; Corsi si apre
+  sui giorni; senza codice il QR non dice più "Accesso consentito"; "Vuoi rinnovare?" solo entro
+  la soglia di Da fare (anche le soglie del portale sono quelle della palestra); bersagli tattili
+  di almeno 44 px; gli errori di rete si dicono, con "Riprova".
+- **Colori**: contrasto misurato sui token (WCAG AA 4,5:1), in chiaro e in scuro; il verde del
+  successo non è più quello del marchio. **Date** in due formati (21/10/2026 nel gestionale,
+  21 ott 2026 nelle frasi e nel portale), **nomi** sempre Nome Cognome.
+- Corretto: sul telefono il contenitore dei messaggi copriva metà del menu e della ricerca,
+  e un tocco al centro non apriva niente.
+
+| Compito | Prima | Dopo |
+|---|---|---|
+| Rinnovare da Da fare | 5 clic, tipo e data a mano | 3 clic, tutto proposto |
+| Rinnovare dalla scheda | 6 clic | 4 clic |
+| Lavorare 10 righe di Da fare (1366×768) | 3 righe intere per schermata | 4 righe |
+| Prenotare e mostrare il QR (390 px) | 5 tocchi, QR a 572 px | 3 tocchi, QR a 120 px |
+| L'istruttore vede la prossima lezione | 2 tocchi (uno intercettato), lezione a 954 px | 0 tocchi, a 278 px |
+
+Verifica: `npm test` (197), `cd server && npm test` (421; i file `da-fare` e `comunicazioni`
+si disturbano se girano insieme sullo stesso database, già su main: da soli passano),
+`npm run verifica:da-fare` (38), `verifica:fase4` (24). Due ipotesi restano proposte, da
+decidere: il calendario a settimana (nessuno dei sei compiti passa dal calendario) e la
+striscia riassuntiva della scheda.
 
 ### 11 ottobre 2026 — Da fare per linee, sei stati, consensi con la prova
 
