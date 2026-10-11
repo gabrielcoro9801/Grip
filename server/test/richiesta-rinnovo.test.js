@@ -57,6 +57,12 @@ after(async () => {
 });
 
 describe('richiedi il rinnovo', () => {
+	test('a chi scade fra due mesi il portale non propone il rinnovo (la soglia è di 14 giorni)', async () => {
+		const dati = (await come('socio', 'GET', '/api/member/v1/abbonamenti')).json();
+		assert.equal(dati.rinnovo_proponibile, false);
+		assert.equal(dati.abbonamenti[0].in_scadenza, false);
+	});
+
 	test('lo staff non passa dalla rotta del portale', async () => {
 		assert.equal((await come('reception', 'POST', '/api/member/v1/abbonamento/richiesta-rinnovo')).statusCode, 403);
 	});

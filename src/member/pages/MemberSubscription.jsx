@@ -73,7 +73,11 @@ export default function MemberSubscription() {
         <p className="text-sm text-muted-foreground">Stato del tuo abbonamento</p>
       </div>
 
-      <RichiestaRinnovo richiesta={dati.richiesta_rinnovo} onInviata={(r) => setDati((d) => ({ ...d, richiesta_rinnovo: r }))} />
+      {/* La domanda solo a chi sta per scadere o è scaduto (lo dice il server, con la soglia della
+          palestra); una richiesta già fatta si vede sempre. */}
+      {(dati.richiesta_rinnovo || dati.rinnovo_proponibile) && (
+        <RichiestaRinnovo richiesta={dati.richiesta_rinnovo} onInviata={(r) => setDati((d) => ({ ...d, richiesta_rinnovo: r }))} />
+      )}
 
       {subscriptions.length === 0 ? (
         <Card className="border-0 shadow-sm">
@@ -88,7 +92,7 @@ export default function MemberSubscription() {
             // Quanto manca alla scadenza lo conta il server: qui resta solo come dirlo.
             const daysToExpiry = sub.giorni_alla_scadenza;
             const expired = daysToExpiry != null && daysToExpiry < 0;
-            const expiringSoon = daysToExpiry != null && daysToExpiry <= 7 && daysToExpiry >= 0;
+            const expiringSoon = Boolean(sub.in_scadenza);
             const sospensione = sub.sospensioni?.[0];
             return (
               <Card key={sub.id} className="border-0 shadow-sm">

@@ -59,7 +59,11 @@ export default function MemberQR() {
   // Se l'abbonamento sia ancora buono lo dice il server, con i giorni già contati.
   const daysToExpiry = activeSub?.giorni_alla_scadenza ?? null;
   // "In scadenza" vale ancora: solo scaduto ferma l'accesso.
-  const canAccess = Boolean(activeSub) && activeSub.stato !== "expired" && daysToExpiry >= 0 && !isRevoked;
+  const abbonamentoValido = Boolean(activeSub) && activeSub.stato !== "expired" && daysToExpiry >= 0;
+  // Senza un codice non si entra dal tornello, anche con l'abbonamento valido: lo si dice, invece
+  // di mostrare un conto alla rovescia vuoto e "Accesso consentito".
+  const senzaCodice = stato === "assente";
+  const canAccess = abbonamentoValido && !isRevoked && !senzaCodice;
 
   return (
     <div className="min-h-[calc(100vh-3.5rem)] lg:min-h-screen flex flex-col items-center justify-center p-4 sm:p-6 space-y-6">
@@ -112,7 +116,7 @@ export default function MemberQR() {
             </div>
           )}
 
-          {!isRevoked && !errore && (
+          {!isRevoked && !errore && !senzaCodice && (
             <div className="w-full space-y-2">
               {/* Il conto alla rovescia non è un vezzo: dice a chi lo mostra che il codice
                   sta per cambiare, invece di farglielo scoprire alla porta. */}
@@ -158,6 +162,10 @@ export default function MemberQR() {
             <div className="flex items-center gap-2 mt-3 p-2 rounded-lg bg-success/10 border border-success/30 text-success text-xs">
               <CheckCircle className="w-4 h-4" /> Accesso consentito
             </div>
+          ) : abbonamentoValido && senzaCodice ? (
+            <div className="flex items-center gap-2 mt-3 p-2 rounded-lg bg-muted border border-border text-muted-foreground text-xs">
+              <AlertCircle className="w-4 h-4 shrink-0" /> Abbonamento valido: per entrare chiedi il codice alla reception
+            </div>
           ) : (
             <div className="flex items-center gap-2 mt-3 p-2 rounded-lg bg-destructive/10 border border-destructive/30 text-destructive text-xs">
               <AlertCircle className="w-4 h-4" /> Accesso non consentito
@@ -166,10 +174,10 @@ export default function MemberQR() {
         </CardContent>
       </Card>
 
-      <p className="text-xs text-muted-foreground text-center max-w-xs">
+      {!senzaCodice && <p className="text-xs text-muted-foreground text-center max-w-xs">
         Il codice cambia ogni minuto: uno screenshot inviato a qualcun altro scade prima di
         poter essere usato. Mostralo dal telefono al momento dell'ingresso.
-      </p>
+      </p>}
     </div>
   );
 }
