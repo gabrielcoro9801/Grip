@@ -128,16 +128,20 @@ function Interruttore({ dati, scrivi }) {
       <CardContent className="space-y-4">
         <ul className="space-y-2" aria-label="Lista di controllo">
           {lista.voci.map((v) => (
-            <li key={v.codice} className="flex flex-wrap items-center gap-2 text-sm">
+            <li key={v.codice} className="flex items-start gap-2 text-sm">
               {v.fatta
-                ? <CheckCircle2 className="h-4 w-4 text-success" aria-label="Fatto" />
-                : <Circle className="h-4 w-4 text-muted-foreground" aria-label="Da fare" />}
+                ? <CheckCircle2 className="h-4 w-4 mt-0.5 shrink-0 text-success" aria-label="Fatto" />
+                : <Circle className="h-4 w-4 mt-0.5 shrink-0 text-muted-foreground" aria-label="Da fare" />}
+              {/* Il cerchio resta accanto alla sua voce anche quando la voce va a capo (sul telefono
+                  finiva da solo su una riga). */}
+              <span className="flex flex-1 flex-wrap items-center gap-2">
               <span>{v.etichetta}</span>
               {v.codice in confermabili && (
                 confermabili[v.codice]
                   ? <span className="text-xs text-muted-foreground">confermato da {confermabili[v.codice].da} il {dataOra(confermabili[v.codice].il)} · <button type="button" className="underline" onClick={() => conferma(v.codice, false)}>togli</button></span>
                   : <Button size="sm" variant="outline" onClick={() => conferma(v.codice, true)}>Confermo</Button>
               )}
+              </span>
             </li>
           ))}
         </ul>
