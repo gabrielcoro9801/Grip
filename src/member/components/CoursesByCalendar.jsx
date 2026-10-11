@@ -59,9 +59,9 @@ export default function CoursesByCalendar({ enrichedSessions, onBook, onCancel, 
   return (
     <div className="space-y-4 mt-4">
       <div className="flex items-center justify-between">
-        <Button variant="outline" size="icon" onClick={prevWeek} aria-label="Settimana precedente"><ChevronLeft className="w-4 h-4" aria-hidden="true" /></Button>
+        <Button variant="outline" size="icon" className="h-11 w-11" onClick={prevWeek} aria-label="Settimana precedente"><ChevronLeft className="w-4 h-4" aria-hidden="true" /></Button>
         <span className="font-heading font-semibold text-sm">{weekRangeLabel}</span>
-        <Button variant="outline" size="icon" onClick={nextWeek} aria-label="Settimana successiva"><ChevronRight className="w-4 h-4" aria-hidden="true" /></Button>
+        <Button variant="outline" size="icon" className="h-11 w-11" onClick={nextWeek} aria-label="Settimana successiva"><ChevronRight className="w-4 h-4" aria-hidden="true" /></Button>
       </div>
 
       <div className="grid grid-cols-7 gap-1">

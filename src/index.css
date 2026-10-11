@@ -145,11 +145,12 @@
     @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
   }
 
-  /* Il portale si usa col pollice: ogni pulsante e ogni scheda è alto e largo almeno 44 px
-     (WCAG 2.5.5). Misurati, i pulsanti "sm" erano di 32 px, le schede di 28, le frecce della
-     settimana di 36. Caselle e interruttori hanno la loro area (label e pseudo-elemento). */
+  /* Il portale si usa col pollice: ogni pulsante e ogni scheda è alto almeno 44 px (WCAG 2.5.5).
+     Misurati, i pulsanti "sm" erano di 32 px, le schede di 28. La larghezza no: i sette giorni
+     della settimana a 320 px non ci starebbero; i pulsanti a sola icona la hanno di loro.
+     Caselle e interruttori hanno la loro area (label e pseudo-elemento). Le finestre di dialogo
+     stanno fuori (Radix le monta sul body) e hanno i pulsanti di serie. */
   .portale :is(button, [role="tab"]):not([role="checkbox"]):not([role="switch"]) {
     min-height: 2.75rem;
-    min-width: 2.75rem;
   }
 }

@@ -102,6 +102,8 @@ export default async function memberRoutes(fastify) {
 		// scaduto e già sostituito è archiviato, e non va contato fra quelli scaduti —
 		// altrimenti il socio che ha rinnovato si vede un avviso rosso che non sa come
 		// togliere. La regola sta in shared/anagrafica.js, la stessa della segreteria.
+		// Le soglie della palestra, per lo stato come per "in scadenza": il badge e il riquadro
+		// sotto devono dire la stessa cosa.
 		const documenti = conStatoDocumenti(
 			await db
 				.select({
@@ -111,13 +113,14 @@ export default async function memberRoutes(fastify) {
 				})
 				.from(memberDocuments)
 				.where(eq(memberDocuments.memberId, request.idSocio)),
-			giorniDaOggi
+			giorniDaOggi,
+			soglie.documentoInScadenzaGiorni
 		);
 
 		// La corrente è la più recente ancora valida oggi; se non ce n'è, l'ultima scaduta. La
 		// colonna `status` non si guarda: nessuno la aggiorna, e sceglieva come "corrente" anche
 		// un abbonamento scaduto da mesi.
-		const statoDi = (a) => statoIscrizione(a);
+		const statoDi = (a) => statoIscrizione(a, oggiIso(), soglie.abbonamentoInScadenzaGiorni);
 		const corrente = abbonamenti.find((a) => statoDi(a) !== 'expired') ?? abbonamenti[0] ?? null;
 		const sospensione = sospensioneIl(abbonamenti, oggiIso());
 
@@ -171,7 +174,7 @@ export default async function memberRoutes(fastify) {
 			abbonamenti: righe.reverse().map((a) => ({
 				id: a.id,
 				piano: a.plan_name,
-				stato: statoIscrizione(a),
+				stato: statoIscrizione(a, oggi, soglie.abbonamentoInScadenzaGiorni),
 				inizio: a.start_date,
 				// La scadenza dopo le sospensioni; `giorni_sospesi` dice di quanto si è allungata.
 				fine: a.end_date,
@@ -226,7 +229,8 @@ export default async function memberRoutes(fastify) {
 					created_date: d.createdDate,
 					expiry_date: d.expiryDate,
 				})),
-				giorniDaOggi
+				giorniDaOggi,
+				soglie.documentoInScadenzaGiorni
 			).map((d) => [d.id, d.stato])
 		);
 

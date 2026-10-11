@@ -27,7 +27,7 @@ const MODULO_VUOTO = { name: "", price: "", durata_valore: "1", durata_unita: "m
 const SPIEGAZIONE_STATO = {
   attivo: "Si può vendere ai soci.",
   sospeso: "Non si vende per ora; si può riattivare quando serve.",
-  annullato: "Non si vende più. È definitivo: non si può riattivare.",
+  annullato: "Non si vende più. È definitivo: non torna in vendita.",
 };
 
 const ORDINE_STATO = { attivo: 0, sospeso: 1, annullato: 2 };
@@ -105,12 +105,12 @@ export default function PlansCatalog() {
     // per esteso cosa fanno.
     if (stato === "annullato") {
       const ok = await conferma({
-        title: `Annullare «${tipo.name}»?`,
+        title: `Ritirare «${tipo.name}»?`,
         description:
           "Non si venderà più, e lo stato non si può riportare indietro: per rimetterlo in " +
           "listino bisognerà creare un tipo nuovo. Gli abbonamenti già venduti restano validi.",
-        confirmLabel: "Annulla definitivamente",
-        cancelLabel: "Non annullare",
+        confirmLabel: "Ritira definitivamente",
+        cancelLabel: "Non ritirare",
         destructive: true,
       });
       if (!ok) return;

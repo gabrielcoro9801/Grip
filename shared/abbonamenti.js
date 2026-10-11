@@ -76,11 +76,11 @@ export const GIORNI_ABBONAMENTO_IN_SCADENZA = SOGLIE.abbonamentoInScadenzaGiorni
  * attivi abbonamenti scaduti da mesi. Lo stato è una conseguenza delle date — la stessa scelta
  * fatta per i documenti — e chi legge un'iscrizione dal server lo riceve già calcolato così.
  */
-export function statoIscrizione(iscrizione, oggi = oggiIso()) {
+export function statoIscrizione(iscrizione, oggi = oggiIso(), giorniInScadenza = GIORNI_ABBONAMENTO_IN_SCADENZA) {
 	const fine = iscrizione?.end_date ? String(iscrizione.end_date).slice(0, 10) : null;
 	if (!fine) return 'active';
 	if (fine < oggi) return 'expired';
-	return giorniFra(oggi, fine) <= GIORNI_ABBONAMENTO_IN_SCADENZA ? 'expiring' : 'active';
+	return giorniFra(oggi, fine) <= giorniInScadenza ? 'expiring' : 'active';
 }
 
 /**

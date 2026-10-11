@@ -95,7 +95,7 @@ export default function Comunicazioni() {
         </TabsContent>
         <TabsContent value="playbook" className="mt-4 space-y-3">
           <p className="text-sm text-muted-foreground">
-            Ogni messaggio parte da una cosa da fare: quando lo decidono le soglie, e una cosa da fare spenta non manda niente.{" "}
+            Ogni messaggio parte da una cosa da fare: quando parte lo decidono le soglie, e una cosa da fare spenta non manda niente.{" "}
             <Link to="/admin/da-fare" className="text-primary hover:underline">Impostazioni di Da fare</Link>
           </p>
           {dati.playbook.map((p) => <Playbook key={p.codice} pb={p} dati={dati} scrivi={scrivi} />)}

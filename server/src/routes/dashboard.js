@@ -120,7 +120,8 @@ async function prossimeLezioni(oggi) {
 		.where(and(
 			or(isNull(sessions.status), ne(sessions.status, 'cancelled')),
 			gte(sessions.date, oggi),
-			lte(sessions.date, spostaGiorni(oggi, 7)),
+			// Sette giorni, oggi compreso: quello che dice l'etichetta.
+			lte(sessions.date, spostaGiorni(oggi, 6)),
 		))
 		.groupBy(sessions.id, courses.name, rooms.name)
 		.orderBy(asc(sessions.date), asc(sessions.startTime));

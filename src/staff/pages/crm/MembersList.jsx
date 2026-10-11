@@ -52,10 +52,10 @@ function RigaTile({ etichetta, children }) {
 }
 
 /** Lo stato dell'abbonamento: archiviato, sospeso, attivo, in scadenza, scaduto, nessuno. */
-function StatoTile({ socio }) {
+function StatoTile({ socio, soglie }) {
   if (socio.archiviato_il) return <StatusBadge status="archiviato" label={`Archiviato il ${formatData(socio.archiviato_il, "breve")}`} tone="neutro" className="py-0" />;
   if (socio.sospensione) return <StatusBadge status="sospeso" label={`Sospeso fino al ${formatData(socio.sospensione.al, "breve")}`} tone="neutro" className="py-0" />;
-  if (socio.scadenza) return <StatusBadge status={statoIscrizione({ end_date: socio.scadenza })} className="py-0" />;
+  if (socio.scadenza) return <StatusBadge status={statoIscrizione({ end_date: socio.scadenza }, undefined, soglie?.abbonamentoInScadenzaGiorni)} className="py-0" />;
   if (socio.valido) return <StatusBadge status="active" className="py-0" />;
   if (socio.ultima_fine) return <StatusBadge status="expired" className="py-0" />;
   return <StatusBadge status="nessuno" label="Senza abbonamento" tone="neutro" className="py-0" />;
@@ -253,7 +253,7 @@ export default function MembersList() {
                     </div>
                   </div>
                   <dl className="mt-auto space-y-1.5">
-                    <RigaTile etichetta="Abbonamento"><StatoTile socio={s} /></RigaTile>
+                    <RigaTile etichetta="Abbonamento"><StatoTile socio={s} soglie={dati.soglie} /></RigaTile>
                     <RigaTile etichetta="Tipo">{s.abbonamento || "—"}</RigaTile>
                     <RigaTile etichetta="Scadenza">{s.scadenza || s.ultima_fine ? formatData(s.scadenza ?? s.ultima_fine, "breve") : "—"}</RigaTile>
                     <RigaTile etichetta="Telefono">{s.telefono || "—"}</RigaTile>
@@ -293,7 +293,7 @@ export default function MembersList() {
                     <span className="block text-xs text-muted-foreground font-mono">{s.codice_socio}</span>
                   </td>
                   <td className="py-3 px-4"><BadgeStato socio={s} soglie={dati.soglie} /></td>
-                  <td className="py-3 px-4 hidden sm:table-cell"><StatoTile socio={s} /></td>
+                  <td className="py-3 px-4 hidden sm:table-cell"><StatoTile socio={s} soglie={dati.soglie} /></td>
                   <td className="py-3 px-4 hidden md:table-cell">
                     {s.scadenza || s.ultima_fine ? formatData(s.scadenza ?? s.ultima_fine, "breve") : "—"}
                     {s.abbonamento && <span className="block text-xs text-muted-foreground">{s.abbonamento}</span>}

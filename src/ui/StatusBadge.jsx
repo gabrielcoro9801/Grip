@@ -30,7 +30,7 @@ const STATI = {
   expired: { label: "Scaduto", tono: "negativo" },
 
   // Prenotazioni ai corsi
-  confirmed: { label: "Confermato", tono: "positivo" },
+  confirmed: { label: "Confermata", tono: "positivo" },
   waitlisted: { label: "In lista d'attesa", tono: "attesa" },
   cancelled: { label: "Disdetta", tono: "neutro" },
 

@@ -155,7 +155,10 @@ export default function AppLayout() {
               <item.icon className="w-5 h-5 flex-shrink-0" aria-hidden="true" />
               {/* Quando la sidebar è stretta resta la sola icona: il nome
                   serve comunque a chi naviga con uno screen reader. */}
-              <span className={collapsed ? "sr-only" : undefined}>{collapsed && item.impostazioni ? `Impostazioni: ${item.label}` : item.label}</span>
+              <span className={collapsed ? "sr-only" : undefined}>
+                {/* Due "Da fare" nel menu: per chi non vede il titolo, questa è quella delle impostazioni. */}
+                {item.impostazioni && <span className="sr-only">Impostazioni: </span>}{item.label}
+              </span>
             </Link>
             </React.Fragment>
           ))}
