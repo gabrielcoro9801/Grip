@@ -34,6 +34,7 @@ import { ErrorState } from "@/ui/StateViews";
 import { useConfirm } from "@/ui/ConfirmDialog";
 import { formatData, formatDataOra, formatEuro } from "@/core/domain/format";
 import { dataFineAbbonamento, descriviDurata, motivoNonVendibile, oggiIso } from "@/core/domain/abbonamenti";
+import { spostaGiorni } from "@/core/domain/giorni";
 
 
 /** Un dato della tile anagrafica: un trattino quando manca, così ogni scheda ha le stesse righe. */
@@ -134,7 +135,7 @@ export default function MemberDetail() {
   const azione = parametri.get("azione");
   useEffect(() => {
     if (loading || !member || !azione) return;
-    if (azione === "rinnova" && puoModificare && !member.archiviato_il) setShowSubForm(true);
+    if (azione === "rinnova" && puoModificare && !member.archiviato_il) apriVendita();
     if (azione === "documenti") document.getElementById("documenti")?.scrollIntoView({ behavior: "smooth", block: "start" });
     setParametri({}, { replace: true });
   }, [loading, member, azione]);
@@ -150,6 +151,19 @@ export default function MemberDetail() {
     qrDataUrl(codiceDinamico, 120).then((url) => { if (vivo) setImmagineQr(url); }).catch(() => {});
     return () => { vivo = false; };
   }, [codiceDinamico]);
+
+  // Un rinnovo, quasi sempre: lo stesso tipo di prima, dal giorno dopo la fine. Si apriva vuoto e
+  // da oggi, e a chi scadeva fra cinque giorni si vendevano cinque giorni già pagati.
+  function apriVendita() {
+    const ultima = [...subscriptions].sort((a, b) => String(b.end_date).localeCompare(String(a.end_date)))[0];
+    const oggi = oggiIso();
+    setSubForm({
+      plan_id: plans.some((p) => p.id === ultima?.plan_id) ? ultima.plan_id : "",
+      start_date: ultima?.end_date && ultima.end_date >= oggi ? spostaGiorni(ultima.end_date, 1) : oggi,
+    });
+    setDateError("");
+    setShowSubForm(true);
+  }
 
   const pianoScelto = plans.find(p => p.id === subForm.plan_id);
   const scadenzaProposta = pianoScelto ? dataFineAbbonamento(subForm.start_date, pianoScelto.durata_valore, pianoScelto.durata_unita) : null;
@@ -407,7 +421,7 @@ export default function MemberDetail() {
             <CardTitle className="text-sm font-heading flex items-center gap-2"><CreditCard className="w-4 h-4" /> Abbonamenti</CardTitle>
             {/* Un socio archiviato non compra abbonamenti: prima lo si riattiva. */}
             {puoModificare && !member.archiviato_il && (
-              <Button size="sm" variant="outline" onClick={() => setShowSubForm(true)}><Plus className="w-3 h-3 mr-1" /> Nuovo</Button>
+              <Button size="sm" variant="outline" onClick={apriVendita}><Plus className="w-3 h-3 mr-1" /> Nuovo</Button>
             )}
           </CardHeader>
           <CardContent>
