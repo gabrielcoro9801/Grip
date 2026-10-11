@@ -192,10 +192,12 @@ export default function MemberCoursesCalendar() {
       </div>
       <LeMieFisse fisse={fisse} onTermina={handleTermina} />
       <FisseContext.Provider value={{ prenotaFisso: handlePrenotaFisso, inCorso: actionLoading }}>
-      <Tabs defaultValue="categorie">
+      {/* Si apre sui giorni, a partire da oggi: chi entra qui vuole sapere che cosa c'è e
+          prenotare. Prima si apriva sulle categorie, e per vedere una lezione servivano tre tocchi. */}
+      <Tabs defaultValue="calendario">
         <TabsList className="w-full">
-          <TabsTrigger value="categorie" className="flex-1">Categorie</TabsTrigger>
-          <TabsTrigger value="calendario" className="flex-1">Calendario</TabsTrigger>
+          <TabsTrigger value="calendario" className="flex-1">Giorno per giorno</TabsTrigger>
+          <TabsTrigger value="categorie" className="flex-1">Per corso</TabsTrigger>
         </TabsList>
         <TabsContent value="categorie">
           <CoursesByCategory
