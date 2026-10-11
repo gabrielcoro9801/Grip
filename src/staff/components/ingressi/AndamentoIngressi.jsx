@@ -134,7 +134,7 @@ export default function AndamentoIngressi() {
                       return (
                         <td
                           key={j} tabIndex={valore ? 0 : -1}
-                          className={`h-7 min-w-[2rem] rounded-[4px] text-center tabular-nums ${g === 0 ? "bg-muted/50 text-muted-foreground/60" : ""}`}
+                          className={`h-7 min-w-[2rem] rounded-[4px] text-center tabular-nums ${g === 0 ? "bg-muted/50 text-muted-foreground" : ""}`}
                           style={g ? { background: `var(--viz-scala-${g})`, color: testoChiaro(g) ? "#ffffff" : "#0b0b0b" } : undefined}
                           {...caselle.eventi(<p>{dati.giorniSettimana[i]}, {dati.fasce[j]}: {n(valore)} ingressi</p>)}
                         >
