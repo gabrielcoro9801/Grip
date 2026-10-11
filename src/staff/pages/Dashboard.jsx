@@ -2,8 +2,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { api } from "@/core/api/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/ui/primitivi/card";
 import { Link } from "react-router-dom";
-import { Users, UserCheck, Calendar, Clock, FileWarning, UserX, ListChecks, ChevronRight } from "lucide-react";
-import StatusBadge from "@/ui/StatusBadge";
+import { Users, UserCheck, Calendar, Clock, UserX, ListChecks, ChevronRight } from "lucide-react";
 import { LoadingState } from "@/ui/Spinner";
 import { ErrorState } from "@/ui/StateViews";
 import { formatData } from "@/core/domain/format";
@@ -45,8 +44,7 @@ export default function Dashboard() {
   const kpis = [
     { label: "Soci attivi", value: kpi.soci_attivi, icon: UserCheck, color: "text-success", bg: "bg-success/10" },
     { label: "Soci iscritti", value: kpi.soci_iscritti, icon: Users, color: "text-info", bg: "bg-info/10" },
-    { label: "Documenti da sistemare", value: kpi.documenti_da_sistemare, icon: FileWarning, color: "text-warning", bg: "bg-warning/10" },
-    { label: "Prossime lezioni", value: kpi.prossime_lezioni, icon: Calendar, color: "text-violet-600", bg: "bg-violet-50" },
+    { label: "Lezioni nei prossimi 7 giorni", value: kpi.prossime_lezioni, icon: Calendar, color: "text-primary", bg: "bg-primary/10" },
   ].filter((k) => k.value !== null);
 
   return (
@@ -57,7 +55,7 @@ export default function Dashboard() {
       </div>
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
         {kpis.map(kpi => (
           <Card key={kpi.label} className="border-0 shadow-sm">
             <CardContent className="p-4 sm:p-5">
@@ -88,7 +86,7 @@ export default function Dashboard() {
                 <p className="text-xs font-medium text-muted-foreground flex items-center justify-between gap-1">
                   {l.etichetta} <ChevronRight className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity" aria-hidden="true" />
                 </p>
-                <p className={`text-2xl font-bold tabular-nums mt-1 ${daFare[l.valore] ? "" : "text-muted-foreground/60"}`}>{daFare[l.valore]}</p>
+                <p className={`text-2xl font-bold tabular-nums mt-1 ${daFare[l.valore] ? "" : "text-muted-foreground"}`}>{daFare[l.valore]}</p>
               </Link>
             ))}
           </div>
@@ -126,24 +124,35 @@ export default function Dashboard() {
             <CardHeader className="pb-3">
               <CardTitle className="text-base font-heading flex items-center gap-2">
                 <Clock className="w-4 h-4 text-primary" />
-                Prossime lezioni prenotate (7 giorni)
+                Prossime lezioni
+                <Link to="/calendario/prenotazioni" className="ml-auto text-xs font-normal text-primary hover:underline">Tutte le prenotazioni</Link>
               </CardTitle>
             </CardHeader>
             <CardContent>
               {prossime.length === 0 ? (
-                <p className="text-sm text-muted-foreground py-4 text-center">Nessuna prenotazione imminente</p>
+                <p className="text-sm text-muted-foreground py-4 text-center">Nessuna lezione nei prossimi 7 giorni</p>
               ) : (
-                <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {prossime.map(b => (
-                    <div key={b.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
-                      <div>
-                        <p className="text-sm font-medium">{b.course_name || "Corso"}</p>
-                        <p className="text-xs text-muted-foreground">{b.member_name} · {formatData(b.date, "giorno")}</p>
-                      </div>
-                      <StatusBadge status={b.status} />
-                    </div>
-                  ))}
-                </div>
+                // Una card per lezione, con i posti: è quello che si guarda prima di aprire la porta.
+                // Le prime nove: le altre stanno in Prenotazioni.
+                <ul className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {prossime.slice(0, 9).map((l) => {
+                    const piena = l.confermati >= l.capacity;
+                    return (
+                      <li key={l.id} className="flex items-center justify-between gap-3 p-3 rounded-lg bg-muted/50">
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium truncate">{l.course_name || "Corso"}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {formatData(l.date, "giorno")} · {String(l.start_time).slice(0, 5)}{l.room_name ? ` · ${l.room_name}` : ""}
+                          </p>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className={`text-sm font-semibold tabular-nums ${piena ? "text-warning" : ""}`}>{l.confermati}/{l.capacity} posti</p>
+                          {l.in_attesa > 0 && <p className="text-xs text-muted-foreground">{l.in_attesa} in attesa</p>}
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
               )}
             </CardContent>
           </Card>

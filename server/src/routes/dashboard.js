@@ -12,15 +12,15 @@
 //
 // Ogni parte ha il permesso di lettura dell'entità che la governa: chi non vede i soci non
 // riceve le loro linee, chi non vede i contatti non riceve quella dei contatti.
-import { and, asc, count, desc, eq, gte, isNull, lte, ne, or } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gte, isNull, lte, ne, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { attivita, bookings, courses, events, members, sessions } from '../db/schema/index.js';
+import { attivita, bookings, courses, events, members, rooms, sessions } from '../db/schema/index.js';
 import { getUserFromRequest } from '../auth/tokens.js';
 import { canReadEntity } from '../auth/authorize.js';
 import { canAccess } from '../../../shared/permissions.js';
 import { situazioni } from '../lib/segnali.js';
 import { daFare, lineaDi, LINEE } from '../../../shared/segnali.js';
-import { oggiIso, spostaGiorni } from '../../../shared/giorni.js';
+import { oggiIso, spostaGiorni, lezioneFinita } from '../../../shared/giorni.js';
 
 export default async function dashboardRoutes(fastify) {
 	fastify.addHook('preHandler', async (request, reply) => {
@@ -53,7 +53,8 @@ export default async function dashboardRoutes(fastify) {
 			kpi: {
 				soci_attivi: puo('Subscription') ? soci.filter((p) => !p.archiviato_il && p.valido).length : null,
 				soci_iscritti: iscritti,
-				documenti_da_sistemare: puo('MemberDocument') ? soci.filter((p) => p.segnali.some((s) => s.pubblico === 'staff' && s.codice.startsWith('documento_'))).length : null,
+				// I documenti da sistemare hanno la loro tessera fra le linee di Da fare: un numero
+				// solo, in un posto solo.
 				prossime_lezioni: prossime?.length ?? null,
 			},
 			da_fare: motore ? lineeDaFare(persone, { vedeSoci, vedeLead }) : null,
@@ -98,23 +99,30 @@ async function motiviAbbandono(oggi) {
 	return righe.map((r) => ({ motivo: r.motivo, quanti: Number(r.quanti) }));
 }
 
-/** Le prenotazioni non disdette delle lezioni da oggi a fra sette giorni. */
+/**
+ * Le lezioni da adesso a fra sette giorni, una riga per lezione con i posti: confermati, capienza
+ * e lista d'attesa. Erano le prenotazioni, una per riga: cinque card "Cross Training" uguali per
+ * una lezione sola, e un "Prossime lezioni: 131" che contava prenotazioni.
+ */
 async function prossimeLezioni(oggi) {
 	const righe = await db
 		.select({
-			id: bookings.id, member_name: bookings.memberName, status: bookings.status,
-			date: sessions.date, start_time: sessions.startTime, course_name: courses.name,
+			id: sessions.id, date: sessions.date, start_time: sessions.startTime, end_time: sessions.endTime,
+			capacity: sessions.capacity, course_name: courses.name, room_name: rooms.name,
+			confermati: sql`count(${bookings.id}) filter (where ${bookings.status} = 'confirmed')`.mapWith(Number),
+			in_attesa: sql`count(${bookings.id}) filter (where ${bookings.status} = 'waitlisted')`.mapWith(Number),
 		})
-		.from(bookings)
-		.innerJoin(sessions, eq(bookings.sessionId, sessions.id))
+		.from(sessions)
 		.innerJoin(events, eq(sessions.eventId, events.id))
 		.innerJoin(courses, eq(events.courseId, courses.id))
+		.leftJoin(rooms, eq(sessions.roomId, rooms.id))
+		.leftJoin(bookings, eq(bookings.sessionId, sessions.id))
 		.where(and(
-			ne(bookings.status, 'cancelled'),
 			or(isNull(sessions.status), ne(sessions.status, 'cancelled')),
 			gte(sessions.date, oggi),
 			lte(sessions.date, spostaGiorni(oggi, 7)),
 		))
+		.groupBy(sessions.id, courses.name, rooms.name)
 		.orderBy(asc(sessions.date), asc(sessions.startTime));
-	return righe;
+	return righe.filter((l) => !lezioneFinita(l));
 }
