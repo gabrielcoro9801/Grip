@@ -14,9 +14,6 @@ export const MODULES = {
   // Vede solo i soci delle sue lezioni, e solo con un account collegato a un istruttore. Di base
   // ce l'ha l'istruttore; un titolare che insegna se la dà dai ruoli.
   lezioni_istruttore: { label: "Le mie lezioni (istruttore)" },
-  // Le comunicazioni automatiche ai soci: canali, credenziali, playbook, l'interruttore generale.
-  // Solo l'amministratore: da qui si decide che cosa parte verso i soci, e con quale spesa.
-  crm_comunicazioni: { label: "Comunicazioni automatiche" },
   admin_users: { label: "Admin & Profili" },
   audit_log: { label: "Log accessi / azioni" },
 };
@@ -35,7 +32,6 @@ export const PERMESSI_PREDEFINITI = {
     crm_documents: ["view", "edit"],
     crm_leads: ["view", "edit"],
     calendar: ["view", "edit"],
-    crm_comunicazioni: ["view", "edit"],
     admin_users: ["view", "edit"],
     audit_log: ["view"],
   },
@@ -201,7 +197,6 @@ export const SIDEBAR_PERMISSIONS = {
   "/calendario": "calendar",
   "/istruttore": "lezioni_istruttore",
   "/admin": "admin_users",
-  "/admin/comunicazioni": "crm_comunicazioni",
   "/admin/da-fare": "admin_users",
   "/log-audit": "audit_log",
 };

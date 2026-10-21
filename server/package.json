@@ -22,7 +22,6 @@
     "verifica:pagine": "node scripts/verifica-pagine.mjs",
     "verifica:oggi": "node scripts/verifica-oggi.mjs",
     "verifica:fase3": "node scripts/verifica-fase3.mjs",
-    "verifica:fase4": "node scripts/verifica-fase4.mjs",
     "verifica:da-fare": "node scripts/verifica-da-fare.mjs"
   },
   "dependencies": {
@@ -35,7 +34,6 @@
     "drizzle-orm": "^0.45.3",
     "fastify": "^5.1.0",
     "jsonwebtoken": "^9.0.2",
-    "nodemailer": "^6.9.16",
     "pg": "^8.13.1"
   },
   "devDependencies": {

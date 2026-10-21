@@ -6,7 +6,7 @@ import StaffLogin from "@/staff/pages/StaffLogin";
 import {
   LayoutDashboard, Users, Calendar,
   ChevronLeft, ChevronRight, LogOut, Menu, Dumbbell,
-  ShieldCheck, ScrollText, UserPlus, KeyRound, ListChecks, Search, GraduationCap, Send, Settings2
+  ShieldCheck, ScrollText, UserPlus, KeyRound, ListChecks, Search, GraduationCap, Settings2
 } from "lucide-react";
 import RicercaGlobale from "@/staff/components/RicercaGlobale";
 import { CambioPasswordObbligatorio, DialogCambioPassword } from "@/ui/CambioPassword";
@@ -34,8 +34,6 @@ const navItems = [
   // ogni giorno (Utenti accanto a Soci e Corsi), e quelle di Da fare si raggiungevano solo da un
   // link dentro Da fare. Le vede l'amministratore.
   { label: "Utenti e ruoli", path: "/admin", icon: ShieldCheck, impostazioni: true },
-  // Le comunicazioni automatiche ai soci: arrivano spente, le accende l'amministratore da qui.
-  { label: "Comunicazioni", path: "/admin/comunicazioni", icon: Send, impostazioni: true },
   { label: "Da fare", path: "/admin/da-fare", icon: Settings2, impostazioni: true },
   { label: "Registro delle azioni", path: "/log-audit", icon: ScrollText, impostazioni: true },
 ];
@@ -61,7 +59,7 @@ export default function AppLayout() {
     return <CambioPasswordObbligatorio nome={staffUser.nome} onCambiata={aggiornaUtente} onEsci={logout} />;
   }
 
-  // La voce più specifica vince: "/admin/comunicazioni" non accende anche "Utenti e ruoli".
+  // La voce più specifica vince: "/admin/da-fare" non accende anche "Utenti e ruoli".
   const isActive = (path) => {
     if (path === "/") return location.pathname === "/";
     const suo = (p) => location.pathname === p || location.pathname.startsWith(`${p}/`);

@@ -1,5 +1,7 @@
 // Le comunicazioni automatiche: la coda dei messaggi, i testi della palestra, le credenziali dei
-// canali. Le regole stanno in shared/comunicazioni.js; chi accoda e chi spedisce in lib/invii.js.
+// canali. Uscite dall'applicazione il 21/10/2026 (codice su tag e branch archivio/comunicazioni).
+// Le tabelle restano nel database con i loro dati, e restano dichiarate qui perché drizzle-kit non
+// generi DROP: eliminarle è una migrazione a parte, su richiesta.
 import { sql } from 'drizzle-orm';
 import { pgTable, uuid, varchar, text, integer, timestamp, check, index, uniqueIndex, primaryKey } from 'drizzle-orm/pg-core';
 import { organizations } from './common.js';

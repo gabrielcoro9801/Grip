@@ -4,7 +4,6 @@
 // "Andamento" riceve dal server righe anonime e le conta qui, la pagina Contatti ci legge gli
 // stati, e i test le provano con `node --test`.
 //
-import { playbook, etichettaCanale } from "./comunicazioni.js";
 import { giorniFra } from "./giorni.js";
 import { SOGLIE } from "./soglie.js";
 import { normalizzaTelefono } from "./anagrafica.js";
@@ -492,8 +491,8 @@ export function descriviAttivita(a) {
     // Le cose da fare, come le scrive il giro (giro.js): quando compaiono e quando non ci sono più.
     case "segnale_aperto": return "Da fare";
     case "segnale_chiuso": return "Non più da fare";
-    // Un messaggio automatico di un playbook (lib/invii.js), partito davvero.
-    case "messaggio": return `Messaggio automatico «${playbook(a.esito)?.titolo ?? a.esito}»: ${etichettaCanale(a.canale)}`;
+    // Righe di quando c'erano le comunicazioni automatiche (archivio/comunicazioni): restano nel diario.
+    case "messaggio": return "Messaggio automatico";
     case "ingresso_dopo_contatto": {
       const n = Number(a.esito);
       return `Tornato in palestra ${n === 0 ? "il giorno stesso del contatto" : n === 1 ? "il giorno dopo il contatto" : `${n} giorni dopo il contatto`}`;

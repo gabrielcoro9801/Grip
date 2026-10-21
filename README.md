@@ -104,6 +104,22 @@ Tre punti che si sbagliano quasi sempre, spiegati lì per esteso:
 
 ## Stato del progetto
 
+### 21 ottobre 2026 — Le comunicazioni automatiche escono dall'applicazione
+
+Come per l'allenamento e la contabilità: il codice è nel tag `archivio/comunicazioni-2026-10` e nel
+branch `archivio/comunicazioni`, su origin.
+
+- **Via**: la sezione Comunicazioni (`/admin/comunicazioni`, modulo `crm_comunicazioni`), i sette
+  playbook, il motore degli invii (`lib/invii.js`), i canali email e simulato, le credenziali
+  cifrate, il link di disiscrizione. Il giro quotidiano resta, senza la parte degli invii.
+- **Resta**: le notifiche nel portale (lezione annullata, posto dalla lista d'attesa, prenotazione
+  fissa), Da fare, Contatti, i segnali, e **tutto il registro dei consensi** (iscrizione, scheda
+  del socio, portale): si raccolgono ora, serviranno quando le comunicazioni torneranno.
+- **Diario**: le righe «Messaggio automatico» già scritte si leggono ancora, senza il nome del playbook.
+- **Database**: le tabelle `messaggi`, `modelli_messaggio` e `segreti_canali` restano con i loro
+  dati e restano dichiarate in `schema/messaggi.js` (drizzle-kit non genera DROP); le
+  migrazioni 0056 e 0057 non si toccano. `INVII_REALI` e `CHIAVE_SEGRETI` non servono più.
+
 ### 11 ottobre 2026 (sera) — Migliorie UI/UX: le parole, i compiti, il pollice
 
 Un giro sull'interfaccia partendo da sei compiti di tutti i giorni, misurati in un browser vero
@@ -128,8 +144,7 @@ scorrimenti. Il piano e le decisioni stanno in [`docs/ux/`](docs/ux/).
 - **Istruttore**: entra in "Le mie lezioni", e "Prossime" mostra le lezioni da tenere.
 - **Contatti** sul telefono come schede, con le azioni scritte ("Non interessato", non "✕").
   **Prenotazioni**: "Disdici" scritto, il cestino staccato.
-- **Menu**: in fondo la sezione **Impostazioni** (Utenti e ruoli, Comunicazioni, Da fare,
-  Registro delle azioni). **Comunicazioni** parla da titolare e tiene i soldi in euro.
+- **Menu**: in fondo la sezione **Impostazioni** (Utenti e ruoli, Da fare, Registro delle azioni).
 - **Portale**: il QR è il primo pulsante della home, sotto le prossime lezioni; Corsi si apre
   sui giorni; senza codice il QR non dice più "Accesso consentito"; "Vuoi rinnovare?" solo entro
   la soglia di Da fare (anche le soglie del portale sono quelle della palestra); bersagli tattili

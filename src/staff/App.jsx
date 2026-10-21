@@ -35,7 +35,6 @@ const Sale = lazy(() => import('@/staff/pages/corsi/Sale'));
 const Istruttori = lazy(() => import('@/staff/pages/corsi/Istruttori'));
 const Categorie = lazy(() => import('@/staff/pages/corsi/Categorie'));
 const Admin = lazy(() => import('@/staff/pages/admin/Admin'));
-const Comunicazioni = lazy(() => import('@/staff/pages/admin/Comunicazioni'));
 const ImpostazioniDaFare = lazy(() => import('@/staff/pages/admin/ImpostazioniDaFare'));
 const AuditLogPage = lazy(() => import('@/staff/pages/admin/AuditLogPage'));
 
@@ -94,7 +93,6 @@ export default function App() {
                 </Route>
                 <Route path="/calendar" element={<Navigate to="/calendario" replace />} />
                 <Route path="/admin" element={<PermissionGate module="admin_users"><Admin /></PermissionGate>} />
-                <Route path="/admin/comunicazioni" element={<PermissionGate module="crm_comunicazioni"><Comunicazioni /></PermissionGate>} />
                 <Route path="/admin/da-fare" element={<PermissionGate module="admin_users"><ImpostazioniDaFare /></PermissionGate>} />
                 <Route path="/log-audit" element={<PermissionGate module="audit_log"><AuditLogPage /></PermissionGate>} />
                 <Route path="/audit-log" element={<Navigate to="/log-audit" replace />} />
