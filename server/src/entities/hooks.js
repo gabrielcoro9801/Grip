@@ -32,9 +32,8 @@ import { NOTE_CORSO_MASSIMO, RICORRENZE_CREABILI, DISDETTA_MASSIMA_ORE } from '.
 // Campi rimossi da ogni risposta, per entità.
 const HIDDEN_FIELDS = {
 	StaffAccount: ['password_hash', 'token_version'],
-	// Le impostazioni della palestra (soglie, comunicazioni: server SMTP, mittenti, verifiche) non
-	// escono dall'endpoint generico, che legge anche il portale soci: hanno le loro rotte, con i
-	// loro permessi (routes/comunicazioni.js).
+	// Le impostazioni della palestra (le soglie di Da fare) non escono dall'endpoint generico, che
+	// legge anche il portale soci: hanno le loro rotte, con i loro permessi (routes/impostazioni.js).
 	Organization: ['impostazioni'],
 };
 
@@ -287,12 +286,12 @@ export function telefonoNormalizzato(valore) {
 // per compatibilità con i form esistenti, ma qui viene hashata in password_hash —
 // la password in chiaro non tocca mai il database.
 const WRITE_TRANSFORMS = {
-	// …e non vi si scrivono: dall'endpoint generico si accenderebbero le comunicazioni scavalcando
-	// la lista di controllo, il registro e il modulo crm_comunicazioni.
+	// …e non vi si scrivono: dall'endpoint generico si cambierebbero le soglie scavalcando il
+	// registro delle azioni e il permesso dell'amministratore.
 	Organization: (body) => {
 		const { impostazioni, ...resto } = body ?? {};
 		if (impostazioni !== undefined && !Object.keys(resto).length) {
-			throw rifiuta('Le impostazioni si cambiano dalle loro sezioni (Comunicazioni), non da qui.');
+			throw rifiuta('Le impostazioni si cambiano dalle loro sezioni (Da fare), non da qui.');
 		}
 		return resto;
 	},

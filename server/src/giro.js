@@ -4,14 +4,10 @@
 // chiusa la domenica non deve saltare un giorno. Lo lancia un Railway Cron (docs/deploy.md), o
 // lo si lancia a mano:  npm run giro
 //
-// Due parti. La **manutenzione** non invia niente ed è sempre attiva. Gli **invii** (i playbook
-// delle comunicazioni, lib/invii.js) stanno dietro tre serrature e al primo deploy sono spenti:
-// senza INVII_REALI, senza l'interruttore della palestra, senza un canale verificato e un
-// playbook attivo non parte niente; un playbook in anteprima scrive solo messaggi `simulato`.
 // Ogni passo è idempotente — lanciato due volte nello stesso giorno, la seconda non trova nulla
 // da fare — così un cron ripetuto o un lancio a mano in più non fanno danni.
 //
-// La manutenzione: chiude come *non raggiungibili* i lead con troppi tentativi senza risposta,
+// Cosa fa: chiude come *non raggiungibili* i lead con troppi tentativi senza risposta,
 // l'ultimo da tanto (prima lo faceva GET /api/lead/lavoro alla lettura: una GET non deve
 // scrivere); registra chi è rientrato in palestra dopo essere stato contattato perché assente;
 // archivia chi è senza abbonamento da troppo tempo; e scrive nel diario dei soci le cose da fare
@@ -24,7 +20,6 @@ import { organizations, trattative, attivita, members } from './db/schema/index.
 import { soglieDi } from '../../shared/soglie.js';
 import { situazioni } from './lib/segnali.js';
 import { etichettaSegnale } from '../../shared/segnali.js';
-import { giroInvii } from './lib/invii.js';
 import { oggiIso, spostaGiorni } from '../../shared/giorni.js';
 
 const AUTORE_SISTEMA = 'Sistema';
@@ -161,13 +156,13 @@ async function scriviDaFare(conn, soglie, persone) {
 }
 
 /**
- * Un giro su tutte le palestre. → [{ palestra, non_raggiungibili, rientri, archiviati, da_fare, invii }]
+ * Un giro su tutte le palestre. → [{ palestra, non_raggiungibili, rientri, archiviati, da_fare }]
  *
  * ponytail: oggi c'è una palestra per installazione e le trattative non hanno ancora la loro
  * palestra: il giro scorre le palestre, ma ogni passo lavora sul database intero. Con il
  * multi-tenant ogni passo riceverà la palestra e filtrerà per lei.
  */
-export async function giro({ oggi = oggiIso(), conn = db, adesso = new Date(), adattatori } = {}) {
+export async function giro({ oggi = oggiIso(), conn = db, adesso = new Date() } = {}) {
 	const palestre = await conn.select({ nome: organizations.nome, impostazioni: organizations.impostazioni }).from(organizations);
 	const esiti = [];
 	for (const palestra of palestre) {
@@ -179,9 +174,6 @@ export async function giro({ oggi = oggiIso(), conn = db, adesso = new Date(), a
 			archiviati: await archiviaSenzaAbbonamento(conn, oggi, soglie, (await situazioni({ conn, adesso })).persone),
 			// Dopo l'archiviazione: chi è appena stato archiviato chiude le sue cose da fare.
 			da_fare: await scriviDaFare(conn, soglie, (await situazioni({ conn, adesso })).persone),
-			// Dopo la manutenzione: i rientri appena scritti non cambiano chi va contattato, ma i
-			// lead chiusi sì, e i segnali si leggono una volta sola, già aggiornati.
-			invii: await giroInvii(conn, { adesso, adattatori }),
 		});
 	}
 	return esiti;
@@ -193,10 +185,6 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
 		for (const e of await giro()) {
 			console.log(`${e.palestra}: ${e.non_raggiungibili} lead chiusi come non raggiungibili, ${e.rientri} soci rientrati dopo un contatto, ${e.archiviati} archiviati senza abbonamento.`);
 			console.log(`  Da fare nel diario: ${e.da_fare.aperti} comparsi, ${e.da_fare.chiusi} non più da fare.`);
-			const i = e.invii;
-			console.log(i.silenzio
-				? '  Comunicazioni: fascia di silenzio, nessun messaggio accodato.'
-				: `  Comunicazioni: ${i.simulati} simulati, ${i.accodati} accodati, ${i.bloccati} bloccati; ${i.inviati} inviati, ${i.falliti} non riusciti${i.freno ? ' (raggiunto il massimo per giro)' : ''}.`);
 		}
 		await pool.end();
 		process.exit(0);

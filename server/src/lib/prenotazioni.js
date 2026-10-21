@@ -213,8 +213,7 @@ export async function promuoviFinoACapienza(tx, sessionId) {
 	}
 
 	// Chi passa dalla lista d'attesa deve saperlo: altrimenti scopre di avere un posto solo se
-	// riapre l'agenda, e magari non viene. Nel portale sempre; per email o SMS se la palestra
-	// ha acceso il playbook (lib/invii.js). Nella stessa transazione della promozione.
+	// riapre l'agenda, e magari non viene. Nella stessa transazione della promozione.
 	if (promosse.length) {
 		const [corso] = await tx.select({ nome: courses.name }).from(events)
 			.innerJoin(courses, eq(events.courseId, courses.id)).where(eq(events.id, lezione.eventId)).limit(1);
@@ -225,7 +224,7 @@ export async function promuoviFinoACapienza(tx, sessionId) {
 				titolo: `Posto confermato: ${nome}`,
 				testo: `Si è liberato un posto: la tua prenotazione a ${nome} di ${giornoEsteso(lezione.date)} alle ${String(lezione.startTime).slice(0, 5)} è confermata. `
 					+ 'Se non puoi più venire, disdici dal portale per lasciare il posto a un altro.',
-			}, { evento: 'promosso_lista_attesa', riferimento: `prenotazione:${riga.id}` });
+			});
 		}
 	}
 	return promosse;

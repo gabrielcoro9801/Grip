@@ -1,3 +1,5 @@
+> **Nota (21/10/2026):** le comunicazioni automatiche di questa fase sono uscite dall'applicazione; il codice è nel branch `archivio/comunicazioni`.
+
 # Prompt — GRIP CRM, Fase 4
 
 > Da incollare come primo messaggio in una **nuova sessione di Claude Code aperta in

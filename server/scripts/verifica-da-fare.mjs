@@ -202,10 +202,6 @@ try {
 	await am.screenshot({ path: schermata('6-impostazioni'), fullPage: true });
 	await pg.goto(`${BASE}/da-fare?linea=documenti`, { waitUntil: 'networkidle' });
 	controlla('Il segnale spento sparisce da Da fare', await riga(pg, `Sara Documenti${lettere}`).count() === 0);
-	controlla('Comunicazioni non ha più la scheda Soglie', await (async () => {
-		await am.goto(`${BASE}/admin/comunicazioni`, { waitUntil: 'networkidle' });
-		return await am.getByRole('tab', { name: 'Soglie' }).count() === 0;
-	})());
 
 	// --- 6. Da telefono ------------------------------------------------------------------------------
 	const tel = await nuovaPagina({ width: 390, height: 844 });
