@@ -28,6 +28,7 @@ import {
 	NOME_MASSIMO as NOME_SALA_MASSIMO, NOTE_MASSIMO as NOTE_SALA_MASSIMO,
 } from '../../../shared/sale.js';
 import { NOTE_CORSO_MASSIMO, RICORRENZE_CREABILI, DISDETTA_MASSIMA_ORE } from '../../../shared/corsi.js';
+import { leggiColore } from '../../../shared/colore.js';
 
 // Campi rimossi da ogni risposta, per entità.
 const HIDDEN_FIELDS = {
@@ -559,6 +560,19 @@ const WRITE_TRANSFORMS = {
 				.where(eq(instructors.id, rest.instructor_id))
 				.limit(1);
 			if (istruttore && !istruttore.attivo) throw rifiuta(`«${istruttore.nome}» è disattivato: scegli un altro istruttore, o riattivalo.`);
+		}
+		return rest;
+	},
+
+	// Il colore di una categoria si salva sempre come `#rrggbb` minuscolo, qualunque dei quattro
+	// modi accettati abbia usato chi l'ha scritto (shared/colore.js). Senza colore, una categoria
+	// nuova prende quello predefinito della colonna.
+	Category(body) {
+		const rest = { ...(body ?? {}) };
+		if (presente(rest, 'color')) {
+			const colore = leggiColore(rest.color);
+			if (!colore) throw rifiuta('Il colore non è valido: scrivilo come #8b5cf6 o rgb(139, 92, 246).');
+			rest.color = colore;
 		}
 		return rest;
 	},
