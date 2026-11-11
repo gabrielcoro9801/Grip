@@ -62,15 +62,29 @@ distinguono dalla forma, punto per il socio e badge per il contatto.
 | **Lista d'attesa** | Chi aspetta un posto libero, in ordine. | — |
 | **Annullata** | Una lezione che la palestra non tiene: le prenotazioni si disdicono da sole. | Cancellata |
 
+## I corsi
+
+In interfaccia «sessione» è la riga di `events`, non di `sessions`.
+
+| Parola | Che cosa è | Non dire |
+|---|---|---|
+| **Lezione** | Un appuntamento in una data: un corso, a un'ora, in una sala. | Evento |
+| **Lezione singola** | Una lezione che non si ripete. «Nuova lezione» in calendario crea solo queste. | Nuovo evento |
+| **Sessione** | Una lezione che si ripete ogni settimana, stesso giorno e stessa ora. Una sessione ha un giorno solo. | Serie, Ricorrenza |
+| **Prenotazione fissa** | Un socio prenotato a una sessione, da una data a un'altra (o per N lezioni). Prenota o disdice solo quando la si crea, cambia o cancella: non riparte da sola al rinnovo dell'abbonamento. Archiviando il socio, le sue fisse si chiudono. Quelle create dal portale sono «senza data di fine». | — |
+
 ## Il lavoro della segreteria
 
 | Parola | Che cosa è |
 |---|---|
-| **Da fare** | La pagina con chi seguire e perché, divisa in **linee** (Rinnovi, Chi non viene, Nuovi soci, Documenti, Compleanni, Contatti). |
-| **Fatto** | Un tocco che dice "l'abbiamo cercato" (Di persona, Chiamato, Messaggio, Email): nasconde la riga per qualche giorno. |
-| **Diario** | La storia di una persona: contatti, note, cose da fare comparse e risolte. |
+| **Da fare** | La sezione con chi seguire e perché, divisa in schede: In scadenza, Scaduti, Frequenza, Documenti, Compleanni, Archivio, Regole. |
+| **Avviso** | Una cosa precisa da seguire in Da fare (un abbonamento che scade, un documento, un compleanno): si apre da solo e si chiude a mano o da solo. Un socio può avere più avvisi. |
+| **Nascondi avviso** | Chiudere a mano un avviso senza fare altro: va nell'Archivio di Da fare e si ripristina. In Da fare non si dice mai «Archivia». |
+| **Archivio di Da fare** | Gli avvisi chiusi, a mano o da soli: come, chi e quando. Non è l'archivio dei soci. |
+| **Regole** | La scheda di Da fare, per l'amministratore, con le soglie di ogni avviso. |
+| **Diario** | La storia di una persona: contatti, note, cose da fare comparse e risolte. Nella scheda socio la sezione si chiama **Note**; nei Lead resta Diario. |
 | **Ingresso** | Un passaggio dal tornello o registrato a mano. |
-| **Impostazioni** | La sezione in fondo al menu, per l'amministratore: Utenti e ruoli, Comunicazioni, Da fare (le regole), Registro delle azioni. |
+| **Impostazioni** | La sezione in fondo al menu, per l'amministratore: Utenti e ruoli, Comunicazioni, Registro delle azioni. Le regole di Da fare stanno nella scheda Regole di Da fare. |
 | **Registro delle azioni** | Chi ha fatto che cosa, e quando (era "Log audit"). |
 
 ## Date e nomi
