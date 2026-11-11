@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { api } from "@/core/api/client";
-import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useNavigationType, useSearchParams } from "react-router-dom";
 import { Button } from "@/ui/primitivi/button";
 import { Input } from "@/ui/primitivi/input";
 import { Label } from "@/ui/primitivi/label";
@@ -24,6 +24,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 
 const TUTTI = "tutti";
 const NESSUNO = "nessuno";
+// Il segno degli indirizzi scritti dall'elenco stesso (filtri, ricerca, ordine, pagina).
+const STATO_ELENCO = { elenco: true };
 
 const confrontaTesto = (a, b) => (a ?? "").localeCompare(b ?? "", "it", { sensitivity: "base" });
 // Chi manca di un dato (nessuna scadenza, mai entrato) va in fondo, dove non disturba.
@@ -120,20 +122,22 @@ export default function MembersList() {
   const [parametri, setParametri] = useSearchParams();
   const location = useLocation();
   const navigate = useNavigate();
+  const tipoNavigazione = useNavigationType();
   // Filtri, ricerca, ordine e pagina stanno nell'indirizzo, come la vista dei contatti: "Assenti"
   // si tiene nei preferiti, e «Torna ai soci» riporta alla stessa pagina.
   const filtroFase = FASI.some((f) => f.valore === parametri.get("fase")) ? parametri.get("fase") : TUTTI;
   const filtroSegnale = SEGNALI.some((s) => s.valore === parametri.get("segnale")) ? parametri.get("segnale") : NESSUNO;
   const ordine = ORDINAMENTI.some((o) => o.valore === parametri.get("ordine")) ? parametri.get("ordine") : "nome";
   const pagina = Number(parametri.get("pagina")) || 1;
-  // Qualunque cambio dell'elenco (filtro, ricerca, ordine, vista) riporta a pagina 1.
+  // Qualunque cambio dell'elenco (filtro, ricerca, ordine, vista) riporta a pagina 1. Gli
+  // indirizzi scritti da qui portano `state.elenco`: così si riconoscono quelli arrivati da fuori.
   const aggiorna = (cambi) => {
     const prossimi = new URLSearchParams(parametri);
     prossimi.delete("pagina");
     for (const [chiave, valore] of Object.entries(cambi)) {
       if (valore === null) prossimi.delete(chiave); else prossimi.set(chiave, valore);
     }
-    setParametri(prossimi, { replace: true });
+    setParametri(prossimi, { replace: true, state: STATO_ELENCO });
   };
   const filtra = (chiave, valore, vuoto) => aggiorna({ [chiave]: valore === vuoto ? null : valore });
   const cambiaPagina = (p) => {
@@ -143,9 +147,18 @@ export default function MembersList() {
 
   const [dati, setDati] = useState(null);
   // Il testo scritto vive qui e va nell'indirizzo a ogni tasto: letto solo dall'indirizzo, la
-  // casella resterebbe un passo indietro mentre si scrive.
+  // casella resterebbe un passo indietro mentre si scrive (il router aggiorna l'indirizzo dentro
+  // una transizione, dopo la casella).
   const [search, setSearch] = useState(() => parametri.get("q") ?? "");
   const cerca = (testo) => { setSearch(testo); aggiorna({ q: testo.trim() ? testo : null }); };
+  // Un indirizzo arrivato da fuori («Soci» nel menu, che porta a /crm senza `q`; un preferito;
+  // Indietro e Avanti del browser) riscrive la casella. Quelli scritti da qui no: mentre si digita l'indirizzo arriva in ritardo,
+  // e riscrivere la casella con un testo vecchio farebbe saltare il cursore e perdere lettere.
+  const qIndirizzo = parametri.get("q") ?? "";
+  const daFuori = tipoNavigazione === "POP" || !location.state?.elenco;
+  useEffect(() => {
+    if (daFuori) setSearch(qIndirizzo);
+  }, [location.key, daFuori, qIndirizzo]);
   const [vista, setVista] = useState(vistaSalvata);
   const scegliVista = (v) => { setVista(v); salvaVista(v); aggiorna({}); };
   // Chi apre un socio porta con sé l'indirizzo dell'elenco: «Torna ai soci» ci riporta.
