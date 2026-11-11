@@ -11,6 +11,8 @@ import { EmptyState } from "@/ui/StateViews";
 import { Plus, Pencil, Trash2, Tags } from "lucide-react";
 import { useToast } from "@/ui/primitivi/use-toast";
 import { useConfirm } from "@/ui/ConfirmDialog";
+import { leggiColore } from "@/core/domain/colore";
+import SelettoreColore from "./SelettoreColore";
 
 const VUOTO = { name: "", color: "#3b82f6" };
 
@@ -34,14 +36,15 @@ export default function CategoriesTab({ data, reload }) {
   const salva = async (e) => {
     e.preventDefault();
     const name = form.name.trim();
-    if (!name) return;
+    const color = leggiColore(form.color);
+    if (!name || !color) return;
     setSalvando(true);
     try {
       if (editing) {
-        await api.entities.Category.update(editing.id, { name, color: form.color });
+        await api.entities.Category.update(editing.id, { name, color });
         toast({ title: "Categoria aggiornata" });
       } else {
-        await api.entities.Category.create({ name, color: form.color });
+        await api.entities.Category.create({ name, color });
         toast({ title: "Categoria creata" });
       }
       setShowForm(false);
@@ -125,9 +128,9 @@ export default function CategoriesTab({ data, reload }) {
             </div>
             <div>
               <Label htmlFor="categoria-colore">Colore in calendario</Label>
-              <Input id="categoria-colore" type="color" className="w-16 p-1 h-9" value={form.color} onChange={e => setForm({ ...form, color: e.target.value })} />
+              <SelettoreColore id="categoria-colore" value={form.color} onChange={color => setForm({ ...form, color })} />
             </div>
-            <Button type="submit" className="w-full" disabled={!form.name.trim() || salvando}>
+            <Button type="submit" className="w-full" disabled={!form.name.trim() || !leggiColore(form.color) || salvando}>
               {salvando ? "Salvataggio..." : editing ? "Salva categoria" : "Crea categoria"}
             </Button>
           </form>
