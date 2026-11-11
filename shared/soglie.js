@@ -20,25 +20,26 @@ export const SOGLIE = Object.freeze({
   abbonamentoInScadenzaGiorni: 14,
   // Da quanti giorni prima della scadenza un documento è "in scadenza".
   documentoInScadenzaGiorni: 30,
+  // Le regole di Da fare (shared/daFare.js): quando un avviso compare, si chiude da solo o torna.
+  scadutoGiorni: 60, // l'avviso di un abbonamento scaduto si chiude da solo tanti giorni dopo la fine
+  frequenzaRiapriGiorni: 30, // dopo "Contattato" o "Nascondi avviso", la frequenza torna dopo tanto, se è ancora in calo
+  compleannoPrimaGiorni: 3, // l'avviso del compleanno compare tanti giorni prima (0 = il giorno stesso)
+  compleannoDopoGiorni: 3, // …e si chiude da solo tanti giorni dopo (0 = il giorno stesso)
   // Il motore dei segnali (shared/segnali.js): le fasi di un socio e quando va cercato.
   segnali: Object.freeze({
     nuovoGiorni: 30, // iscritto da poco: "nuovo"
-    ambientamentoGiorni: 90, // fino a qui "ambientamento", la finestra in cui se ne perdono di più
     assenzaGiorni: 14, // senza ingressi da tanto: "assente" (era GIORNI_RISCHIO_ABBANDONO)
     caloPercentuale: 50, // ingressi delle ultime 4 settimane sotto questa parte della media: "in calo"
-    recuperabileGiorni: 60, // scaduto da non più di tanto: si può ancora recuperare
-    contattoNascondeGiorni: 7, // dopo un "Fatto", per tanto quel segnale non si ripropone
+    recuperabileGiorni: 60, // un buco fra due abbonamenti più corto di così non fa tornare "nuovo"
+    contattoNascondeGiorni: 7, // al bancone, dopo un rinnovo proposto, per tanto non si ripropone
     mediaMinimaCalo: 4, // sotto questa media (ingressi in 4 settimane) un calo non dice niente
-    ingressiAmbientamento: 4, // ingressi in 4 settimane con cui un nuovo socio ha ingranato
-    noShowSegnale: 2, // no-show nelle ultime 4 settimane che fanno un segnale
-    primoControlloGiorni: 7, // dopo quanti giorni dall'iscrizione si chiede "come va?"
     ogniTraguardo: 50, // ogni quanti ingressi si festeggia al bancone
     archiviazioneGiorni: 180, // senza abbonamento da tanto: il giro lo archivia (0 = mai)
   }),
 });
 
-// Le soglie che possono valere zero: "mai".
-const ZERO_AMMESSO = new Set(["archiviazioneGiorni"]);
+// Le soglie che possono valere zero: "mai" per l'archiviazione, "il giorno stesso" per i compleanni.
+const ZERO_AMMESSO = new Set(["archiviazioneGiorni", "compleannoPrimaGiorni", "compleannoDopoGiorni"]);
 export const sogliaValida = (v, chiave) => Number.isInteger(v) && (v > 0 || (v === 0 && ZERO_AMMESSO.has(chiave))) && v <= 3650;
 
 function fondi(predefinite, scelte) {

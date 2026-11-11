@@ -2,29 +2,28 @@
 //
 // Prima c'erano quattro motori di "attenzione", ognuno con le sue soglie: i rinnovi e i
 // certificati della dashboard, il rischio degli ingressi, gli avvisi del portale, le condizioni
-// dei lead. Qui ce n'è uno: tutte le schermate — Da fare, la dashboard, l'elenco dei soci, la
-// scheda, il bancone — leggono quello che dice questo file.
+// dei lead. Qui ce n'è uno: Da fare, la dashboard, l'elenco dei soci, la scheda e il bancone
+// leggono quello che dice questo file. I contatti (lead) hanno la loro sezione, con le condizioni
+// di shared/lead.js: qui non entrano.
 //
-// Niente si salva. Lo stato di una persona e i suoi segnali si calcolano dalle date ogni volta:
-// un "in calo" salvato ieri oggi potrebbe essere falso. L'unica cosa scritta è il lavoro dello
-// staff (il diario, `attivita`): un "Fatto" nasconde per qualche giorno il segnale per cui è
-// stato fatto, senza una tabella di compiti da tenere allineata. La palestra sceglie quali
-// segnali seguire e con quali soglie (Impostazioni › Da fare, shared/soglie.js).
+// Lo stato di una persona e i suoi segnali si calcolano dalle date ogni volta: un "in calo"
+// salvato ieri oggi potrebbe essere falso. Da fare trasforma i segnali per lo staff in avvisi,
+// ognuno con la sua chiave (shared/daFare.js), e il server tiene quelli aperti e chiusi in una
+// tabella. La palestra sceglie quali segnali seguire e con quali soglie (shared/soglie.js).
 //
 // Il rischio si spiega in parole, non con un punteggio: "3 ingressi in 4 settimane contro 9 di
-// media · scade tra 9 giorni · 2 no-show". Chi chiama deve sapere perché sta chiamando.
+// media · scade tra 9 giorni". Chi chiama deve sapere perché sta chiamando.
 // ponytail: regole esplicite; un modello statistico solo quando ci saranno i dati di molte palestre.
 import { oggiIso, oraIso, giorniFra, spostaGiorni, lezioneFinita } from './giorni.js';
 import { abbonamentoCopre, sospensioneIl } from './abbonamenti.js';
 import { avvisiSocio, documentiDaSistemare } from './avvisi.js';
-import { condizioniLead, descriviTempoLead, FILTRI_LEAD, SOGLIE_LEAD } from './lead.js';
 import { SOGLIE } from './soglie.js';
 
 /**
  * Lo stato di una persona: per un socio, il suo rapporto con la palestra. Sei valori, e solo
  * quelli: l'abbonamento (in scadenza, scaduto) ha la sua colonna, e il lavoro da fare (rinnovi,
- * documenti, ambientamento) sta nei segnali. Mescolarli faceva undici "fasi" che dicevano tre
- * cose diverse. `lead` non è uno stato del socio: è chi non lo è ancora.
+ * documenti) sta nei segnali. Mescolarli faceva undici "fasi" che dicevano tre cose diverse.
+ * `lead` non è uno stato del socio: è chi non lo è ancora.
  */
 export const FASI = [
 	{ valore: 'lead', etichetta: 'Contatto', tono: 'info' },
@@ -55,31 +54,28 @@ const REGOLE_FASI = {
 export const regoleStati = (soglie = SOGLIE) => ['archiviato', 'sospeso', 'senza_abbonamento', 'nuovo', 'in_calo', 'attivo']
 	.map((v) => ({ ...PER_FASE[v], regola: REGOLE_FASI[v]({ ...soglie, segnali: { ...SOGLIE.segnali, ...soglie.segnali } }) }));
 
+const plurale = (n, uno, tanti) => `${n} ${n === 1 ? uno : tanti}`;
+
+// La finestra del compleanno, in parole: "da 3 giorni prima a 3 giorni dopo".
+function finestraCompleanno(s) {
+	const prima = s.compleannoPrimaGiorni ?? SOGLIE.compleannoPrimaGiorni;
+	const dopo = s.compleannoDopoGiorni ?? SOGLIE.compleannoDopoGiorni;
+	if (!prima && !dopo) return 'oggi è il suo compleanno';
+	const da = prima ? `da ${plurale(prima, 'giorno', 'giorni')} prima` : 'dal giorno stesso';
+	const a = dopo ? `a ${plurale(dopo, 'giorno', 'giorni')} dopo` : 'al giorno stesso';
+	return `si avvicina o è appena passato il suo compleanno: ${da} ${a}`;
+}
+
 // I segnali per lo staff, dal più prezioso: tenere chi sta andando via vale più di tutto il
-// resto. La priorità ordina la lista di Da fare. `regola` dice in parole quando scatta, con le
-// soglie della palestra: la leggono le Impostazioni e il "perché" di Da fare.
-const ETICHETTA_LEAD = Object.fromEntries(FILTRI_LEAD.map((f) => [f.valore, f.etichetta]));
-const REGOLA_LEAD = 'dalle condizioni della trattativa (pagina Contatti)';
+// resto. `regola` dice in parole quando scatta, con le soglie della palestra.
 export const SEGNALI = [
-	// L'ha chiesto lui, dal portale: è il rinnovo più facile che ci sia, e non va lasciato aspettare.
-	{ valore: 'rinnovo_richiesto', etichetta: 'Chiede di rinnovare', priorita: 100, regola: () => 'ha chiesto il rinnovo dal portale e nessuno gli ha ancora risposto' },
-	{ valore: 'scaduto_recuperabile', etichetta: 'Scaduto, da recuperare', priorita: 90, regola: (s) => `abbonamento scaduto da non più di ${s.segnali.recuperabileGiorni} giorni, senza rinnovo` },
+	{ valore: 'scaduto', etichetta: 'Abbonamento scaduto', priorita: 90, regola: (s) => `abbonamento scaduto da non più di ${s.scadutoGiorni ?? SOGLIE.scadutoGiorni} giorni, senza rinnovo` },
 	{ valore: 'in_scadenza', etichetta: 'Abbonamento in scadenza', priorita: 80, regola: (s) => `l'abbonamento finisce entro ${s.abbonamentoInScadenzaGiorni} giorni e non ha ancora rinnovato` },
 	{ valore: 'assente', etichetta: 'Non viene da un po\'', priorita: 70, regola: (s) => `nessun ingresso da ${s.segnali.assenzaGiorni} giorni` },
 	{ valore: 'in_calo', etichetta: 'Viene meno di prima', priorita: 60, regola: (s) => `nelle ultime 4 settimane meno del ${s.segnali.caloPercentuale}% della sua media (se viene almeno ${s.segnali.mediaMinimaCalo} volte ogni 4 settimane)` },
-	{ valore: 'no_show_ripetuti', etichetta: 'Prenota e non viene', priorita: 55, regola: (s) => `almeno ${s.segnali.noShowSegnale} prenotazioni senza ingresso nelle ultime 4 settimane` },
-	{ valore: 'richiami_oggi', etichetta: ETICHETTA_LEAD.richiami_oggi, priorita: 50, regola: () => REGOLA_LEAD },
-	{ valore: 'da_contattare', etichetta: ETICHETTA_LEAD.da_contattare, priorita: 50, regola: () => REGOLA_LEAD },
-	{ valore: 'ultimo_tentativo', etichetta: ETICHETTA_LEAD.ultimo_tentativo, priorita: 46, regola: () => REGOLA_LEAD },
-	{ valore: 'da_ricontattare', etichetta: ETICHETTA_LEAD.da_ricontattare, priorita: 45, regola: () => REGOLA_LEAD },
-	{ valore: 'conversazioni_ferme', etichetta: ETICHETTA_LEAD.conversazioni_ferme, priorita: 40, regola: () => REGOLA_LEAD },
-	{ valore: 'ambientamento_giorno_7', etichetta: 'Prima settimana: come va?', priorita: 35, regola: (s) => `iscritto da ${s.segnali.primoControlloGiorni} giorni (per una settimana)` },
-	{ valore: 'ambientamento_pochi_ingressi', etichetta: 'Fatica a ingranare', priorita: 34, regola: (s) => `iscritto da 3 settimane a ${s.segnali.ambientamentoGiorni} giorni, meno di ${s.segnali.ingressiAmbientamento} ingressi in 4 settimane` },
-	{ valore: 'da_recuperare', etichetta: ETICHETTA_LEAD.da_recuperare, priorita: 30, regola: () => REGOLA_LEAD },
 	{ valore: 'documento_scaduto', etichetta: 'Documento scaduto', priorita: 26, regola: () => 'un documento obbligatorio è scaduto e non è stato sostituito' },
-	{ valore: 'documento_mancante', etichetta: 'Documento mancante', priorita: 25, regola: () => 'manca un documento obbligatorio (certificato, documento di identità, consenso dei genitori per i minorenni)' },
 	{ valore: 'documento_in_scadenza', etichetta: 'Documento in scadenza', priorita: 20, regola: (s) => `un documento obbligatorio scade entro ${s.documentoInScadenzaGiorni} giorni` },
-	{ valore: 'compleanno', etichetta: 'Compie gli anni', priorita: 10, regola: () => 'oggi è il suo compleanno' },
+	{ valore: 'compleanno', etichetta: 'Compie gli anni', priorita: 10, regola: finestraCompleanno },
 ];
 // Quelli che servono solo al bancone, nel momento in cui la persona entra.
 const SOLO_BANCONE = [
@@ -90,28 +86,22 @@ const PER_SEGNALE = Object.fromEntries([...SEGNALI, ...SOLO_BANCONE].map((s) => 
 export const etichettaSegnale = (v) => PER_SEGNALE[v]?.etichetta ?? v;
 /** Quando scatta un segnale, in parole, con le soglie della palestra (soglieDi). */
 export const regolaSegnale = (v, soglie = SOGLIE) => PER_SEGNALE[v]?.regola?.(soglie) ?? '';
-
-/**
- * Le linee di Da fare: i segnali raggruppati per il lavoro che chiedono. Ognuna si risolve a modo
- * suo — un rinnovo con l'abbonamento, un documento caricandolo, gli altri con un "Fatto" — e la
- * palestra può spegnere i segnali che non segue (Impostazioni › Da fare). Il bancone ha i suoi.
- */
-export const LINEE = [
-	{ valore: 'rinnovi', etichetta: 'Rinnovi', segnali: ['rinnovo_richiesto', 'in_scadenza', 'scaduto_recuperabile'] },
-	{ valore: 'frequenza', etichetta: 'Chi non viene', segnali: ['assente', 'in_calo', 'no_show_ripetuti'] },
-	{ valore: 'nuovi', etichetta: 'Nuovi soci', segnali: ['ambientamento_giorno_7', 'ambientamento_pochi_ingressi'] },
-	{ valore: 'documenti', etichetta: 'Documenti', segnali: ['documento_scaduto', 'documento_mancante', 'documento_in_scadenza'] },
-	{ valore: 'compleanni', etichetta: 'Compleanni', segnali: ['compleanno'] },
-	{ valore: 'contatti', etichetta: 'Contatti', segnali: ['richiami_oggi', 'da_contattare', 'ultimo_tentativo', 'da_ricontattare', 'conversazioni_ferme', 'da_recuperare'] },
-	{ valore: 'bancone', etichetta: 'Al bancone', segnali: ['bentornato', 'traguardo'], soloImpostazioni: true },
-];
-const LINEA_DI = Object.fromEntries(LINEE.flatMap((l) => l.segnali.map((c) => [c, l.valore])));
-export const lineaDi = (codice) => LINEA_DI[codice] ?? null;
 /** Tutti i codici che la palestra può spegnere. */
 export const CODICI_SEGNALE = Object.keys(PER_SEGNALE);
 
-// I segnali del lead sono le sue condizioni (shared/lead.js), tolte quelle che sono solo viste.
-const CONDIZIONI_SEGNALE = new Set(['da_contattare', 'richiami_oggi', 'da_ricontattare', 'ultimo_tentativo', 'conversazioni_ferme', 'da_recuperare']);
+// D-3: da togliere. Le linee del Da fare di prima: le leggono ancora DaFare.jsx, Dashboard.jsx,
+// ImpostazioniDaFare.jsx e il server (routes/dashboard.js, routes/segnali.js), finché gli avvisi
+// (shared/daFare.js) non le sostituiscono. Restano solo i segnali che ci sono ancora.
+export const LINEE = [
+	{ valore: 'rinnovi', etichetta: 'Rinnovi', segnali: ['in_scadenza', 'scaduto'] },
+	{ valore: 'frequenza', etichetta: 'Chi non viene', segnali: ['assente', 'in_calo'] },
+	{ valore: 'documenti', etichetta: 'Documenti', segnali: ['documento_scaduto', 'documento_in_scadenza'] },
+	{ valore: 'compleanni', etichetta: 'Compleanni', segnali: ['compleanno'] },
+	{ valore: 'bancone', etichetta: 'Al bancone', segnali: ['bentornato', 'traguardo'], soloImpostazioni: true },
+];
+const LINEA_DI = Object.fromEntries(LINEE.flatMap((l) => l.segnali.map((c) => [c, l.valore])));
+// D-3: da togliere (insieme a LINEE).
+export const lineaDi = (codice) => LINEA_DI[codice] ?? null;
 
 /** I tipi di riga del diario che contano come "l'abbiamo cercato". */
 export const TIPI_CONTATTO = ['contatto', 'tentativo', 'risposta'];
@@ -149,7 +139,6 @@ export function esitoPrenotazione(lezione, ingressi = [], adesso = new Date()) {
 const giorno = (d) => (d ? String(d).slice(0, 10) : null);
 const dataIt = (iso) => { const [a, m, g] = iso.split('-'); return `${g}/${m}/${a}`; };
 const fra = (n) => (n === 0 ? 'oggi' : n === 1 ? 'domani' : `tra ${n} giorni`);
-const plurale = (n, uno, tanti) => `${n} ${n === 1 ? uno : tanti}`;
 const piuTardi = (a, b) => (!a ? b : !b ? a : a > b ? a : b);
 
 /**
@@ -179,7 +168,7 @@ export function coperturaAbbonamento(iscrizioni = [], oggi, soglie = SOGLIE.segn
 		? [...diOggi].sort((a, b) => String(b.fine ?? '9999').localeCompare(String(a.fine ?? '9999')))[0]
 		: righe.find((i) => i.fine === ultimaFine) ?? null;
 
-	// Da quando, all'indietro, le iscrizioni si susseguono senza buchi più lunghi del "recuperabile".
+	// Da quando, all'indietro, le iscrizioni si susseguono senza buchi più lunghi di `recuperabileGiorni`.
 	let inizio = righe.map((i) => i.inizio).filter((d) => d && d <= oggi).sort().pop() ?? null;
 	for (let cambiato = Boolean(inizio); cambiato;) {
 		cambiato = false;
@@ -192,13 +181,11 @@ export function coperturaAbbonamento(iscrizioni = [], oggi, soglie = SOGLIE.segn
 }
 
 /**
- * Vera se la richiesta di rinnovo fatta dal portale aspetta ancora la reception: nessun
- * abbonamento venduto dopo, e nessun contatto riuscito dopo (un "non ha risposto" non conta: il
- * socio aspetta ancora). Le date sono istanti: richiesta e telefonata possono essere dello stesso giorno.
+ * D-3: da togliere. La richiesta di rinnovo dal portale non c'è più; la legge ancora
+ * server/src/routes/member/index.js, finché il portale non la toglie. Il motore non la usa.
  *
- * @param richiesta      quando l'ha chiesto (Date o ISO), o null
- * @param ultimoContatto l'ultimo contatto riuscito (Date o ISO), o null
- * @param iscrizioni     [{ created_date }]
+ * Vera se la richiesta di rinnovo fatta dal portale aspetta ancora la reception: nessun
+ * abbonamento venduto dopo, e nessun contatto riuscito dopo.
  */
 export function richiestaRinnovoAperta(richiesta, { ultimoContatto = null, iscrizioni = [] } = {}) {
 	if (!richiesta) return false;
@@ -207,19 +194,45 @@ export function richiestaRinnovoAperta(richiesta, { ultimoContatto = null, iscri
 	return !iscrizioni.some((i) => i.created_date && new Date(i.created_date).getTime() >= il);
 }
 
-/** Vera se oggi è il compleanno di chi è nato in quel giorno (il 29 febbraio, il 28 negli anni normali). */
-export function eCompleanno(nascita, oggi) {
+const bisestile = (anno) => (anno % 4 === 0 && anno % 100 !== 0) || anno % 400 === 0;
+
+/** Il giorno del compleanno in un anno: per chi è nato il 29 febbraio, il 28 negli anni normali. */
+export function compleannoNel(nascita, anno) {
 	const md = giorno(nascita)?.slice(5);
-	if (!md) return false;
-	if (md === oggi.slice(5)) return true;
-	return md === '02-29' && oggi.slice(5) === '02-28' && spostaGiorni(oggi, 1).slice(5) === '03-01';
+	if (!md) return null;
+	return `${anno}-${md === '02-29' && !bisestile(anno) ? '02-28' : md}`;
 }
+
+/**
+ * Il compleanno vicino a oggi, se cade nella finestra: da `prima` giorni prima a `dopo` giorni
+ * dopo (0 e 0: solo il giorno stesso). A cavallo d'anno vale quello giusto: il 2 gennaio, con 3
+ * giorni dopo, è ancora il compleanno del 31 dicembre dell'anno prima.
+ *
+ * @returns {{ data: 'AAAA-MM-GG', anno, giorni } | null} `giorni` quanti ne mancano (negativo: è passato)
+ */
+export function compleannoVicino(nascita, oggi, prima = SOGLIE.compleannoPrimaGiorni, dopo = SOGLIE.compleannoDopoGiorni) {
+	const anno = Number(String(oggi).slice(0, 4));
+	for (const a of [anno - 1, anno, anno + 1]) {
+		const data = compleannoNel(nascita, a);
+		if (!data) return null;
+		const giorni = giorniFra(oggi, data);
+		if (giorni !== null && giorni >= -dopo && giorni <= prima) return { data, anno: a, giorni };
+	}
+	return null;
+}
+
+/** Vera se oggi è il compleanno di chi è nato in quel giorno (il 29 febbraio, il 28 negli anni normali). */
+export const eCompleanno = (nascita, oggi) => compleannoVicino(nascita, oggi, 0, 0) !== null;
+
+const descriviCompleanno = (giorni) => (giorni === 0 ? 'oggi compie gli anni'
+	: giorni > 0 ? `compie gli anni ${fra(giorni)}`
+		: `ha compiuto gli anni ${giorni === -1 ? 'ieri' : `${-giorni} giorni fa`}`);
 
 /**
  * Lo stato e i segnali di una persona, oggi.
  *
- * @param p.socio        { created_date, archiviato_il, date_of_birth } | null (non è socio)
- * @param p.trattativa   la trattativa attuale (aperta, o l'ultima chiusa), come in shared/lead.js | null
+ * @param p.socio        { created_date, archiviato_il, date_of_birth } | null (non è socio: è un
+ *                       contatto, che si segue nella sezione Lead)
  * @param p.iscrizioni   [{ id?, plan_name?, start_date, end_date }], passate da `conSospensioni`
  *                       (shared/abbonamenti.js), con `created_date`
  * @param p.documenti    [{ id?, file_name?, document_type, created_date, expiry_date }]
@@ -228,24 +241,24 @@ export function eCompleanno(nascita, oggi) {
  *                       prima di oggi, `oggi` quanti oggi (per i segnali del bancone di chi è già
  *                       entrato dal tornello). null se la palestra non li registra (senza
  *                       ingressi, tutti sembrerebbero assenti)
- * @param p.noShow       quante prenotazioni senza ingresso nelle ultime 4 settimane (esitoPrenotazione)
- * @param p.contatti     { perSegnale: { [codice]: 'AAAA-MM-GG' }, riscontro, richiestaRinnovo }, dal
- *                       diario: l'ultimo "Fatto" per ogni segnale; gli altri due sono istanti,
- *                       l'ultimo contatto riuscito e l'ultima richiesta di rinnovo dal portale
+ * @param p.contatti     { perSegnale: { [codice]: 'AAAA-MM-GG' } }, dal diario: l'ultimo contatto
+ *                       per ogni segnale. Conta solo al bancone (nascondi)
  * @param p.soglie       quelle della palestra (soglieDi), con `segnaliSpenti`
  * @returns {{ fase, segnali: [{ codice, titolo, priorita, motivo, azioni, pubblico, nascostoFino, dati }], copertura }}
  *   `fase`: lo stato (FASI). `pubblico`: 'staff' (Da fare), 'socio' (il portale), 'bancone' (chi
  *   entra adesso). `nascostoFino`: il segnale c'è ma non va riproposto prima di quel giorno.
  */
 export function segnaliPersona({
-	socio = null, trattativa = null, iscrizioni = [], documenti = [], ingressi = null, noShow = 0,
-	contatti = {}, oggi = oggiIso(), soglie: tutte = SOGLIE,
+	socio = null, iscrizioni = [], documenti = [], ingressi = null, contatti = {}, oggi = oggiIso(), soglie: tutte = SOGLIE,
 }) {
+	// Chi non è socio è un contatto: il suo lavoro sta nella sezione Lead (shared/lead.js).
+	if (!socio) return { fase: 'lead', segnali: [], copertura: null };
+
 	const soglie = { ...SOGLIE.segnali, ...(tutte.segnali ?? {}) };
 	const spenti = new Set(tutte.segnaliSpenti ?? []);
 	const segnali = [];
-	// Un segnale spento dalla palestra non si calcola: non compare da nessuna parte, e nessun
-	// playbook parte per lui. Lo stato invece sì: "In calo" resta vero anche se nessuno lo segue.
+	// Un segnale spento dalla palestra non si calcola: non compare da nessuna parte. Lo stato
+	// invece sì: "In calo" resta vero anche se nessuno lo segue.
 	const aggiungi = (codice, motivo, extra = {}) => {
 		if (spenti.has(codice)) return;
 		segnali.push({
@@ -254,21 +267,11 @@ export function segnaliPersona({
 		});
 	};
 
-	// Chi non è socio: un contatto, con le condizioni della sua trattativa.
-	if (!socio) {
-		if (trattativa) {
-			for (const c of condizioniLead(trattativa, oggi, tutte.lead ?? SOGLIE_LEAD)) {
-				if (CONDIZIONI_SEGNALE.has(c)) aggiungi(c, descriviTempoLead(trattativa, oggi));
-			}
-		}
-		return { fase: 'lead', segnali: nascondi(segnali, contatti, oggi, soglie, false), copertura: null };
-	}
-
 	const copertura = coperturaAbbonamento(iscrizioni, oggi, soglie);
 	const inizio = copertura.inizio ?? giorno(socio.created_date) ?? oggi;
 	const giorniSocio = giorniFra(inizio, oggi) ?? 0;
 	const piano = copertura.riferimento?.plan_name;
-	const datiAbbonamento = (giorni) => ({ iscrizione_id: copertura.riferimento?.id ?? null, abbonamento: piano ?? null, giorni });
+	const datiAbbonamento = (giorni, fine) => ({ iscrizione_id: copertura.riferimento?.id ?? null, abbonamento: piano ?? null, giorni, fine });
 	const giorniScaduto = copertura.ultimaFine ? giorniFra(copertura.ultimaFine, oggi) : null;
 	const giorniAllaFine = copertura.fine ? giorniFra(oggi, copertura.fine) : null;
 	const archiviato = Boolean(socio.archiviato_il);
@@ -283,17 +286,19 @@ export function segnaliPersona({
 		// I giorni di una sospensione non sono un'assenza: si conta dalla ripresa.
 		const daQuando = piuTardi(piuTardi(giorno(ingressi.ultimo), inizio), copertura.ripresa);
 		const giorniSenza = giorniFra(daQuando, oggi) ?? 0;
-		if (giorniSenza >= soglie.assenzaGiorni) {
-			assente = true;
-			aggiungi('assente', ingressi.ultimo ? `non entra da ${giorniSenza} giorni` : `mai entrato in ${giorniSenza} giorni`, { dati: { giorni: giorniSenza } });
-		}
 		const media = (Number(ingressi.dodici) || 0) / 3;
 		const quattro = Number(ingressi.quattro) || 0;
+		// Quello che l'avviso della frequenza mostra: la media e gli ingressi delle ultime 4 settimane.
+		const misura = { giorni: giorniSenza, quattro, media: Math.round(media * 10) / 10 };
+		if (giorniSenza >= soglie.assenzaGiorni) {
+			assente = true;
+			aggiungi('assente', ingressi.ultimo ? `non entra da ${giorniSenza} giorni` : `mai entrato in ${giorniSenza} giorni`, { dati: misura });
+		}
 		// Dopo una ripresa le 4 e le 12 settimane contengono la sospensione: il confronto non dice niente.
 		const ripresoDaPoco = copertura.ripresa && giorniFra(copertura.ripresa, oggi) < GIORNI_STORIA_PER_IL_CALO;
 		if (!assente && !ripresoDaPoco && giorniSocio >= GIORNI_STORIA_PER_IL_CALO && media >= soglie.mediaMinimaCalo && quattro < (media * soglie.caloPercentuale) / 100) {
 			inCalo = true;
-			aggiungi('in_calo', `${plurale(quattro, 'ingresso', 'ingressi')} in 4 settimane contro ${Math.round(media)} di media`);
+			aggiungi('in_calo', `${plurale(quattro, 'ingresso', 'ingressi')} in 4 settimane contro ${Math.round(media)} di media`, { dati: misura });
 		}
 	}
 
@@ -307,44 +312,35 @@ export function segnaliPersona({
 	else if (assente || inCalo) laFase = 'in_calo';
 	else laFase = 'attivo';
 
-	// Chi chiede di rinnovare va richiamato in qualunque stato: anche uno scaduto da tanto che vuole tornare.
-	if (!archiviato && richiestaRinnovoAperta(contatti.richiestaRinnovo, { ultimoContatto: contatti.riscontro, iscrizioni })) {
-		const quando = giorniFra(oggiIso(new Date(contatti.richiestaRinnovo)), oggi);
-		aggiungi('rinnovo_richiesto', `l'ha chiesto dal portale ${quando === 0 ? 'oggi' : quando === 1 ? 'ieri' : `${quando} giorni fa`}${piano ? ` (${piano})` : ''}`,
-			{ dati: datiAbbonamento(null) });
-	}
-	if (!archiviato && !copertura.sospensione && senzaAbbonamento && giorniScaduto !== null && giorniScaduto <= soglie.recuperabileGiorni) {
-		aggiungi('scaduto_recuperabile', `scaduto da ${plurale(giorniScaduto, 'giorno', 'giorni')}${piano ? ` (${piano})` : ''}`, { dati: datiAbbonamento(-giorniScaduto) });
+	// Lo scaduto si segue per `scadutoGiorni` dalla fine: poi il suo avviso si chiude da solo.
+	if (!archiviato && !copertura.sospensione && senzaAbbonamento && giorniScaduto !== null && giorniScaduto <= (tutte.scadutoGiorni ?? SOGLIE.scadutoGiorni)) {
+		aggiungi('scaduto', `scaduto da ${plurale(giorniScaduto, 'giorno', 'giorni')}${piano ? ` (${piano})` : ''}`, { dati: datiAbbonamento(-giorniScaduto, copertura.ultimaFine) });
 	}
 	if (inScadenza) {
-		aggiungi('in_scadenza', `scade ${fra(giorniAllaFine)}`, { dati: datiAbbonamento(giorniAllaFine) });
+		aggiungi('in_scadenza', `scade ${fra(giorniAllaFine)}`, { dati: datiAbbonamento(giorniAllaFine, copertura.fine) });
 		aggiungi('in_scadenza', `Scade ${fra(giorniAllaFine)}: proponi il rinnovo`, { pubblico: 'bancone', azioni: ['proposta_rinnovo'] });
 	}
 
 	if (frequenta) {
-		if (noShow >= soglie.noShowSegnale) aggiungi('no_show_ripetuti', `${noShow} no-show in 4 settimane`, { dati: { no_show: noShow } });
-		if (giorniSocio >= soglie.primoControlloGiorni && giorniSocio < soglie.primoControlloGiorni + 7) {
-			aggiungi('ambientamento_giorno_7', `iscritto da ${giorniSocio} giorni: come si trova?`, { dati: { giorni: giorniSocio } });
-		}
-		if (ingressi && !assente && giorniSocio >= 21 && giorniSocio <= soglie.ambientamentoGiorni && (Number(ingressi.quattro) || 0) < soglie.ingressiAmbientamento) {
-			aggiungi('ambientamento_pochi_ingressi', `${plurale(Number(ingressi.quattro) || 0, 'ingresso', 'ingressi')} in 4 settimane, iscritto da ${giorniSocio} giorni`);
-		}
-
-		// I documenti obbligatori fuori regola: la stessa regola del portale e degli ingressi
-		// (documentiDaSistemare). Un segnale per genere di problema, con tutti i documenti dentro.
+		// I documenti obbligatori scaduti o in scadenza: la stessa regola del portale e degli
+		// ingressi (documentiDaSistemare). Un segnale per genere, con tutti i documenti dentro: Da
+		// fare ne fa un avviso per documento (shared/daFare.js). Il documento che manca lo dicono
+		// la sua sezione della scheda e il portale, non Da fare.
 		const fuori = documentiDaSistemare({ socio, documenti, oggi, giorniInScadenza: tutte.documentoInScadenzaGiorni });
 		const descrivi = {
-			mancante: (d) => `manca ${d.nome.toLowerCase()}`,
 			scaduto: (d) => `${d.nome.toLowerCase()} scaduto${d.scadenza ? ` il ${dataIt(d.scadenza)}` : ''}`,
 			in_scadenza: (d) => `${d.nome.toLowerCase()} scade ${fra(d.giorni)}`,
 		};
-		for (const stato of ['scaduto', 'mancante', 'in_scadenza']) {
+		for (const stato of ['scaduto', 'in_scadenza']) {
 			const questi = fuori.filter((d) => d.stato === stato);
 			if (questi.length) aggiungi(`documento_${stato}`, questi.map(descrivi[stato]).join(', '), { dati: { documenti: questi } });
 		}
 
+		// Per lo staff, da qualche giorno prima a qualche giorno dopo; al bancone, il giorno stesso.
+		const vicino = compleannoVicino(socio.date_of_birth, oggi,
+			tutte.compleannoPrimaGiorni ?? SOGLIE.compleannoPrimaGiorni, tutte.compleannoDopoGiorni ?? SOGLIE.compleannoDopoGiorni);
+		if (vicino) aggiungi('compleanno', descriviCompleanno(vicino.giorni), { dati: vicino });
 		if (eCompleanno(socio.date_of_birth, oggi)) {
-			aggiungi('compleanno', 'oggi compie gli anni');
 			aggiungi('compleanno', 'Oggi compie gli anni: fagli gli auguri', { pubblico: 'bancone', azioni: ['saluto'] });
 		}
 
@@ -370,23 +366,18 @@ export function segnaliPersona({
 		});
 	}
 
-	return { fase: laFase, segnali: nascondi(segnali, contatti, oggi, soglie, true), copertura };
+	return { fase: laFase, segnali: nascondi(segnali, contatti, oggi, soglie), copertura };
 }
 
 /**
- * Quando un segnale torna da fare. Un "Fatto" nasconde **solo il segnale per cui è stato fatto**,
- * per qualche giorno: chiamato perché non viene, il certificato scaduto resta in Documenti. I
- * segnali del lead seguono la loro trattativa (un contatto ne cambia lo stato): non si nascondono.
- * Al bancone un saluto basta per oggi; il rinnovo proposto vale come un Fatto sul rinnovo.
+ * Quando un segnale del bancone torna da fare: un saluto basta per oggi, il rinnovo proposto non
+ * si ripropone per `contattoNascondeGiorni`. Per lo staff non si nasconde niente: gli avvisi di Da
+ * fare si chiudono a mano o da soli (shared/daFare.js).
  */
-function nascondi(segnali, { perSegnale = {} } = {}, oggi, soglie, socio) {
+function nascondi(segnali, { perSegnale = {} } = {}, oggi, soglie) {
 	return segnali.map((s) => {
-		const il = perSegnale?.[s.codice] ? giorno(perSegnale[s.codice]) : null;
-		let fino = null;
-		// La richiesta di rinnovo la chiude il contatto riuscito (richiestaRinnovoAperta).
-		if (s.codice === 'rinnovo_richiesto' || !il) fino = null;
-		else if (s.pubblico === 'staff') fino = socio ? spostaGiorni(il, soglie.contattoNascondeGiorni) : null;
-		else if (s.pubblico === 'bancone') fino = spostaGiorni(il, s.codice === 'in_scadenza' ? soglie.contattoNascondeGiorni : 1);
+		const il = s.pubblico === 'bancone' && perSegnale?.[s.codice] ? giorno(perSegnale[s.codice]) : null;
+		const fino = il ? spostaGiorni(il, s.codice === 'in_scadenza' ? soglie.contattoNascondeGiorni : 1) : null;
 		return { ...s, nascostoFino: fino && fino > oggi ? fino : null };
 	});
 }
@@ -396,18 +387,17 @@ export function daFare(segnali = [], pubblico = 'staff') {
 	return segnali.filter((s) => s.pubblico === pubblico && !s.nascostoFino).sort((a, b) => b.priorita - a.priorita);
 }
 
-/** Il perché, in una riga: "3 ingressi in 4 settimane contro 9 di media · scade tra 9 giorni · 2 no-show". */
+/** Il perché, in una riga: "3 ingressi in 4 settimane contro 9 di media · scade tra 9 giorni". */
 export function perche(segnali = []) {
 	return segnali.map((s) => s.motivo).filter(Boolean).join(' · ');
 }
 
-/** Il testo già scritto per WhatsApp, a seconda del segnale principale. */
+/** D-3: da togliere (lo usa AzioniPersona.jsx). Il testo già scritto per WhatsApp, a seconda del segnale principale. */
 export function testoMessaggio(nome, codice) {
 	const ciao = `Ciao ${nome}!`;
 	switch (codice) {
-		case 'rinnovo_richiesto': return `${ciao} Abbiamo ricevuto la tua richiesta di rinnovo: quando passi in reception lo sistemiamo.`;
 		case 'in_scadenza': return `${ciao} Il tuo abbonamento sta per scadere: passa in reception per rinnovarlo.`;
-		case 'scaduto_recuperabile': return `${ciao} Ci manchi in palestra: ti va di ripartire? Passa a trovarci.`;
+		case 'scaduto': return `${ciao} Ci manchi in palestra: ti va di ripartire? Passa a trovarci.`;
 		case 'assente': case 'in_calo': return `${ciao} È un po' che non ti vediamo: va tutto bene?`;
 		case 'compleanno': return `${ciao} Tanti auguri di buon compleanno da tutta la palestra!`;
 		default: return ciao;
