@@ -39,7 +39,12 @@ export function tipiSpenti(soglie = SOGLIE) {
 	return new Set(TIPI_AVVISO.filter((t) => t.segnali.every((s) => spenti.has(s))).map((t) => t.valore));
 }
 
-async function sottoBlocco(conn, lavoro) {
+/**
+ * Un lavoro sulla tabella sotto il lock di Da fare, in una transazione: chi allinea, chiude o
+ * ripristina aspetta. I test lo usano per cambiare i dati e allineare senza che un altro file, che
+ * intanto allinea, veda metà del cambio.
+ */
+export async function sottoBlocco(conn, lavoro) {
 	return conn.transaction(async (tx) => {
 		await tx.execute(sql`select pg_advisory_xact_lock(hashtext('dafare:avvisi'))`);
 		return lavoro(tx);

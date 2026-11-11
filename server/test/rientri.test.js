@@ -35,8 +35,9 @@ before(async () => {
 	await db.insert(ingressi).values([
 		{ memberId: soci[0].id, entratoAlle: giorniFa(20), esito: 'ammesso', metodo: 'manuale', registratoDaNome: 'Test' },
 		{ memberId: soci[1].id, entratoAlle: giorniFa(1), esito: 'ammesso', metodo: 'manuale', registratoDaNome: 'Test' },
-		// Il terzo non veniva da un mese, ed è appena passato dal tornello.
-		{ memberId: soci[2].id, entratoAlle: giorniFa(30), esito: 'ammesso', metodo: 'qr', registratoDaNome: 'Test' },
+		// Il terzo non veniva da un mese, ed è appena passato dal tornello. Il giorno di calendario, a
+		// mezzogiorno: 30 volte 24 ore indietro, a fine ottobre (l'ora legale) e di sera, erano 29 giorni.
+		{ memberId: soci[2].id, entratoAlle: new Date(`${fra(-30)}T11:00:00Z`), esito: 'ammesso', metodo: 'qr', registratoDaNome: 'Test' },
 		{ memberId: soci[2].id, entratoAlle: new Date(), esito: 'ammesso', metodo: 'qr', registratoDaNome: 'Test' },
 	]);
 	const [account] = await db.insert(staffAccounts).values({

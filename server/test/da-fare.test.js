@@ -13,7 +13,7 @@ import {
 } from '../src/db/schema/index.js';
 import { giro } from '../src/giro.js';
 import { situazioni } from '../src/lib/segnali.js';
-import { allinea } from '../src/lib/avvisi.js';
+import { allinea, sottoBlocco } from '../src/lib/avvisi.js';
 import { impostaMatrice, ripristinaMatricePredefinita, PERMESSI_PREDEFINITI } from '../../shared/permissions.js';
 import { oggiIso, spostaGiorni } from '../../shared/giorni.js';
 
@@ -217,14 +217,21 @@ describe('gli avvisi', () => {
 	test('l\'abbonamento che scade: In scadenza si chiude con «Passato in Scaduti» e si apre lo Scaduto, con la stessa chiave', async () => {
 		const [prima] = (await avvisiDi('passa')).filter((a) => a.tipo === 'in_scadenza');
 		assert.equal(prima.chiave, id.abbonamenti.passa);
-		// Come se fossero passati 3 giorni: l'abbonamento è finito ieri.
-		await db.update(subscriptions).set({ startDate: fra(-31), endDate: fra(-1) }).where(eq(subscriptions.id, id.abbonamenti.passa));
-		await db.update(avvisi).set({ dati: sql`jsonb_set(${avvisi.dati}, '{data}', to_jsonb(${fra(-1)}::text))` }).where(eq(avvisi.id, prima.id));
-		const dopo = await avvisiDi('passa');
-		const scaduto = dopo.find((a) => a.tipo === 'scaduto');
-		assert.equal(scaduto.chiave, id.abbonamenti.passa);
-		assert.ok(!dopo.some((a) => a.tipo === 'in_scadenza'));
-		const [chiuso] = await righeDi('passa', 'in_scadenza');
+		// Come se fossero passati 3 giorni: l'abbonamento è finito ieri. L'abbonamento e la data
+		// dell'avviso cambiano insieme sotto il lock di Da fare, e lì dentro si allinea e si legge: gli
+		// altri file allineano in parallelo (la dashboard, il giro), e uno arrivato fra i due cambi
+		// chiudeva l'avviso con la data vecchia, cioè «Non più da fare».
+		const { scaduti, chiuso } = await sottoBlocco(db, async (tx) => {
+			await tx.update(subscriptions).set({ startDate: fra(-31), endDate: fra(-1) }).where(eq(subscriptions.id, id.abbonamenti.passa));
+			await tx.update(avvisi).set({ dati: sql`jsonb_set(${avvisi.dati}, '{data}', to_jsonb(${fra(-1)}::text))` }).where(eq(avvisi.id, prima.id));
+			const { oggi, soglie, persone: tutte } = await situazioni({ conn: tx });
+			await allinea(tx, tutte, oggi, soglie);
+			const suoi = (tipo) => tx.select().from(avvisi).where(and(eq(avvisi.personaId, id.persone.passa), eq(avvisi.tipo, tipo)));
+			return { scaduti: (await suoi('scaduto')).filter((r) => !r.chiusoIl), chiuso: (await suoi('in_scadenza'))[0] };
+		});
+		assert.equal(scaduti.length, 1, 'si apre lo Scaduto');
+		assert.equal(scaduti[0].chiave, id.abbonamenti.passa);
+		assert.ok(chiuso.chiusoIl);
 		assert.equal(chiuso.esito, 'passato_in_scaduti');
 	});
 
