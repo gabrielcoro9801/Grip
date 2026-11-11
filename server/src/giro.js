@@ -11,7 +11,9 @@
 // l'ultimo da tanto (prima lo faceva GET /api/lead/lavoro alla lettura: una GET non deve
 // scrivere); registra chi è rientrato in palestra dopo essere stato contattato perché assente;
 // archivia chi è senza abbonamento da troppo tempo; e scrive nel diario dei soci le cose da fare
-// che sono comparse e quelle che non ci sono più, così la scheda le racconta senza mostrarle.
+// che sono comparse e quelle che non ci sono più, così la scheda le racconta senza mostrarle;
+// infine allinea gli avvisi di Da fare (lib/avvisi.js), così quelli che si chiudono da soli
+// finiscono in Archivio anche se nessuno apre Da fare.
 import 'dotenv/config';
 import { pathToFileURL } from 'node:url';
 import { and, eq, gte, inArray, isNull, lte, sql } from 'drizzle-orm';
@@ -19,6 +21,7 @@ import { db, pool } from './db/client.js';
 import { organizations, trattative, attivita, members } from './db/schema/index.js';
 import { soglieDi } from '../../shared/soglie.js';
 import { situazioni } from './lib/segnali.js';
+import { allinea } from './lib/avvisi.js';
 import { etichettaSegnale } from '../../shared/segnali.js';
 import { oggiIso, spostaGiorni } from '../../shared/giorni.js';
 
@@ -80,8 +83,8 @@ async function registraRientri(conn, adesso) {
 
 /**
  * Archivia i soci senza abbonamento da `archiviazioneGiorni` (0 = mai): dall'ultima scadenza, o
- * dall'iscrizione per chi non ne ha mai avuto uno. Chi ha chiesto il rinnovo dal portale aspetta
- * la reception, non l'archivio. Una riga di diario ciascuno; riattivarlo è il solito "Riattiva".
+ * dall'iscrizione per chi non ne ha mai avuto uno. Una riga di diario ciascuno; riattivarlo è il
+ * solito "Riattiva".
  * Idempotente: un archiviato non si riarchivia. → quanti ne ha archiviati
  */
 async function archiviaSenzaAbbonamento(conn, oggi, soglie, persone) {
@@ -89,8 +92,7 @@ async function archiviaSenzaAbbonamento(conn, oggi, soglie, persone) {
 	if (!giorni) return 0;
 	const limite = spostaGiorni(oggi, -giorni);
 	const daArchiviare = persone.filter((p) => p.socio_id && p.fase === 'senza_abbonamento'
-		&& (p.ultima_fine ?? p.iscritto_il) && (p.ultima_fine ?? p.iscritto_il) <= limite
-		&& !p.segnali.some((s) => s.codice === 'rinnovo_richiesto'));
+		&& (p.ultima_fine ?? p.iscritto_il) && (p.ultima_fine ?? p.iscritto_il) <= limite);
 	if (!daArchiviare.length) return 0;
 	return conn.transaction(async (tx) => {
 		const fatti = await tx.update(members).set({ archiviatoIl: oggi, updatedDate: new Date() })
@@ -156,7 +158,7 @@ async function scriviDaFare(conn, soglie, persone) {
 }
 
 /**
- * Un giro su tutte le palestre. → [{ palestra, non_raggiungibili, rientri, archiviati, da_fare }]
+ * Un giro su tutte le palestre. → [{ palestra, non_raggiungibili, rientri, archiviati, da_fare, avvisi }]
  *
  * ponytail: oggi c'è una palestra per installazione e le trattative non hanno ancora la loro
  * palestra: il giro scorre le palestre, ma ogni passo lavora sul database intero. Con il
@@ -167,13 +169,15 @@ export async function giro({ oggi = oggiIso(), conn = db, adesso = new Date() } 
 	const esiti = [];
 	for (const palestra of palestre) {
 		const soglie = soglieDi(palestra.impostazioni);
+		const non_raggiungibili = await chiudiNonRaggiungibili(conn, oggi, soglie.lead);
+		const rientri = await registraRientri(conn, adesso);
+		const archiviati = await archiviaSenzaAbbonamento(conn, oggi, soglie, (await situazioni({ conn, adesso })).persone);
+		// Dopo l'archiviazione: chi è appena stato archiviato chiude le sue cose da fare e i suoi avvisi.
+		const { persone } = await situazioni({ conn, adesso });
 		esiti.push({
-			palestra: palestra.nome,
-			non_raggiungibili: await chiudiNonRaggiungibili(conn, oggi, soglie.lead),
-			rientri: await registraRientri(conn, adesso),
-			archiviati: await archiviaSenzaAbbonamento(conn, oggi, soglie, (await situazioni({ conn, adesso })).persone),
-			// Dopo l'archiviazione: chi è appena stato archiviato chiude le sue cose da fare.
-			da_fare: await scriviDaFare(conn, soglie, (await situazioni({ conn, adesso })).persone),
+			palestra: palestra.nome, non_raggiungibili, rientri, archiviati,
+			da_fare: await scriviDaFare(conn, soglie, persone),
+			avvisi: await allinea(conn, persone, oggi, soglie),
 		});
 	}
 	return esiti;
@@ -185,6 +189,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
 		for (const e of await giro()) {
 			console.log(`${e.palestra}: ${e.non_raggiungibili} lead chiusi come non raggiungibili, ${e.rientri} soci rientrati dopo un contatto, ${e.archiviati} archiviati senza abbonamento.`);
 			console.log(`  Da fare nel diario: ${e.da_fare.aperti} comparsi, ${e.da_fare.chiusi} non più da fare.`);
+			console.log(`  Avvisi: ${e.avvisi.aperti} aperti, ${e.avvisi.riaperti} riaperti, ${e.avvisi.chiusi} chiusi da soli.`);
 		}
 		await pool.end();
 		process.exit(0);

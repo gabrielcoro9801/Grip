@@ -20,6 +20,7 @@ import iscrizioniRoutes from './routes/iscrizioni.js';
 import istruttoreRoutes from './routes/istruttore.js';
 import personeRoutes from './routes/persone.js';
 import segnaliRoutes from './routes/segnali.js';
+import avvisiRoutes from './routes/avvisi.js';
 import sociRoutes from './routes/soci.js';
 import saleRoutes from './routes/sale.js';
 import calendarioRoutes from './routes/calendario.js';
@@ -176,6 +177,7 @@ export function buildApp({ publicBaseUrl = 'http://localhost:3001', logger = tru
 	app.register(istruttoreRoutes);
 	app.register(personeRoutes);
 	app.register(segnaliRoutes);
+	app.register(avvisiRoutes);
 	app.register(sociRoutes);
 	app.register(saleRoutes);
 	app.register(calendarioRoutes);

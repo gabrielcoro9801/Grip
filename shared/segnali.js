@@ -89,9 +89,9 @@ export const regolaSegnale = (v, soglie = SOGLIE) => PER_SEGNALE[v]?.regola?.(so
 /** Tutti i codici che la palestra può spegnere. */
 export const CODICI_SEGNALE = Object.keys(PER_SEGNALE);
 
-// D-3: da togliere. Le linee del Da fare di prima: le leggono ancora DaFare.jsx, Dashboard.jsx,
-// ImpostazioniDaFare.jsx e il server (routes/dashboard.js, routes/segnali.js), finché gli avvisi
-// (shared/daFare.js) non le sostituiscono. Restano solo i segnali che ci sono ancora.
+// D-3: da togliere. Le linee del Da fare di prima: le leggono ancora DaFare.jsx, Dashboard.jsx e
+// ImpostazioniDaFare.jsx, finché gli avvisi (shared/daFare.js) non le sostituiscono. Il server non
+// le usa più. Restano solo i segnali che ci sono ancora.
 export const LINEE = [
 	{ valore: 'rinnovi', etichetta: 'Rinnovi', segnali: ['in_scadenza', 'scaduto'] },
 	{ valore: 'frequenza', etichetta: 'Chi non viene', segnali: ['assente', 'in_calo'] },
@@ -99,12 +99,6 @@ export const LINEE = [
 	{ valore: 'compleanni', etichetta: 'Compleanni', segnali: ['compleanno'] },
 	{ valore: 'bancone', etichetta: 'Al bancone', segnali: ['bentornato', 'traguardo'], soloImpostazioni: true },
 ];
-const LINEA_DI = Object.fromEntries(LINEE.flatMap((l) => l.segnali.map((c) => [c, l.valore])));
-// D-3: da togliere (insieme a LINEE).
-export const lineaDi = (codice) => LINEA_DI[codice] ?? null;
-
-/** I tipi di riga del diario che contano come "l'abbiamo cercato". */
-export const TIPI_CONTATTO = ['contatto', 'tentativo', 'risposta'];
 
 // Gli ingressi da cui una lezione conta come frequentata: dall'ora prima dell'inizio alla fine.
 export const MINUTI_PRIMA_DELLA_LEZIONE = 60;
@@ -178,20 +172,6 @@ export function coperturaAbbonamento(iscrizioni = [], oggi, soglie = SOGLIE.segn
 		}
 	}
 	return { valido, rinnovato, fine, scadenza, ultimaFine, inizio, riferimento, sospensione, ripresa };
-}
-
-/**
- * D-3: da togliere. La richiesta di rinnovo dal portale non c'è più; la legge ancora
- * server/src/routes/member/index.js, finché il portale non la toglie. Il motore non la usa.
- *
- * Vera se la richiesta di rinnovo fatta dal portale aspetta ancora la reception: nessun
- * abbonamento venduto dopo, e nessun contatto riuscito dopo.
- */
-export function richiestaRinnovoAperta(richiesta, { ultimoContatto = null, iscrizioni = [] } = {}) {
-	if (!richiesta) return false;
-	const il = new Date(richiesta).getTime();
-	if (ultimoContatto && new Date(ultimoContatto).getTime() >= il) return false;
-	return !iscrizioni.some((i) => i.created_date && new Date(i.created_date).getTime() >= il);
 }
 
 const bisestile = (anno) => (anno % 4 === 0 && anno % 100 !== 0) || anno % 400 === 0;

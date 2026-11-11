@@ -7,11 +7,11 @@
 // il server conta e manda numeri, la pagina li mostra.
 //
 // Il lavoro da fare non ha più liste sue qui (erano doppioni di Oggi): la dashboard mostra
-// quante persone ci sono in ogni linea di Da fare, contate dal motore dei segnali
-// (lib/segnali.js), e un clic porta alla linea. Il lavoro si fa là; qui si guarda il quadro.
+// quanti avvisi aperti ci sono in ogni scheda di Da fare, gli stessi numeri della sua barra
+// (lib/avvisi.js), e un clic porta alla scheda. Il lavoro si fa là; qui si guarda il quadro.
 //
 // Ogni parte ha il permesso di lettura dell'entità che la governa: chi non vede i soci non
-// riceve le loro linee, chi non vede i contatti non riceve quella dei contatti.
+// riceve gli avvisi.
 import { and, asc, count, desc, eq, gte, isNull, lte, ne, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { attivita, bookings, courses, events, members, rooms, sessions } from '../db/schema/index.js';
@@ -19,7 +19,7 @@ import { getUserFromRequest } from '../auth/tokens.js';
 import { canReadEntity } from '../auth/authorize.js';
 import { canAccess } from '../../../shared/permissions.js';
 import { situazioni } from '../lib/segnali.js';
-import { daFare, lineaDi, LINEE } from '../../../shared/segnali.js';
+import { allinea, conteggi } from '../lib/avvisi.js';
 import { oggiIso, spostaGiorni, lezioneFinita } from '../../../shared/giorni.js';
 
 export default async function dashboardRoutes(fastify) {
@@ -35,29 +35,27 @@ export default async function dashboardRoutes(fastify) {
 		const ruolo = request.utente.ruolo;
 		const oggi = oggiIso();
 		const puo = (entita) => canReadEntity(ruolo, entita);
-		// Le linee di Da fare le vede chi segue i soci o i contatti, come la pagina: leggere i nomi dei soci
-		// per il calendario non basta.
+		// Gli avvisi di Da fare li vede chi segue i soci, come la pagina: leggere i nomi dei soci per
+		// il calendario non basta.
 		const vedeSoci = canAccess(ruolo, 'crm_members', 'view');
-		const vedeLead = canAccess(ruolo, 'crm_leads', 'view');
 
 		const [iscritti, motore, prossime, abbandoni] = await Promise.all([
 			puo('Member') ? contaSoci() : null,
-			vedeSoci || vedeLead ? situazioni() : null,
+			vedeSoci ? situazioni() : null,
 			puo('Booking') ? prossimeLezioni(oggi) : null,
 			puo('Subscription') ? motiviAbbandono(oggi) : null,
 		]);
-		const persone = (motore?.persone ?? []).filter((p) => (p.socio_id ? vedeSoci : vedeLead));
-		const soci = persone.filter((p) => p.socio_id);
+		const soci = (motore?.persone ?? []).filter((p) => p.socio_id);
 
 		return {
 			kpi: {
 				soci_attivi: puo('Subscription') ? soci.filter((p) => !p.archiviato_il && p.valido).length : null,
 				soci_iscritti: iscritti,
-				// I documenti da sistemare hanno la loro tessera fra le linee di Da fare: un numero
+				// I documenti da sistemare hanno la loro tessera fra gli avvisi di Da fare: un numero
 				// solo, in un posto solo.
 				prossime_lezioni: prossime?.length ?? null,
 			},
-			da_fare: motore ? lineeDaFare(persone, { vedeSoci, vedeLead }) : null,
+			da_fare: motore ? await avvisiAperti(motore) : null,
 			prossime,
 			abbandoni,
 		};
@@ -72,19 +70,13 @@ async function contaSoci() {
 }
 
 /**
- * Quante persone ci sono in ogni linea di Da fare, adesso (i segnali già fatti non contano): le
- * tessere della dashboard. Le linee che il ruolo non vede non ci sono; quelle vuote sì, a zero.
+ * Gli avvisi aperti in ogni scheda di Da fare, adesso: le cinque tessere della dashboard
+ * ({ in_scadenza, scaduto, frequenza, documento, compleanno }). Si allinea prima di contare, come
+ * fa Da fare: i numeri sono quelli della sua barra.
  */
-function lineeDaFare(persone, { vedeSoci, vedeLead }) {
-	const conti = Object.fromEntries(LINEE
-		.filter((l) => !l.soloImpostazioni && (l.valore === 'contatti' ? vedeLead : vedeSoci))
-		.map((l) => [l.valore, 0]));
-	for (const p of persone) {
-		for (const l of new Set(daFare(p.segnali, 'staff').map((s) => lineaDi(s.codice)))) {
-			if (l in conti) conti[l] += 1;
-		}
-	}
-	return conti;
+async function avvisiAperti({ oggi, soglie, persone }) {
+	await allinea(db, persone, oggi, soglie);
+	return conteggi({ soglie });
 }
 
 /**
