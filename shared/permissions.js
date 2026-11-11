@@ -198,8 +198,5 @@ export const SIDEBAR_PERMISSIONS = {
   "/calendario": "calendar",
   "/istruttore": "lezioni_istruttore",
   "/admin": "admin_users",
-  // D-3: da togliere insieme alla voce Impostazioni › Da fare (AppLayout.jsx): senza questa riga,
-  // finché la voce c'è, la vedrebbero tutti i ruoli.
-  "/admin/da-fare": "admin_users",
   "/log-audit": "audit_log",
 };

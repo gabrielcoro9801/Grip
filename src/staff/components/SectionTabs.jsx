@@ -14,10 +14,12 @@ import { cn } from "@/ui/utils";
  * Il padding del contenuto non vive qui: lo mette il layout con
  * <PageContainer>, così la barra resta a filo dei bordi.
  *
- * @param tabs [{ label, path, icon, end, match }]
+ * @param tabs [{ label, path, icon, end, match, conta }]
  *   `end`   — voce indice: attiva solo sul percorso esatto.
  *   `match` — (pathname) => boolean, per i casi in cui una voce copre anche
  *             rotte che non le stanno sotto (es. Soci copre /crm/soci/:id).
+ *   `conta` — facoltativo: un numero accanto all'etichetta (gli avvisi aperti
+ *             di Da fare). Senza, la voce è solo l'etichetta.
  * @param label nome della navigazione per chi usa uno screen reader.
  */
 export default function SectionTabs({ tabs, label = "Navigazione di sezione", className }) {
@@ -51,6 +53,14 @@ export default function SectionTabs({ tabs, label = "Navigazione di sezione", cl
             >
               {tab.icon && <tab.icon className="w-4 h-4" aria-hidden="true" />}
               {tab.label}
+              {tab.conta != null && (
+                <span className={cn(
+                  "min-w-[1.25rem] px-1.5 rounded-full text-xs tabular-nums text-center",
+                  attiva ? "bg-primary/10" : "bg-muted"
+                )}>
+                  {tab.conta}
+                </span>
+              )}
             </Link>
           );
         })}

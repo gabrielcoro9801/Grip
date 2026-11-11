@@ -377,8 +377,32 @@ export const api = {
 	},
 
 	/**
+	 * Gli avvisi di Da fare (shared/daFare.js), salvati dal server.
+	 * Rinnova, Non rinnova e Carica documento non passano di qui: vendita, archiviazione e
+	 * caricamento di sempre, e il server chiude l'avviso da solo.
+	 */
+	avvisi: {
+		/**
+		 * { vista?: 'aperti'|'archivio', tipo? } → { oggi, soglie, conteggi, avvisi, archiviati? }.
+		 * `conteggi`: gli aperti per tipo; `archiviati` (solo in archivio): i chiusi per tipo.
+		 */
+		lista({ vista, tipo } = {}) {
+			const q = new URLSearchParams(Object.entries({ vista, tipo }).filter(([, v]) => v)).toString();
+			return request(`/api/avvisi${q ? `?${q}` : ''}`);
+		},
+		/** Chiude a mano: esito 'nascosto' | 'contattato' (frequenza) | 'auguri_fatti' (compleanni). → { avviso } */
+		chiudi(id, esito) {
+			return request(`/api/avvisi/${id}/chiudi`, { method: 'POST', body: { esito } });
+		},
+		/** Rimette nella sua scheda un avviso nascosto. → { avviso } */
+		ripristina(id) {
+			return request(`/api/avvisi/${id}/ripristina`, { method: 'POST' });
+		},
+	},
+
+	/**
 	 * Chi va seguito, e perché (shared/segnali.js).
-	 * { persona?, tipo?: 'soci'|'lead', fase?, segnale?, pubblico?, da_fare? } → { oggi, persone, conteggi }
+	 * { persona?, tipo?: 'soci'|'lead', fase?, segnale?, pubblico? } → { oggi, persone, conteggi }
 	 */
 	segnali(filtri = {}) {
 		const q = new URLSearchParams(Object.entries(filtri).filter(([, v]) => v)).toString();

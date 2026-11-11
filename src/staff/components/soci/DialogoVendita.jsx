@@ -73,7 +73,8 @@ export default function DialogoVendita({ socioId, proposta, piani: pianiDati, on
         <form onSubmit={vendi} className="space-y-3">
           <div>
             <Label>Tipo, dal listino *</Label>
-            <Select value={modulo.plan_id} onValueChange={(v) => setModulo({ ...modulo, plan_id: v })}>
+            {/* Un tipo proposto che non è più in vendita non si mostra come scelto. */}
+            <Select value={pianoScelto ? modulo.plan_id : ""} onValueChange={(v) => setModulo({ ...modulo, plan_id: v })}>
               <SelectTrigger><SelectValue placeholder={caricando ? "Caricamento del listino..." : "Scegli un tipo"} /></SelectTrigger>
               <SelectContent>
                 {piani.map((p) => (

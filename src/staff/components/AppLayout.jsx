@@ -6,7 +6,7 @@ import StaffLogin from "@/staff/pages/StaffLogin";
 import {
   LayoutDashboard, Users, Calendar,
   ChevronLeft, ChevronRight, LogOut, Menu, Dumbbell,
-  ShieldCheck, ScrollText, UserPlus, KeyRound, ListChecks, Search, GraduationCap, Settings2
+  ShieldCheck, ScrollText, UserPlus, KeyRound, ListChecks, Search, GraduationCap
 } from "lucide-react";
 import RicercaGlobale from "@/staff/components/RicercaGlobale";
 import { CambioPasswordObbligatorio, DialogCambioPassword } from "@/ui/CambioPassword";
@@ -20,7 +20,8 @@ import SelettoreTema from "@/ui/SelettoreTema";
 // i soci non aveva motivo di aprirlo. Ogni voce porta alla pagina che si intitola
 // come lei — l'intestazione della pagina non deve mai smentire il menu.
 const navItems = [
-  // Il lavoro del giorno viene prima di tutto: chi seguire, e perché, per linee.
+  // Il lavoro del giorno viene prima di tutto: gli avvisi dei soci, una scheda per avviso. Le sue
+  // regole sono l'ultima scheda della sezione, non una voce delle impostazioni.
   { label: "Da fare", path: "/da-fare", icon: ListChecks },
   { label: "Dashboard", path: "/", icon: LayoutDashboard },
   { label: "Soci", path: "/crm", icon: Users },
@@ -31,10 +32,8 @@ const navItems = [
   // L'istruttore: le sue lezioni, chi viene e chi no.
   { label: "Le mie lezioni", path: "/istruttore", icon: GraduationCap },
   // Le impostazioni stanno in fondo, sotto il loro titolo: prima erano mescolate al lavoro di
-  // ogni giorno (Utenti accanto a Soci e Corsi), e quelle di Da fare si raggiungevano solo da un
-  // link dentro Da fare. Le vede l'amministratore.
+  // ogni giorno (Utenti accanto a Soci e Corsi). Le vede l'amministratore.
   { label: "Utenti e ruoli", path: "/admin", icon: ShieldCheck, impostazioni: true },
-  { label: "Da fare", path: "/admin/da-fare", icon: Settings2, impostazioni: true },
   { label: "Registro delle azioni", path: "/log-audit", icon: ScrollText, impostazioni: true },
 ];
 
@@ -59,7 +58,7 @@ export default function AppLayout() {
     return <CambioPasswordObbligatorio nome={staffUser.nome} onCambiata={aggiornaUtente} onEsci={logout} />;
   }
 
-  // La voce più specifica vince: "/admin/da-fare" non accende anche "Utenti e ruoli".
+  // La voce più specifica vince: una voce sotto un'altra non accende anche quella di sopra.
   const isActive = (path) => {
     if (path === "/") return location.pathname === "/";
     const suo = (p) => location.pathname === p || location.pathname.startsWith(`${p}/`);

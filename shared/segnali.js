@@ -89,9 +89,9 @@ export const regolaSegnale = (v, soglie = SOGLIE) => PER_SEGNALE[v]?.regola?.(so
 /** Tutti i codici che la palestra può spegnere. */
 export const CODICI_SEGNALE = Object.keys(PER_SEGNALE);
 
-// D-3: da togliere. Le linee del Da fare di prima: le leggono ancora DaFare.jsx, Dashboard.jsx e
-// ImpostazioniDaFare.jsx, finché gli avvisi (shared/daFare.js) non le sostituiscono. Il server non
-// le usa più. Restano solo i segnali che ci sono ancora.
+// D-4: da togliere. Le linee del Da fare di prima: le legge ancora Dashboard.jsx, finché le sue
+// tessere non diventano una per avviso (shared/daFare.js). Il server non le usa più. Restano solo
+// i segnali che ci sono ancora.
 export const LINEE = [
 	{ valore: 'rinnovi', etichetta: 'Rinnovi', segnali: ['in_scadenza', 'scaduto'] },
 	{ valore: 'frequenza', etichetta: 'Chi non viene', segnali: ['assente', 'in_calo'] },
@@ -370,16 +370,4 @@ export function daFare(segnali = [], pubblico = 'staff') {
 /** Il perché, in una riga: "3 ingressi in 4 settimane contro 9 di media · scade tra 9 giorni". */
 export function perche(segnali = []) {
 	return segnali.map((s) => s.motivo).filter(Boolean).join(' · ');
-}
-
-/** D-3: da togliere (lo usa AzioniPersona.jsx). Il testo già scritto per WhatsApp, a seconda del segnale principale. */
-export function testoMessaggio(nome, codice) {
-	const ciao = `Ciao ${nome}!`;
-	switch (codice) {
-		case 'in_scadenza': return `${ciao} Il tuo abbonamento sta per scadere: passa in reception per rinnovarlo.`;
-		case 'scaduto': return `${ciao} Ci manchi in palestra: ti va di ripartire? Passa a trovarci.`;
-		case 'assente': case 'in_calo': return `${ciao} È un po' che non ti vediamo: va tutto bene?`;
-		case 'compleanno': return `${ciao} Tanti auguri di buon compleanno da tutta la palestra!`;
-		default: return ciao;
-	}
 }
