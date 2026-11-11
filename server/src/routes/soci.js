@@ -10,7 +10,7 @@
 // Qui stanno anche archiviazione e riattivazione di un socio: toccano il suo accesso, le sue
 // prenotazioni e il registro, e non sono una modifica dell'anagrafica come le altre.
 import bcrypt from 'bcryptjs';
-import { eq, and, ne, gte, lte, isNull, isNotNull, sql } from 'drizzle-orm';
+import { eq, and, ne, gte, lte, isNull, isNotNull, sql, asc } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { attivita, bookings, members, prenotazioniFisse, sessions, sospensioni, staffAccounts } from '../db/schema/index.js';
 import { getUserFromRequest } from '../auth/tokens.js';
@@ -24,6 +24,10 @@ import { registerPgErrorHandler } from './errorHandler.js';
 import { abbonamentoCopre } from '../../../shared/abbonamenti.js';
 import { NOTA_DIARIO_MASSIMO, motivoAbbandonoValido, etichettaMotivoAbbandono } from '../../../shared/lead.js';
 import { oggiIso, lezioneFinita, eUnGiorno, spostaGiorni } from '../../../shared/giorni.js';
+import { corrispondeRicerca } from '../../../shared/ricerca.js';
+
+// I soci per pagina nella ricerca di chi prenotare (GET /api/soci/cerca).
+const PER_PAGINA_RICERCA = 15;
 
 const nomeDi = async (idAccount) => {
 	const [a] = await db.select({ nome: staffAccounts.nome }).from(staffAccounts).where(eq(staffAccounts.id, idAccount)).limit(1);
@@ -53,11 +57,46 @@ export default async function sociRoutes(fastify) {
 	fastify.addHook('preHandler', async (request, reply) => {
 		const utente = getUserFromRequest(request);
 		if (!utente) return reply.code(401).send({ error: 'Non autenticato.' });
-		const azione = request.method === 'GET' ? 'view' : 'edit';
-		if (utente.ruolo === 'member' || !canAccess(utente.ruolo, 'crm_members', azione)) {
+		// La ricerca serve a prenotare un socio a una lezione: la chiede chi modifica il calendario,
+		// anche senza la scheda dei soci (l'istruttore).
+		const [modulo, azione] = request.routeOptions?.url === '/api/soci/cerca'
+			? ['calendar', 'edit']
+			: ['crm_members', request.method === 'GET' ? 'view' : 'edit'];
+		if (utente.ruolo === 'member' || !canAccess(utente.ruolo, modulo, azione)) {
 			return reply.code(403).send({ error: 'Non consentito.' });
 		}
 		request.utente = utente;
+	});
+
+	/**
+	 * GET /api/soci/cerca?q=…&pagina=1
+	 * → { soci: [{ id, nome, cognome, date_of_birth, codice_socio }], totale, pagina, per_pagina }
+	 *
+	 * I soci non archiviati, filtrati con la regola dell'elenco dei soci (shared/ricerca.js:
+	 * «Cognome Nome», senza accenti, codice, email, telefono), in ordine di cognome, a pagine da
+	 * PER_PAGINA_RICERCA. Prima la finestra della prenotazione teneva in memoria tutti i soci.
+	 */
+	fastify.get('/api/soci/cerca', async (request) => {
+		const q = String(request.query?.q ?? '');
+		const richiesta = Number.parseInt(request.query?.pagina, 10);
+		const righe = await db
+			.select({
+				id: members.id, nome: members.nome, cognome: members.cognome, nomeCompleto: members.fullName,
+				email: members.email, telefono: members.phone, nascita: members.dateOfBirth, codice: members.codiceSocio,
+			})
+			.from(members)
+			.where(isNull(members.archiviatoIl))
+			.orderBy(asc(members.cognome), asc(members.nome), asc(members.codiceSocio));
+		const trovati = righe.filter((r) => corrispondeRicerca(
+			{ nome: r.nomeCompleto, email: r.email, codice_socio: r.codice, telefono: r.telefono }, q,
+		));
+		const totale = trovati.length;
+		const pagine = Math.max(1, Math.ceil(totale / PER_PAGINA_RICERCA));
+		const pagina = Math.min(Math.max(1, Number.isFinite(richiesta) ? richiesta : 1), pagine);
+		const soci = trovati.slice((pagina - 1) * PER_PAGINA_RICERCA, pagina * PER_PAGINA_RICERCA).map((r) => ({
+			id: r.id, nome: r.nome, cognome: r.cognome, date_of_birth: r.nascita, codice_socio: r.codice,
+		}));
+		return { soci, totale, pagina, per_pagina: PER_PAGINA_RICERCA };
 	});
 
 	// GET /api/soci/:id/accesso-portale → { account: {...} | null }
