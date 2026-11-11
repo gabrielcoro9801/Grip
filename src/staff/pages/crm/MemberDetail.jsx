@@ -8,7 +8,6 @@ import { Badge } from "@/ui/primitivi/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/ui/primitivi/dialog";
 import { Label } from "@/ui/primitivi/label";
 import { Input } from "@/ui/primitivi/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/ui/primitivi/select";
 import StatusBadge, { StatoSocio } from "@/ui/StatusBadge";
 import { ArrowLeft, Plus, CreditCard, QrCode, KeyRound, RefreshCw, Pencil, UserRound, Archive, ArchiveRestore } from "lucide-react";
 import CampiAnagrafica, { anagraficaDi, motivoAnagraficaIncompleta } from "@/staff/components/soci/CampiAnagrafica";
@@ -19,6 +18,7 @@ import DocumentiSocio from "@/staff/components/soci/DocumentiSocio";
 import ConsensiSocio from "@/staff/components/soci/ConsensiSocio";
 import SospensioniSocio from "@/staff/components/soci/SospensioniSocio";
 import DialogoAbbandono from "@/staff/components/soci/DialogoAbbandono";
+import DialogoVendita from "@/staff/components/soci/DialogoVendita";
 import { AvatarSocio, SceltaFoto } from "@/staff/components/soci/FotoSocio";
 import { caricaFile } from "@/staff/lib/uploads";
 import { canAccess, canEdit } from "@/staff/lib/permissions";
@@ -33,7 +33,7 @@ import { LoadingState } from "@/ui/Spinner";
 import { ErrorState } from "@/ui/StateViews";
 import { useConfirm } from "@/ui/ConfirmDialog";
 import { formatData, formatDataOra, formatEuro } from "@/core/domain/format";
-import { dataFineAbbonamento, descriviDurata, motivoNonVendibile, oggiIso } from "@/core/domain/abbonamenti";
+import { motivoNonVendibile, oggiIso } from "@/core/domain/abbonamenti";
 import { spostaGiorni } from "@/core/domain/giorni";
 
 
@@ -59,10 +59,9 @@ export default function MemberDetail() {
   const [documents, setDocuments] = useState([]);
   const [plans, setPlans] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [showSubForm, setShowSubForm] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [subForm, setSubForm] = useState({ plan_id: "", start_date: oggiIso() });
-  const [dateError, setDateError] = useState("");
+  // La vendita aperta, già compilata ({ plan_id, start_date }), o null (DialogoVendita).
+  const [vendita, setVendita] = useState(null);
   // L'anagrafica in modifica, o null quando la finestra è chiusa.
   const [anagrafica, setAnagrafica] = useState(null);
   const [foto, setFoto] = useState({ file: null, rimossa: false });
@@ -159,39 +158,11 @@ export default function MemberDetail() {
   function apriVendita() {
     const ultima = [...subscriptions].sort((a, b) => String(b.end_date).localeCompare(String(a.end_date)))[0];
     const oggi = oggiIso();
-    setSubForm({
+    setVendita({
       plan_id: plans.some((p) => p.id === ultima?.plan_id) ? ultima.plan_id : "",
       start_date: ultima?.end_date && ultima.end_date >= oggi ? spostaGiorni(ultima.end_date, 1) : oggi,
     });
-    setDateError("");
-    setShowSubForm(true);
   }
-
-  const pianoScelto = plans.find(p => p.id === subForm.plan_id);
-  const scadenzaProposta = pianoScelto ? dataFineAbbonamento(subForm.start_date, pianoScelto.durata_valore, pianoScelto.durata_unita) : null;
-
-  const handleNewSubscription = async (e) => {
-    e.preventDefault();
-    const plan = plans.find(p => p.id === subForm.plan_id);
-    if (!plan) return;
-    setDateError("");
-    setSaving(true);
-    try {
-      // Scadenza e nome del tipo li fissa il server dalla durata del tipo: qui si mostrano soltanto.
-      await api.entities.Subscription.create({
-        member_id: id, plan_id: plan.id, start_date: subForm.start_date, status: "active", price_paid: plan.price,
-      });
-
-      setShowSubForm(false);
-      setSubForm({ plan_id: "", start_date: oggiIso() });
-      loadData();
-      toast({ title: "Abbonamento venduto" });
-    } catch (err) {
-      toast({ title: "Errore", description: err.message, variant: "destructive" });
-    } finally {
-      setSaving(false);
-    }
-  };
 
   const salvaAnagrafica = async (e) => {
     e.preventDefault();
@@ -559,32 +530,7 @@ export default function MemberDetail() {
         )}
       </div>
 
-      {/* New Subscription Dialog */}
-      <Dialog open={showSubForm} onOpenChange={setShowSubForm}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader><DialogTitle>Vendi un abbonamento</DialogTitle></DialogHeader>
-          <form onSubmit={handleNewSubscription} className="space-y-3">
-            <div>
-              <Label>Tipo, dal listino *</Label>
-              <Select value={subForm.plan_id} onValueChange={v => setSubForm({...subForm, plan_id: v})}>
-                <SelectTrigger><SelectValue placeholder="Scegli un tipo" /></SelectTrigger>
-                <SelectContent>
-                  {plans.map(p => (
-                    <SelectItem key={p.id} value={p.id}>{p.name} — {descriviDurata(p.durata_valore, p.durata_unita)} — {formatEuro(p.price)}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div><Label>Data inizio abbonamento</Label><Input type="date" value={subForm.start_date} onChange={e => setSubForm({...subForm, start_date: e.target.value})} /></div>
-            {dateError && <p className="text-xs text-destructive font-medium -mt-1">{dateError}</p>}
-            {scadenzaProposta && <p className="text-xs text-muted-foreground">Valido fino al {formatData(scadenzaProposta, "lungo")} compreso.</p>}
-            {showSubForm && plans.length === 0 && <p className="text-xs text-muted-foreground">Nessun tipo in vendita: controlla stato e data massima nel listino.</p>}
-            <Button type="submit" className="w-full" disabled={!subForm.plan_id || saving}>
-              {saving ? "Vendita..." : "Vendi"}
-            </Button>
-          </form>
-        </DialogContent>
-      </Dialog>
+      <DialogoVendita socioId={id} proposta={vendita} piani={plans} onChiudi={() => setVendita(null)} onFatto={loadData} />
 
       <Dialog open={!!anagrafica} onOpenChange={(aperta) => !aperta && chiudiAnagrafica()}>
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
