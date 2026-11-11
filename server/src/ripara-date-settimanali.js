@@ -29,7 +29,7 @@ for (const evento of settimanali) {
 	const lezioni = await db.select({ id: sessions.id, date: sessions.date }).from(sessions).where(eq(sessions.eventId, evento.id));
 	const esame = esaminaEvento(
 		{
-			days_of_week: evento.daysOfWeek,
+			giorno: evento.giorno,
 			start_date: evento.startDate,
 			end_condition: evento.endCondition,
 			end_date: evento.endDate,
@@ -45,7 +45,7 @@ for (const evento of settimanali) {
 	if (esame.esito !== 'sfalsato') continue;
 
 	sfalsati++;
-	console.log(`• evento ${evento.id} (${(evento.daysOfWeek ?? []).join(', ')}): ${esame.daSpostare.length} lezioni da spostare di un giorno avanti.`);
+	console.log(`• sessione ${evento.id} (${evento.giorno}):${esame.daSpostare.length} lezioni da spostare di un giorno avanti.`);
 	for (const l of esame.fuoriSchema) {
 		console.log(`    lezione ${l.id} del ${l.date}: non segue lo schema dell'evento (spostata a mano?) — lasciata com'è.`);
 	}

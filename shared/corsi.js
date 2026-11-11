@@ -12,6 +12,9 @@ export const NOTE_CORSO_MASSIMO = 140;
  */
 export const RICORRENZE_CREABILI = ['single', 'weekly'];
 
+/** I giorni in cui si ripete una sessione (`events.giorno`), da lunedì: uno per sessione. */
+export const GIORNI_SETTIMANA = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+
 /** Il termine di disdetta più lungo che si può impostare su un corso: una settimana. */
 export const DISDETTA_MASSIMA_ORE = 168;
 

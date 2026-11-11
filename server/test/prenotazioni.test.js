@@ -318,18 +318,21 @@ describe('il calendario chiede un intervallo, non un numero fisso', () => {
 		assert.deepEqual(prima, []);
 	});
 
-	test('le prenotazioni si chiedono per data della lezione', async () => {
+	// Le prenotazioni non si scaricano più tutte: il calendario riceve le lezioni con i posti già
+	// contati (GET /api/calendario/lezioni), e la vecchia rotta non c'è più.
+	test('le lezioni di un intervallo arrivano con i posti contati', async () => {
 		await pulisciPrenotazioni();
 		assert.equal((await prenota(tokenSocio[0])).statusCode, 201);
-		const dal = (await come(tokenStaff, { method: 'GET', url: '/api/prenotazioni?dal=2026-11-30' })).json();
-		assert.ok(dal.some((p) => p.session_id === idLezione));
-		const dopo = (await come(tokenStaff, { method: 'GET', url: '/api/prenotazioni?dal=2026-12-02' })).json();
-		assert.ok(!dopo.some((p) => p.session_id === idLezione));
+		const dentro = (await come(tokenStaff, { method: 'GET', url: '/api/calendario/lezioni?dal=2026-11-30&al=2026-12-02' })).json().lezioni;
+		assert.equal(dentro.find((l) => l.id === idLezione)?.confermati, 1);
+		const fuori = (await come(tokenStaff, { method: 'GET', url: '/api/calendario/lezioni?dal=2026-12-02&al=2026-12-10' })).json().lezioni;
+		assert.ok(!fuori.some((l) => l.id === idLezione));
 	});
 
-	test('senza data, o da un socio, non si leggono', async () => {
-		assert.equal((await come(tokenStaff, { method: 'GET', url: '/api/prenotazioni' })).statusCode, 400);
-		assert.equal((await come(tokenSocio[0], { method: 'GET', url: '/api/prenotazioni?dal=2026-01-01' })).statusCode, 403);
+	test("senza intervallo, o da un socio, non si leggono; la rotta delle prenotazioni per data non c'è più", async () => {
+		assert.equal((await come(tokenStaff, { method: 'GET', url: '/api/calendario/lezioni' })).statusCode, 400);
+		assert.equal((await come(tokenSocio[0], { method: 'GET', url: '/api/calendario/lezioni?dal=2026-01-01&al=2026-01-02' })).statusCode, 403);
+		assert.equal((await come(tokenStaff, { method: 'GET', url: '/api/prenotazioni?dal=2026-11-30' })).statusCode, 404);
 	});
 });
 

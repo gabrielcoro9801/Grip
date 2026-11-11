@@ -27,7 +27,7 @@ import {
 	motivoCambioStatoNonValido as motivoCambioStatoSalaNonValido,
 	NOME_MASSIMO as NOME_SALA_MASSIMO, NOTE_MASSIMO as NOTE_SALA_MASSIMO,
 } from '../../../shared/sale.js';
-import { NOTE_CORSO_MASSIMO, RICORRENZE_CREABILI, DISDETTA_MASSIMA_ORE } from '../../../shared/corsi.js';
+import { NOTE_CORSO_MASSIMO, RICORRENZE_CREABILI, DISDETTA_MASSIMA_ORE, GIORNI_SETTIMANA } from '../../../shared/corsi.js';
 import { leggiColore } from '../../../shared/colore.js';
 
 // Campi rimossi da ogni risposta, per entità.
@@ -482,12 +482,35 @@ const WRITE_TRANSFORMS = {
 	// quindi coprire il periodo dell'evento copre anche le sue lezioni, senza una query per
 	// ognuna delle 104 possibili. Chi sposta poi una singola lezione passa da
 	// `mutationBlockedReason`.
-	async Event(body, { creazione }) {
+	async Event(body, { creazione, id }) {
 		const rest = { ...(body ?? {}) };
 		// Un evento nuovo è una data singola o una regola settimanale: le date personalizzate non
 		// si creano più. Quelli fatti così prima restano e si modificano.
 		if ((creazione || presente(rest, 'recurrence_type')) && !RICORRENZE_CREABILI.includes(rest.recurrence_type)) {
 			throw rifiuta('Un evento si ripete in una data singola o ogni settimana.');
+		}
+		// Una sessione si ripete in un giorno solo (migrazione 0059). Un client che manda ancora
+		// l'elenco dei giorni va fermato: la colonna non c'è più, e senza questo rifiuto l'elenco
+		// sparirebbe in silenzio e la sessione nascerebbe senza giorno.
+		if (presente(rest, 'days_of_week')) {
+			throw rifiuta('Una sessione si ripete in un giorno solo: indica il giorno («giorno»), non un elenco.');
+		}
+		if (presente(rest, 'giorno') && vuoto(rest.giorno)) rest.giorno = null;
+		if (presente(rest, 'giorno') && rest.giorno !== null && !GIORNI_SETTIMANA.includes(rest.giorno)) {
+			throw rifiuta('Il giorno della sessione non è valido.');
+		}
+		if (creazione || presente(rest, 'giorno') || presente(rest, 'recurrence_type')) {
+			let ricorrenza = rest.recurrence_type;
+			let giorno = rest.giorno;
+			if (!creazione && (!presente(rest, 'recurrence_type') || !presente(rest, 'giorno'))) {
+				const [attuale] = await db.select({ ricorrenza: eventsTable.recurrenceType, giorno: eventsTable.giorno })
+					.from(eventsTable).where(eq(eventsTable.id, id)).limit(1);
+				if (!presente(rest, 'recurrence_type')) ricorrenza = attuale?.ricorrenza;
+				if (!presente(rest, 'giorno')) giorno = attuale?.giorno;
+			}
+			if (ricorrenza === 'weekly' && !giorno) throw rifiuta('Scegli il giorno della settimana in cui si ripete la sessione.');
+			// Una lezione singola non ha un giorno che si ripete.
+			if (ricorrenza === 'single' && presente(rest, 'giorno') && rest.giorno !== null) rest.giorno = null;
 		}
 		if (creazione) {
 			const motivo = await motivoEventoInSalaNonPrenotabile(rest);

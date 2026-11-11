@@ -12,13 +12,13 @@
 import bcrypt from 'bcryptjs';
 import { eq, and, ne, gte, lte, isNull, isNotNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { attivita, bookings, members, sessions, sospensioni, staffAccounts } from '../db/schema/index.js';
+import { attivita, bookings, members, prenotazioniFisse, sessions, sospensioni, staffAccounts } from '../db/schema/index.js';
 import { getUserFromRequest } from '../auth/tokens.js';
 import { canAccess } from '../../../shared/permissions.js';
 import { motivoPasswordNonValida } from '../../../shared/password.js';
 import { registra } from '../lib/registro.js';
 import { disdici } from '../lib/prenotazioni.js';
-import { applicaFisse } from '../lib/prenotazioniFisse.js';
+import { applicaFisse, terminaFissa } from '../lib/prenotazioniFisse.js';
 import { iscrizioniDelSocio, sospensioniDelSocio } from '../lib/iscrizioni.js';
 import { registerPgErrorHandler } from './errorHandler.js';
 import { abbonamentoCopre } from '../../../shared/abbonamenti.js';
@@ -181,10 +181,19 @@ export default async function sociRoutes(fastify) {
 			const esito = await disdici({ bookingId: p.id });
 			if (!esito.errore) disdette += 1;
 		}
+		// Le sue prenotazioni fisse si chiudono da oggi: riattivandolo non ripartono, si rifanno.
+		// Le prenotazioni sono già disdette qui sopra; terminaFissa le ritrova cancellate e passa oltre.
+		const fisse = await db.select({ id: prenotazioniFisse.id }).from(prenotazioniFisse)
+			.where(and(eq(prenotazioniFisse.memberId, socio.id), eq(prenotazioniFisse.attiva, true)));
+		for (const f of fisse) await terminaFissa({ fissaId: f.id, dal: oggi });
 
+		const dettagli = [
+			`Archiviato (${etichettaMotivoAbbandono(motivo)})`,
+			disdette ? `prenotazioni future disdette: ${disdette}` : '',
+			fisse.length ? `prenotazioni fisse chiuse: ${fisse.length}` : '',
+		].filter(Boolean).join('; ');
 		await registra(request.utente, {
-			tipoAzione: 'deactivate', entitaTipo: 'member', entitaNome: socio.nome, entitaId: socio.id,
-			dettagli: `Archiviato (${etichettaMotivoAbbandono(motivo)})${disdette ? `; prenotazioni future disdette: ${disdette}` : ''}`,
+			tipoAzione: 'deactivate', entitaTipo: 'member', entitaNome: socio.nome, entitaId: socio.id, dettagli,
 		}, request.log);
 		return { socio: await socioPubblico(socio.id), prenotazioni_disdette: disdette };
 	});
@@ -284,8 +293,9 @@ export default async function sociRoutes(fastify) {
 			const [riga] = await tx.update(sospensioni).set({ al: spostaGiorni(ripresa, -1) }).where(eq(sospensioni.id, s.id)).returning();
 			return riga;
 		});
-		// Le fisse riprendono a prenotare i giorni tornati liberi.
-		await applicaFisse({ memberId: s.memberId });
+		// Le fisse del socio prenotano i giorni tornati liberi, e solo quelli: con o senza una data
+		// di fine, perché quei giorni erano già dentro il loro periodo.
+		await applicaFisse({ memberId: s.memberId, da: ripresa, a: s.al });
 		await registra(request.utente, {
 			tipoAzione: 'update', entitaTipo: 'member', entitaNome: socio.nome, entitaId: s.memberId,
 			dettagli: cancellata ? `Sospensione dal ${s.dal} annullata` : `Sospensione anticipata: riprende il ${ripresa}`,

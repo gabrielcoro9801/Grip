@@ -81,7 +81,9 @@ export const events = pgTable('events', {
 	roomId: uuid('room_id').notNull().references(() => rooms.id),
 	capacity: integer('capacity').notNull().default(0),
 	recurrenceType: varchar('recurrence_type', { length: 16 }).notNull(), // single | weekly | custom
-	daysOfWeek: jsonb('days_of_week'), // array di 'Monday'..'Sunday', solo se recurrence_type=weekly
+	// Una sessione (weekly) si ripete in un giorno solo, 'Monday'..'Sunday': due giorni sono due
+	// sessioni. Prima era `days_of_week`, un elenco: la migrazione 0059 le ha divise.
+	giorno: varchar('giorno', { length: 9 }),
 	startDate: date('start_date').notNull(),
 	endCondition: varchar('end_condition', { length: 16 }), // by_date | by_count (solo weekly)
 	endDate: date('end_date'),
@@ -93,6 +95,13 @@ export const events = pgTable('events', {
 	endTime: time('end_time').notNull(),
 	createdDate: timestamp('created_date', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({
+	giornoValido: check(
+		'events_giorno_valido',
+		sql`${table.giorno} IS NULL OR ${table.giorno} IN ('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday')`,
+	),
+	// Una sessione senza giorno non saprebbe quando ripetersi. Le singole e le vecchie «custom»
+	// non ne hanno bisogno.
+	settimanaleConGiorno: check('events_settimanale_con_giorno', sql`${table.recurrenceType} <> 'weekly' OR ${table.giorno} IS NOT NULL`),
 	// Postgres non indicizza da solo le chiavi esterne: ogni controllo sulle sale ("è occupata
 	// da qui in avanti?") e ogni elenco per corso leggeva la tabella intera.
 	salaInizio: index('events_room_id_start_date_idx').on(table.roomId, table.startDate),
@@ -125,30 +134,35 @@ export const bookings = pgTable('bookings', {
 	memberName: varchar('member_name', { length: 255 }), // denormalizzato al momento della create
 	status: varchar('status', { length: 16 }).notNull().default('confirmed'), // confirmed | waitlisted | cancelled
 	waitlistPosition: integer('waitlist_position'),
+	// La prenotazione fissa che l'ha fatta, se c'è: cancellando la fissa si disdicono solo queste,
+	// e quelle fatte a mano restano. Una fissa eliminata lascia le sue prenotazioni.
+	prenotazioneFissaId: uuid('prenotazione_fissa_id').references(() => prenotazioniFisse.id, { onDelete: 'set null' }),
 	createdDate: timestamp('created_date', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({
 	// Ogni prenotazione conta i posti della sua lezione; il portale cerca quelle del socio.
 	lezione: index('bookings_session_id_idx').on(table.sessionId),
 	socio: index('bookings_member_id_idx').on(table.memberId),
+	fissa: index('bookings_prenotazione_fissa_id_idx').on(table.prenotazioneFissaId),
 	// Una prenotazione viva per socio e lezione. Il lock in transazione di `lib/prenotazioni.js`
 	// lo garantisce già per le rotte dedicate; il vincolo lo garantisce per tutto il resto.
 	unaPerLezione: uniqueIndex('bookings_attiva_unica_idx').on(table.sessionId, table.memberId).where(sql`${table.status} <> 'cancelled'`),
 }));
 
-// Una prenotazione fissa: il socio tiene il suo posto in una serie, ogni settimana, senza
-// prenotare a mano lezione per lezione. Non è un posto riservato: le lezioni si prenotano con le
-// regole di sempre (capienza, lista d'attesa, abbonamento valido quel giorno) da
-// lib/prenotazioniFisse.js, che gira quando la fissa nasce, quando nasce un abbonamento, quando
-// la serie si allunga e quando il socio guarda l'agenda.
+// Una prenotazione fissa: il socio tiene il suo posto in una sessione, ogni settimana, da una data
+// a un'altra, senza prenotare a mano lezione per lezione. Non è un posto riservato: le lezioni si
+// prenotano con le regole di sempre (capienza, lista d'attesa, abbonamento valido quel giorno) da
+// lib/prenotazioniFisse.js.
 //
-// `giorni`: i giorni della serie scelti (es. solo il martedì di un martedì-giovedì); null =
-// tutti. `avviso_inviato_per`: la prima lezione rimasta senza abbonamento già segnalata al
-// socio, perché l'avviso arrivi una volta sola per ogni scadenza.
+// `dal`, `al`: il periodo, estremi compresi. `al` vuoto: senza fine, come quelle nate dal portale
+// e quelle di prima della migrazione 0060; solo queste ripartono da sole a un rinnovo o a una
+// sessione allungata. `avviso_inviato_per`: la prima lezione rimasta senza abbonamento già
+// segnalata al socio, perché l'avviso arrivi una volta sola per ogni scadenza.
 export const prenotazioniFisse = pgTable('prenotazioni_fisse', {
 	id: uuid('id').defaultRandom().primaryKey(),
 	memberId: uuid('member_id').notNull().references(() => members.id, { onDelete: 'cascade' }),
 	eventId: uuid('event_id').notNull().references(() => events.id, { onDelete: 'cascade' }),
-	giorni: jsonb('giorni'),
+	dal: date('dal').notNull(),
+	al: date('al'),
 	attiva: boolean('attiva').notNull().default(true),
 	creataDa: varchar('creata_da', { length: 255 }),
 	avvisoInviatoPer: date('avviso_inviato_per'),
@@ -159,4 +173,5 @@ export const prenotazioniFisse = pgTable('prenotazioni_fisse', {
 	evento: index('prenotazioni_fisse_event_id_idx').on(table.eventId),
 	// Una sola fissa attiva per socio e serie.
 	unaAttiva: uniqueIndex('prenotazioni_fisse_attiva_unica_idx').on(table.memberId, table.eventId).where(sql`${table.attiva}`),
+	periodoValido: check('prenotazioni_fisse_periodo_valido', sql`${table.al} IS NULL OR ${table.al} >= ${table.dal}`),
 }));
