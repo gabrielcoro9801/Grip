@@ -35,6 +35,23 @@ export function Riquadro({ titolo, sottotitolo, azioni, children, className = ""
   );
 }
 
+/**
+ * Un numero in evidenza, con l'etichetta sopra e, sotto, una riga che lo spiega. `dueRighe`
+ * riserva due righe all'etichetta: in una fila di riquadri i numeri restano allineati anche
+ * quando un'etichetta va a capo.
+ */
+export function Numero({ etichetta, valore, children, dueRighe = false, className = "" }) {
+  return (
+    <Card className={`border-0 shadow-sm ${className}`}>
+      <CardContent className="p-5 space-y-1">
+        <p className={`text-sm text-muted-foreground ${dueRighe ? "min-h-10" : ""}`}>{etichetta}</p>
+        <div className="text-3xl font-semibold font-heading">{valore}</div>
+        {children}
+      </CardContent>
+    </Card>
+  );
+}
+
 /** Le voci della legenda: un segno del colore della serie, e il nome in testo normale. */
 export function Legenda({ voci }) {
   return (

@@ -1,20 +1,43 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { api } from "@/core/api/client";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/ui/primitivi/select";
 import PageHeader from "@/staff/components/PageHeader";
 import StatusBadge from "@/ui/StatusBadge";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { LoadingState } from "@/ui/Spinner";
 import { EmptyState, ErrorState } from "@/ui/StateViews";
 import { CreditCard } from "lucide-react";
 import { formatData, formatEuro } from "@/core/domain/format";
+import { oggiIso, statisticheVenduti } from "@/core/domain/abbonamenti";
+import { paginaDi } from "@/core/domain/paginazione";
+import Paginazione from "@/ui/Paginazione";
+import RiquadriVenduti from "@/staff/components/soci/RiquadriVenduti";
+
+const FILTRI = ["active", "expiring", "expired"];
+const PER_PAGINA = 25;
 
 export default function SubscriptionsList() {
   const [subscriptions, setSubscriptions] = useState([]);
   const [members, setMembers] = useState([]);
-  const [filter, setFilter] = useState("all");
   const [loading, setLoading] = useState(true);
   const [errore, setErrore] = useState(null);
+  // Filtro e pagina stanno nell'indirizzo, come nell'elenco soci: tornando indietro da un socio
+  // si ritrova la stessa pagina. Cambiare filtro riporta a pagina 1.
+  const [parametri, setParametri] = useSearchParams();
+  const filter = FILTRI.includes(parametri.get("stato")) ? parametri.get("stato") : "all";
+  const pagina = Number(parametri.get("pagina")) || 1;
+  const aggiorna = (cambi) => {
+    const prossimi = new URLSearchParams(parametri);
+    for (const [chiave, valore] of Object.entries(cambi)) {
+      if (valore === null) prossimi.delete(chiave); else prossimi.set(chiave, valore);
+    }
+    setParametri(prossimi, { replace: true });
+  };
+  const filtra = (v) => aggiorna({ stato: v === "all" ? null : v, pagina: null });
+  const cambiaPagina = (p) => {
+    aggiorna({ pagina: p > 1 ? String(p) : null });
+    window.scrollTo({ top: 0 });
+  };
 
   // Senza `catch`, un errore di rete lasciava la pagina sulla rotellina per sempre.
   const carica = useCallback(() => {
@@ -31,9 +54,16 @@ export default function SubscriptionsList() {
 
   useEffect(() => { carica(); }, [carica]);
 
-  const getMemberName = (id) => members.find(m => m.id === id)?.full_name || "Sconosciuto";
+  const nomi = useMemo(() => new Map(members.map((m) => [m.id, m.full_name])), [members]);
+  const getMemberName = (id) => nomi.get(id) || "Sconosciuto";
 
-  const filtered = filter === "all" ? subscriptions : subscriptions.filter(s => s.status === filter);
+  // I riquadri contano tutti gli abbonamenti; la tabella solo quelli del filtro.
+  const statistiche = useMemo(() => statisticheVenduti(subscriptions, oggiIso()), [subscriptions]);
+  // I più recenti in cima: l'ultimo venduto è quello che si cerca più spesso.
+  const filtered = useMemo(() => subscriptions
+    .filter((s) => filter === "all" || s.status === filter)
+    .sort((a, b) => String(b.start_date ?? "").localeCompare(String(a.start_date ?? ""))), [subscriptions, filter]);
+  const { righe, pagina: paginaVista } = paginaDi(filtered, pagina, PER_PAGINA);
 
   if (loading) return <LoadingState minHeight="h-64" />;
   if (errore) return <ErrorState error={errore} onRetry={carica} />;
@@ -41,8 +71,8 @@ export default function SubscriptionsList() {
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
       <PageHeader title="Abbonamenti venduti" description={`${subscriptions.length} in tutto`}>
-        <Select value={filter} onValueChange={setFilter}>
-          <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
+        <Select value={filter} onValueChange={filtra}>
+          <SelectTrigger className="w-40" aria-label="Stato"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Tutti</SelectItem>
             <SelectItem value="active">Validi</SelectItem>
@@ -51,6 +81,8 @@ export default function SubscriptionsList() {
           </SelectContent>
         </Select>
       </PageHeader>
+
+      {subscriptions.length > 0 && <RiquadriVenduti statistiche={statistiche} />}
 
       {filtered.length === 0 ? (
         <EmptyState
@@ -71,7 +103,7 @@ export default function SubscriptionsList() {
             </tr>
           </thead>
           <tbody>
-            {filtered.map(sub => (
+            {righe.map(sub => (
               <tr key={sub.id} className="border-b border-border/50 hover:bg-muted/30">
                 <td className="py-3 px-4">
                   <Link to={`/crm/soci/${sub.member_id}`} className="font-medium text-primary hover:underline">{getMemberName(sub.member_id)}</Link>
@@ -86,6 +118,7 @@ export default function SubscriptionsList() {
         </table>
       </div>
       )}
+      <Paginazione pagina={paginaVista} totale={filtered.length} perPagina={PER_PAGINA} onCambia={cambiaPagina} />
     </div>
   );
 }

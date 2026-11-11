@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
+import { useSearchParams } from "react-router-dom";
 import { api } from "@/core/api/client";
 import { Card, CardContent } from "@/ui/primitivi/card";
 import { Button } from "@/ui/primitivi/button";
@@ -18,8 +19,10 @@ import { useStaffAuth } from "@/staff/lib/StaffAuthContext";
 import { canEdit } from "@/staff/lib/permissions";
 import { formatData, formatEuro } from "@/core/domain/format";
 import {
-  UNITA_DURATA, STATI_TIPO, NOTE_MASSIMO, descriviDurata, motivoCambioStatoNonValido, oggiIso,
+  UNITA_DURATA, STATI_TIPO, NOTE_MASSIMO, descriviDurata, motivoCambioStatoNonValido, oggiIso, ordinaTipi,
 } from "@/core/domain/abbonamenti";
+import { paginaDi } from "@/core/domain/paginazione";
+import Paginazione from "@/ui/Paginazione";
 
 const MODULO_VUOTO = { name: "", price: "", durata_valore: "1", durata_unita: "mesi", vendibile_fino_al: "", description: "" };
 
@@ -30,7 +33,9 @@ const SPIEGAZIONE_STATO = {
   annullato: "Non si vende più. È definitivo: non torna in vendita.",
 };
 
-const ORDINE_STATO = { attivo: 0, sospeso: 1, annullato: 2 };
+const TUTTI = "tutti";
+// Le tile fanno 3×4, come quelle dei soci.
+const PER_PAGINA = 12;
 const TONO_STATO = { attivo: "positivo", sospeso: "attesa", annullato: "neutro" };
 
 /**
@@ -52,15 +57,31 @@ export default function PlansCatalog() {
   const [salvando, setSalvando] = useState(false);
   // Il tipo di cui si sta cambiando lo stato, con lo stato scelto.
   const [cambioStato, setCambioStato] = useState(null);
+  // Stato e pagina stanno nell'indirizzo, come nell'elenco soci. Cambiare stato riporta a pagina 1.
+  const [parametri, setParametri] = useSearchParams();
+  const filtroStato = STATI_TIPO.some((s) => s.valore === parametri.get("stato")) ? parametri.get("stato") : TUTTI;
+  const pagina = Number(parametri.get("pagina")) || 1;
+  const aggiorna = (cambi) => {
+    const prossimi = new URLSearchParams(parametri);
+    for (const [chiave, valore] of Object.entries(cambi)) {
+      if (valore === null) prossimi.delete(chiave); else prossimi.set(chiave, valore);
+    }
+    setParametri(prossimi, { replace: true });
+  };
+  const cambiaPagina = (p) => {
+    aggiorna({ pagina: p > 1 ? String(p) : null });
+    window.scrollTo({ top: 0 });
+  };
 
   const loadData = () => {
     api.entities.Plan.list().then(p => { setPlans(p); setLoading(false); });
   };
   useEffect(() => { loadData(); }, []);
 
-  const ordinati = useMemo(() => [...plans].sort((a, b) =>
-    (ORDINE_STATO[a.stato] ?? 3) - (ORDINE_STATO[b.stato] ?? 3) || a.name.localeCompare(b.name, "it")
-  ), [plans]);
+  // In vendita, sospesi, ritirati; la vendita già chiusa in fondo al suo gruppo (ordinaTipi).
+  const ordinati = useMemo(() => ordinaTipi(plans, oggiIso()).filter((p) => filtroStato === TUTTI || p.stato === filtroStato), [plans, filtroStato]);
+  const conteggi = useMemo(() => Object.fromEntries(STATI_TIPO.map((s) => [s.valore, plans.filter((p) => p.stato === s.valore).length])), [plans]);
+  const { righe, pagina: paginaVista } = paginaDi(ordinati, pagina, PER_PAGINA);
 
   const imposta = (campo) => (e) => {
     const valore = e.target.value;
@@ -136,6 +157,14 @@ export default function PlansCatalog() {
     <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
       {dialogoConferma}
       <PageHeader title="Listino" description="I tipi di abbonamento che la palestra vende: si vendono ai soci dalla loro scheda">
+        <Label htmlFor="stato-listino" className="sr-only">Stato</Label>
+        <Select value={filtroStato} onValueChange={(v) => aggiorna({ stato: v === TUTTI ? null : v, pagina: null })}>
+          <SelectTrigger id="stato-listino" className="w-[190px]"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value={TUTTI}>Tutti i tipi ({plans.length})</SelectItem>
+            {STATI_TIPO.map((s) => <SelectItem key={s.valore} value={s.valore}>{s.etichetta} ({conteggi[s.valore]})</SelectItem>)}
+          </SelectContent>
+        </Select>
         {puoModificare && (
           <Button size="sm" onClick={() => { setForm(MODULO_VUOTO); setShowForm(true); }}>
             <Plus className="w-4 h-4 mr-1" /> Nuovo tipo
@@ -149,9 +178,15 @@ export default function PlansCatalog() {
           title="Il listino è vuoto"
           description="Qui si definiscono i tipi di abbonamento — prezzo, durata, fino a quando si vendono — da assegnare poi ai soci."
         />
+      ) : ordinati.length === 0 ? (
+        <EmptyState
+          icon={BookOpen}
+          title="Nessun tipo in questo stato"
+          description="Scegli «Tutti i tipi» per vedere l'intero listino."
+        />
       ) : (
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {ordinati.map(plan => {
+        {righe.map(plan => {
           const venditaChiusa = plan.vendibile_fino_al && oggi > plan.vendibile_fino_al;
           return (
             // Altezza fissa e righe fisse: le note occupano sempre tre righe, piene o vuote, così
@@ -196,6 +231,7 @@ export default function PlansCatalog() {
         })}
       </div>
       )}
+      <Paginazione pagina={paginaVista} totale={ordinati.length} perPagina={PER_PAGINA} onCambia={cambiaPagina} />
 
       <Dialog open={showForm} onOpenChange={setShowForm}>
         <DialogContent className="max-w-sm">
