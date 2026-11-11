@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { api } from "@/core/api/client";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/ui/primitivi/button";
 import { Input } from "@/ui/primitivi/input";
 import { Label } from "@/ui/primitivi/label";
@@ -15,6 +15,9 @@ import { LoadingState } from "@/ui/Spinner";
 import { EmptyState, ErrorState } from "@/ui/StateViews";
 import { formatData } from "@/core/domain/format";
 import { FASI, SEGNALI, fase as faseDi, regoleStati } from "@/core/domain/segnali";
+import { corrispondeRicerca } from "@/core/domain/ricerca";
+import { paginaDi } from "@/core/domain/paginazione";
+import Paginazione from "@/ui/Paginazione";
 import Iscrivi from "@/staff/components/soci/Iscrivi";
 import Contatta from "@/staff/components/soci/Contatta";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/ui/primitivi/dialog";
@@ -35,6 +38,8 @@ const ORDINAMENTI = [
 // la tabella ha le colonne del motore dei segnali. Se il browser non lascia salvare, valgono le tile.
 const CHIAVE_VISTA = "grip.soci.vista";
 const VISTE = ["tile", "tabella"];
+// Le tile fanno 3×4; la tabella sta in uno schermo.
+const PER_PAGINA = { tile: 12, tabella: 25 };
 function vistaSalvata() {
   try { const v = localStorage.getItem(CHIAVE_VISTA); return VISTE.includes(v) ? v : "tile"; } catch { return "tile"; }
 }
@@ -113,20 +118,38 @@ function PulsanteContatta({ socio, onApri, className = "" }) {
  */
 export default function MembersList() {
   const [parametri, setParametri] = useSearchParams();
-  // I filtri stanno nell'indirizzo, come la vista dei contatti: "Assenti" si tiene nei preferiti.
+  const location = useLocation();
+  const navigate = useNavigate();
+  // Filtri, ricerca, ordine e pagina stanno nell'indirizzo, come la vista dei contatti: "Assenti"
+  // si tiene nei preferiti, e «Torna ai soci» riporta alla stessa pagina.
   const filtroFase = FASI.some((f) => f.valore === parametri.get("fase")) ? parametri.get("fase") : TUTTI;
   const filtroSegnale = SEGNALI.some((s) => s.valore === parametri.get("segnale")) ? parametri.get("segnale") : NESSUNO;
-  const filtra = (chiave, valore, vuoto) => {
+  const ordine = ORDINAMENTI.some((o) => o.valore === parametri.get("ordine")) ? parametri.get("ordine") : "nome";
+  const pagina = Number(parametri.get("pagina")) || 1;
+  // Qualunque cambio dell'elenco (filtro, ricerca, ordine, vista) riporta a pagina 1.
+  const aggiorna = (cambi) => {
     const prossimi = new URLSearchParams(parametri);
-    if (valore === vuoto) prossimi.delete(chiave); else prossimi.set(chiave, valore);
+    prossimi.delete("pagina");
+    for (const [chiave, valore] of Object.entries(cambi)) {
+      if (valore === null) prossimi.delete(chiave); else prossimi.set(chiave, valore);
+    }
     setParametri(prossimi, { replace: true });
+  };
+  const filtra = (chiave, valore, vuoto) => aggiorna({ [chiave]: valore === vuoto ? null : valore });
+  const cambiaPagina = (p) => {
+    aggiorna({ pagina: p > 1 ? String(p) : null });
+    window.scrollTo({ top: 0 });
   };
 
   const [dati, setDati] = useState(null);
-  const [search, setSearch] = useState("");
-  const [ordine, setOrdine] = useState("nome");
+  // Il testo scritto vive qui e va nell'indirizzo a ogni tasto: letto solo dall'indirizzo, la
+  // casella resterebbe un passo indietro mentre si scrive.
+  const [search, setSearch] = useState(() => parametri.get("q") ?? "");
+  const cerca = (testo) => { setSearch(testo); aggiorna({ q: testo.trim() ? testo : null }); };
   const [vista, setVista] = useState(vistaSalvata);
-  const scegliVista = (v) => { setVista(v); salvaVista(v); };
+  const scegliVista = (v) => { setVista(v); salvaVista(v); aggiorna({}); };
+  // Chi apre un socio porta con sé l'indirizzo dell'elenco: «Torna ai soci» ci riporta.
+  const daQui = { da: location.search };
   // "Iscrivi", per chi entra direttamente senza essere stato un contatto.
   const [showForm, setShowForm] = useState(false);
   const [errore, setErrore] = useState(null);
@@ -145,16 +168,14 @@ export default function MembersList() {
 
   const elenco = useMemo(() => {
     if (!dati) return [];
-    const cerca = search.trim().toLowerCase();
-    const cifre = cerca.replace(/\D/g, "");
     const criterio = ORDINAMENTI.find((o) => o.valore === ordine) ?? ORDINAMENTI[0];
     return dati.persone
       // Senza filtro di stato gli archiviati non si mostrano: non frequentano più, ma si ritrovano.
       .filter((s) => filtroFase !== TUTTI || s.fase !== "archiviato")
-      .filter((s) => !cerca || [s.nome, s.email, s.codice_socio].some((v) => v && v.toLowerCase().includes(cerca))
-        || (cifre.length >= 3 && (s.telefono ?? "").replace(/\D/g, "").includes(cifre)))
+      .filter((s) => corrispondeRicerca(s, search))
       .sort(criterio.confronta);
   }, [dati, search, ordine, filtroFase]);
+  const { righe, pagina: paginaVista } = paginaDi(elenco, pagina, PER_PAGINA[vista]);
 
   if (errore) return <ErrorState error={errore} onRetry={loadData} />;
   if (!dati) return <LoadingState minHeight="h-64" />;
@@ -171,18 +192,18 @@ export default function MembersList() {
         </Button>
       </PageHeader>
 
-      <div className="flex flex-col lg:flex-row lg:items-center gap-3 mb-4">
-        <div className="relative flex-1 max-w-sm">
+      <div className="space-y-3 mb-4">
+        <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input
             placeholder="Nome, codice, telefono o email..."
             aria-label="Cerca un socio"
             value={search}
-            onChange={e => setSearch(e.target.value)}
+            onChange={e => cerca(e.target.value)}
             className="pl-9"
           />
         </div>
-        <div className="flex flex-wrap items-center gap-2 lg:ml-auto">
+        <div className="flex flex-wrap items-center gap-2">
           <Label htmlFor="fase-soci" className="sr-only">Stato</Label>
           <Select value={filtroFase} onValueChange={(v) => filtra("fase", v, TUTTI)}>
             <SelectTrigger id="fase-soci" className="w-[200px]"><SelectValue /></SelectTrigger>
@@ -213,7 +234,7 @@ export default function MembersList() {
             ))}
           </div>
           <Label htmlFor="ordina-soci" className="sr-only">Ordina per</Label>
-          <Select value={ordine} onValueChange={setOrdine}>
+          <Select value={ordine} onValueChange={(v) => aggiorna({ ordine: v === "nome" ? null : v })}>
             <SelectTrigger id="ordina-soci" className="w-[200px]"><SelectValue /></SelectTrigger>
             <SelectContent>
               {ORDINAMENTI.map((o) => <SelectItem key={o.valore} value={o.valore}>{o.etichetta}</SelectItem>)}
@@ -234,7 +255,7 @@ export default function MembersList() {
         />
       ) : vista === "tile" ? (
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {elenco.map((s) => (
+          {righe.map((s) => (
             // Tutta la tile apre la scheda (il link del nome la copre, `after:inset-0`), ma un
             // bottone dentro un link non è HTML valido: "Contatta" sta sopra, fuori dal link.
             <div key={s.socio_id} className="relative">
@@ -246,7 +267,7 @@ export default function MembersList() {
                     <AvatarSocio socio={{ full_name: s.nome, nome: s.nome_proprio, cognome: s.nome?.slice((s.nome_proprio ?? "").length), foto_url: s.foto_url }} />
                     <div className="min-w-0 flex-1">
                       <h3 className="font-medium text-sm truncate" title={s.nome}>
-                        <Link to={`/crm/soci/${s.socio_id}`} className="after:absolute after:inset-0 after:rounded-lg focus:outline-none focus-visible:after:ring-2 focus-visible:after:ring-ring">{s.nome}</Link>
+                        <Link to={`/crm/soci/${s.socio_id}`} state={daQui} className="after:absolute after:inset-0 after:rounded-lg focus:outline-none focus-visible:after:ring-2 focus-visible:after:ring-ring">{s.nome}</Link>
                       </h3>
                       <p className="text-xs text-muted-foreground font-mono">{s.codice_socio}</p>
                       <BadgeStato socio={s} soglie={dati.soglie} className="mt-1" />
@@ -286,10 +307,13 @@ export default function MembersList() {
               </tr>
             </thead>
             <tbody>
-              {elenco.map((s) => (
-                <tr key={s.socio_id} className="border-b border-border/50 last:border-0 hover:bg-muted/30">
+              {righe.map((s) => (
+                // Tutta la riga apre la scheda. Il nome resta un link (tastiera, nuova scheda): il
+                // clic su un link o un bottone lo lascia a loro, se no si navigherebbe due volte.
+                <tr key={s.socio_id} className="border-b border-border/50 last:border-0 hover:bg-muted/30 cursor-pointer"
+                  onClick={(e) => { if (!e.target.closest("a,button")) navigate(`/crm/soci/${s.socio_id}`, { state: daQui }); }}>
                   <td className="py-3 px-4">
-                    <Link to={`/crm/soci/${s.socio_id}`} className="font-medium hover:underline">{s.nome}</Link>
+                    <Link to={`/crm/soci/${s.socio_id}`} state={daQui} className="font-medium hover:underline">{s.nome}</Link>
                     <span className="block text-xs text-muted-foreground font-mono">{s.codice_socio}</span>
                   </td>
                   <td className="py-3 px-4"><BadgeStato socio={s} soglie={dati.soglie} /></td>
@@ -306,6 +330,7 @@ export default function MembersList() {
           </table>
         </div>
       )}
+      <Paginazione pagina={paginaVista} totale={elenco.length} perPagina={PER_PAGINA[vista]} onCambia={cambiaPagina} />
 
       <Iscrivi aperto={showForm} onChiudi={() => setShowForm(false)} />
       <Contatta socio={daContattare} onChiudi={() => setDaContattare(null)} />

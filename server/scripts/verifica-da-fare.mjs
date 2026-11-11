@@ -168,14 +168,18 @@ try {
 	await pg.getByRole('button', { name: 'Che cosa vogliono dire gli stati' }).click();
 	controlla('La legenda degli stati', await pg.getByRole('heading', { name: 'Gli stati dei soci' }).isVisible());
 	await pg.keyboard.press('Escape');
+	// L'elenco è a pagine: si cerca il socio per nome, come fa la segreteria.
+	await pg.getByLabel('Cerca un socio').fill(`Marco Rinnovi${lettere}`);
 	await pg.getByRole('button', { name: `Contatta Marco Rinnovi${lettere}` }).click();
 	const dialogo = pg.getByRole('dialog');
 	controlla('Contatta: chiama, WhatsApp, SMS, email', (await dialogo.getByRole('link').allInnerTexts()).join(',').replace(/\s/g, '') === 'Chiama,WhatsApp,SMS,Email', await dialogo.innerText());
 	await pg.screenshot({ path: schermata('4-contatta'), fullPage: true });
 	await pg.keyboard.press('Escape');
 	await pg.getByRole('button', { name: /Tile/ }).click();
+	await pg.getByLabel('Cerca un socio').fill(`Sara Documenti${lettere}`);
 	await pg.getByRole('button', { name: `Contatta Sara Documenti${lettere}` }).click();
-	controlla('Contatta dalla tile non apre la scheda', pg.url().endsWith('/crm') && await pg.getByRole('dialog').isVisible(), pg.url());
+	// La ricerca sta nell'indirizzo (`?q=`): conta che non si sia aperta la scheda.
+	controlla('Contatta dalla tile non apre la scheda', !pg.url().includes('/crm/soci/') && await pg.getByRole('dialog').isVisible(), pg.url());
 	await pg.keyboard.press('Escape');
 
 	// --- 4. La dashboard ---------------------------------------------------------------------------
