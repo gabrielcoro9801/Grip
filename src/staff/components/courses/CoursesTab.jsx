@@ -20,7 +20,8 @@ import { NOTE_CORSO_MASSIMO, DISDETTA_MASSIMA_ORE } from "@/core/domain/corsi";
 // finestre permetteva di correggere quello che si era appena scritto. Chi non trova la categoria
 // che gli serve la crea nella sua pagina, e torna qui.
 export default function CoursesTab({ data, reload }) {
-  const { courses, categories, instructors, events } = data;
+  // `events` il layout non lo carica più (M8): finché C-4 non sposta il controllo, decide il server.
+  const { courses, categories, instructors, events = [] } = data;
   const { staffUser } = useStaffAuth();
   const puoModificare = canEdit(staffUser?.ruolo, "calendar");
   const { toast } = useToast();

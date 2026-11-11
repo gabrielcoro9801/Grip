@@ -4,15 +4,12 @@ import PageHeader from "@/staff/components/PageHeader";
 import CalendarView from "@/staff/components/courses/CalendarView";
 
 export default function Calendario() {
-  const { data, reload } = useOutletContext();
+  const { data } = useOutletContext();
 
   return (
     <>
-      <PageHeader
-        title="Calendario"
-        description="Quando i corsi si tengono davvero: una lezione è un corso messo a un'ora, in una sala, con un istruttore."
-      />
-      <CalendarView data={data} reload={reload} />
+      <PageHeader title="Calendario" />
+      <CalendarView data={data} />
     </>
   );
 }

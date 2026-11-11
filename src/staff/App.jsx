@@ -32,7 +32,8 @@ const Andamento = lazy(() => import('@/staff/pages/lead/Andamento'));
 const Canali = lazy(() => import('@/staff/pages/lead/Canali'));
 const CorsiLayout = lazy(() => import('@/staff/pages/corsi/CorsiLayout'));
 const Calendario = lazy(() => import('@/staff/pages/corsi/Calendario'));
-const Prenotazioni = lazy(() => import('@/staff/pages/corsi/Prenotazioni'));
+const DettaglioLezione = lazy(() => import('@/staff/pages/corsi/DettaglioLezione'));
+const Sessioni = lazy(() => import('@/staff/pages/corsi/Sessioni'));
 const CatalogoCorsi = lazy(() => import('@/staff/pages/corsi/CatalogoCorsi'));
 const Sale = lazy(() => import('@/staff/pages/corsi/Sale'));
 const Istruttori = lazy(() => import('@/staff/pages/corsi/Istruttori'));
@@ -97,7 +98,10 @@ export default function App() {
                     Lead, e ogni voce ha un indirizzo che si può mandare a un collega. */}
                 <Route path="/calendario" element={<PermissionGate module="calendar"><CorsiLayout /></PermissionGate>}>
                   <Route index element={<Calendario />} />
-                  <Route path="prenotazioni" element={<Prenotazioni />} />
+                  <Route path="lezioni/:id" element={<DettaglioLezione />} />
+                  <Route path="sessioni" element={<Sessioni />} />
+                  {/* Prenotazioni è diventata Sessioni: le prenotazioni di una lezione stanno nella sua pagina. */}
+                  <Route path="prenotazioni" element={<Navigate to="/calendario/sessioni" replace />} />
                   <Route path="corsi" element={<CatalogoCorsi />} />
                   <Route path="sale" element={<Sale />} />
                   <Route path="istruttori" element={<Istruttori />} />
