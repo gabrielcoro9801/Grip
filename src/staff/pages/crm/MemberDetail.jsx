@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { api } from "@/core/api/client";
 import { useStaffAuth } from "@/staff/lib/StaffAuthContext";
-import { useParams, Link, useLocation, useSearchParams } from "react-router-dom";
+import { useParams, Link, useLocation } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/ui/primitivi/card";
 import { Button } from "@/ui/primitivi/button";
 import { Badge } from "@/ui/primitivi/badge";
@@ -85,9 +85,6 @@ export default function MemberDetail() {
   const [stato, setStato] = useState(null);
   // Cresce quando un'azione della scheda scrive nel diario (l'archiviazione): il diario si ricarica.
   const [versioneDiario, setVersioneDiario] = useState(0);
-  // Da Da fare si arriva qui per fare la cosa: "Rinnova" apre il nuovo abbonamento, "Carica"
-  // porta ai documenti.
-  const [parametri, setParametri] = useSearchParams();
   // L'elenco da cui si è arrivati (filtri, ricerca, pagina), per «Torna ai soci».
   const { state } = useLocation();
   // Il diario è lavoro della segreteria: lo vede chi segue i soci o i contatti.
@@ -132,14 +129,6 @@ export default function MemberDetail() {
     if (!member?.persona_id || !canAccess(staffUser?.ruolo, "crm_members", "view")) return;
     api.segnali({ persona: member.persona_id }).then((d) => setStato(d.persone[0]?.fase ?? null)).catch(() => setStato(null));
   }, [member?.persona_id, member?.archiviato_il, subscriptions, staffUser?.ruolo]);
-
-  const azione = parametri.get("azione");
-  useEffect(() => {
-    if (loading || !member || !azione) return;
-    if (azione === "rinnova" && puoModificare && !member.archiviato_il) apriVendita();
-    if (azione === "documenti") document.getElementById("documenti")?.scrollIntoView({ behavior: "smooth", block: "start" });
-    setParametri({}, { replace: true });
-  }, [loading, member, azione]);
 
   // Lo stesso codice che il socio vede sul telefono, negli stessi secondi: lo firma il
   // server e lo consegna a entrambi, quindi alla reception basta confrontarli a vista.

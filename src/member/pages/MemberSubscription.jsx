@@ -1,57 +1,11 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { caricaAbbonamenti, richiediRinnovo } from "@/core/api/portale";
+import { caricaAbbonamenti } from "@/core/api/portale";
 import { Card, CardContent } from "@/ui/primitivi/card";
-import { Button } from "@/ui/primitivi/button";
-import { Calendar, AlertCircle, CheckCircle, Clock, CreditCard, PauseCircle, Send } from "lucide-react";
+import { Calendar, AlertCircle, CheckCircle, Clock, CreditCard, PauseCircle } from "lucide-react";
 import StatusBadge from "@/ui/StatusBadge";
 import { LoadingState } from "@/ui/Spinner";
 import { ErrorState } from "@/ui/StateViews";
-import { useToast } from "@/ui/primitivi/use-toast";
-import { formatData, formatDataOra, formatEuro } from "@/core/domain/format";
-
-/**
- * "Richiedi il rinnovo": il socio dice che vuole rinnovare, e la reception lo richiama e incassa
- * di persona. Niente pagamenti online e nessun messaggio che parte: una riga nel suo diario, e lui
- * in cima alla lista di Da fare. Finché la reception non lo sente, qui legge che la richiesta è arrivata.
- */
-function RichiestaRinnovo({ richiesta, onInviata }) {
-  const { toast } = useToast();
-  const [invio, setInvio] = useState(false);
-  if (richiesta) {
-    return (
-      <Card className="border-0 shadow-sm">
-        <CardContent className="p-4 flex items-start gap-3 text-sm">
-          <CheckCircle className="w-5 h-5 text-success shrink-0" aria-hidden="true" />
-          <div>
-            <p className="font-medium">Richiesta di rinnovo inviata</p>
-            <p className="text-muted-foreground">L'abbiamo ricevuta il {formatDataOra(richiesta.il)}: la reception ti contatterà per rinnovare.</p>
-          </div>
-        </CardContent>
-      </Card>
-    );
-  }
-  const invia = async () => {
-    setInvio(true);
-    try {
-      const { richiesta_rinnovo: r } = await richiediRinnovo();
-      onInviata(r);
-    } catch (err) {
-      toast({ title: "Richiesta non inviata", description: err.message, variant: "destructive" });
-    }
-    setInvio(false);
-  };
-  return (
-    <Card className="border-0 shadow-sm">
-      <CardContent className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div className="text-sm">
-          <p className="font-medium">Vuoi rinnovare?</p>
-          <p className="text-muted-foreground">Mandaci la richiesta: la reception ti contatta e lo sistemate insieme.</p>
-        </div>
-        <Button onClick={invia} disabled={invio} className="shrink-0"><Send className="w-4 h-4 mr-1" /> Richiedi il rinnovo</Button>
-      </CardContent>
-    </Card>
-  );
-}
+import { formatData, formatEuro } from "@/core/domain/format";
 
 export default function MemberSubscription() {
   const [dati, setDati] = useState(null);
@@ -76,12 +30,6 @@ export default function MemberSubscription() {
         <h1 className="text-xl font-heading font-bold">Abbonamento</h1>
         <p className="text-sm text-muted-foreground">Stato del tuo abbonamento</p>
       </div>
-
-      {/* La domanda solo a chi sta per scadere o è scaduto (lo dice il server, con la soglia della
-          palestra); una richiesta già fatta si vede sempre. */}
-      {(dati.richiesta_rinnovo || dati.rinnovo_proponibile) && (
-        <RichiestaRinnovo richiesta={dati.richiesta_rinnovo} onInviata={(r) => setDati((d) => ({ ...d, richiesta_rinnovo: r }))} />
-      )}
 
       {subscriptions.length === 0 ? (
         <Card className="border-0 shadow-sm">

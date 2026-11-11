@@ -20,6 +20,8 @@ import { paginaDi } from "@/core/domain/paginazione";
 import Paginazione from "@/ui/Paginazione";
 import Iscrivi from "@/staff/components/soci/Iscrivi";
 import Contatta from "@/staff/components/soci/Contatta";
+import { useStaffAuth } from "@/staff/lib/StaffAuthContext";
+import { canEdit } from "@/staff/lib/permissions";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/ui/primitivi/dialog";
 
 const TUTTI = "tutti";
@@ -81,8 +83,11 @@ function BadgeStato({ socio, soglie, className }) {
   return <StatoSocio title={socio.perche || regola} label={f.etichetta} tone={f.tono} className={className} />;
 }
 
-/** La legenda degli stati: che cosa vuol dire ognuno, con le soglie della palestra. */
-function LegendaStati({ aperta, onChiudi, soglie }) {
+/**
+ * La legenda degli stati: che cosa vuol dire ognuno, con le soglie della palestra. Le soglie di
+ * «In calo» stanno nelle Regole di Da fare, che vede solo l'amministratore: solo lui ha il link.
+ */
+function LegendaStati({ aperta, onChiudi, soglie, amministratore }) {
   return (
     <Dialog open={aperta} onOpenChange={(v) => { if (!v) onChiudi(); }}>
       <DialogContent className="max-w-md">
@@ -98,7 +103,9 @@ function LegendaStati({ aperta, onChiudi, soglie }) {
             </div>
           ))}
         </dl>
-        <Link to="/admin/da-fare" className="text-sm text-primary hover:underline">Le soglie si cambiano nelle Impostazioni di Da fare</Link>
+        {amministratore && (
+          <Link to="/da-fare/regole" className="text-sm text-primary hover:underline">Le soglie di «In calo» si cambiano nelle Regole di Da fare</Link>
+        )}
       </DialogContent>
     </Dialog>
   );
@@ -119,6 +126,7 @@ function PulsanteContatta({ socio, onApri, className = "" }) {
  * quando scade, quanto vengono — e "Contatta" per raggiungerli. Le cose da fare stanno in Da fare.
  */
 export default function MembersList() {
+  const { staffUser } = useStaffAuth();
   const [parametri, setParametri] = useSearchParams();
   const location = useLocation();
   const navigate = useNavigate();
@@ -126,7 +134,9 @@ export default function MembersList() {
   // Filtri, ricerca, ordine e pagina stanno nell'indirizzo, come la vista dei contatti: "Assenti"
   // si tiene nei preferiti, e «Torna ai soci» riporta alla stessa pagina.
   const filtroFase = FASI.some((f) => f.valore === parametri.get("fase")) ? parametri.get("fase") : TUTTI;
-  const filtroSegnale = SEGNALI.some((s) => s.valore === parametri.get("segnale")) ? parametri.get("segnale") : NESSUNO;
+  // Un indirizzo salvato prima che lo scaduto cambiasse nome porta ancora al filtro giusto.
+  const segnaleChiesto = parametri.get("segnale") === "scaduto_recuperabile" ? "scaduto" : parametri.get("segnale");
+  const filtroSegnale = SEGNALI.some((s) => s.valore === segnaleChiesto) ? segnaleChiesto : NESSUNO;
   const ordine = ORDINAMENTI.some((o) => o.valore === parametri.get("ordine")) ? parametri.get("ordine") : "nome";
   const pagina = Number(parametri.get("pagina")) || 1;
   // Qualunque cambio dell'elenco (filtro, ricerca, ordine, vista) riporta a pagina 1. Gli
@@ -347,7 +357,7 @@ export default function MembersList() {
 
       <Iscrivi aperto={showForm} onChiudi={() => setShowForm(false)} />
       <Contatta socio={daContattare} onChiudi={() => setDaContattare(null)} />
-      <LegendaStati aperta={legenda} onChiudi={() => setLegenda(false)} soglie={dati.soglie} />
+      <LegendaStati aperta={legenda} onChiudi={() => setLegenda(false)} soglie={dati.soglie} amministratore={canEdit(staffUser?.ruolo, "admin_users")} />
     </div>
   );
 }

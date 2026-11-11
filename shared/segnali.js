@@ -89,17 +89,6 @@ export const regolaSegnale = (v, soglie = SOGLIE) => PER_SEGNALE[v]?.regola?.(so
 /** Tutti i codici che la palestra può spegnere. */
 export const CODICI_SEGNALE = Object.keys(PER_SEGNALE);
 
-// D-4: da togliere. Le linee del Da fare di prima: le legge ancora Dashboard.jsx, finché le sue
-// tessere non diventano una per avviso (shared/daFare.js). Il server non le usa più. Restano solo
-// i segnali che ci sono ancora.
-export const LINEE = [
-	{ valore: 'rinnovi', etichetta: 'Rinnovi', segnali: ['in_scadenza', 'scaduto'] },
-	{ valore: 'frequenza', etichetta: 'Chi non viene', segnali: ['assente', 'in_calo'] },
-	{ valore: 'documenti', etichetta: 'Documenti', segnali: ['documento_scaduto', 'documento_in_scadenza'] },
-	{ valore: 'compleanni', etichetta: 'Compleanni', segnali: ['compleanno'] },
-	{ valore: 'bancone', etichetta: 'Al bancone', segnali: ['bentornato', 'traguardo'], soloImpostazioni: true },
-];
-
 // Gli ingressi da cui una lezione conta come frequentata: dall'ora prima dell'inizio alla fine.
 export const MINUTI_PRIMA_DELLA_LEZIONE = 60;
 // Quanta storia serve per parlare di calo: la media si fa su 12 settimane, e un socio più giovane

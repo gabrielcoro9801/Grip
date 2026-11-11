@@ -9,13 +9,14 @@ import { LoadingState } from "@/ui/Spinner";
 import { ErrorState } from "@/ui/StateViews";
 import { formatData } from "@/core/domain/format";
 import { etichettaMotivoAbbandono } from "@/core/domain/lead";
-import { LINEE } from "@/core/domain/segnali";
+import { SCHEDE } from "@/staff/components/dafare/avvisi";
 
 /**
- * La home del gestionale: i numeri, e quante persone aspettano in ogni linea di Da fare.
+ * La home del gestionale: i numeri, e quanti avvisi aspettano in ogni scheda di Da fare.
  *
  * Il lavoro non si fa qui: le liste dei rinnovi e dei certificati erano doppioni di Da fare, e
- * sono diventate tessere con il conteggio che portano alla linea. La dashboard è il quadro.
+ * sono diventate tessere, una per avviso, con il numero della barra di Da fare; il clic porta
+ * alla scheda. La dashboard è il quadro.
  *
  * Li conta il server (`GET /api/dashboard`). Prima questa pagina scaricava sette tabelle
  * intere — tutte le prenotazioni e tutte le lezioni comprese — e le incrociava qui. Le regole
@@ -78,20 +79,20 @@ export default function Dashboard() {
         ))}
       </div>
 
-      {/* Da fare: una tessera per linea, con quante persone aspettano. Il clic porta alla linea. */}
+      {/* Da fare: una tessera per avviso, con quanti ne sono aperti. Il clic porta alla scheda. */}
       {daFare && (
         <section aria-labelledby="dashboard-da-fare">
           <h2 id="dashboard-da-fare" className="text-base font-heading font-semibold flex items-center gap-2 mb-3">
             <ListChecks className="w-4 h-4 text-primary" aria-hidden="true" /> Da fare
           </h2>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-            {LINEE.filter((l) => l.valore in daFare).map((l) => (
-              <Link key={l.valore} to={`/da-fare?linea=${l.valore}`}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+            {SCHEDE.filter((s) => s.tipo in daFare).map((s) => (
+              <Link key={s.tipo} to={s.path}
                 className="group rounded-lg bg-card shadow-sm p-3 hover:shadow-md transition-shadow focus:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                 <p className="text-xs font-medium text-muted-foreground flex items-center justify-between gap-1">
-                  {l.etichetta} <ChevronRight className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity" aria-hidden="true" />
+                  {s.etichetta} <ChevronRight className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity" aria-hidden="true" />
                 </p>
-                <p className={`text-2xl font-bold tabular-nums mt-1 ${daFare[l.valore] ? "" : "text-muted-foreground"}`}>{daFare[l.valore]}</p>
+                <p className={`text-2xl font-bold tabular-nums mt-1 ${daFare[s.tipo] ? "" : "text-muted-foreground"}`}>{daFare[s.tipo]}</p>
               </Link>
             ))}
           </div>
