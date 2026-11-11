@@ -86,6 +86,10 @@ try {
 
 	// L'elenco dei soci, filtrato dal server e con il filtro nell'indirizzo.
 	await pagina.goto(`${BASE}/crm?fase=in_scadenza`, { waitUntil: 'networkidle' });
+	// Un browser nuovo apre l'elenco a tile: le righe ci sono solo nella vista a tabella.
+	await pagina.getByRole('button', { name: /Tabella/ }).click();
+	// L'elenco è a pagine: si cerca il socio per nome, come fa la segreteria.
+	await pagina.getByLabel('Cerca un socio').fill(NOME);
 	const nellElenco = pagina.locator('tr', { hasText: NOME });
 	await nellElenco.waitFor();
 	controlla('Elenco soci: filtrato per fase dall\'indirizzo, con le colonne nuove', /In scadenza/.test(await nellElenco.innerText()), await nellElenco.innerText());

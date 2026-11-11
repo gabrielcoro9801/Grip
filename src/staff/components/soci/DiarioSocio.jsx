@@ -60,13 +60,13 @@ export default function DiarioSocio({ socio, puoModificare }) {
   return (
     <Card className="border-0 shadow-sm">
       <CardHeader className="pb-3">
-        <CardTitle className="text-sm font-heading flex items-center gap-2"><BookOpen className="w-4 h-4" /> Diario</CardTitle>
+        <CardTitle className="text-sm font-heading flex items-center gap-2"><BookOpen className="w-4 h-4" /> Note</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         {puoModificare && (
           <form onSubmit={aggiungiNota} className="space-y-2">
             <Textarea
-              rows={2} maxLength={NOTA_DIARIO_MASSIMO} className="resize-none" aria-label="Nuova nota nel diario"
+              rows={2} maxLength={NOTA_DIARIO_MASSIMO} className="resize-none" aria-label="Nuova nota"
               placeholder="Es. chiamato per il rinnovo, ci pensa e ripassa sabato"
               value={nota} onChange={(e) => setNota(e.target.value)}
             />

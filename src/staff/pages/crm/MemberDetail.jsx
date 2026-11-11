@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { api } from "@/core/api/client";
 import { useStaffAuth } from "@/staff/lib/StaffAuthContext";
-import { useParams, Link, useSearchParams } from "react-router-dom";
+import { useParams, Link, useLocation, useSearchParams } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/ui/primitivi/card";
 import { Button } from "@/ui/primitivi/button";
 import { Badge } from "@/ui/primitivi/badge";
@@ -89,6 +89,8 @@ export default function MemberDetail() {
   // Da Da fare si arriva qui per fare la cosa: "Rinnova" apre il nuovo abbonamento, "Carica"
   // porta ai documenti.
   const [parametri, setParametri] = useSearchParams();
+  // L'elenco da cui si è arrivati (filtri, ricerca, pagina), per «Torna ai soci».
+  const { state } = useLocation();
   // Il diario è lavoro della segreteria: lo vede chi segue i soci o i contatti.
   const vedeDiario = canAccess(staffUser?.ruolo, "crm_members", "view") || canAccess(staffUser?.ruolo, "crm_leads", "view");
 
@@ -346,7 +348,7 @@ export default function MemberDetail() {
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-5xl mx-auto space-y-6">
-      <Link to="/crm" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
+      <Link to={"/crm" + (state?.da ?? "")} className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
         <ArrowLeft className="w-4 h-4" /> Torna ai soci
       </Link>
 

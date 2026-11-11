@@ -20,7 +20,7 @@ const SEMAFORO = {
   giallo: { etichetta: "In regola, ma c'è da sistemare", icona: AlertTriangle, classi: "border-warning/40 bg-warning/10", testo: "text-warning" },
   rosso: { etichetta: "Non in regola", icona: XCircle, classi: "border-destructive/40 bg-destructive/10", testo: "text-destructive" },
 };
-const ESITI = { ammesso: "In regola", ammesso_con_avvisi: "Con avvisi", ammesso_in_deroga: "In deroga" };
+const ESITI = { ammesso: "In regola", ammesso_con_avvisi: "Da controllare", ammesso_in_deroga: "In deroga" };
 const TONO_ESITO = { ammesso: "text-success", ammesso_con_avvisi: "text-warning", ammesso_in_deroga: "text-destructive" };
 // Un ingresso di pochi minuti fa: probabilmente è lo stesso, lo si dice ma non si blocca.
 const MINUTI_DOPPIO = 15;

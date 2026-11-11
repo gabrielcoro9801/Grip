@@ -1,30 +1,17 @@
 import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { api } from "@/core/api/client";
-import { Card, CardContent } from "@/ui/primitivi/card";
 import { LoadingState } from "@/ui/Spinner";
 import { ErrorState } from "@/ui/StateViews";
 import { useTema } from "@/ui/tema";
 import { formatData } from "@/core/domain/format";
 import { variazione } from "@/core/domain/lead";
-import { COLORI, Riquadro, useSuggerimento, n } from "@/staff/components/lead/andamento/comuni";
+import { COLORI, Numero, Riquadro, useSuggerimento, n } from "@/staff/components/lead/andamento/comuni";
 import { ArrowDownRight, ArrowUpRight } from "lucide-react";
 
 const ALTEZZA = 140;
 const GRADINI = 5;
 const gradino = (v, massimo) => (v <= 0 || massimo <= 0 ? 0 : Math.max(1, Math.ceil((v / massimo) * GRADINI)));
-
-function Numero({ etichetta, valore, children }) {
-  return (
-    <Card className="border-0 shadow-sm">
-      <CardContent className="p-5 space-y-1">
-        <p className="text-sm text-muted-foreground">{etichetta}</p>
-        <p className="text-3xl font-semibold font-heading">{valore}</p>
-        {children}
-      </CardContent>
-    </Card>
-  );
-}
 
 /**
  * Come si frequenta la palestra: quanti ingressi, quando c'è gente, e chi non viene più. Gli

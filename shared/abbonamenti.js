@@ -206,3 +206,75 @@ export function dataFineAbbonamento(inizio, valore, unita) {
 	if (g > ultimo) return iso(new Date(Date.UTC(annoArrivo, meseArrivo, ultimo)));
 	return iso(new Date(Date.UTC(annoArrivo, meseArrivo, g - 1)));
 }
+
+// L'ordine del listino: in vendita, sospesi, ritirati. Dentro "in vendita", un tipo con la vendita
+// già chiusa (`vendibile_fino_al` passato) va in fondo: non si vende più, anche se nessuno l'ha
+// ritirato. A parità, il nome in ordine alfabetico.
+const ORDINE_STATO_TIPO = Object.fromEntries(STATI_TIPO.map((s, i) => [s.valore, i]));
+
+/** I tipi del listino in ordine (una copia: l'elenco passato non cambia). */
+export function ordinaTipi(tipi, oggi = oggiIso()) {
+	const gruppo = (t) => ORDINE_STATO_TIPO[t.stato] ?? STATI_TIPO.length;
+	const chiusa = (t) => (t.stato === 'attivo' && t.vendibile_fino_al && oggi > giornoDi(t.vendibile_fino_al) ? 1 : 0);
+	return [...(tipi ?? [])].sort((a, b) =>
+		gruppo(a) - gruppo(b) || chiusa(a) - chiusa(b) || String(a.name ?? '').localeCompare(String(b.name ?? ''), 'it'));
+}
+
+/**
+ * Lo stesso giorno, `n` mesi dopo (o prima, con `n` negativo). Se quel giorno non esiste nel mese
+ * d'arrivo si arriva all'ultimo: 31 gennaio + 1 mese = 28 febbraio.
+ * @param {string} giorno YYYY-MM-DD
+ * @returns {string|null} YYYY-MM-DD
+ */
+export function aggiungiMesi(giorno, n) {
+	const [a, m, g] = String(giorno ?? '').slice(0, 10).split('-').map(Number);
+	if (!a || !m || !g || !Number.isInteger(n)) return null;
+	const indice = a * 12 + (m - 1) + n;
+	const anno = Math.floor(indice / 12);
+	const mese = indice - anno * 12;
+	return iso(new Date(Date.UTC(anno, mese, Math.min(g, giorniNelMese(anno, mese)))));
+}
+
+/** I mesi "in scadenza" dei riquadri dei venduti: entro 1, 3 e 6 mesi, cumulativi. */
+export const MESI_IN_SCADENZA = [1, 3, 6];
+
+/**
+ * I numeri sopra la tabella degli abbonamenti venduti, su tutti gli abbonamenti.
+ *
+ * Venduti: per mese di `start_date` (il mese di oggi, quello prima, lo stesso dell'anno prima).
+ * Attivi: `start_date` ≤ oggi ≤ `end_date`, con i soci distinti. In scadenza: fra gli attivi, quelli
+ * che finiscono entro 1, 3 e 6 mesi da oggi — si contano abbonamenti, non soci. Le date sono
+ * quelle che manda il server, già spostate dalle sospensioni (`conSospensioni`).
+ *
+ * @param abbonamenti [{ member_id, start_date, end_date }]
+ * @returns {{ mesi: { corrente: string, precedente: string, annoPrima: string },
+ *   venduti: { corrente: number, precedente: number, annoPrima: number },
+ *   attivi: number, sociAttivi: number, inScadenza: { mesi: number, abbonamenti: number }[] }}
+ *   i mesi come YYYY-MM.
+ */
+export function statisticheVenduti(abbonamenti, oggi = oggiIso()) {
+	const mesi = {
+		corrente: oggi.slice(0, 7),
+		precedente: aggiungiMesi(oggi, -1).slice(0, 7),
+		annoPrima: aggiungiMesi(oggi, -12).slice(0, 7),
+	};
+	const venduti = { corrente: 0, precedente: 0, annoPrima: 0 };
+	const limiti = MESI_IN_SCADENZA.map((n) => aggiungiMesi(oggi, n));
+	const inScadenza = MESI_IN_SCADENZA.map(() => 0);
+	const soci = new Set();
+	let attivi = 0;
+	for (const a of abbonamenti ?? []) {
+		const inizio = giornoDi(a.start_date);
+		const fine = giornoDi(a.end_date);
+		const mese = inizio?.slice(0, 7);
+		for (const chiave of Object.keys(mesi)) if (mese === mesi[chiave]) venduti[chiave] += 1;
+		if (!inizio || inizio > oggi || (fine && fine < oggi)) continue;
+		attivi += 1;
+		soci.add(a.member_id);
+		if (fine) limiti.forEach((limite, i) => { if (fine <= limite) inScadenza[i] += 1; });
+	}
+	return {
+		mesi, venduti, attivi, sociAttivi: soci.size,
+		inScadenza: MESI_IN_SCADENZA.map((n, i) => ({ mesi: n, abbonamenti: inScadenza[i] })),
+	};
+}
