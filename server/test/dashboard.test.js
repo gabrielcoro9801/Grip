@@ -1,14 +1,14 @@
 // La dashboard contata dal server.
 //
 // La pagina scaricava sette tabelle intere e le incrociava nel browser. Ora chiede numeri e
-// quante persone ci sono in ogni linea di Da fare, e ogni parte arriva solo a chi può leggerla.
+// quanti avvisi aperti ci sono in ogni scheda di Da fare, e ogni parte arriva solo a chi può leggerla.
 import test, { before, after, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import bcrypt from 'bcryptjs';
 import { eq, inArray } from 'drizzle-orm';
 import { buildApp } from '../src/app.js';
 import { db, pool } from '../src/db/client.js';
-import { memberDocuments, members, staffAccounts, subscriptions } from '../src/db/schema/index.js';
+import { avvisi, memberDocuments, members, staffAccounts, subscriptions } from '../src/db/schema/index.js';
 import { impostaMatrice, ripristinaMatricePredefinita, PERMESSI_PREDEFINITI } from '../../shared/permissions.js';
 import { oggiIso, spostaGiorni } from '../../shared/giorni.js';
 
@@ -19,6 +19,7 @@ let app;
 const token = {};
 const idAccount = [];
 const idSoci = [];
+const idPersone = [];
 
 before(async () => {
 	app = buildApp({ logger: false });
@@ -35,6 +36,7 @@ before(async () => {
 		{ nome: 'Rinnovato', cognome: 'Già', codiceSocio: `DB${lettere}` },
 	]).returning();
 	idSoci.push(...soci.map((s) => s.id));
+	idPersone.push(...soci.map((s) => s.personaId));
 	await db.insert(subscriptions).values([
 		// In scadenza fra 5 giorni: è un avviso.
 		{ memberId: soci[0].id, planName: 'Mensile', startDate: fra(-25), endDate: fra(5) },
@@ -47,6 +49,7 @@ before(async () => {
 
 after(async () => {
 	ripristinaMatricePredefinita();
+	await db.delete(avvisi).where(inArray(avvisi.personaId, idPersone));
 	await db.delete(memberDocuments).where(inArray(memberDocuments.memberId, idSoci));
 	await db.delete(subscriptions).where(inArray(subscriptions.memberId, idSoci));
 	await db.delete(members).where(inArray(members.id, idSoci));
@@ -58,17 +61,17 @@ after(async () => {
 const leggi = (chi) => app.inject({ method: 'GET', url: '/api/dashboard', headers: { authorization: `Bearer ${token[chi]}` } });
 
 describe('i numeri li conta il server', () => {
-	test('le linee di Da fare: una tessera per linea, contate dal motore dei segnali', async () => {
+	test('gli avvisi di Da fare: cinque tessere, gli stessi numeri della barra', async () => {
 		const dati = (await leggi('admin')).json();
-		const motore = (await app.inject({ method: 'GET', url: '/api/segnali?da_fare=1', headers: { authorization: `Bearer ${token.admin}` } })).json();
-		assert.deepEqual(Object.keys(dati.da_fare).sort(), ['compleanni', 'contatti', 'documenti', 'frequenza', 'nuovi', 'rinnovi']);
+		assert.deepEqual(Object.keys(dati.da_fare).sort(), ['compleanno', 'documento', 'frequenza', 'in_scadenza', 'scaduto']);
 		// Gli altri file di test aggiungono soci mentre questo gira: i totali si confrontano solo nel tipo.
 		assert.ok(Object.values(dati.da_fare).every((n) => Number.isInteger(n) && n >= 0));
-		// Il nostro in scadenza c'è; chi ha già rinnovato no.
-		const rinnovi = motore.persone.filter((p) => p.da_fare.includes('in_scadenza')).map((p) => p.socio_id);
-		assert.ok(rinnovi.includes(idSoci[0]));
-		assert.ok(!rinnovi.includes(idSoci[1]), 'chi ha già rinnovato non va richiamato');
-		assert.ok(dati.da_fare.rinnovi >= 1);
+		assert.ok(dati.da_fare.in_scadenza >= 1);
+		// La dashboard allinea come Da fare: il nostro in scadenza ha il suo avviso; chi ha già rinnovato no.
+		const aperti = (await app.inject({ method: 'GET', url: '/api/avvisi?tipo=in_scadenza', headers: { authorization: `Bearer ${token.admin}` } })).json().avvisi;
+		const soci = aperti.map((a) => a.socio_id);
+		assert.ok(soci.includes(idSoci[0]));
+		assert.ok(!soci.includes(idSoci[1]), 'chi ha già rinnovato non va richiamato');
 	});
 
 	test('i numeri ci sono tutti', async () => {
@@ -84,10 +87,16 @@ describe('i numeri li conta il server', () => {
 });
 
 describe('ogni parte a chi può leggerla', () => {
-	test('senza contatti, niente linea dei contatti', async () => {
-		impostaMatrice({ permessi: { ...PERMESSI_PREDEFINITI, istruttore: { crm_members: ['view'], calendar: ['view'] } }, capacita: {} });
+	test('chi vede i soci riceve le cinque tessere; nessuna dei contatti', async () => {
+		impostaMatrice({ permessi: { ...PERMESSI_PREDEFINITI, istruttore: { crm_members: ['view'], crm_leads: ['view'], calendar: ['view'] } }, capacita: {} });
 		const dati = (await leggi('istruttore')).json();
-		assert.ok(dati.da_fare && !('contatti' in dati.da_fare));
+		assert.equal(Object.keys(dati.da_fare).length, 5);
+		assert.ok(!('contatti' in dati.da_fare));
+	});
+
+	test('chi segue solo i contatti non riceve Da fare: gli avvisi sono dei soci', async () => {
+		impostaMatrice({ permessi: { ...PERMESSI_PREDEFINITI, istruttore: { crm_leads: ['view'], calendar: ['view'] } }, capacita: {} });
+		assert.equal((await leggi('istruttore')).json().da_fare, null);
 	});
 
 	test('chi non segue né soci né contatti non riceve Da fare', async () => {

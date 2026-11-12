@@ -1,5 +1,6 @@
-// Il motore dei segnali contro le rotte vere: Da fare, il "Fatto" che nasconde solo il suo segnale,
-// i no-show calcolati dagli ingressi, la ricerca globale e i permessi.
+// Il motore dei segnali contro le rotte vere: le cose da fare di ogni socio, il contatto del
+// bancone che nasconde solo il suo segnale, la ricerca globale e i permessi. Gli avvisi di Da fare
+// hanno il loro file (da-fare.test.js).
 import test, { before, after, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import bcrypt from 'bcryptjs';
@@ -7,7 +8,7 @@ import { eq, inArray } from 'drizzle-orm';
 import { buildApp } from '../src/app.js';
 import { db, pool } from '../src/db/client.js';
 import {
-	members, persone, staffAccounts, subscriptions, ingressi, rooms, courses, events, sessions, bookings, attivita, memberDocuments,
+	members, persone, staffAccounts, subscriptions, ingressi, attivita, memberDocuments,
 } from '../src/db/schema/index.js';
 import { impostaMatrice, ripristinaMatricePredefinita, PERMESSI_PREDEFINITI } from '../../shared/permissions.js';
 import { oggiIso, spostaGiorni } from '../../shared/giorni.js';
@@ -21,7 +22,6 @@ const fra = (n) => spostaGiorni(oggi, n);
 let app;
 const token = {};
 const id = { soci: {}, account: [], persone: [] };
-const idCorso = {};
 
 const come = (chi, metodo, url, payload) =>
 	app.inject({ method: metodo, url, payload, headers: { authorization: `Bearer ${token[chi]}` } });
@@ -30,7 +30,7 @@ const persona = async (chiave) => {
 	const [s] = await db.select({ personaId: members.personaId }).from(members).where(eq(members.id, id.soci[chiave])).limit(1);
 	return s.personaId;
 };
-const oggiDi = async (chi = 'reception') => (await come(chi, 'GET', '/api/segnali?da_fare=1')).json();
+const elenco = async (chi = 'reception') => (await come(chi, 'GET', '/api/segnali?tipo=soci')).json();
 const riga = (dati, chiave) => dati.persone.find((p) => p.socio_id === id.soci[chiave]);
 
 // "Vede ma non modifica": fino alla fase 3 del CRM era l'istruttore predefinito, e questi test lo
@@ -61,25 +61,6 @@ before(async () => {
 		memberId: s.id, entratoAlle: new Date(`${fra(-g)}T08:00:00Z`), esito: 'ammesso', metodo: 'manuale', registratoDaNome: 'Test',
 	}))));
 
-	// Due lezioni finite, prenotate da Saltalezioni senza entrare; una frequentata da Regolare.
-	const [sala] = await db.insert(rooms).values({ name: `Sala segnali ${t}` }).returning();
-	const [corso] = await db.insert(courses).values({ name: `Corso segnali ${t}` }).returning();
-	const [evento] = await db.insert(events).values({
-		courseId: corso.id, roomId: sala.id, capacity: 10, recurrenceType: 'single', startDate: fra(-6), startTime: '18:00', endTime: '19:00',
-	}).returning();
-	const lezioni = await db.insert(sessions).values([fra(-6), fra(-4)].map((date) => ({
-		eventId: evento.id, date, startTime: '18:00', endTime: '19:00', roomId: sala.id, capacity: 10,
-	}))).returning();
-	await db.insert(bookings).values([
-		...lezioni.map((l) => ({ sessionId: l.id, memberId: id.soci.saltalezioni, memberName: 'Saltalezioni' })),
-		...lezioni.map((l) => ({ sessionId: l.id, memberId: id.soci.regolare, memberName: 'Regolare' })),
-	]);
-	// Regolare entra alle 16:00 UTC: le 18 a Roma d'estate, le 17 d'inverno, dentro la finestra in entrambi i casi.
-	await db.insert(ingressi).values(lezioni.map((l) => ({
-		memberId: id.soci.regolare, entratoAlle: new Date(`${l.date}T16:00:00Z`), esito: 'ammesso', metodo: 'manuale', registratoDaNome: 'Test',
-	})));
-	Object.assign(idCorso, { sala: sala.id, corso: corso.id, evento: evento.id, lezioni: lezioni.map((l) => l.id) });
-
 	const passwordHash = await bcrypt.hash(PASSWORD, 4);
 	const account = await db.insert(staffAccounts).values([
 		{ nome: 'Reception Segnali', email: `sg.rec.${t}@test.local`, passwordHash, ruolo: 'reception' },
@@ -95,11 +76,6 @@ before(async () => {
 after(async () => {
 	ripristinaMatricePredefinita();
 	const tutti = Object.values(id.soci);
-	await db.delete(bookings).where(inArray(bookings.memberId, tutti));
-	await db.delete(sessions).where(eq(sessions.eventId, idCorso.evento));
-	await db.delete(events).where(eq(events.id, idCorso.evento));
-	await db.delete(courses).where(eq(courses.id, idCorso.corso));
-	await db.delete(rooms).where(eq(rooms.id, idCorso.sala));
 	await db.delete(ingressi).where(inArray(ingressi.memberId, tutti));
 	await db.delete(memberDocuments).where(inArray(memberDocuments.memberId, tutti));
 	await db.delete(subscriptions).where(inArray(subscriptions.memberId, tutti));
@@ -110,27 +86,26 @@ after(async () => {
 	await pool.end();
 });
 
-describe('Da fare', () => {
-	test('chi scade fra 3 giorni è nella linea dei rinnovi, con il perché in parole; lo stato resta attivo', async () => {
-		const dati = await oggiDi();
+describe('le cose da fare di un socio', () => {
+	test('chi scade fra 3 giorni ha il rinnovo da fare, con il perché in parole; lo stato resta attivo', async () => {
+		const dati = await elenco();
 		const scade = riga(dati, 'scade');
-		assert.ok(scade, 'in Da fare');
 		assert.equal(scade.fase, 'attivo', 'in scadenza non è uno stato: è una cosa da fare');
 		assert.deepEqual(scade.da_fare, ['in_scadenza']);
 		assert.equal(scade.perche, 'scade tra 3 giorni');
 		assert.equal(scade.scadenza, fra(3));
-		assert.ok(!riga(dati, 'regolare'), 'chi non ha niente da fare non è in Da fare');
+		assert.deepEqual(riga(dati, 'regolare').da_fare, [], 'chi non ha niente da fare');
 		assert.ok(dati.conteggi.segnali.in_scadenza >= 3);
-		assert.ok(dati.conteggi.linee.rinnovi >= 3);
+		assert.ok(!('linee' in dati.conteggi), 'le linee del vecchio Da fare non ci sono più');
+		assert.ok(!('grezzi' in scade), 'i dati grezzi restano sul server');
 	});
 
-	test('"proposto rinnovo" va nel diario, con il suo segnale, e lo nasconde per una settimana', async () => {
+	test('"proposto rinnovo" va nel diario, con il suo segnale, e al bancone lo nasconde per una settimana', async () => {
 		const pid = await persona('contattato');
 		const r = await come('reception', 'POST', `/api/persone/${pid}/contatti`, { canale: 'di_persona', esito: 'proposto_rinnovo', segnale: 'in_scadenza', nota: 'Ci pensa' });
 		assert.equal(r.statusCode, 201, r.body);
-		const dati = await oggiDi();
-		assert.ok(!riga(dati, 'contattato'), 'nascosto da Da fare');
-		const scheda = (await come('reception', 'GET', `/api/segnali?persona=${pid}`)).json().persone[0];
+		assert.deepEqual(riga(await elenco(), 'contattato').da_fare, ['in_scadenza'], 'per lo staff non si nasconde: l\'avviso di Da fare si chiude da sé');
+		const scheda = (await come('reception', 'GET', `/api/segnali?persona=${pid}&pubblico=bancone`)).json().persone[0];
 		assert.equal(scheda.segnali.find((s) => s.codice === 'in_scadenza').nascosto_fino, fra(7));
 		const diario = (await come('reception', 'GET', `/api/persone/${pid}/diario`)).json().attivita;
 		assert.deepEqual(diario.filter((a) => a.autore_nome !== 'Sistema').map((a) => [a.tipo, a.esito, a.nota, a.riferimento]), [['contatto', 'proposto_rinnovo', 'Ci pensa', { segnali: ['in_scadenza'] }]]);
@@ -143,7 +118,7 @@ describe('Da fare', () => {
 		const r = await come('reception', 'POST', `/api/persone/${pid}/contatti`, { canale: 'telefono', segnali: ['in_scadenza'] });
 		assert.equal(r.statusCode, 201, r.body);
 		assert.equal(r.json().attivita.esito, 'fatto');
-		assert.ok(!riga(await oggiDi(), 'rimandato'));
+		assert.deepEqual(riga(await elenco(), 'rimandato').da_fare, ['in_scadenza'], 'per lo staff un contatto non nasconde niente');
 		assert.equal((await come('reception', 'POST', `/api/persone/${pid}/rimanda`, { giorni: 2 })).statusCode, 404);
 	});
 
@@ -154,24 +129,14 @@ describe('Da fare', () => {
 	});
 });
 
-describe('presenze e no-show', () => {
-	test('due lezioni prenotate senza entrare sono due no-show; chi entra nella finestra è presente', async () => {
-		const salta = (await come('reception', 'GET', `/api/segnali?persona=${await persona('saltalezioni')}`)).json().persone[0];
-		assert.ok(salta.da_fare.includes('no_show_ripetuti'), JSON.stringify(salta.segnali));
-		assert.match(salta.perche, /2 no-show in 4 settimane/);
-		const regolare = (await come('reception', 'GET', `/api/segnali?persona=${await persona('regolare')}`)).json().persone[0];
-		assert.deepEqual(regolare.da_fare, []);
-	});
-});
-
 describe('filtri dell\'elenco', () => {
 	test('per stato e per segnale, solo soci', async () => {
 		const perStato = (await come('reception', 'GET', '/api/segnali?tipo=soci&fase=attivo')).json();
 		assert.ok(perStato.persone.every((p) => p.fase === 'attivo' && p.socio_id));
 		assert.ok(riga(perStato, 'contattato'), 'l\'elenco mostra anche chi è già stato seguito');
-		const perSegnale = (await come('reception', 'GET', '/api/segnali?tipo=soci&segnale=no_show_ripetuti')).json();
-		assert.ok(riga(perSegnale, 'saltalezioni'));
-		assert.ok(!riga(perSegnale, 'scade'));
+		const perSegnale = (await come('reception', 'GET', '/api/segnali?tipo=soci&segnale=in_scadenza')).json();
+		assert.ok(riga(perSegnale, 'scade'));
+		assert.ok(!riga(perSegnale, 'saltalezioni'));
 		assert.equal((await come('reception', 'GET', '/api/segnali?fase=in_scadenza')).statusCode, 400, 'non è più uno stato');
 		assert.equal((await come('reception', 'GET', '/api/segnali?fase=boh')).statusCode, 400);
 		assert.equal((await come('reception', 'GET', '/api/segnali?persona=boh')).statusCode, 400);
@@ -201,7 +166,7 @@ describe('i permessi', () => {
 	});
 
 	test('chi vede e basta legge, ma non segna i "Fatto"', async () => {
-		assert.equal((await come('istruttore', 'GET', '/api/segnali?da_fare=1')).statusCode, 200);
+		assert.equal((await come('istruttore', 'GET', '/api/segnali')).statusCode, 200);
 		const pid = await persona('scade');
 		assert.equal((await come('istruttore', 'POST', `/api/persone/${pid}/contatti`, { canale: 'telefono', segnale: 'in_scadenza' })).statusCode, 403);
 	});

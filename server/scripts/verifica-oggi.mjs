@@ -1,10 +1,11 @@
 /**
- * Il giro del CRM, provato in un browser vero: Oggi, l'ingresso, il diario, la dashboard e Ctrl+K.
+ * Il giro del CRM, provato in un browser vero: /oggi, l'ingresso, il diario, la dashboard e Ctrl+K.
  *
- * Un socio con l'abbonamento che scade fra tre giorni deve comparire in Oggi e quando entra (la
- * registrazione dell'ingresso); il "proposto il rinnovo" segnato lì finisce nel diario e lo toglie
- * da Oggi; la dashboard
- * conta gli stessi rinnovi del motore; Ctrl+K lo trova da un numero scritto in un altro formato.
+ * Un socio con l'abbonamento che scade fra tre giorni deve comparire in Da fare (dove porta il
+ * vecchio /oggi) e quando entra (la registrazione dell'ingresso); il "proposto il rinnovo" segnato
+ * lì finisce nel diario, ma non chiude l'avviso: lo chiude il rinnovo. Le cinque tessere della
+ * dashboard contano come la barra di Da fare; Ctrl+K lo trova da un numero scritto in un altro
+ * formato. Le schede, l'Archivio e le Regole le prova verifica-da-fare.mjs.
  *
  * Come si usa:
  *   1. npx vite build        (nella radice: questo script serve il build corrente)
@@ -18,7 +19,7 @@ import { eq, inArray } from 'drizzle-orm';
 import { chromium } from 'playwright';
 import { buildApp } from '../src/app.js';
 import { db, pool } from '../src/db/client.js';
-import { members, persone, staffAccounts, subscriptions, ingressi } from '../src/db/schema/index.js';
+import { members, persone, staffAccounts, subscriptions, ingressi, avvisi, attivita } from '../src/db/schema/index.js';
 import { oggiIso, spostaGiorni } from '../../shared/giorni.js';
 import os from 'node:os';
 import path from 'node:path';
@@ -70,15 +71,17 @@ try {
 	await pagina.locator('input[type=email]').fill(staff.email);
 	await pagina.locator('input[type=password]').fill(PASSWORD);
 	await pagina.locator('button[type=submit]').click();
-	await pagina.getByRole('heading', { name: 'Oggi' }).waitFor();
+	await pagina.getByRole('heading', { name: 'Abbonamenti in scadenza' }).waitFor();
+	controlla('/oggi porta a /da-fare', new URL(pagina.url()).pathname === '/da-fare', pagina.url());
 
-	const riga = pagina.locator('li', { hasText: NOME });
+	// In Da fare un avviso è un <li> con il nome del socio.
+	const riga = pagina.locator('li').filter({ has: pagina.getByRole('link', { name: NOME }) });
 	await riga.waitFor();
-	controlla('Oggi: il socio a −3 giorni c\'è, con il perché', /scade tra 3 giorni/.test(await riga.innerText()), await riga.innerText());
-	controlla('Oggi: Chiama e WhatsApp a portata di pollice', await riga.locator(`a[href="tel:+39340${cifre}"]`).count() === 1
-		&& await riga.locator('a[href^="https://wa.me/39340"]').count() === 1);
+	controlla('Da fare: il socio a −3 giorni è in In scadenza, con il perché', /Abbonamento in scadenza il .* · tra 3 giorni/.test(await riga.innerText()), await riga.innerText());
+	controlla('Da fare: i recapiti a portata di pollice, senza link', await riga.getByRole('button', { name: `Recapiti di ${NOME}` }).isVisible()
+		&& await riga.locator('a[href^="tel:"], a[href^="https://wa.me/"]').count() === 0);
 	const larghezza = await pagina.evaluate(() => document.documentElement.scrollWidth);
-	controlla('Oggi: niente scorrimento orizzontale a 390 px', larghezza <= 390, `${larghezza}px`);
+	controlla('Da fare: niente scorrimento orizzontale a 390 px', larghezza <= 390, `${larghezza}px`);
 	await pagina.screenshot({ path: path.join(os.tmpdir(), 'verifica-oggi-telefono.png'), fullPage: true });
 
 	// L'ingresso registrato dallo staff, da desktop: è lì che si propone il rinnovo.
@@ -107,28 +110,37 @@ try {
 	await pagina.screenshot({ path: path.join(os.tmpdir(), 'verifica-oggi-bancone.png') });
 	controlla('Ingresso: un tocco lo segna nel diario', true);
 
-	await pagina.goto(`${BASE}/oggi`, { waitUntil: 'networkidle' });
-	await pagina.getByRole('heading', { name: 'Oggi' }).waitFor();
-	await pagina.waitForTimeout(500);
-	controlla('Oggi: dopo la proposta il segnale si nasconde', await pagina.locator('li', { hasText: NOME }).count() === 0);
+	// Proporre il rinnovo al bancone non è rinnovare: l'avviso resta finché non si vende.
+	await pagina.goto(`${BASE}/da-fare`, { waitUntil: 'networkidle' });
+	await riga.waitFor();
+	controlla('Da fare: dopo la proposta l\'avviso resta in In scadenza', await riga.count() === 1);
 
 	await pagina.goto(`${BASE}/crm/soci/${id.socio}`, { waitUntil: 'networkidle' });
 	const diario = pagina.getByText('Di persona: proposto il rinnovo');
 	await diario.waitFor();
 	controlla('Scheda: il diario ha "Di persona: proposto il rinnovo"', await diario.isVisible());
-	controlla('Scheda: il segnale c\'è ancora, con il giorno in cui torna', await pagina.getByText(/già seguito, torna il/).first().isVisible());
 	await pagina.screenshot({ path: path.join(os.tmpdir(), 'verifica-oggi-scheda.png'), fullPage: true });
 
-	// La dashboard conta come il motore.
+	// La dashboard: cinque tessere, una per avviso, con i numeri della barra di Da fare.
 	await pagina.goto(`${BASE}/`, { waitUntil: 'networkidle' });
-	await pagina.getByText(NOME).first().waitFor();
+	const tessere = pagina.locator('section[aria-labelledby="dashboard-da-fare"]').getByRole('link');
+	await tessere.first().waitFor();
+	const testi = (await tessere.allInnerTexts()).map((x) => x.replace(/\s+/g, ' ').trim());
 	const conti = await pagina.evaluate(async () => {
 		const h = { authorization: `Bearer ${localStorage.getItem('grip_staff_token')}` };
 		const dash = await (await fetch('/api/dashboard', { headers: h })).json();
-		const motore = await (await fetch('/api/segnali?tipo=soci', { headers: h })).json();
-		return { rinnovi: dash.rinnovi.length, motore: (motore.conteggi.fasi.in_scadenza ?? 0) + (motore.conteggi.fasi.scaduto_recuperabile ?? 0) };
+		const barra = await (await fetch('/api/avvisi?tipo=compleanno', { headers: h })).json();
+		return { tessere: dash.da_fare, barra: barra.conteggi };
 	});
-	controlla('Dashboard: gli stessi rinnovi del motore', conti.rinnovi === conti.motore, JSON.stringify(conti));
+	const ETICHETTE = { in_scadenza: 'In scadenza', scaduto: 'Scaduti', frequenza: 'Frequenza', documento: 'Documenti', compleanno: 'Compleanni' };
+	controlla('Dashboard: cinque tessere, con gli stessi numeri della barra di Da fare',
+		testi.join('|') === Object.entries(ETICHETTE).map(([tipo, e]) => `${e} ${conti.barra[tipo]}`).join('|')
+		&& JSON.stringify(conti.tessere) === JSON.stringify(conti.barra), JSON.stringify({ testi, ...conti }));
+	controlla('Dashboard: il socio a −3 giorni è contato fra gli In scadenza', conti.tessere.in_scadenza >= 1);
+	await tessere.filter({ hasText: 'In scadenza' }).click();
+	await pagina.waitForURL(/\/da-fare$/);
+	controlla('Dashboard: la tessera porta alla scheda', true);
+	await pagina.goto(`${BASE}/`, { waitUntil: 'networkidle' });
 
 	// Ctrl+K, con il numero scritto come lo detta il socio.
 	await pagina.keyboard.press('Control+k');
@@ -145,6 +157,8 @@ try {
 	if (browser) await browser.close();
 	if (app) await app.close();
 	if (id.socio) {
+		await db.delete(avvisi).where(eq(avvisi.personaId, id.persona));
+		await db.delete(attivita).where(eq(attivita.personaId, id.persona));
 		await db.delete(ingressi).where(eq(ingressi.memberId, id.socio));
 		await db.delete(subscriptions).where(eq(subscriptions.memberId, id.socio));
 		await db.delete(members).where(eq(members.id, id.socio));

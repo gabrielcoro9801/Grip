@@ -3,12 +3,10 @@ import { api } from "@/core/api/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/ui/primitivi/card";
 import { Button } from "@/ui/primitivi/button";
 import { Badge } from "@/ui/primitivi/badge";
-import { Input } from "@/ui/primitivi/input";
-import { Label } from "@/ui/primitivi/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/ui/primitivi/dialog";
 import { useToast } from "@/ui/primitivi/use-toast";
 import { useConfirm } from "@/ui/ConfirmDialog";
-import { caricaFile } from "@/staff/lib/uploads";
+import DialogoCaricaDocumento from "@/staff/components/soci/DialogoCaricaDocumento";
 import { formatData } from "@/core/domain/format";
 import { giorniDaOggi } from "@/core/domain/giorni";
 import { hrefSicuro } from "@/ui/utils";
@@ -16,13 +14,10 @@ import {
   TIPI_DOCUMENTO,
   tipoAtteso,
   nomeDocumento,
-  motivoDocumentoNonValido,
   conStatoDocumenti,
   etichettaStatoDocumento,
 } from "@/core/domain/anagrafica";
 import { Archive, ArrowDown, ArrowUp, FileText, Plus, Trash2 } from "lucide-react";
-
-const FORMATI = "application/pdf,image/png,image/jpeg,image/webp";
 
 const TONO_STATO = {
   valido: "bg-success/10 text-success border-success/30",
@@ -136,8 +131,7 @@ function IntestazioneOrdinabile({ campo, ordine, onOrdina }) {
 export default function DocumentiSocio({ socio, documenti, puoModificare, staffUser, onCambio }) {
   const { toast } = useToast();
   const [conferma, dialogoConferma] = useConfirm();
-  const [modulo, setModulo] = useState(null); // { document_type, titolo, expiry_date, file }
-  const [salvando, setSalvando] = useState(false);
+  const [daCaricare, setDaCaricare] = useState(null); // il tipo del documento che si carica (DialogoCaricaDocumento)
   const [archivioAperto, setArchivioAperto] = useState(false);
   const [ordine, setOrdine] = useState({ campo: "caricamento", verso: "desc" });
 
@@ -150,30 +144,6 @@ export default function DocumentiSocio({ socio, documenti, puoModificare, staffU
   }, [conStato, ordine]);
 
   const ordinaPer = (campo) => setOrdine((corrente) => ({ campo, verso: prossimoVerso(campo, corrente) }));
-
-  const apri = (tipo) => setModulo({ document_type: tipo, titolo: "", expiry_date: "", file: null });
-
-  const salva = async (e) => {
-    e.preventDefault();
-    setSalvando(true);
-    try {
-      const { file, ...dati } = modulo;
-      const { file_url } = await caricaFile({ file });
-      await api.entities.MemberDocument.create({
-        ...dati,
-        member_id: socio.id,
-        file_url,
-        file_name: file.name,
-        caricato_da: staffUser?.nome || "",
-      });
-      toast({ title: "Documento caricato" });
-      setModulo(null);
-      onCambio();
-    } catch (err) {
-      toast({ title: "Documento non caricato", description: err.message, variant: "destructive" });
-    }
-    setSalvando(false);
-  };
 
   const elimina = async (doc) => {
     const ok = await conferma({
@@ -191,9 +161,6 @@ export default function DocumentiSocio({ socio, documenti, puoModificare, staffU
       toast({ title: "Non è stato possibile eliminare", description: err.message, variant: "destructive" });
     }
   };
-
-  const motivo = modulo ? (modulo.file ? motivoDocumentoNonValido(modulo) : "Scegli il file da caricare.") : null;
-  const tipoInModulo = TIPI_DOCUMENTO.find((t) => t.valore === modulo?.document_type);
 
   return (
     <Card className="border-0 shadow-sm">
@@ -222,7 +189,7 @@ export default function DocumentiSocio({ socio, documenti, puoModificare, staffU
                   {tipo.etichetta}
                 </h3>
                 {puoModificare && (
-                  <Button size="sm" variant="ghost" className="h-8" onClick={() => apri(tipo.valore)}>
+                  <Button size="sm" variant="ghost" className="h-8" onClick={() => setDaCaricare(tipo.valore)}>
                     <Plus className="w-3 h-3 mr-1" /> Carica
                   </Button>
                 )}
@@ -304,35 +271,7 @@ export default function DocumentiSocio({ socio, documenti, puoModificare, staffU
         </DialogContent>
       </Dialog>
 
-      <Dialog open={!!modulo} onOpenChange={(aperto) => !aperto && setModulo(null)}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader><DialogTitle>Carica — {tipoInModulo?.etichetta}</DialogTitle></DialogHeader>
-          {modulo && (
-            <form onSubmit={salva} className="space-y-3">
-              {modulo.document_type === "altro" && (
-                <div>
-                  <Label htmlFor="doc-titolo">Che documento è *</Label>
-                  <Input id="doc-titolo" required placeholder="Es. Contratto, Modulo tesseramento" value={modulo.titolo} onChange={(e) => setModulo({ ...modulo, titolo: e.target.value })} />
-                </div>
-              )}
-              <div>
-                <Label htmlFor="doc-file">File *</Label>
-                <Input id="doc-file" type="file" accept={FORMATI} required onChange={(e) => setModulo({ ...modulo, file: e.target.files?.[0] ?? null })} />
-                <p className="text-xs text-muted-foreground mt-1">PDF o immagine</p>
-              </div>
-              <div>
-                <Label htmlFor="doc-scadenza">Data di scadenza{tipoInModulo?.scadenza ? " *" : ""}</Label>
-                <Input id="doc-scadenza" type="date" required={tipoInModulo?.scadenza} value={modulo.expiry_date} onChange={(e) => setModulo({ ...modulo, expiry_date: e.target.value })} />
-              </div>
-              {/* `motivo` non si scrive: gli asterischi dicono già cosa manca, e il pulsante
-                  spento lo conferma. Resta a tenere spento il pulsante. */}
-              <Button type="submit" className="w-full" disabled={Boolean(motivo) || salvando}>
-                {salvando ? "Caricamento..." : "Carica documento"}
-              </Button>
-            </form>
-          )}
-        </DialogContent>
-      </Dialog>
+      <DialogoCaricaDocumento socioId={socio.id} tipo={daCaricare} caricatoDa={staffUser?.nome || ""} onChiudi={() => setDaCaricare(null)} onFatto={onCambio} />
     </Card>
   );
 }

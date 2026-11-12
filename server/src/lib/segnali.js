@@ -1,21 +1,20 @@
 // Le persone della palestra con il loro stato e i loro segnali, calcolati in blocco.
 //
 // Le regole stanno in shared/segnali.js; qui si raccolgono i dati con poche query aggregate —
-// abbonamenti, documenti, ultimo ingresso e conteggi a 4 e 12 settimane, prenotazioni recenti,
-// l'ultimo "Fatto" per segnale dal diario — e si passa ogni persona al motore, in memoria. Lo leggono Da fare,
-// l'elenco dei soci, la scheda e la dashboard: un solo conto per tutti.
+// abbonamenti, documenti, ultimo ingresso e conteggi a 4 e 12 settimane, l'ultimo contatto del
+// bancone per segnale dal diario — e si passa ogni persona al motore, in memoria. Lo leggono Da
+// fare (lib/avvisi.js), l'elenco dei soci, la scheda e la dashboard: un solo conto per tutti.
 //
 // ponytail: tutto in memoria, per palestra; regge migliaia di persone. Una vista materializzata
 // solo se le misure lo chiederanno.
-import { and, count, eq, gte, inArray, lte, max, ne, sql } from 'drizzle-orm';
+import { and, count, eq, gte, inArray, max, ne, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
-	persone, members, trattative, memberDocuments, ingressi, bookings, sessions, attivita,
+	persone, members, trattative, memberDocuments, ingressi, attivita,
 } from '../db/schema/index.js';
 import { iscrizioniPerSocio } from './iscrizioni.js';
-import { translateToSnakeCase } from '../entities/columnMaps.js';
 import { soglieEnte } from './impostazioni.js';
-import { segnaliPersona, esitoPrenotazione, TIPI_CONTATTO } from '../../../shared/segnali.js';
+import { segnaliPersona } from '../../../shared/segnali.js';
 import { STATI_APERTI } from '../../../shared/lead.js';
 import { oggiIso, spostaGiorni } from '../../../shared/giorni.js';
 
@@ -39,7 +38,9 @@ const raggruppa = (righe, chiave) => {
  *
  * @returns {{ oggi, soglie, persone: [{ persona_id, socio_id, trattativa_id, nome, telefono, email,
  *   codice_socio, archiviato_il, fase, segnali, ultimo_ingresso, ingressi_4, media_4, scadenza,
- *   abbonamento, valido }] }}
+ *   abbonamento, valido, grezzi }] }}
+ *   `grezzi` ({ archiviato_il, date_of_birth, iscrizioni, documenti }) serve a Da fare per capire
+ *   come si è chiuso un avviso: resta sul server, le rotte che mandano le persone al browser lo tolgono.
  */
 export async function situazioni({ personaId = null, conn = db, adesso = new Date() } = {}) {
 	const oggi = oggiIso(adesso);
@@ -57,7 +58,7 @@ export async function situazioni({ personaId = null, conn = db, adesso = new Dat
 	// Con una persona sola si legge solo quello che è suo.
 	const suoi = (colonna) => (personaId ? inArray(colonna, idSoci.length ? idSoci : ['00000000-0000-0000-0000-000000000000']) : undefined);
 
-	const [elencoTrattative, iscrizioni, documenti, conteggi, misurati, prenotazioni, recenti, contatti, fatti] = await Promise.all([
+	const [elencoTrattative, iscrizioni, documenti, conteggi, misurati, fatti] = await Promise.all([
 		conn.select().from(trattative)
 			.where(and(ne(trattative.stato, 'iscritto'), personaId ? eq(trattative.personaId, personaId) : undefined)),
 		// Con le date dopo le sospensioni (lib/iscrizioni.js).
@@ -76,22 +77,8 @@ export async function situazioni({ personaId = null, conn = db, adesso = new Dat
 		}).from(ingressi).where(suoi(ingressi.memberId)).groupBy(ingressi.memberId),
 		// Una palestra che non registra gli ingressi non ha assenti: avrebbe solo soci "mai entrati".
 		conn.select({ id: ingressi.id }).from(ingressi).where(gte(ingressi.entratoAlle, mezzanotteRoma(dal4))).limit(1),
-		conn.select({ member_id: bookings.memberId, data: sessions.date, inizio: sessions.startTime, fine: sessions.endTime })
-			.from(bookings).innerJoin(sessions, eq(bookings.sessionId, sessions.id))
-			.where(and(
-				eq(bookings.status, 'confirmed'), eq(sessions.status, 'active'),
-				gte(sessions.date, dal4), lte(sessions.date, oggi), suoi(bookings.memberId),
-			)),
-		conn.select({ member_id: ingressi.memberId, alle: ingressi.entratoAlle })
-			.from(ingressi).where(and(gte(ingressi.entratoAlle, mezzanotteRoma(dal4)), suoi(ingressi.memberId))),
-		conn.select({
-			persona_id: attivita.personaId,
-			// Istanti, non giorni: richiesta e telefonata possono essere dello stesso giorno.
-			riscontro: sql`max(${attivita.createdDate}) filter (where ${inArray(attivita.tipo, TIPI_CONTATTO)} and ${attivita.esito} is distinct from 'nessuna_risposta')`,
-			richiesta: sql`max(${attivita.createdDate}) filter (where ${attivita.tipo} = 'richiesta_rinnovo')`,
-		}).from(attivita).where(personaId ? eq(attivita.personaId, personaId) : undefined).groupBy(attivita.personaId),
-		// L'ultimo "Fatto" per ogni segnale: il contatto salva per quali segnali è stato fatto
-		// (`riferimento.segnali`), e nasconde solo quelli.
+		// L'ultimo contatto per ogni segnale: il contatto salva per quali segnali è stato fatto
+		// (`riferimento.segnali`), e al bancone nasconde solo quelli (shared/segnali.js, nascondi).
 		conn.execute(sql`
 			select a.persona_id, s.codice, max(a.created_date) as il
 			from ${attivita} a cross join lateral jsonb_array_elements_text(a.riferimento->'segnali') as s(codice)
@@ -109,12 +96,8 @@ export async function situazioni({ personaId = null, conn = db, adesso = new Dat
 			trattativaDi.set(t.personaId, t);
 		}
 	}
-	const iscrizioniDi = iscrizioni;
 	const documentiDi = raggruppa(documenti, 'member_id');
-	const prenotazioniDi = raggruppa(prenotazioni, 'member_id');
-	const recentiDi = raggruppa(recenti, 'member_id');
 	const conteggiDi = new Map(conteggi.map((c) => [c.member_id, c]));
-	const contattiDi = new Map(contatti.map((c) => [c.persona_id, c]));
 	const fattiDi = new Map();
 	for (const f of fatti.rows ?? fatti) {
 		if (!fattiDi.has(f.persona_id)) fattiDi.set(f.persona_id, {});
@@ -133,21 +116,14 @@ export async function situazioni({ personaId = null, conn = db, adesso = new Dat
 				prima: c?.prima ?? null, oggi: c?.oggi ?? 0,
 			}
 			: null;
-		const istanti = (recentiDi.get(a.socio_id) ?? []).map((r) => r.alle);
-		const noShow = misura
-			? (prenotazioniDi.get(a.socio_id) ?? []).filter((p) => esitoPrenotazione(p, istanti, adesso) === 'no_show').length
-			: 0;
-		const diario = contattiDi.get(a.persona_id);
+		const iscrizioniSocio = iscrizioni.get(a.socio_id) ?? [];
+		const documentiSocio = documentiDi.get(a.socio_id) ?? [];
 		const { fase, segnali, copertura } = segnaliPersona({
 			socio: a.socio_id ? { created_date: a.created_date, archiviato_il: a.archiviato_il, date_of_birth: a.date_of_birth } : null,
-			trattativa: trattativa ? translateToSnakeCase(trattative, trattativa) : null,
-			iscrizioni: iscrizioniDi.get(a.socio_id) ?? [],
-			documenti: documentiDi.get(a.socio_id) ?? [],
-			ingressi: ingressiSocio, noShow,
-			contatti: {
-				perSegnale: fattiDi.get(a.persona_id) ?? {},
-				riscontro: diario?.riscontro ?? null, richiestaRinnovo: diario?.richiesta ?? null,
-			},
+			iscrizioni: iscrizioniSocio,
+			documenti: documentiSocio,
+			ingressi: ingressiSocio,
+			contatti: { perSegnale: fattiDi.get(a.persona_id) ?? {} },
 			oggi, soglie,
 		});
 		elenco.push({
@@ -170,6 +146,8 @@ export async function situazioni({ personaId = null, conn = db, adesso = new Dat
 			sospensione: copertura?.sospensione ? { dal: copertura.sospensione.dal, al: copertura.sospensione.al } : null,
 			// Entrato oggi, dal tornello o registrato a mano: i segnali del bancone gli valgono ancora.
 			entrato_oggi: Boolean(c?.oggi),
+			// I dati da cui Da fare capisce come si è chiuso un avviso (shared/daFare.js, esitoChiusura).
+			grezzi: { archiviato_il: a.archiviato_il, date_of_birth: a.date_of_birth, iscrizioni: iscrizioniSocio, documenti: documentiSocio },
 		});
 	}
 	return { oggi, soglie, persone: elenco };

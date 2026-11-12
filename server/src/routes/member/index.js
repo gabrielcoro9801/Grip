@@ -1,11 +1,10 @@
-import { eq, and, gte, lte, inArray, ne, desc, isNull, count, sql } from 'drizzle-orm';
+import { eq, and, gte, lte, inArray, ne, desc, isNull, count } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import {
 	members, memberDocuments, qrAccessi,
-	courses, categories, instructors, rooms, events, sessions, bookings, notifiche, consensi, attivita,
+	courses, categories, instructors, rooms, events, sessions, bookings, notifiche, consensi,
 } from '../../db/schema/index.js';
 import { iscrizioniDelSocio } from '../../lib/iscrizioni.js';
-import { richiestaRinnovoAperta, TIPI_CONTATTO } from '../../../../shared/segnali.js';
 import { consensiDi } from '../../lib/consensi.js';
 import { tipoConsensoValido } from '../../../../shared/consensi.js';
 import { getUserFromRequest } from '../../auth/tokens.js';
@@ -163,12 +162,8 @@ export default async function memberRoutes(fastify) {
 	});
 
 	fastify.get('/abbonamenti', async (request) => {
-		const [righe, richiesta, soglie] = await Promise.all([iscrizioniDelSocio(request.idSocio), richiestaRinnovoDi(request.idSocio), soglieEnte()]);
+		const [righe, soglie] = await Promise.all([iscrizioniDelSocio(request.idSocio), soglieEnte()]);
 		const oggi = oggiIso();
-		// "Vuoi rinnovare?" ha senso quando la copertura sta per finire (la soglia di Da fare) o è
-		// già finita: a chi scade fra 200 giorni la domanda in cima alla pagina era rumore.
-		const ultimaFine = righe.map((a) => a.end_date).filter(Boolean).sort().at(-1);
-		const rinnovoProponibile = !ultimaFine || giorniDaOggi(ultimaFine) <= soglie.abbonamentoInScadenzaGiorni;
 
 		return {
 			abbonamenti: righe.reverse().map((a) => ({
@@ -185,29 +180,7 @@ export default async function memberRoutes(fastify) {
 				// Quelle in corso o in arrivo: le passate sono già nella scadenza.
 				sospensioni: a.sospensioni.filter((s) => s.al >= oggi).map((s) => ({ dal: s.dal, al: s.al, riprende_il: spostaGiorni(s.al, 1) })),
 			})),
-			// La richiesta di rinnovo che aspetta la reception, o null.
-			richiesta_rinnovo: richiesta,
-			rinnovo_proponibile: rinnovoProponibile,
 		};
-	});
-
-	/**
-	 * "Richiedi il rinnovo": il socio dice che vuole rinnovare, la reception lo richiama e incassa
-	 * di persona. Non c'è un pagamento e non parte nessun messaggio: nasce una riga nel diario,
-	 * e il motore dei segnali (shared/segnali.js) la mette in cima a Da fare finché la reception non
-	 * rinnova o non lo sente. Una seconda richiesta mentre la prima aspetta non ne crea un'altra.
-	 *
-	 * → 201 { richiesta_rinnovo: { il } } (200 se ce n'era già una aperta)
-	 */
-	fastify.post('/abbonamento/richiesta-rinnovo', async (request, reply) => {
-		const aperta = await richiestaRinnovoDi(request.idSocio);
-		if (aperta) return { richiesta_rinnovo: aperta };
-		const [socio] = await db.select({ personaId: members.personaId, nome: members.fullName }).from(members).where(eq(members.id, request.idSocio)).limit(1);
-		const [riga] = await db.insert(attivita).values({
-			personaId: socio.personaId, tipo: 'richiesta_rinnovo', autoreId: request.utente.sub, autoreNome: socio.nome,
-		}).returning({ il: attivita.createdDate });
-		reply.code(201);
-		return { richiesta_rinnovo: { il: riga.il } };
 	});
 
 	fastify.get('/documenti', async (request) => {
@@ -568,24 +541,6 @@ async function avvisiDelSocio(memberId) {
 	]);
 	return avvisiSocio({ socio: { date_of_birth: socio?.dateOfBirth, archiviato_il: socio?.archiviatoIl }, iscrizioni, documenti })
 		.map(({ codice, gravita, titolo, testo, azione }) => ({ codice, gravita, titolo, testo, azione }));
-}
-
-/**
- * La richiesta di rinnovo del socio che aspetta ancora la reception, { il } o null. La regola —
- * cosa la chiude — è quella del motore dei segnali (shared/segnali.js).
- */
-async function richiestaRinnovoDi(memberId) {
-	const [socio] = await db.select({ personaId: members.personaId }).from(members).where(eq(members.id, memberId)).limit(1);
-	if (!socio) return null;
-	const [[diario], iscrizioni] = await Promise.all([
-		db.select({
-			richiesta: sql`max(${attivita.createdDate}) filter (where ${attivita.tipo} = 'richiesta_rinnovo')`,
-			riscontro: sql`max(${attivita.createdDate}) filter (where ${inArray(attivita.tipo, TIPI_CONTATTO)} and ${attivita.esito} is distinct from 'nessuna_risposta')`,
-		}).from(attivita).where(eq(attivita.personaId, socio.personaId)),
-		iscrizioniDelSocio(memberId),
-	]);
-	if (!richiestaRinnovoAperta(diario?.richiesta, { ultimoContatto: diario?.riscontro, iscrizioni })) return null;
-	return { il: new Date(diario.richiesta).toISOString() };
 }
 
 // --- Le date ------------------------------------------------------------------------

@@ -407,6 +407,13 @@
       "when": 1791669716272,
       "tag": "0057_consensi_con_prova",
       "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1794431793760,
+      "tag": "0058_avvisi",
+      "breakpoints": true
     }
   ]
 }

@@ -66,6 +66,33 @@ export const attivita = pgTable('attivita', {
 		.on(sql`(${table.riferimento}->>'contatto')`).where(sql`${table.tipo} = 'ingresso_dopo_contatto'`),
 }));
 
+// Gli avvisi di Da fare (shared/daFare.js): un'occorrenza precisa — un abbonamento in scadenza o
+// scaduto, un documento, un compleanno di un anno, un calo di frequenza dal giorno in cui è
+// comparso — con una sola vita. Si apre quando il motore la vede, si chiude a mano o da sola, e
+// resta qui come archivio. Le righe le tiene allineate server/src/lib/avvisi.js.
+//
+// `chiave` non ha chiave esterna di proposito: cancellare un abbonamento o un documento non deve
+// cancellare la riga d'archivio, che ha la sua istantanea in `dati`.
+export const avvisi = pgTable('avvisi', {
+	id: uuid('id').defaultRandom().primaryKey(),
+	personaId: uuid('persona_id').notNull().references(() => persone.id, { onDelete: 'cascade' }),
+	tipo: varchar('tipo', { length: 16 }).notNull(), // in_scadenza | scaduto | frequenza | documento | compleanno
+	// L'occorrenza: id dell'abbonamento, id del documento, anno del compleanno, giorno d'apertura del calo.
+	chiave: varchar('chiave', { length: 64 }).notNull(),
+	apertoIl: timestamp('aperto_il', { withTimezone: true }).notNull().defaultNow(),
+	chiusoIl: timestamp('chiuso_il', { withTimezone: true }), // null = aperto
+	esito: varchar('esito', { length: 24 }), // com'è stato chiuso (shared/daFare.js, ESITI)
+	// Chi l'ha chiuso; vuoto = in automatico. Il nome resta anche se l'account sparisce.
+	autoreId: uuid('autore_id').references(() => staffAccounts.id, { onDelete: 'set null' }),
+	autoreNome: varchar('autore_nome', { length: 255 }),
+	// L'istantanea per l'Archivio: la data, l'abbonamento o il documento, la frase.
+	dati: jsonb('dati'),
+}, (table) => ({
+	// Niente doppioni, anche con due allineamenti insieme.
+	unico: uniqueIndex('avvisi_persona_tipo_chiave_unico').on(table.personaId, table.tipo, table.chiave),
+	perTipo: index('avvisi_tipo_chiuso_il_idx').on(table.tipo, table.chiusoIl),
+}));
+
 // I consensi alle comunicazioni promozionali (shared/consensi.js), come registro: una riga per
 // ogni scelta. Il valore di oggi è l'ultima riga di ogni tipo — e un consenso dato in reception
 // vale solo finché c'è il modulo firmato che lo prova (`documento_id`, fra i documenti del socio).

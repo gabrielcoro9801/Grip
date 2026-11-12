@@ -3,7 +3,7 @@
 import test, { describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { conSospensioni, abbonamentoCopre, sospensioneIl, motivoSenzaCopertura, MESSAGGIO_SOSPESO, MESSAGGIO_SENZA_ABBONAMENTO } from './abbonamenti.js';
-import { segnaliPersona, coperturaAbbonamento, daFare, richiestaRinnovoAperta } from './segnali.js';
+import { segnaliPersona, coperturaAbbonamento, daFare } from './segnali.js';
 import { avvisiSocio, semaforo } from './avvisi.js';
 
 const OGGI = '2026-10-10';
@@ -88,32 +88,14 @@ describe('la sospensione nel motore e nel semaforo', () => {
 });
 
 describe('la richiesta di rinnovo dal portale', () => {
-	const socio = { created_date: '2025-01-01', archiviato_il: null, date_of_birth: '1990-05-20' };
-	const iscrizioni = [{ start_date: '2025-10-01', end_date: '2026-10-20', created_date: '2025-10-01T09:00:00Z' }];
-	const richiesta = '2026-10-10T08:00:00Z';
-
-	test('aperta finché non arriva un contatto riuscito o un abbonamento nuovo', () => {
-		assert.equal(richiestaRinnovoAperta(richiesta, { iscrizioni }), true);
-		assert.equal(richiestaRinnovoAperta(richiesta, { ultimoContatto: '2026-10-10T09:00:00Z', iscrizioni }), false);
-		assert.equal(richiestaRinnovoAperta(richiesta, { ultimoContatto: '2026-10-09T09:00:00Z', iscrizioni }), true);
-		assert.equal(richiestaRinnovoAperta(richiesta, { iscrizioni: [...iscrizioni, { created_date: '2026-10-10T10:00:00Z' }] }), false);
-		assert.equal(richiestaRinnovoAperta(null, { iscrizioni }), false);
-	});
-
-	test('è il segnale più prezioso, e un contatto di prima non lo nasconde', () => {
+	test('non è più un segnale: resta solo l\'abbonamento in scadenza', () => {
+		const socio = { created_date: '2025-01-01', archiviato_il: null, date_of_birth: '1990-05-20' };
+		const iscrizioni = [{ start_date: '2025-10-01', end_date: '2026-10-20', created_date: '2025-10-01T09:00:00Z' }];
 		const r = segnaliPersona({
 			socio, iscrizioni, ingressi: { ultimo: '2026-10-09', quattro: 8, dodici: 24, totale: 100 }, oggi: OGGI,
-			contatti: { ultimo: '2026-10-08', riscontro: '2026-10-08T10:00:00Z', richiestaRinnovo: richiesta },
+			contatti: { richiestaRinnovo: '2026-10-10T08:00:00Z' },
 		});
-		const fare = daFare(r.segnali, 'staff');
-		assert.equal(fare[0].codice, 'rinnovo_richiesto');
-		assert.ok(fare[0].priorita > 90);
-		assert.match(fare[0].motivo, /portale oggi/);
-	});
-
-	test('un socio archiviato non lo riceve', () => {
-		const r = segnaliPersona({ socio: { ...socio, archiviato_il: '2026-10-10' }, iscrizioni, oggi: OGGI, contatti: { richiestaRinnovo: richiesta } });
-		assert.deepEqual(daFare(r.segnali, 'staff'), []);
+		assert.deepEqual(daFare(r.segnali, 'staff').map((s) => s.codice), ['in_scadenza']);
 	});
 });
 

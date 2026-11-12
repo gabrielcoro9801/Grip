@@ -15,7 +15,10 @@ import { TemaProvider } from '@/ui/tema';
 const StaffShell = lazy(() => import('@/staff/StaffShell'));
 const PermissionGate = lazy(() => import('@/staff/components/PermissionGate'));
 const Dashboard = lazy(() => import('@/staff/pages/Dashboard'));
-const DaFare = lazy(() => import('@/staff/pages/DaFare'));
+const DaFareLayout = lazy(() => import('@/staff/pages/dafare/DaFareLayout'));
+const ElencoAvvisi = lazy(() => import('@/staff/pages/dafare/ElencoAvvisi'));
+const ArchivioAvvisi = lazy(() => import('@/staff/pages/dafare/ArchivioAvvisi'));
+const Regole = lazy(() => import('@/staff/pages/dafare/Regole'));
 const LeMieLezioni = lazy(() => import('@/staff/pages/LeMieLezioni'));
 const CrmLayout = lazy(() => import('@/staff/pages/crm/CrmLayout'));
 const MembersList = lazy(() => import('@/staff/pages/crm/MembersList'));
@@ -35,7 +38,6 @@ const Sale = lazy(() => import('@/staff/pages/corsi/Sale'));
 const Istruttori = lazy(() => import('@/staff/pages/corsi/Istruttori'));
 const Categorie = lazy(() => import('@/staff/pages/corsi/Categorie'));
 const Admin = lazy(() => import('@/staff/pages/admin/Admin'));
-const ImpostazioniDaFare = lazy(() => import('@/staff/pages/admin/ImpostazioniDaFare'));
 const AuditLogPage = lazy(() => import('@/staff/pages/admin/AuditLogPage'));
 
 // Il vecchio /crm/members/:id porta alla stessa scheda del socio: il redirect
@@ -55,7 +57,17 @@ export default function App() {
             <Routes>
               <Route element={<StaffShell />}>
                 <Route path="/" element={<Dashboard />} />
-                <Route path="/da-fare" element={<PermissionGate module={["crm_members", "crm_leads"]}><DaFare /></PermissionGate>} />
+                {/* Da fare sono gli avvisi dei soci: una scheda per avviso, poi Archivio e Regole. La
+                    `key` fa ripartire la scheda quando si cambia voce, con la sua lista. */}
+                <Route path="/da-fare" element={<PermissionGate module="crm_members"><DaFareLayout /></PermissionGate>}>
+                  <Route index element={<ElencoAvvisi key="in_scadenza" tipo="in_scadenza" />} />
+                  <Route path="scaduti" element={<ElencoAvvisi key="scaduto" tipo="scaduto" />} />
+                  <Route path="frequenza" element={<ElencoAvvisi key="frequenza" tipo="frequenza" />} />
+                  <Route path="documenti" element={<ElencoAvvisi key="documento" tipo="documento" />} />
+                  <Route path="compleanni" element={<ElencoAvvisi key="compleanno" tipo="compleanno" />} />
+                  <Route path="archivio" element={<ArchivioAvvisi />} />
+                  <Route path="regole" element={<Regole />} />
+                </Route>
                 {/* Si chiamava Oggi: i preferiti e i link vecchi arrivano lo stesso. */}
                 <Route path="/oggi" element={<Navigate to="/da-fare" replace />} />
                 <Route path="/istruttore" element={<PermissionGate module="lezioni_istruttore"><LeMieLezioni /></PermissionGate>} />
@@ -93,7 +105,8 @@ export default function App() {
                 </Route>
                 <Route path="/calendar" element={<Navigate to="/calendario" replace />} />
                 <Route path="/admin" element={<PermissionGate module="admin_users"><Admin /></PermissionGate>} />
-                <Route path="/admin/da-fare" element={<PermissionGate module="admin_users"><ImpostazioniDaFare /></PermissionGate>} />
+                {/* Le impostazioni di Da fare ora sono la sua scheda Regole. */}
+                <Route path="/admin/da-fare" element={<Navigate to="/da-fare/regole" replace />} />
                 <Route path="/log-audit" element={<PermissionGate module="audit_log"><AuditLogPage /></PermissionGate>} />
                 <Route path="/audit-log" element={<Navigate to="/log-audit" replace />} />
               </Route>

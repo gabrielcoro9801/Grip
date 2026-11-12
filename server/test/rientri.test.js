@@ -1,12 +1,13 @@
-// Il giro misura l'efficacia: chi, contattato perché assente, rientra entro 14 giorni, lascia una
-// riga `ingresso_dopo_contatto` nel diario. Una per contatto, anche rilanciando il giro.
+// Il giro misura l'efficacia: chi, contattato perché assente (Contattato, in Da fare), rientra
+// entro 14 giorni, lascia una riga `ingresso_dopo_contatto` nel diario. Una per contatto, anche
+// rilanciando il giro.
 import test, { before, after, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import bcrypt from 'bcryptjs';
 import { and, eq, inArray } from 'drizzle-orm';
 import { buildApp } from '../src/app.js';
 import { db, pool } from '../src/db/client.js';
-import { members, staffAccounts, subscriptions, attivita, ingressi } from '../src/db/schema/index.js';
+import { members, staffAccounts, subscriptions, attivita, ingressi, avvisi } from '../src/db/schema/index.js';
 import { giro } from '../src/giro.js';
 import { oggiIso, spostaGiorni } from '../../shared/giorni.js';
 
@@ -34,8 +35,9 @@ before(async () => {
 	await db.insert(ingressi).values([
 		{ memberId: soci[0].id, entratoAlle: giorniFa(20), esito: 'ammesso', metodo: 'manuale', registratoDaNome: 'Test' },
 		{ memberId: soci[1].id, entratoAlle: giorniFa(1), esito: 'ammesso', metodo: 'manuale', registratoDaNome: 'Test' },
-		// Il terzo non veniva da un mese, ed è appena passato dal tornello.
-		{ memberId: soci[2].id, entratoAlle: giorniFa(30), esito: 'ammesso', metodo: 'qr', registratoDaNome: 'Test' },
+		// Il terzo non veniva da un mese, ed è appena passato dal tornello. Il giorno di calendario, a
+		// mezzogiorno: 30 volte 24 ore indietro, a fine ottobre (l'ora legale) e di sera, erano 29 giorni.
+		{ memberId: soci[2].id, entratoAlle: new Date(`${fra(-30)}T11:00:00Z`), esito: 'ammesso', metodo: 'qr', registratoDaNome: 'Test' },
 		{ memberId: soci[2].id, entratoAlle: new Date(), esito: 'ammesso', metodo: 'qr', registratoDaNome: 'Test' },
 	]);
 	const [account] = await db.insert(staffAccounts).values({
@@ -46,6 +48,7 @@ before(async () => {
 });
 
 after(async () => {
+	await db.delete(avvisi).where(inArray(avvisi.personaId, id.persone));
 	await db.delete(attivita).where(inArray(attivita.personaId, id.persone));
 	await db.delete(ingressi).where(inArray(ingressi.memberId, id.soci));
 	await db.delete(subscriptions).where(inArray(subscriptions.memberId, id.soci));
@@ -55,31 +58,30 @@ after(async () => {
 	await pool.end();
 });
 
+const come = (method, url, payload) => app.inject({ method, url, payload, headers: { authorization: `Bearer ${token}` } });
+
 describe('chi è entrato dal tornello', () => {
-	test('in cima a Da fare, con il bentornato; segnato il saluto, sparisce', async () => {
-		const come = (method, url, payload) => app.inject({ method, url, payload, headers: { authorization: `Bearer ${token}` } });
-		const entrati = async () => (await come('GET', '/api/segnali?entrati_oggi=1&tipo=soci')).json().persone.filter((p) => id.soci.includes(p.socio_id));
-		const [p] = await entrati();
-		assert.equal(p.socio_id, id.soci[2]);
-		assert.equal(p.bancone[0].codice, 'bentornato');
-		assert.match(p.bancone[0].motivo, /30 giorni/);
+	test('porta il bentornato; segnato il saluto, sparisce', async () => {
+		const bancone = async () => (await come('GET', `/api/segnali?persona=${id.persone[2]}`)).json().persone[0].bancone;
+		const [b] = await bancone();
+		assert.equal(b.codice, 'bentornato');
+		assert.match(b.motivo, /30 giorni/);
 		assert.equal((await come('POST', `/api/persone/${id.persone[2]}/contatti`, { canale: 'di_persona', esito: 'salutato', segnale: 'bentornato' })).statusCode, 201);
-		assert.deepEqual(await entrati(), []);
+		assert.deepEqual(await bancone(), []);
 	});
 });
 
 describe('il rientro dopo un contatto', () => {
-	test('il "Fatto" ricorda per che cosa: solo un segnale che la persona ha', async () => {
-		const fatto = (persona) => app.inject({
-			method: 'POST', url: `/api/persone/${persona}/contatti`, payload: { canale: 'telefono', segnale: 'assente' },
-			headers: { authorization: `Bearer ${token}` },
-		});
-		const res = await fatto(id.persone[0]);
-		assert.equal(res.statusCode, 201, res.body);
-		const [assente] = await db.select().from(attivita).where(and(eq(attivita.personaId, id.persone[0]), eq(attivita.tipo, 'contatto')));
-		assert.deepEqual(assente.riferimento, { segnali: ['assente'] });
-		// Il regolare non è assente: non c'è niente da segnare come fatto.
-		assert.equal((await fatto(id.persone[1])).statusCode, 400);
+	test('«Contattato» sulla frequenza scrive un contatto, con il segnale e l\'avviso', async () => {
+		const frequenza = (await come('GET', '/api/avvisi?tipo=frequenza')).json().avvisi;
+		const avviso = frequenza.find((a) => a.persona_id === id.persone[0]);
+		assert.ok(avviso, 'chi non entra da 20 giorni ha l\'avviso della frequenza');
+		assert.ok(!frequenza.some((a) => a.persona_id === id.persone[1]), 'il regolare no');
+		const res = await come('POST', `/api/avvisi/${avviso.id}/chiudi`, { esito: 'contattato' });
+		assert.equal(res.statusCode, 200, res.body);
+		const [contatto] = await db.select().from(attivita).where(and(eq(attivita.personaId, id.persone[0]), eq(attivita.tipo, 'contatto')));
+		assert.deepEqual(contatto.riferimento, { segnali: ['assente'], avviso: avviso.id });
+		assert.equal(contatto.autoreNome, 'Reception Rientri');
 	});
 
 	test('rientrato 3 giorni dopo: una riga nel diario, anche lanciando il giro due volte', async () => {

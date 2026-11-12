@@ -13,7 +13,7 @@ import { db, pool } from '../src/db/client.js';
 import { staffAccounts } from '../src/db/schema/index.js';
 import { canReadEntity, haRegolaDiLettura } from '../src/auth/authorize.js';
 import { ENTITY_NAMES } from '../src/entities/registry.js';
-import { impostaMatrice, ripristinaMatricePredefinita, PERMESSI_PREDEFINITI } from '../../shared/permissions.js';
+import { impostaMatrice, ripristinaMatricePredefinita, PERMESSI_PREDEFINITI, SIDEBAR_PERMISSIONS, canAccess } from '../../shared/permissions.js';
 
 describe('nessuna entità resta senza una decisione, nemmeno in lettura', () => {
 	test('ogni entità del registro ha una regola di lettura', () => {
@@ -73,6 +73,18 @@ describe('un ruolo costruito a mano', () => {
 		assert.equal(canReadEntity('sala', 'Booking'), true);
 		assert.equal(canReadEntity('sala', 'Subscription'), false);
 		assert.equal(canReadEntity('sala', 'MemberDocument'), false);
+	});
+
+	test('con i soli Lead non ha Da fare nel menu: gli avvisi sono dei soci', () => {
+		impostaMatrice({
+			permessi: { ...PERMESSI_PREDEFINITI, commerciale: { crm_leads: ['view', 'edit'] } },
+			capacita: {},
+		});
+		// La stessa regola del menu (AppLayout.jsx): la voce c'è se il ruolo vede uno dei moduli.
+		const vedeVoce = (ruolo, percorso) => [SIDEBAR_PERMISSIONS[percorso]].flat().some((m) => canAccess(ruolo, m, 'view'));
+		assert.equal(vedeVoce('commerciale', '/lead'), true);
+		assert.equal(vedeVoce('commerciale', '/da-fare'), false, 'prima vedeva la voce e trovava «Accesso negato»');
+		assert.equal(vedeVoce('reception', '/da-fare'), true);
 	});
 });
 
