@@ -302,18 +302,25 @@ export const api = {
 
 	/** Le prenotazioni fisse viste dal gestionale (routes/prenotazioniFisse.js). */
 	prenotazioniFisse: {
-		/** { member_id?, event_id? } → { fisse } (le attive) */
+		/**
+		 * { member_id?, event_id? } → { fisse } (quelle in corso)
+		 * Ogni fissa: id, member_id, event_id, dal, al, socio, codice_socio, corso, giorno, inizio, fine, creata_da…
+		 */
 		elenco(filtri = {}) {
 			const q = new URLSearchParams(Object.entries(filtri).filter(([, v]) => v)).toString();
 			return request(`/api/prenotazioni-fisse${q ? `?${q}` : ''}`);
 		},
-		/** { member_id, event_id, giorni? } → { fissa, prenotate, in_attesa, senza_abbonamento } */
+		/** { member_id, event_id, dal?, al | numero } → { fissa, prenotate, in_attesa, senza_abbonamento } */
 		crea(corpo) {
 			return request('/api/prenotazioni-fisse', { method: 'POST', body: corpo });
 		},
-		/** → { disdette, rimaste } */
-		termina(id) {
-			return request(`/api/prenotazioni-fisse/${id}`, { method: 'DELETE' });
+		/** { dal?, al | numero } → { fissa, prenotate, in_attesa, senza_abbonamento, disdette } */
+		modifica(id, corpo) {
+			return request(`/api/prenotazioni-fisse/${encodeURIComponent(id)}`, { method: 'PUT', body: corpo });
+		},
+		/** Cancella da `dal` (oggi, se manca): disdice solo le prenotazioni nate dalla fissa. → { disdette, rimaste } */
+		termina(id, dal = null) {
+			return request(`/api/prenotazioni-fisse/${encodeURIComponent(id)}/termina`, { method: 'POST', body: dal ? { dal } : {} });
 		},
 	},
 

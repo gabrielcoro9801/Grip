@@ -1,9 +1,18 @@
 import React from "react";
+import { useOutletContext } from "react-router-dom";
 import PageHeader from "@/staff/components/PageHeader";
+import SessioniTab from "@/staff/components/courses/SessioniTab";
 
-// Segnaposto: la pagina delle sessioni (una card per corso, le sessioni e le loro prenotazioni
-// fisse) arriva con il pacchetto C-4. Intanto la voce della barra porta qui, e il vecchio
-// /calendario/prenotazioni rimanda qui.
+// Sessioni ha preso il posto di Prenotazioni (e /calendario/prenotazioni rimanda qui): le
+// prenotazioni di una lezione stanno nella pagina della lezione, qui ci sono le sessioni di ogni
+// corso e le loro prenotazioni fisse.
 export default function Sessioni() {
-  return <PageHeader title="Sessioni" description="In preparazione." />;
+  const { data } = useOutletContext();
+
+  return (
+    <>
+      <PageHeader title="Sessioni" />
+      <SessioniTab data={data} />
+    </>
+  );
 }

@@ -12,11 +12,11 @@ import { generateSessionDates, grigliaDelMese } from './eventUtils.js';
 
 const giornoDellaSettimana = (iso) => new Date(`${iso}T12:00:00`).getDay();
 
-describe('un corso settimanale', () => {
+describe('una sessione settimanale', () => {
 	test('del lunedì cade di lunedì, fino alla data di fine', () => {
 		const date = generateSessionDates({
 			recurrence_type: 'weekly',
-			days_of_week: ['Monday'],
+			giorno: 'Monday',
 			start_date: '2026-10-05',
 			end_condition: 'by_date',
 			end_date: '2026-10-19',
@@ -24,17 +24,23 @@ describe('un corso settimanale', () => {
 		assert.deepEqual(date, ['2026-10-05', '2026-10-12', '2026-10-19']);
 	});
 
-	test('a occorrenze, su più giorni, attraverso il cambio dell’ora', () => {
+	test('a occorrenze, attraverso il cambio dell’ora, dal primo giorno giusto', () => {
 		// Il 25 ottobre 2026 finisce l'ora legale: un giorno di 25 ore non deve spostare niente.
+		// L'inizio è lunedì 19: la prima lezione del giovedì è il 22.
 		const date = generateSessionDates({
 			recurrence_type: 'weekly',
-			days_of_week: ['Tuesday', 'Thursday'],
-			start_date: '2026-10-20',
+			giorno: 'Thursday',
+			start_date: '2026-10-19',
 			end_condition: 'by_count',
-			occurrence_count: 4,
+			occurrence_count: 3,
 		});
-		assert.deepEqual(date, ['2026-10-20', '2026-10-22', '2026-10-27', '2026-10-29']);
-		for (const d of date) assert.ok([2, 4].includes(giornoDellaSettimana(d)), `${d} non è martedì né giovedì`);
+		assert.deepEqual(date, ['2026-10-22', '2026-10-29', '2026-11-05']);
+		for (const d of date) assert.equal(giornoDellaSettimana(d), 4, `${d} non è giovedì`);
+	});
+
+	test('senza giorno, o senza fine, nessuna data', () => {
+		assert.deepEqual(generateSessionDates({ recurrence_type: 'weekly', start_date: '2026-10-05', end_condition: 'by_date', end_date: '2026-10-19' }), []);
+		assert.deepEqual(generateSessionDates({ recurrence_type: 'weekly', giorno: 'Monday', start_date: '2026-10-05', end_condition: 'by_date' }), []);
 	});
 });
 

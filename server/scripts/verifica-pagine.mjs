@@ -58,7 +58,7 @@ const CF_LEAD = 'RSSMRA85T10A562S';
 const PAGINE_STAFF = [
 	['/', null], ['/crm', null], ['/crm/listino', null], ['/crm/venduti', null], ['/crm/ingressi', null],
 	['/lead', COGNOME_LEAD], ['/lead/andamento', CANALE], ['/lead/canali', CANALE],
-	['/calendario', null], ['/calendario/prenotazioni', null], ['/calendario/corsi', null],
+	['/calendario', null], ['/calendario/sessioni', CORSO], ['/calendario/corsi', null],
 	['/calendario/sale', null], ['/calendario/istruttori', null], ['/calendario/categorie', null],
 	['/admin', null], ['/log-audit', null],
 ];
@@ -219,6 +219,8 @@ try {
 	const pagStaff = await (await browser.newContext()).newPage();
 	await entra(pagStaff, BASE, '/', emailStaff);
 	for (const [percorso, atteso] of PAGINE_STAFF) await apri(pagStaff, percorso, atteso, BASE);
+	// La pagina di una lezione ha l'indirizzo della lezione seminata: si apre dopo, con il suo id.
+	await apri(pagStaff, `/calendario/lezioni/${idLezione}`, CORSO, BASE);
 
 	// Trasformare un contatto e correggere un'anagrafica: sono le due finestre in cui un
 	// errore di validazione — un codice fiscale, un nome completo che non si ricalcola — non
@@ -312,9 +314,9 @@ try {
 	await pool.end();
 }
 
-// I controlli sono le pagine più le quattro prove d'uso: contarli tutti, o un fallimento
+// I controlli sono le pagine, la pagina della lezione e le quattro prove d'uso: contarli tutti, o un fallimento
 // nell'interazione si nasconderebbe dietro un "23/23 pagine" rassicurante.
-const totale = PAGINE_STAFF.length + PAGINE_SOCIO.length + 4;
+const totale = PAGINE_STAFF.length + 1 + PAGINE_SOCIO.length + 4;
 console.log(`\n${totale - problemi.length}/${totale} controlli superati`);
 if (problemi.length) {
 	console.log('\nDettaglio:');

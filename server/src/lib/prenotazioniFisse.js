@@ -23,7 +23,7 @@
 import { and, eq, gte, lte, inArray, isNull, or, max } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { prenotazioniFisse, sessions, bookings, events, courses, members } from '../db/schema/index.js';
-import { abbonamentoCopre, sospensioneIl } from '../../../shared/abbonamenti.js';
+import { abbonamentoCopre, sospensioneIl, fineCopertura } from '../../../shared/abbonamenti.js';
 import { iscrizioniDelSocio } from './iscrizioni.js';
 import { oggiIso, lezioneFinita, eUnGiorno, spostaGiorni } from '../../../shared/giorni.js';
 import { motivoDisdettaChiusa } from '../../../shared/corsi.js';
@@ -59,28 +59,9 @@ function lezioniDellaFissa(fissa, { da = null, a = null } = {}) {
 	return lezioniDaTenere(fissa.eventId, inizio, fine);
 }
 
-/**
- * L'ultimo giorno coperto senza interruzioni dagli abbonamenti, a partire da `giorno`: un rinnovo
- * che comincia entro il giorno dopo la fine allunga la copertura. Le date sono quelle dopo le
- * sospensioni (`iscrizioniDelSocio`). Null se quel giorno nessun abbonamento lo copre; un
- * abbonamento senza fine copre tutto ('9999-12-31').
- */
-export function fineCopertura(iscrizioni, giorno) {
-	const tutte = (iscrizioni ?? []).map((i) => ({
-		inizio: i.start_date ? String(i.start_date).slice(0, 10) : '0000-01-01',
-		fine: i.end_date ? String(i.end_date).slice(0, 10) : '9999-12-31',
-	}));
-	let fine = null;
-	for (const i of tutte) if (i.inizio <= giorno && giorno <= i.fine && (!fine || i.fine > fine)) fine = i.fine;
-	if (!fine) return null;
-	for (let cambiata = true; cambiata;) {
-		cambiata = false;
-		for (const i of tutte) {
-			if (i.fine > fine && i.inizio <= spostaGiorni(fine, 1)) { fine = i.fine; cambiata = true; }
-		}
-	}
-	return fine;
-}
+// `fineCopertura` sta in shared/abbonamenti.js: la finestra della fissa mostra lo stesso limite
+// prima di salvare. Resta esportata anche da qui, dove la usano i test.
+export { fineCopertura };
 
 /**
  * Prenota le lezioni dovute delle fisse attive, filtrate per socio, sessione o fissa.

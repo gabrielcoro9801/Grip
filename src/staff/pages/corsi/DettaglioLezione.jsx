@@ -1,19 +1,17 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Link, useNavigate, useOutletContext, useParams } from "react-router-dom";
-import { ArrowLeft, Pencil, Plus, Trash2, AlertTriangle } from "lucide-react";
+import { ArrowLeft, Pencil, Plus, Trash2 } from "lucide-react";
 import { api } from "@/core/api/client";
 import { Button } from "@/ui/primitivi/button";
 import { Card, CardContent } from "@/ui/primitivi/card";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/ui/primitivi/dialog";
 import StatusBadge from "@/ui/StatusBadge";
 import { LoadingState } from "@/ui/Spinner";
 import { ErrorState } from "@/ui/StateViews";
-import { useToast } from "@/ui/primitivi/use-toast";
 import { useStaffAuth } from "@/staff/lib/StaffAuthContext";
 import { canEdit, canAccess } from "@/staff/lib/permissions";
 import { DAYS_IT } from "@/staff/lib/courseValidation";
-import { descriviRimozione } from "@/staff/lib/modificaEvento";
 import EventFormDialog from "@/staff/components/courses/EventFormDialog";
+import EliminaEventoDialog from "@/staff/components/courses/EliminaEventoDialog";
 import PrenotazioniLezione from "@/staff/components/courses/PrenotazioniLezione";
 import AggiungiPrenotazioneDialog from "@/staff/components/courses/AggiungiPrenotazioneDialog";
 import { formatData } from "@/core/domain/format";
@@ -182,81 +180,17 @@ export default function DettaglioLezione() {
             open={aggiungi} onClose={() => setAggiungi(false)}
             lezione={lezione} prenotazioni={prenotazioni} onPrenotato={carica}
           />
-          <EliminaLezione
-            lezione={daEliminare ? lezione : null}
+          {/* Senza prenotati la lezione sparisce, e si torna al calendario; con prenotati resta annullata. */}
+          <EliminaEventoDialog
+            bersaglio={daEliminare ? {
+              ambito: "lezione", lezione_id: lezione.id,
+              descrizione: `${lezione.corso} · ${formatData(lezione.date, "estesa")}, ${hhmm(lezione.start_time)}–${hhmm(lezione.end_time)}`,
+            } : null}
             onClose={() => setDaEliminare(false)}
-            onEliminata={(conti) => (conti.eliminate ? navigate(indietro, { replace: true }) : carica())}
+            onEliminato={(conti) => (conti.eliminate ? navigate(indietro, { replace: true }) : carica())}
           />
         </>
       )}
     </>
-  );
-}
-
-/**
- * Togliere questa lezione. Prima i conti del server (`anteprima`): senza prenotati sparisce, con
- * prenotati resta annullata e i soci ricevono un avviso nel portale.
- */
-function EliminaLezione({ lezione, onClose, onEliminata }) {
-  const { toast } = useToast();
-  const [anteprima, setAnteprima] = useState(null); // { conti } | { errore }
-  const [inCorso, setInCorso] = useState(false);
-
-  useEffect(() => {
-    if (!lezione) return undefined;
-    let vivo = true;
-    setAnteprima(null);
-    api.calendario.elimina({ lezione_id: lezione.id, ambito: "lezione", anteprima: true })
-      .then((conti) => { if (vivo) setAnteprima({ conti }); })
-      .catch((err) => { if (vivo) setAnteprima({ errore: err.message }); });
-    return () => { vivo = false; };
-  }, [lezione]);
-
-  const elimina = async () => {
-    setInCorso(true);
-    try {
-      const esito = await api.calendario.elimina({ lezione_id: lezione.id, ambito: "lezione" });
-      toast({
-        title: esito.eliminate ? "Lezione tolta dal calendario" : "Lezione annullata",
-        description: esito.soci_avvisati ? `${esito.soci_avvisati === 1 ? "1 socio avvisato" : `${esito.soci_avvisati} soci avvisati`} nel portale.` : undefined,
-      });
-      onClose();
-      onEliminata(esito);
-    } catch (err) {
-      toast({ title: "Eliminazione non riuscita", description: err.message, variant: "destructive" });
-    }
-    setInCorso(false);
-  };
-
-  const conAvvisi = anteprima?.conti?.annullate > 0;
-  return (
-    <Dialog open={!!lezione} onOpenChange={(v) => { if (!v && !inCorso) onClose(); }}>
-      <DialogContent className="max-w-md">
-        {lezione && (
-          <>
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                <Trash2 className="w-5 h-5 text-destructive shrink-0" aria-hidden="true" /> Eliminare la lezione?
-              </DialogTitle>
-              <DialogDescription>
-                {lezione.corso} · {formatData(lezione.date, "estesa")}, {hhmm(lezione.start_time)}–{hhmm(lezione.end_time)}
-              </DialogDescription>
-            </DialogHeader>
-            <p className={`text-sm flex items-start gap-2 ${conAvvisi ? "text-warning" : "text-muted-foreground"}`}>
-              {conAvvisi && <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" aria-hidden="true" />}
-              <span>
-                {!anteprima ? "Calcolo in corso…" : anteprima.errore ?? descriviRimozione(anteprima.conti)}
-              </span>
-            </p>
-            <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
-              <Button variant="outline" onClick={onClose} disabled={inCorso}>Annulla</Button>
-              <Button variant="destructive" onClick={elimina} disabled={inCorso || !anteprima?.conti}>
-                {inCorso ? "Eliminazione..." : "Elimina"}
-              </Button>
-            </div>
-          </>
-        )}
-      </DialogContent>
-    </Dialog>
   );
 }

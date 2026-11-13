@@ -1,24 +1,25 @@
 // Import relativi con l'estensione, e non con `@/`: così il file si carica anche con
 // `node --test`, e le date che genera si possono provare nel fuso vero (eventUtils.test.js).
-import { timeOverlap } from "./courseValidation.js";
+//
+// Le sovrapposizioni di sala e istruttore non si contano più qui: le conta il server
+// (POST /api/calendario/conflitti), che vede tutto il calendario. Prima la regola voleva tutte le
+// lezioni in memoria nel browser.
 import { toIsoDate } from "../../core/domain/format.js";
 
 const DAY_MAP = { Monday: 1, Tuesday: 2, Wednesday: 3, Thursday: 4, Friday: 5, Saturday: 6, Sunday: 0 };
 
-function formatDate(dateStr) {
-  return new Date(dateStr + "T00:00:00").toLocaleDateString("it-IT", { day: "2-digit", month: "2-digit" });
-}
-
-// "09:00–10:00": il database restituisce anche i secondi, che nei messaggi sono solo rumore.
-const orario = (lezione) => `${String(lezione.start_time).slice(0, 5)}–${String(lezione.end_time).slice(0, 5)}`;
+// Il tetto del ciclo: oltre, una data fine sbagliata di un secolo bloccherebbe la pagina.
+const MASSIMO_LEZIONI = 1000;
 
 /**
- * Calcola tutte le date delle sessioni generate da un Event.
+ * Le date delle lezioni di una sessione, o di una lezione singola.
  * - single: una sola data (start_date)
- * - weekly: una o più giorni della settimana, all'interno del range
- *   - by_date: da start_date a end_date
- *   - by_count: N sessioni totali (sommando tutti i giorni selezionati)
- * - custom: le date esplicite in custom_dates
+ * - weekly: ogni settimana nel suo giorno (`giorno`, 'Monday'…'Sunday'), da start_date
+ *   - by_date: fino a end_date
+ *   - by_count: per occurrence_count lezioni
+ * - custom: le date esplicite in custom_dates (le vecchie sessioni a date scelte)
+ *
+ * Una sessione si ripete in un giorno solo: due giorni sono due sessioni (migrazione 0059).
  */
 export function generateSessionDates(event) {
   if (event.recurrence_type === "single") {
@@ -30,41 +31,34 @@ export function generateSessionDates(event) {
   }
 
   // weekly
-  const daysOfWeek = event.days_of_week || [];
-  if (daysOfWeek.length === 0) return [];
-
-  const targetDays = new Set(daysOfWeek.map(d => DAY_MAP[d]).filter(d => d !== undefined));
-  if (targetDays.size === 0) return [];
+  const giorno = DAY_MAP[event.giorno];
+  if (giorno === undefined || !event.start_date) return [];
 
   // Il ciclo cammina sulle mezzanotti *locali*, quindi anche la data va letta nei campi
   // locali (`toIsoDate`). Con `toISOString()` usciva in UTC, che in Italia è ancora il giorno
   // prima: un corso del lunedì veniva salvato di domenica, e il calendario del gestionale —
   // sfalsato dello stesso giorno al contrario — lo mostrava giusto, nascondendo l'errore.
-  const dates = [];
-  let current = new Date(event.start_date + "T00:00:00");
-  const MAX_ITERATIONS = 10000;
-  let iterations = 0;
+  const corrente = new Date(event.start_date + "T00:00:00");
+  // Dal primo giorno giusto, poi di sette in sette: `setDate` resta sulla mezzanotte locale
+  // anche attraverso il cambio dell'ora.
+  while (corrente.getDay() !== giorno) corrente.setDate(corrente.getDate() + 1);
 
+  let fine = null;
+  let quante = MASSIMO_LEZIONI;
   if (event.end_condition === "by_date") {
-    const end = new Date(event.end_date + "T00:00:00");
-    while (current <= end && iterations < MAX_ITERATIONS) {
-      if (targetDays.has(current.getDay())) {
-        dates.push(toIsoDate(current));
-      }
-      current.setDate(current.getDate() + 1);
-      iterations++;
-    }
+    if (!event.end_date) return [];
+    fine = new Date(event.end_date + "T00:00:00");
   } else if (event.end_condition === "by_count") {
-    const count = Number(event.occurrence_count) || 0;
-    while (dates.length < count && iterations < MAX_ITERATIONS) {
-      if (targetDays.has(current.getDay())) {
-        dates.push(toIsoDate(current));
-      }
-      current.setDate(current.getDate() + 1);
-      iterations++;
-    }
+    quante = Math.min(Number(event.occurrence_count) || 0, MASSIMO_LEZIONI);
+  } else {
+    return [];
   }
 
+  const dates = [];
+  while (dates.length < quante && (!fine || corrente <= fine)) {
+    dates.push(toIsoDate(corrente));
+    corrente.setDate(corrente.getDate() + 7);
+  }
   return dates;
 }
 
@@ -85,94 +79,4 @@ export function grigliaDelMese(anno, mese) {
     caselle.push({ data, chiave: toIsoDate(data) });
   }
   return caselle;
-}
-
-/**
- * Controlla conflitti di sala e istruttore per ogni data.
- * Ritorna { conflicts: [{date, type, message}], cleanDates: [...] }.
- * Le date in cleanDates non hanno conflitti e possono essere generate.
- */
-export function checkEventConflicts(dates, newEvent, course, existingSessions, existingEvents, existingCourses) {
-  const conflicts = [];
-  const cleanDates = [];
-
-  for (const date of dates) {
-    let conflictFound = null;
-    for (const session of existingSessions) {
-      if (session.status === "cancelled") continue;
-      if (session.date !== date) continue;
-      if (!timeOverlap(newEvent.start_time, newEvent.end_time, session.start_time, session.end_time)) continue;
-
-      if (session.room_id === newEvent.room_id) {
-        const conflictEvent = existingEvents.find(e => e.id === session.event_id);
-        const conflictCourse = existingCourses.find(c => c.id === conflictEvent?.course_id);
-        conflictFound = {
-          date,
-          type: "sala",
-          message: `${formatDate(date)}: sala occupata da «${conflictCourse?.name || "un altro corso"}» ${orario(session)}`,
-        };
-        break;
-      }
-
-      const sessionEvent = existingEvents.find(e => e.id === session.event_id);
-      const sessionCourse = existingCourses.find(c => c.id === sessionEvent?.course_id);
-      if (sessionCourse && course && sessionCourse.instructor_id === course.instructor_id) {
-        conflictFound = {
-          date,
-          type: "istruttore",
-          message: `${formatDate(date)}: istruttore già impegnato con «${sessionCourse.name}» ${orario(session)}`,
-        };
-        break;
-      }
-    }
-
-    if (conflictFound) {
-      conflicts.push(conflictFound);
-    } else {
-      cleanDates.push(date);
-    }
-  }
-
-  return { conflicts, cleanDates };
-}
-
-/**
- * Controlla se una singola sessione (con nuovi valori) confligge con altre sessioni esistenti.
- * Esclude la sessione stessa dalla verifica. Usato per la modifica di sessioni esistenti.
- * Ritorna { conflict: false } o { conflict: true, type, message }.
- */
-export function checkSessionConflict(session, newValues, course, allSessions, allEvents, allCourses) {
-  const date = session.date;
-  const startTime = newValues.start_time || session.start_time;
-  const endTime = newValues.end_time || session.end_time;
-  const roomId = newValues.room_id || session.room_id;
-
-  for (const otherSession of allSessions) {
-    if (otherSession.id === session.id) continue;
-    if (otherSession.status === "cancelled") continue;
-    if (otherSession.date !== date) continue;
-    if (!timeOverlap(startTime, endTime, otherSession.start_time, otherSession.end_time)) continue;
-
-    if (otherSession.room_id === roomId) {
-      const conflictEvent = allEvents.find(e => e.id === otherSession.event_id);
-      const conflictCourse = allCourses.find(c => c.id === conflictEvent?.course_id);
-      return {
-        conflict: true,
-        type: "sala",
-        message: `${formatDate(date)}: sala occupata da «${conflictCourse?.name || "un altro corso"}» ${orario(otherSession)}`,
-      };
-    }
-
-    const otherEvent = allEvents.find(e => e.id === otherSession.event_id);
-    const otherCourse = allCourses.find(c => c.id === otherEvent?.course_id);
-    if (otherCourse && course && otherCourse.instructor_id === course.instructor_id) {
-      return {
-        conflict: true,
-        type: "istruttore",
-        message: `${formatDate(date)}: istruttore già impegnato con «${otherCourse.name}» ${orario(otherSession)}`,
-      };
-    }
-  }
-
-  return { conflict: false };
 }
