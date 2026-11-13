@@ -104,6 +104,35 @@ Tre punti che si sbagliano quasi sempre, spiegati lì per esteso:
 
 ## Stato del progetto
 
+### 13 novembre 2026 — Soci, Da fare e Corsi, insieme
+
+Tre piani eseguiti in parallelo e uniti in fila (Soci → Da fare → Corsi). I piani, con le regole
+per farli convivere, sono in `docs/piani/` (`soci.md`, `da-fare.md`, `corsi.md`). Si lavora solo
+sul PostgreSQL locale: niente Railway.
+
+- **Soci**: l'Elenco si sfoglia a pagine (12 tile o 25 righe), con pagina, ricerca e ordine
+  nell'indirizzo; la ricerca accetta più parole in qualsiasi ordine, senza accenti
+  (`shared/ricerca.js`, la usa anche il server); la riga della tabella apre la scheda. Listino
+  filtrabile per stato, Abbonamenti venduti con cinque riquadri, «Note» nella scheda, «Da
+  controllare» negli ingressi.
+- **Da fare**: cinque avvisi in schede (In scadenza, Scaduti, Frequenza, Documenti, Compleanni),
+  un Archivio di quelli chiusi e le Regole per l'amministratore. Gli avvisi stanno nella tabella
+  `avvisi` (migrazione 0058) e si allineano a ogni lettura e nel giro notturno. Via le linee, il
+  box «Fatto», i link di contatto e la richiesta di rinnovo dal portale. `npm run dati:da-fare`
+  prova un caso per avviso e per modo di chiusura.
+- **Corsi**: la lezione ha una pagina sua (`/calendario/lezioni/:id`), il giorno si apre a ore,
+  Prenotazioni diventa **Sessioni** (una card per corso). Una sessione ha un giorno solo
+  (`events.giorno`, migrazione 0059: quelle su più giorni sono state divise); le prenotazioni
+  fisse hanno un periodo, dal/al o per N lezioni (migrazione 0060), e archiviando un socio si
+  chiudono. Il calendario scarica solo il mese; i conflitti li controlla il server. Il colore
+  della categoria accetta `rgb()` e `#hex`.
+- **Backup** prima delle migrazioni: `../backup/grip_dev-prima-0058.dump` e
+  `grip_dev-prima-0059.dump` (`pg_restore` per tornare indietro).
+- **Aperti**: la riga di diario di «Contattato» senza il mezzo (rottura 1 del piano Da fare);
+  le fisse create dal portale restano senza data di fine; una lezione singola modificata dalla
+  sua pagina cambia solo `sessions`, e l'uso delle sale legge anche `events`;
+  `server/scripts/verifica-fase3.mjs` apre ancora `/da-fare?linea=frequenza`.
+
 ### 21 ottobre 2026 — Le comunicazioni automatiche escono dall'applicazione
 
 Come per l'allenamento e la contabilità: il codice è nel tag `archivio/comunicazioni-2026-10` e nel
