@@ -181,9 +181,10 @@ export default async function entityRoutes(fastify) {
 		await registra(request.utente, {
 			tipoAzione: 'create', entitaTipo: tipoEntita(entityName), entitaNome: nomeLeggibile(creata), entitaId: row.id,
 		}, request.log);
-		// Un abbonamento nuovo (un rinnovo) fa ripartire le prenotazioni fisse del socio: le
-		// lezioni rimaste scoperte ora hanno un abbonamento, e si prenotano da sole.
-		if (entityName === 'Subscription') await applicaFisse({ memberId: row.memberId });
+		// Un abbonamento nuovo (un rinnovo) fa ripartire le prenotazioni fisse senza fine del socio
+		// (quelle del portale): le lezioni rimaste scoperte ora hanno un abbonamento, e si prenotano
+		// da sole. Una fissa con una data di fine resta com'è: si allunga a mano.
+		if (entityName === 'Subscription') await applicaFisse({ memberId: row.memberId, soloSenzaFine: true });
 		reply.code(201);
 		return await conCampiCalcolati(entityName, firmaFileInLettura(stripHiddenFields(entityName, creata)));
 	}));

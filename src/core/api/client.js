@@ -153,10 +153,6 @@ export const api = {
 		elimina(bookingId) {
 			return request(`/api/prenotazioni/${bookingId}`, { method: 'DELETE' });
 		},
-		/** Le prenotazioni delle lezioni da `dal` (YYYY-MM-DD) in avanti. Solo per lo staff. */
-		dal(dal) {
-			return request(`/api/prenotazioni?dal=${encodeURIComponent(dal)}`);
-		},
 	},
 
 	/**
@@ -194,6 +190,14 @@ export const api = {
 		riattiva(memberId) {
 			return request(`/api/soci/${encodeURIComponent(memberId)}/riattiva`, { method: 'POST' });
 		},
+		/**
+		 * Chi prenotare: i soci non archiviati che corrispondono a `q`, 15 per pagina. Con il
+		 * permesso di modificare il calendario. → { soci: [{ id, nome, cognome, date_of_birth, codice_socio }], totale, pagina, per_pagina }
+		 */
+		cerca({ q = '', pagina = 1 } = {}) {
+			const qs = new URLSearchParams({ q, pagina: String(pagina) }).toString();
+			return request(`/api/soci/cerca?${qs}`);
+		},
 	},
 
 	/** La vista dell'istruttore (routes/istruttore.js): le sue lezioni e i soci che ci vengono. */
@@ -229,12 +233,40 @@ export const api = {
 	},
 
 	/**
-	 * Togliere lezioni e cambiare la data fine di una serie: molte righe insieme — lezioni,
-	 * prenotazioni, evento, avvisi ai soci — in una transazione sul server. Con
+	 * Il calendario (routes/calendario.js). Le letture scaricano solo quello che la vista usa: il
+	 * mese della griglia con i posti già contati, una lezione con le sue prenotazioni, le sessioni.
+	 * Togliere lezioni e cambiare la data fine di una sessione sono molte righe insieme — lezioni,
+	 * prenotazioni, sessione, avvisi ai soci — in una transazione sul server. Con
 	 * `anteprima: true` si hanno i conti senza scrivere niente.
 	 */
 	calendario: {
-		/** { lezione_id, ambito: 'lezione' | 'serie', giorni?, anteprima? } → { eliminate, annullate, soci_avvisati, evento_eliminato } */
+		/**
+		 * { dal, al } (al massimo 92 giorni) oppure { evento_id, dal, al? }
+		 * → { lezioni: [{ id, event_id, date, start_time, end_time, room_id, capacity, status, modified_manually,
+		 *     course_id, corso, instructor_id, category_id, colore, sessione, confermati, in_attesa }] }
+		 */
+		lezioni(filtri) {
+			const q = new URLSearchParams(Object.entries(filtri).filter(([, v]) => v)).toString();
+			return request(`/api/calendario/lezioni?${q}`);
+		},
+		/** → { lezione, prenotazioni: [{ id, member_id, nome, cognome, codice_socio, status, waitlist_position, prenotazione_fissa_id, created_date }] } */
+		lezione(id) {
+			return request(`/api/calendario/lezioni/${encodeURIComponent(id)}`);
+		},
+		/** { stato?: 'in_corso' | 'finite', corso_id? } → { sessioni, finite } */
+		sessioni(filtri = {}) {
+			const q = new URLSearchParams(Object.entries(filtri).filter(([, v]) => v)).toString();
+			return request(`/api/calendario/sessioni${q ? `?${q}` : ''}`);
+		},
+		/**
+		 * Le sovrapposizioni di sala e istruttore, contate sul server.
+		 * { date, start_time, end_time, room_id, course_id?, escludi_lezioni?, escludi_evento_id? }
+		 * → { conflitti: [{ data, tipo, messaggio, lezione_id }], libere: [data] }
+		 */
+		conflitti(corpo) {
+			return request('/api/calendario/conflitti', { method: 'POST', body: corpo });
+		},
+		/** { lezione_id? | evento_id?, ambito: 'lezione' | 'serie', anteprima? } → { eliminate, annullate, soci_avvisati, evento_eliminato } */
 		elimina(corpo) {
 			return request('/api/calendario/elimina', { method: 'POST', body: corpo });
 		},
@@ -270,18 +302,25 @@ export const api = {
 
 	/** Le prenotazioni fisse viste dal gestionale (routes/prenotazioniFisse.js). */
 	prenotazioniFisse: {
-		/** { member_id?, event_id? } → { fisse } (le attive) */
+		/**
+		 * { member_id?, event_id? } → { fisse } (quelle in corso)
+		 * Ogni fissa: id, member_id, event_id, dal, al, socio, codice_socio, corso, giorno, inizio, fine, creata_da…
+		 */
 		elenco(filtri = {}) {
 			const q = new URLSearchParams(Object.entries(filtri).filter(([, v]) => v)).toString();
 			return request(`/api/prenotazioni-fisse${q ? `?${q}` : ''}`);
 		},
-		/** { member_id, event_id, giorni? } → { fissa, prenotate, in_attesa, senza_abbonamento } */
+		/** { member_id, event_id, dal?, al | numero } → { fissa, prenotate, in_attesa, senza_abbonamento } */
 		crea(corpo) {
 			return request('/api/prenotazioni-fisse', { method: 'POST', body: corpo });
 		},
-		/** → { disdette, rimaste } */
-		termina(id) {
-			return request(`/api/prenotazioni-fisse/${id}`, { method: 'DELETE' });
+		/** { dal?, al | numero } → { fissa, prenotate, in_attesa, senza_abbonamento, disdette } */
+		modifica(id, corpo) {
+			return request(`/api/prenotazioni-fisse/${encodeURIComponent(id)}`, { method: 'PUT', body: corpo });
+		},
+		/** Cancella da `dal` (oggi, se manca): disdice solo le prenotazioni nate dalla fissa. → { disdette, rimaste } */
+		termina(id, dal = null) {
+			return request(`/api/prenotazioni-fisse/${encodeURIComponent(id)}/termina`, { method: 'POST', body: dal ? { dal } : {} });
 		},
 	},
 

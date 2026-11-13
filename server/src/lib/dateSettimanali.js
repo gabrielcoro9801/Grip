@@ -7,11 +7,12 @@
  * chiesta. Il calendario del gestionale era sfalsato dello stesso giorno al contrario, e le
  * mostrava giuste; il portale soci, che usa la data vera, no.
  *
- * Il riconoscimento non guarda il giorno della settimana di una lezione da sola: un evento
- * del sabato **e** della domenica, salvato sfalsato, ha lezioni di venerdì e di sabato, e il
- * sabato sembrerebbe giusto. Si guarda l'evento intero: si ricalcolano le date che avrebbe
- * dovuto avere e si conta quante lezioni cadono su quelle, e quante su quelle stesse meno
- * un giorno. Vince la maggioranza; a pari merito non si tocca niente e si segnala.
+ * Il riconoscimento non guarda il giorno della settimana di una lezione da sola: si guarda la
+ * sessione intera, si ricalcolano le date che avrebbe dovuto avere e si conta quante lezioni
+ * cadono su quelle, e quante su quelle stesse meno un giorno. Vince la maggioranza; a pari
+ * merito non si tocca niente e si segnala. (Quando una sessione aveva più giorni, un sabato e
+ * domenica salvato sfalsato aveva lezioni di venerdì e di sabato, e il sabato sembrava giusto.
+ * Dalla migrazione 0059 una sessione ha un giorno solo, `events.giorno`.)
  *
  * I conti sono tutti in UTC su date senza ora, quindi non dipendono dal fuso della macchina
  * né dalla lingua del database.
@@ -33,10 +34,13 @@ export function spostaGiorni(iso, giorni) {
 	return aIso(d);
 }
 
-/** Le date che un evento settimanale avrebbe dovuto generare: stessa regola del gestionale. */
+/**
+ * Le date che una sessione settimanale avrebbe dovuto generare: stessa regola del gestionale.
+ * @param evento { giorno: 'Monday'…, start_date, end_condition, end_date, occurrence_count }
+ */
 export function dateGiuste(evento) {
-	const giorni = new Set((evento.days_of_week ?? []).map((g) => GIORNI[g]).filter((g) => g !== undefined));
-	if (!giorni.size || !evento.start_date) return [];
+	const giorno = GIORNI[evento.giorno];
+	if (giorno === undefined || !evento.start_date) return [];
 
 	const date = [];
 	const corrente = aUtc(evento.start_date);
@@ -47,7 +51,7 @@ export function dateGiuste(evento) {
 	for (let i = 0; i < MASSIMO_GIORNI; i++) {
 		if (fine && corrente > fine) break;
 		if (date.length >= quante) break;
-		if (giorni.has(corrente.getUTCDay())) date.push(aIso(corrente));
+		if (corrente.getUTCDay() === giorno) date.push(aIso(corrente));
 		corrente.setUTCDate(corrente.getUTCDate() + 1);
 	}
 	return date;
@@ -56,7 +60,7 @@ export function dateGiuste(evento) {
 /**
  * Cosa fare delle lezioni di un evento settimanale.
  *
- * @param evento  { days_of_week, start_date, end_condition, end_date, occurrence_count }
+ * @param evento  { giorno, start_date, end_condition, end_date, occurrence_count }
  * @param lezioni [{ id, date }]
  * @returns { esito: 'giusto' | 'sfalsato' | 'incerto', daSpostare: [{ id, da, a }], fuoriSchema: [{ id, date }] }
  */

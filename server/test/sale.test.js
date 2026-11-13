@@ -236,7 +236,7 @@ describe('eliminare, annullare, o niente', () => {
 		const sala = (await creaSala({ name: `Sala in corso ${Date.now()}` })).json();
 		daPulire.sale.push(sala.id);
 		const [evento] = await db.insert(events).values({
-			courseId: idCorso, roomId: sala.id, capacity: 10, recurrenceType: 'weekly', daysOfWeek: ['Monday'],
+			courseId: idCorso, roomId: sala.id, capacity: 10, recurrenceType: 'weekly', giorno: 'Monday',
 			startDate: IERI, endCondition: 'by_date', endDate: giornoRelativo(30), startTime: '10:00', endTime: '11:00',
 		}).returning();
 		daPulire.eventi.push(evento.id);
@@ -338,7 +338,7 @@ describe('in una sala annullata non si programma niente, mai', () => {
 		daPulire.sale.push(sala.id);
 		assert.equal((await modificaSala(sala.id, { stato: 'sospeso', sospesa_dal: giornoRelativo(40), sospesa_al: giornoRelativo(50) })).statusCode, 200);
 		const [evento] = await db.insert(events).values({
-			courseId: idCorso, roomId: sala.id, capacity: 10, recurrenceType: 'weekly', daysOfWeek: ['Monday'],
+			courseId: idCorso, roomId: sala.id, capacity: 10, recurrenceType: 'weekly', giorno: 'Monday',
 			startDate: DOMANI, endCondition: 'by_date', endDate: giornoRelativo(20), startTime: '10:00', endTime: '11:00',
 		}).returning();
 		daPulire.eventi.push(evento.id);
@@ -447,7 +447,7 @@ describe('in una sala sospesa non si programma', () => {
 
 	test('un settimanale che ci finisce dentro viene rifiutato', async () => {
 		const res = await evento({
-			recurrence_type: 'weekly', days_of_week: ['Monday'], start_date: '2026-09-01',
+			recurrence_type: 'weekly', giorno: 'Monday', start_date: '2026-09-01',
 			end_condition: 'by_date', end_date: '2026-10-05',
 		});
 		assert.equal(res.statusCode, 400, res.body);
@@ -457,7 +457,7 @@ describe('in una sala sospesa non si programma', () => {
 		// Senza data di fine il server non può sapere quali giorni occuperà: meglio un rifiuto
 		// da spiegare che una lezione generata dentro una stanza chiusa.
 		const res = await evento({
-			recurrence_type: 'weekly', days_of_week: ['Monday'], start_date: '2026-09-01',
+			recurrence_type: 'weekly', giorno: 'Monday', start_date: '2026-09-01',
 			end_condition: 'by_count', occurrence_count: 8,
 		});
 		assert.equal(res.statusCode, 400, res.body);

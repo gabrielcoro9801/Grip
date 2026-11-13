@@ -8,9 +8,10 @@ import { eq, inArray } from 'drizzle-orm';
 import { buildApp } from '../src/app.js';
 import { db, pool } from '../src/db/client.js';
 import {
-	members, staffAccounts, subscriptions, sospensioni, attivita, rooms, courses, events, sessions, bookings, auditLogs,
+	members, staffAccounts, subscriptions, sospensioni, attivita, rooms, courses, events, sessions, bookings, auditLogs, prenotazioniFisse,
 } from '../src/db/schema/index.js';
 import { oggiIso, spostaGiorni } from '../../shared/giorni.js';
+import { giornoDellaSettimana } from '../src/lib/calendario.js';
 
 const PASSWORD = 'prova-sospensioni-1234';
 const t = Date.now();
@@ -155,5 +156,36 @@ describe('sospendere un abbonamento', () => {
 		assert.equal(elenco[0].riprende_il, fra(4));
 		const lette = (await come('reception', 'GET', `/api/entities/Subscription?member_id=${id.socio}`)).json();
 		assert.equal(lette[0].end_date, fra(32));
+	});
+});
+
+describe('la fine anticipata e le prenotazioni fisse', () => {
+	test('le fisse del socio prenotano i giorni tornati liberi, e solo quelli', async () => {
+		const giorni = [fra(4), fra(11), fra(18), fra(25)];
+		const [evento] = await db.insert(events).values({
+			courseId: id.corso, roomId: id.sala, capacity: 5, recurrenceType: 'weekly', giorno: giornoDellaSettimana(fra(4)),
+			startDate: fra(4), endCondition: 'by_date', endDate: fra(25), startTime: '20:00', endTime: '21:00',
+		}).returning();
+		const lezioni = await db.insert(sessions).values(giorni.map((date) => ({
+			eventId: evento.id, date, startTime: '20:00', endTime: '21:00', roomId: id.sala, capacity: 5,
+		}))).returning();
+		try {
+			const ferma = await come('reception', 'POST', `/api/soci/${id.altro}/sospensioni`, { dal: fra(2), riprende_il: fra(20) });
+			assert.equal(ferma.statusCode, 201, ferma.body);
+			// Una fissa nata durante la sospensione, ancora senza prenotazioni.
+			const [fissa] = await db.insert(prenotazioniFisse).values({ memberId: id.altro, eventId: evento.id, dal: oggi, al: fra(25) }).returning();
+			const res = await come('reception', 'POST', `/api/soci/${id.altro}/sospensioni/${ferma.json().sospensione.id}/termina`, { riprende_il: fra(4) });
+			assert.equal(res.statusCode, 200, res.body);
+			const sue = await db.select({ date: sessions.date, fissa: bookings.prenotazioneFissaId }).from(bookings)
+				.innerJoin(sessions, eq(bookings.sessionId, sessions.id))
+				.where(eq(sessions.eventId, evento.id)).orderBy(sessions.date);
+			assert.deepEqual(sue.map((b) => b.date), [fra(4), fra(11), fra(18)], 'la lezione dopo la sospensione non era ferma: non la prenota la ripresa anticipata');
+			assert.ok(sue.every((b) => b.fissa === fissa.id));
+		} finally {
+			await db.delete(bookings).where(inArray(bookings.sessionId, lezioni.map((l) => l.id)));
+			await db.delete(prenotazioniFisse).where(eq(prenotazioniFisse.eventId, evento.id));
+			await db.delete(sessions).where(eq(sessions.eventId, evento.id));
+			await db.delete(events).where(eq(events.id, evento.id));
+		}
 	});
 });

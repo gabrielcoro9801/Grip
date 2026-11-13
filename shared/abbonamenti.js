@@ -103,6 +103,32 @@ export function abbonamentoCopre(iscrizioni, giorno) {
 	});
 }
 
+/**
+ * L'ultimo giorno coperto senza interruzioni dagli abbonamenti, a partire da `giorno`: un rinnovo
+ * che comincia entro il giorno dopo la fine allunga la copertura. Le date sono quelle dopo le
+ * sospensioni (`conSospensioni`). Null se quel giorno nessun abbonamento lo copre; un
+ * abbonamento senza fine copre tutto ('9999-12-31').
+ *
+ * È il limite di una prenotazione fissa: la usano il server, che la rifiuta oltre, e la finestra
+ * della fissa, che lo dice prima.
+ */
+export function fineCopertura(iscrizioni, giorno) {
+	const tutte = (iscrizioni ?? []).map((i) => ({
+		inizio: i.start_date ? String(i.start_date).slice(0, 10) : '0000-01-01',
+		fine: i.end_date ? String(i.end_date).slice(0, 10) : '9999-12-31',
+	}));
+	let fine = null;
+	for (const i of tutte) if (i.inizio <= giorno && giorno <= i.fine && (!fine || i.fine > fine)) fine = i.fine;
+	if (!fine) return null;
+	for (let cambiata = true; cambiata;) {
+		cambiata = false;
+		for (const i of tutte) {
+			if (i.fine > fine && i.inizio <= spostaGiorni(fine, 1)) { fine = i.fine; cambiata = true; }
+		}
+	}
+	return fine;
+}
+
 export const MESSAGGIO_SENZA_ABBONAMENTO = "Per prenotare serve un abbonamento valido il giorno della lezione: rivolgiti alla reception.";
 export const MESSAGGIO_SOSPESO = "Il tuo abbonamento è sospeso quel giorno: la prenotazione riapre alla ripresa.";
 

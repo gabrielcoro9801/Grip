@@ -11,16 +11,21 @@ const lezioni = (...date) => date.map((date, i) => ({ id: `l${i}`, date }));
 describe('le date giuste di un evento', () => {
 	test('fino a una data', () => {
 		assert.deepEqual(
-			dateGiuste({ days_of_week: ['Monday'], start_date: '2026-10-05', end_condition: 'by_date', end_date: '2026-10-19' }),
+			dateGiuste({ giorno: 'Monday', start_date: '2026-10-05', end_condition: 'by_date', end_date: '2026-10-19' }),
 			['2026-10-05', '2026-10-12', '2026-10-19'],
 		);
 	});
 
-	test('a occorrenze, contando tutti i giorni scelti', () => {
+	test("a occorrenze, dal primo giorno giusto dopo l'inizio", () => {
 		assert.deepEqual(
-			dateGiuste({ days_of_week: ['Tuesday', 'Thursday'], start_date: '2026-10-20', end_condition: 'by_count', occurrence_count: 3 }),
-			['2026-10-20', '2026-10-22', '2026-10-27'],
+			dateGiuste({ giorno: 'Thursday', start_date: '2026-10-20', end_condition: 'by_count', occurrence_count: 3 }),
+			['2026-10-22', '2026-10-29', '2026-11-05'],
 		);
+	});
+
+	test('senza un giorno valido, nessuna data', () => {
+		assert.deepEqual(dateGiuste({ giorno: null, start_date: '2026-10-20', end_condition: 'by_count', occurrence_count: 3 }), []);
+		assert.deepEqual(dateGiuste({ giorno: 'Lunedì', start_date: '2026-10-20', end_condition: 'by_count', occurrence_count: 3 }), []);
 	});
 
 	test('a cavallo di un mese e di un anno', () => {
@@ -30,7 +35,7 @@ describe('le date giuste di un evento', () => {
 });
 
 describe('cosa fare delle lezioni', () => {
-	const delLunedi = { days_of_week: ['Monday'], start_date: '2026-10-05', end_condition: 'by_date', end_date: '2026-10-19' };
+	const delLunedi = { giorno: 'Monday', start_date: '2026-10-05', end_condition: 'by_date', end_date: '2026-10-19' };
 
 	test('salvate di domenica: tutte avanti di un giorno', () => {
 		const esame = esaminaEvento(delLunedi, lezioni('2026-10-04', '2026-10-11', '2026-10-18'));
@@ -44,18 +49,16 @@ describe('cosa fare delle lezioni', () => {
 		assert.deepEqual(esame.daSpostare, []);
 	});
 
-	test('sabato e domenica salvati sfalsati: si spostano anche quelli che sembrano giusti', () => {
-		// Sfalsate cadono di venerdì e di sabato: il sabato sembrerebbe a posto, ma è il sabato
-		// che doveva essere domenica. Una query sul giorno della settimana lo lascerebbe lì.
-		const weekend = { days_of_week: ['Saturday', 'Sunday'], start_date: '2026-10-03', end_condition: 'by_count', occurrence_count: 4 };
-		const esame = esaminaEvento(weekend, lezioni('2026-10-02', '2026-10-03', '2026-10-09', '2026-10-10'));
+	test('la domenica salvata di sabato: si sposta', () => {
+		const domenica = { giorno: 'Sunday', start_date: '2026-10-03', end_condition: 'by_count', occurrence_count: 2 };
+		const esame = esaminaEvento(domenica, lezioni('2026-10-03', '2026-10-10'));
 		assert.equal(esame.esito, 'sfalsato');
-		assert.deepEqual(esame.daSpostare.map((l) => l.a), ['2026-10-03', '2026-10-04', '2026-10-10', '2026-10-11']);
+		assert.deepEqual(esame.daSpostare.map((l) => l.a), ['2026-10-04', '2026-10-11']);
 	});
 
-	test('sabato e domenica già giusti: restano dove sono', () => {
-		const weekend = { days_of_week: ['Saturday', 'Sunday'], start_date: '2026-10-03', end_condition: 'by_count', occurrence_count: 4 };
-		assert.equal(esaminaEvento(weekend, lezioni('2026-10-03', '2026-10-04', '2026-10-10', '2026-10-11')).esito, 'giusto');
+	test("il sabato già giusto: resta dov'è", () => {
+		const sabato = { giorno: 'Saturday', start_date: '2026-10-03', end_condition: 'by_count', occurrence_count: 2 };
+		assert.equal(esaminaEvento(sabato, lezioni('2026-10-03', '2026-10-10')).esito, 'giusto');
 	});
 
 	test('una lezione spostata a mano non si tocca, e si segnala', () => {

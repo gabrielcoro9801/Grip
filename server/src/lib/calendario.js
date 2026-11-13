@@ -11,14 +11,15 @@
 //
 // Tutto in una transazione, passata da chi chiama: la modifica dal browser erano N richieste, e
 // un errore a metà lasciava metà serie cambiata.
-import { inArray } from 'drizzle-orm';
-import { sessions, bookings } from '../db/schema/index.js';
+import { and, eq, inArray, lt, gt, ne, notInArray, or } from 'drizzle-orm';
+import { db } from '../db/client.js';
+import { sessions, bookings, events, courses } from '../db/schema/index.js';
 import { lezioneFinita } from '../../../shared/giorni.js';
 import { notifica, giornoEsteso } from './notifiche.js';
 
 const GIORNI_INGLESI = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
-/** 'Monday'… da "2026-10-12", come `days_of_week` degli eventi. In UTC: è una data, non un istante. */
+/** 'Monday'… da "2026-10-12", come `events.giorno`. In UTC: è una data, non un istante. */
 export function giornoDellaSettimana(iso) {
 	const [a, m, g] = String(iso).slice(0, 10).split('-').map(Number);
 	return GIORNI_INGLESI[new Date(Date.UTC(a, m - 1, g)).getUTCDay()];
@@ -85,4 +86,57 @@ export function descriviConti({ eliminate, annullate, soci_avvisati: avvisati })
 	if (annullate) parti.push(`annullate ${annullate} ${annullate === 1 ? 'lezione' : 'lezioni'} con prenotazioni`);
 	if (avvisati) parti.push(`${avvisati} ${avvisati === 1 ? 'socio avvisato' : 'soci avvisati'}`);
 	return parti.join(', ');
+}
+
+const ddmm = (iso) => { const [, m, g] = String(iso).slice(0, 10).split('-'); return `${g}/${m}`; };
+
+/**
+ * Le sovrapposizioni di sala e di istruttore per una lezione da mettere in quelle date, a
+ * quell'ora. È la regola che il gestionale applicava nel browser (`checkEventConflicts`), che per
+ * farlo scaricava tutte le lezioni: due lezioni si sovrappongono se nello stesso giorno i loro
+ * orari si toccano per più di un istante (fine uguale a inizio non è una sovrapposizione), e non
+ * sono annullate. Stessa sala: conflitto di sala. Altra sala, ma corso dello stesso istruttore:
+ * conflitto di istruttore. Per ogni data vale il primo, e la sala prima dell'istruttore.
+ *
+ * @param richiesta { date: ['2026-11-12', …], start_time, end_time, room_id, instructor_id?,
+ *   escludiLezioni?: [id] (la lezione che si sta modificando), escludiEvento?: id (la sessione
+ *   che si sta modificando) }
+ * @returns {{ conflitti: [{ data, tipo: 'sala'|'istruttore', messaggio, lezione_id }], libere: [data] }}
+ */
+export async function conflitti({ date, start_time: inizio, end_time: fine, room_id: sala, instructor_id: istruttore = null,
+	escludiLezioni = [], escludiEvento = null }, conn = db) {
+	const giorni = [...new Set(date)].sort();
+	if (!giorni.length) return { conflitti: [], libere: [] };
+	const chi = [eq(sessions.roomId, sala)];
+	if (istruttore) chi.push(eq(courses.instructorId, istruttore));
+	const filtri = [
+		inArray(sessions.date, giorni),
+		ne(sessions.status, 'cancelled'),
+		lt(sessions.startTime, fine),
+		gt(sessions.endTime, inizio),
+		or(...chi),
+	];
+	if (escludiLezioni.length) filtri.push(notInArray(sessions.id, escludiLezioni));
+	if (escludiEvento) filtri.push(ne(sessions.eventId, escludiEvento));
+	const sovrapposte = await conn
+		.select({ id: sessions.id, date: sessions.date, startTime: sessions.startTime, endTime: sessions.endTime, roomId: sessions.roomId, corso: courses.name })
+		.from(sessions)
+		.innerJoin(events, eq(sessions.eventId, events.id))
+		.innerJoin(courses, eq(events.courseId, courses.id))
+		.where(and(...filtri))
+		.orderBy(sessions.date, sessions.startTime);
+
+	const trovati = [];
+	const libere = [];
+	for (const giorno of giorni) {
+		const quel = sovrapposte.filter((l) => l.date === giorno);
+		const inSala = quel.find((l) => l.roomId === sala);
+		const altro = inSala ?? quel[0];
+		if (!altro) { libere.push(giorno); continue; }
+		const orario = `${hhmm(altro.startTime)}–${hhmm(altro.endTime)}`;
+		trovati.push(inSala
+			? { data: giorno, tipo: 'sala', messaggio: `${ddmm(giorno)}: sala occupata da «${altro.corso}» ${orario}`, lezione_id: altro.id }
+			: { data: giorno, tipo: 'istruttore', messaggio: `${ddmm(giorno)}: istruttore già impegnato con «${altro.corso}» ${orario}`, lezione_id: altro.id });
+	}
+	return { conflitti: trovati, libere };
 }

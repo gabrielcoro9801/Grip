@@ -11,6 +11,7 @@ import { buildApp } from '../src/app.js';
 import { db, pool } from '../src/db/client.js';
 import {
 	members, staffAccounts, qrAccessi, bookings, sessions, events, courses, rooms, instructors, subscriptions, plans, auditLogs, attivita,
+	prenotazioniFisse,
 } from '../src/db/schema/index.js';
 import { codiceDinamico } from '../src/lib/qrDinamico.js';
 import { oggiIso, spostaGiorni } from '../../shared/giorni.js';
@@ -24,7 +25,7 @@ const SEME = `GRIP-ARCH-${lettere}`;
 let app;
 let tokenAdmin;
 let tokenSocio;
-const id = { soci: [], account: [], tipo: null, sala: null, istruttore: null, corso: null, evento: null, lezione: null };
+const id = { soci: [], account: [], tipo: null, sala: null, istruttore: null, corso: null, evento: null, lezione: null, fissa: null };
 
 const come = (token, opzioni) => app.inject({ ...opzioni, headers: { authorization: `Bearer ${token}` } });
 const admin = (opzioni) => come(tokenAdmin, opzioni);
@@ -69,6 +70,14 @@ before(async () => {
 		eventId: evento.id, date: domani, startTime: '10:00', endTime: '11:00', roomId: sala.id, capacity: 1,
 	}).returning();
 	id.lezione = lezione.id;
+
+	// Una prenotazione fissa del socio che se ne andrà, su una sessione settimanale (K11).
+	const [sessione] = await db.insert(events).values({
+		courseId: corso.id, roomId: sala.id, capacity: 5, recurrenceType: 'weekly', giorno: 'Monday',
+		startDate: domani, endCondition: 'by_date', endDate: spostaGiorni(domani, 60), startTime: '19:00', endTime: '20:00',
+	}).returning();
+	const [fissa] = await db.insert(prenotazioniFisse).values({ memberId: id.soci[0], eventId: sessione.id, dal: oggiIso() }).returning();
+	id.fissa = fissa.id;
 
 	// Un posto solo: il socio che se ne andrà lo occupa, l'altro è in lista d'attesa.
 	for (const socio of id.soci) {
@@ -120,6 +129,14 @@ describe('archiviare un socio', () => {
 		assert.equal(righe.find((b) => b.memberId === id.soci[1]).status, 'confirmed', 'chi era in lista è promosso');
 	});
 
+	test('le sue prenotazioni fisse si chiudono da oggi, e il registro lo dice (K11)', async () => {
+		const [fissa] = await db.select().from(prenotazioniFisse).where(eq(prenotazioniFisse.id, id.fissa));
+		assert.equal(fissa.attiva, false);
+		assert.equal(fissa.terminataIl, oggiIso());
+		const registro = await db.select().from(auditLogs).where(eq(auditLogs.entitaId, id.soci[0]));
+		assert.ok(registro.some((r) => /prenotazioni fisse chiuse: 1/.test(r.dettagli ?? '')), JSON.stringify(registro.map((r) => r.dettagli)));
+	});
+
 	test('il motivo resta nel diario, e la dashboard lo conta', async () => {
 		const [socio] = await db.select({ personaId: members.personaId }).from(members).where(eq(members.id, id.soci[0]));
 		const diario = await db.select().from(attivita).where(eq(attivita.personaId, socio.personaId));
@@ -157,6 +174,8 @@ describe('archiviare un socio', () => {
 		assert.equal((await login(emailSocio)).statusCode, 200);
 		const verifica = await admin({ method: 'POST', url: '/api/qr/verifica', payload: { codice: codiceDinamico(SEME) } });
 		assert.equal(verifica.json().valido, true);
+		const [fissa] = await db.select().from(prenotazioniFisse).where(eq(prenotazioniFisse.id, id.fissa));
+		assert.equal(fissa.attiva, false, 'riattivato, le fisse non ripartono');
 	});
 
 	test('senza il permesso di modificare i soci non si archivia', async () => {

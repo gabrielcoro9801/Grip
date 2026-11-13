@@ -131,7 +131,7 @@ export default function Dashboard() {
               <CardTitle className="text-base font-heading flex items-center gap-2">
                 <Clock className="w-4 h-4 text-primary" />
                 Prossime lezioni
-                <Link to="/calendario/prenotazioni" className="ml-auto text-xs font-normal text-primary hover:underline">Tutte le prenotazioni</Link>
+                <Link to="/calendario" className="ml-auto text-xs font-normal text-primary hover:underline">Tutte le lezioni</Link>
               </CardTitle>
             </CardHeader>
             <CardContent>

@@ -75,8 +75,11 @@ async function socioDi(tx, memberId) {
  * Lo stato non si accetta da chi chiede: lo decide il conto dei posti. Un client che manda
  * `confirmed` su una lezione piena si ritrova in lista d'attesa, che è la risposta giusta —
  * non un errore, semplicemente la verità.
+ *
+ * `prenotazioneFissaId`: la fissa che prenota (lib/prenotazioniFisse.js). Resta sulla
+ * prenotazione, così cancellando la fissa si disdicono solo le sue.
  */
-export async function prenota({ sessionId, memberId }) {
+export async function prenota({ sessionId, memberId, prenotazioneFissaId = null }) {
 	return db.transaction(async (tx) => {
 		// `FOR UPDATE` sulla lezione: due richieste sull'ultimo posto si mettono in fila
 		// invece di contare le stesse prenotazioni e confermarsi a vicenda.
@@ -109,6 +112,7 @@ export async function prenota({ sessionId, memberId }) {
 				memberName: socio.nome,
 				status: pieno ? 'waitlisted' : 'confirmed',
 				waitlistPosition: pieno ? inAttesa + 1 : null,
+				prenotazioneFissaId,
 			})
 			.returning();
 		return { creata };

@@ -414,6 +414,20 @@
       "when": 1794431793760,
       "tag": "0058_avvisi",
       "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1794562707384,
+      "tag": "0059_sessione_un_giorno",
+      "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1794562727486,
+      "tag": "0060_fisse_a_periodo",
+      "breakpoints": true
     }
   ]
 }

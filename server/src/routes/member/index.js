@@ -283,8 +283,9 @@ export default async function memberRoutes(fastify) {
 		if (motivo) return reply.code(400).send({ error: motivo });
 
 		// Prima di mostrare l'agenda, le fisse del socio prenotano quello che devono: è il
-		// momento in cui lui guarda, e l'operazione è idempotente.
-		await applicaFisse({ memberId: request.idSocio });
+		// momento in cui lui guarda, e l'operazione è idempotente. Solo quelle senza fine: una
+		// fissa con una data l'ha decisa la reception, e non cresce da sola.
+		await applicaFisse({ memberId: request.idSocio, soloSenzaFine: true });
 		const mieFisse = new Set((await elencoFisse({ memberId: request.idSocio })).map((f) => f.event_id));
 
 		const righe = await db
@@ -432,31 +433,38 @@ export default async function memberRoutes(fastify) {
 
 	// --- Le prenotazioni fisse ------------------------------------------------------------
 
-	/** Le prenotazioni fisse attive del socio. */
+	/**
+	 * Le prenotazioni fisse in corso del socio. `giorni` resta un elenco, come lo legge il portale
+	 * (`fisse.jsx`), ma da quando una sessione ha un giorno solo (migrazione 0059) ne ha uno.
+	 */
 	fastify.get('/corsi/fisse', async (request) => {
 		const fisse = await elencoFisse({ memberId: request.idSocio });
 		return {
 			fisse: fisse.map((f) => ({
-				id: f.id, serie_id: f.event_id, corso: f.corso, giorni: f.giorni ?? f.giorni_serie ?? [],
+				id: f.id, serie_id: f.event_id, corso: f.corso, giorni: f.giorno ? [f.giorno] : [],
 				inizio: String(f.inizio).slice(0, 5), fine: String(f.fine).slice(0, 5), creata_il: f.creata_il,
 			})),
 		};
 	});
 
 	/**
-	 * Prenota fisso in una serie: { giorni? } (i giorni della serie da tenere; assenti = tutti).
-	 * Risponde con quante lezioni ha prenotato subito, quante in lista d'attesa e quante sono
-	 * rimaste senza abbonamento.
+	 * Prenota fisso in una sessione, da oggi e senza fine: la regola di passaggio finché il portale
+	 * non chiede le date (docs/piani/corsi.md, «In sospeso»). `giorni`, se arriva, non conta più:
+	 * la sessione ha un giorno solo. Risponde con quante lezioni ha prenotato subito, quante in
+	 * lista d'attesa e quante sono rimaste senza abbonamento.
 	 */
 	fastify.post('/corsi/serie/:id/fissa', async (request, reply) => {
 		const [socio] = await db.select({ nome: members.fullName }).from(members).where(eq(members.id, request.idSocio)).limit(1);
-		const esito = await creaFissa({ memberId: request.idSocio, eventId: request.params.id, giorni: request.body?.giorni, creataDa: socio?.nome ?? '' });
+		const esito = await creaFissa({ memberId: request.idSocio, eventId: request.params.id, senzaFine: true, creataDa: socio?.nome ?? '' });
 		if (esito.errore) return reply.code(esito.errore).send({ error: esito.messaggio });
 		reply.code(201);
 		return { fissa: { id: esito.fissa.id }, prenotate: esito.esito.prenotate, in_attesa: esito.esito.inAttesa, senza_abbonamento: esito.esito.scoperte };
 	});
 
-	/** Termina una propria fissa: le prenotazioni future si disdicono, nel rispetto del termine di disdetta. */
+	/**
+	 * Termina una propria fissa da oggi (`terminaFissa` senza `dal`): le sue prenotazioni future si
+	 * disdicono, nel rispetto del termine di disdetta.
+	 */
 	fastify.delete('/corsi/fisse/:id', async (request, reply) => {
 		const esito = await terminaFissa({ fissaId: request.params.id, soloDelSocio: request.idSocio });
 		if (esito.errore) return reply.code(esito.errore).send({ error: esito.messaggio });

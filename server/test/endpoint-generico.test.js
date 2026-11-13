@@ -9,7 +9,7 @@ import bcrypt from 'bcryptjs';
 import { eq, inArray } from 'drizzle-orm';
 import { buildApp } from '../src/app.js';
 import { db, pool } from '../src/db/client.js';
-import { rooms, staffAccounts } from '../src/db/schema/index.js';
+import { categories, rooms, staffAccounts } from '../src/db/schema/index.js';
 
 const suffisso = Date.now();
 let app;
@@ -17,6 +17,7 @@ let token;
 let idAccount;
 let idAdmin;
 const idSale = [];
+const idCategorie = [];
 const come = (opzioni) => app.inject({ ...opzioni, headers: { authorization: `Bearer ${token}` } });
 
 before(async () => {
@@ -30,6 +31,7 @@ before(async () => {
 
 after(async () => {
 	if (idSale.length) await db.delete(rooms).where(inArray(rooms.id, idSale));
+	if (idCategorie.length) await db.delete(categories).where(inArray(categories.id, idCategorie));
 	await db.delete(staffAccounts).where(eq(staffAccounts.id, idAccount));
 	if (idAdmin) await db.delete(staffAccounts).where(eq(staffAccounts.id, idAdmin));
 	await app.close();
@@ -102,5 +104,37 @@ describe('le prenotazioni non passano dall’endpoint generico', () => {
 		assert.equal((await come({ method: 'POST', url: '/api/entities/Booking/bulk', payload: [{ status: 'confirmed' }] })).statusCode, 400);
 		assert.equal((await come({ method: 'PUT', url: `/api/entities/Booking/${id}`, payload: { status: 'confirmed' } })).statusCode, 400);
 		assert.equal((await come({ method: 'DELETE', url: `/api/entities/Booking/${id}` })).statusCode, 400);
+	});
+});
+
+// Il colore di una categoria finisce in uno `style` del calendario e del portale: si salva in una
+// forma sola, e un testo che non è un colore non entra.
+describe('il colore di una categoria', () => {
+	test('rgb() e i codici senza # si salvano come #rrggbb', async () => {
+		const res = await come({ method: 'POST', url: '/api/entities/Category', payload: { name: `Categoria ${suffisso}`, color: 'rgb(139, 92, 246)' } });
+		assert.equal(res.statusCode, 201, res.body);
+		idCategorie.push(res.json().id);
+		assert.equal(res.json().color, '#8b5cf6');
+
+		const modificata = await come({ method: 'PUT', url: `/api/entities/Category/${res.json().id}`, payload: { color: '3B82F6' } });
+		assert.equal(modificata.statusCode, 200, modificata.body);
+		assert.equal(modificata.json().color, '#3b82f6');
+
+		// Cambiare solo il nome non chiede il colore.
+		const rinominata = await come({ method: 'PUT', url: `/api/entities/Category/${res.json().id}`, payload: { name: `Rinominata ${suffisso}` } });
+		assert.equal(rinominata.statusCode, 200, rinominata.body);
+		assert.equal(rinominata.json().color, '#3b82f6');
+	});
+
+	test('quello che non è un colore è un 400, in creazione e in modifica', async () => {
+		for (const color of ['blu', 'rgb(300, 0, 0)', '', null]) {
+			const res = await come({ method: 'POST', url: '/api/entities/Category', payload: { name: `Sbagliata ${suffisso}`, color } });
+			assert.equal(res.statusCode, 400, `${color}: ${res.body}`);
+			assert.match(res.json().error, /colore non è valido/);
+		}
+		const id = idCategorie[0];
+		const res = await come({ method: 'PUT', url: `/api/entities/Category/${id}`, payload: { color: '#12345' } });
+		assert.equal(res.statusCode, 400, res.body);
+		assert.match(res.json().error, /colore non è valido/);
 	});
 });

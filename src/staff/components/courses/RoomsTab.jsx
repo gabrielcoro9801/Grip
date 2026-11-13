@@ -61,7 +61,7 @@ const ORDINE_STATO = { attiva: 0, programmata: 1, conclusa: 2, sospesa: 3, annul
  * elenchi già in pagina (`azioneSullaSala`), e il server rifà lo stesso conto per conto suo.
  */
 export default function RoomsTab({ data, reload }) {
-  const { rooms, events, sessions } = data;
+  const { rooms } = data;
   const { toast } = useToast();
   const [conferma, dialogoConferma] = useConfirm();
   const [showForm, setShowForm] = useState(false);
@@ -162,15 +162,15 @@ export default function RoomsTab({ data, reload }) {
    *
    * Prima il conto si faceva qui, sugli elenchi della pagina: che sono troncati (le lezioni da
    * tre mesi fa in avanti), e una sala con un passato più vecchio risultava mai usata — la
-   * conferma prometteva un'eliminazione che il server poi rifiutava. Si richiede quando il
-   * calendario cambia, cioè dopo ogni `reload`.
+   * conferma prometteva un'eliminazione che il server poi rifiutava. Si richiede quando le
+   * sale cambiano, cioè dopo ogni `reload`, e a ogni apertura della pagina.
    */
   const [uso, setUso] = useState(null);
   useEffect(() => {
     let vivo = true;
     api.sale.uso().then((u) => { if (vivo) setUso(u); }).catch(() => { if (vivo) setUso(null); });
     return () => { vivo = false; };
-  }, [rooms, events, sessions]);
+  }, [rooms]);
 
   const calendarioDi = (roomId) => {
     const u = uso?.[roomId];

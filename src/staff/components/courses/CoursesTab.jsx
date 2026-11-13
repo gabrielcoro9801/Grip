@@ -20,7 +20,7 @@ import { NOTE_CORSO_MASSIMO, DISDETTA_MASSIMA_ORE } from "@/core/domain/corsi";
 // finestre permetteva di correggere quello che si era appena scritto. Chi non trova la categoria
 // che gli serve la crea nella sua pagina, e torna qui.
 export default function CoursesTab({ data, reload }) {
-  const { courses, categories, instructors, events } = data;
+  const { courses, categories, instructors } = data;
   const { staffUser } = useStaffAuth();
   const puoModificare = canEdit(staffUser?.ruolo, "calendar");
   const { toast } = useToast();
@@ -74,18 +74,11 @@ export default function CoursesTab({ data, reload }) {
     }
   };
 
-  // Un corso si elimina solo se non è mai andato in calendario: i suoi eventi portano con sé
-  // lezioni e prenotazioni, e toglierlo cancellerebbe il "cosa" di lezioni già fatte.
+  // Un corso si elimina solo se non è mai andato in calendario: le sue lezioni e sessioni portano
+  // con sé le prenotazioni, e toglierlo cancellerebbe il "cosa" di lezioni già fatte. Lo decide il
+  // server: la pagina non scarica più il calendario (M8), e il database risponde «ancora
+  // collegato» (errorHandler.js).
   const elimina = async (course) => {
-    const suoi = events.filter((ev) => ev.course_id === course.id).length;
-    if (suoi) {
-      toast({
-        title: "Questo corso non si può eliminare",
-        description: `È in calendario con ${suoi} ${suoi === 1 ? "evento" : "eventi"}: resta nel catalogo con il suo storico. Se non si terrà più, disattivalo.`,
-        variant: "destructive",
-      });
-      return;
-    }
     const ok = await conferma({ title: `Eliminare «${course.name}»?`, confirmLabel: "Elimina", destructive: true });
     if (!ok) return;
     try {
@@ -93,7 +86,14 @@ export default function CoursesTab({ data, reload }) {
       toast({ title: "Corso eliminato" });
       reload();
     } catch (err) {
-      toast({ title: "Non è stato possibile eliminare", description: err.message, variant: "destructive" });
+      const collegato = /ancora collegato/.test(err.message);
+      toast({
+        title: collegato ? "Questo corso non si può eliminare" : "Non è stato possibile eliminare",
+        description: collegato
+          ? "È già andato in calendario: resta nel catalogo con il suo storico. Se non si terrà più, disattivalo."
+          : err.message,
+        variant: "destructive",
+      });
     }
   };
 
