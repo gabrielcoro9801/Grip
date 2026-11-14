@@ -16,7 +16,7 @@ l'abbonamento venduto, il tipo del listino, l'account); "Abbonamenti" era il lis
 | **Socio** | Chi è iscritto alla palestra, con una scheda e un codice. | membro |
 | **Soci** | La sezione del gestionale (menu). | Gestione membri |
 | **Contatto** | Chi ha chiesto informazioni e non è (ancora) socio. La sezione del menu resta "Lead". | — |
-| **Iscrivi** | Far diventare socio una persona: anagrafica, abbonamento, certificato, consensi. | Aggiungi socio, Nuovo socio |
+| **Iscrivi** | Far diventare socio una persona: anagrafica, abbonamento, privacy, accesso al portale. | Aggiungi socio, Nuovo socio |
 | **Archivia** | Un socio che ha lasciato la palestra esce dagli elenchi; si ritrova e si riattiva. | Elimina |
 
 ## Gli abbonamenti
@@ -43,7 +43,6 @@ Ogni cosa ha i suoi. **"Attivo" è solo uno stato del socio.**
 | **Contatto** | Nuovo, In attesa di risposta, In conversazione, Da richiamare, Non raggiungibile, Non interessato, Iscritto | badge colorato |
 | **Prenotazione** | Confermata, In lista d'attesa, Disdetta | badge colorato |
 | **Lezione** | (in calendario), Annullata | testo |
-| **Codice QR** | Valido, Revocato | badge colorato |
 | **Account** | Abilitato, Disabilitato | badge colorato |
 | **Sala** | Disponibile, Sospesa, Annullata | badge colorato |
 | **Canale dei contatti** | In uso, Non in uso | badge colorato |
@@ -61,6 +60,8 @@ distinguono dalla forma, punto per il socio e badge per il contatto.
 | **Elimina** | Togliere una prenotazione inserita per errore: sparisce anche dallo storico. | — |
 | **Lista d'attesa** | Chi aspetta un posto libero, in ordine. | — |
 | **Annullata** | Una lezione che la palestra non tiene: le prenotazioni si disdicono da sole. | Cancellata |
+| **Annulla** | Solo nel messaggio che compare subito dopo «Prenota», per qualche secondo: disfa la prenotazione appena fatta. Nello storico è una disdetta. | — |
+| **Esci dalla lista** | Disdire una prenotazione in lista d'attesa. | — |
 
 ## I corsi
 
@@ -71,19 +72,30 @@ In interfaccia «sessione» è la riga di `events`, non di `sessions`.
 | **Lezione** | Un appuntamento in una data: un corso, a un'ora, in una sala. | Evento |
 | **Lezione singola** | Una lezione che non si ripete. «Nuova lezione» in calendario crea solo queste. | Nuovo evento |
 | **Sessione** | Una lezione che si ripete ogni settimana, stesso giorno e stessa ora. Una sessione ha un giorno solo. | Serie, Ricorrenza |
-| **Prenotazione fissa** | Un socio prenotato a una sessione, da una data a un'altra (o per N lezioni). Prenota o disdice solo quando la si crea, cambia o cancella: non riparte da sola al rinnovo dell'abbonamento. Archiviando il socio, le sue fisse si chiudono. Quelle create dal portale sono «senza data di fine». | — |
+| **Prenotazione fissa** | Un socio prenotato a una sessione, da una data a un'altra (o per N lezioni). Prenota o disdice solo quando la si crea, cambia o cancella: non riparte da sola al rinnovo dell'abbonamento. Archiviando il socio, le sue fisse si chiudono. Ha sempre una fine, anche quando la crea il socio dal portale. | — |
+| **Allunga** | Spostare più avanti la fine di una prenotazione fissa, entro l'abbonamento e l'ultima lezione della sessione. Il portale lo propone al rinnovo e quando la sessione si allunga. | Rinnova (per una fissa) |
+| **Mattino · Pomeriggio · Sera** | Le fasce in cui il portale divide le lezioni di un giorno: prima delle 13, dalle 13 alle 18, dalle 18. | — |
+
+## Il portale dei soci
+
+| Parola | Che cosa è | Non dire |
+|---|---|---|
+| **Home · Corsi · Le mie lezioni · Abbonamento** | Le quattro voci della barra del portale. Notifiche e Profilo si aprono dalla campanella e dall'avatar. | — |
+| **Le mie lezioni** | La pagina del portale con le fisse, le prossime prenotazioni e le passate (30 giorni). | Le mie prenotazioni |
+| **Notifiche** | Quello che è successo alle prenotazioni del socio (una lezione annullata, un posto dalla lista d'attesa), con chi l'ha fatto e cosa si può fare adesso. Restano solo nel portale: niente email né notifiche sul telefono. | Avvisi (per le notifiche) |
+| **Profilo** | I dati del socio, i contatti della palestra, tema e password. | Anagrafica (nel portale) |
 
 ## Il lavoro della segreteria
 
 | Parola | Che cosa è |
 |---|---|
-| **Da fare** | La sezione con chi seguire e perché, divisa in schede: In scadenza, Scaduti, Frequenza, Documenti, Compleanni, Archivio, Regole. |
-| **Avviso** | Una cosa precisa da seguire in Da fare (un abbonamento che scade, un documento, un compleanno): si apre da solo e si chiude a mano o da solo. Un socio può avere più avvisi. |
+| **Da fare** | La sezione con chi seguire e perché, divisa in schede: In scadenza, Scaduti, Frequenza, Compleanni, Archivio, Regole. |
+| **Avviso** | Una cosa precisa da seguire in Da fare (un abbonamento che scade, un calo di frequenza, un compleanno): si apre da solo e si chiude a mano o da solo. Un socio può avere più avvisi. |
 | **Nascondi avviso** | Chiudere a mano un avviso senza fare altro: va nell'Archivio di Da fare e si ripristina. In Da fare non si dice mai «Archivia». |
 | **Archivio di Da fare** | Gli avvisi chiusi, a mano o da soli: come, chi e quando. Non è l'archivio dei soci. |
 | **Regole** | La scheda di Da fare, per l'amministratore, con le soglie di ogni avviso. |
 | **Diario** | La storia di una persona: contatti, note, cose da fare comparse e risolte. Nella scheda socio la sezione si chiama **Note**; nei Lead resta Diario. |
-| **Ingresso** | Un passaggio dal tornello o registrato a mano. |
+| **Ingresso** | Un passaggio registrato a mano al bancone (il lettore al tornello non c'è ancora). |
 | **Impostazioni** | La sezione in fondo al menu, per l'amministratore: Utenti e ruoli, Comunicazioni, Registro delle azioni. Le regole di Da fare stanno nella scheda Regole di Da fare. |
 | **Registro delle azioni** | Chi ha fatto che cosa, e quando (era "Log audit"). |
 
