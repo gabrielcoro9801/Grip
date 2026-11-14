@@ -19,7 +19,7 @@ import { db, pool } from '../src/db/client.js';
 import { oggiIso, spostaGiorni } from '../../shared/giorni.js';
 import {
 	members, staffAccounts, subscriptions,
-	rooms, courses, events, sessions, bookings,
+	rooms, courses, events, sessions, bookings, consensi,
 } from '../src/db/schema/index.js';
 
 const PASSWORD = 'prova-api-member-1234';
@@ -294,5 +294,23 @@ describe('il contratto resta quello promesso', () => {
 			Object.keys(mia.posti).sort(),
 			['al_completo', 'capienza', 'confermati', 'in_attesa', 'liberi']
 		);
+	});
+});
+
+describe('i consensi promozionali dal portale (R3)', () => {
+	const metti = (payload) => app.inject({ method: 'PUT', url: '/api/member/v1/consensi', payload, headers: { authorization: `Bearer ${tokenSocio}` } });
+
+	test('si revocano soltanto: darli dal portale non si può più', async () => {
+		const [socio] = await db.select({ personaId: members.personaId }).from(members).where(inArray(members.id, [idSocio]));
+		await db.insert(consensi).values({ personaId: socio.personaId, tipo: 'marketing_email', valore: true, fonte: 'portale', autoreNome: 'Socio API' });
+		try {
+			assert.equal((await come(tokenSocio, '/api/member/v1/consensi')).json().consensi.marketing_email.valore, true);
+			assert.equal((await metti({ tipo: 'marketing_sms', valore: true })).statusCode, 400);
+			const tolto = await metti({ tipo: 'marketing_email', valore: false });
+			assert.equal(tolto.statusCode, 200, tolto.body);
+			assert.equal(tolto.json().consensi.marketing_email.valore, false);
+		} finally {
+			await db.delete(consensi).where(inArray(consensi.personaId, [socio.personaId]));
+		}
 	});
 });

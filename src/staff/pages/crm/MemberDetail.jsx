@@ -13,7 +13,6 @@ import CampiAnagrafica, { anagraficaDi, motivoAnagraficaIncompleta } from "@/sta
 import FisseSocio from "@/staff/components/soci/FisseSocio";
 import IngressiSocio from "@/staff/components/soci/IngressiSocio";
 import DiarioSocio from "@/staff/components/soci/DiarioSocio";
-import ConsensiSocio from "@/staff/components/soci/ConsensiSocio";
 import SospensioniSocio from "@/staff/components/soci/SospensioniSocio";
 import DialogoAbbandono from "@/staff/components/soci/DialogoAbbandono";
 import DialogoVendita from "@/staff/components/soci/DialogoVendita";
@@ -244,7 +243,7 @@ export default function MemberDetail() {
       </div>
 
       {/* La scheda com'era prima del CRM: l'anagrafica a tutta larghezza, poi abbonamenti,
-          fisse, accesso e comunicazioni su due colonne, e il diario in fondo. */}
+          fisse e accesso su due colonne, e il diario in fondo. */}
       <div className="grid lg:grid-cols-2 gap-6">
         {/* Anagrafica: la tile principale, a tutta larghezza. Stesso ordine del modulo, così
             chi corregge un dato lo ritrova dove l'ha visto. */}
@@ -367,12 +366,6 @@ export default function MemberDetail() {
             </section>
           </CardContent>
         </Card>
-
-        {/* Le comunicazioni promozionali: un dato del socio, non lavoro da fare. Si leggono qui e
-            si cambiano solo con il modulo firmato o con il motivo (ConsensiSocio). */}
-        {vedeDiario && (
-          <ConsensiSocio socio={member} documenti={[]} puoModificare={puoModificare} />
-        )}
 
         {/* Il diario: le note e la storia del socio, in sola lettura. Il lavoro da fare sta in
             Da fare, non qui: la scheda racconta, non chiede. */}

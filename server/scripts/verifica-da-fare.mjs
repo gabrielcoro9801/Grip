@@ -1,17 +1,17 @@
 /**
- * Da fare, gli stati, l'elenco dei soci, i consensi: provati in un browser vero, con le schermate
+ * Da fare, gli stati, l'elenco dei soci, la revoca dei consensi: provati in un browser vero, con le schermate
  * nella cartella temporanea.
  *
  * - Da fare: la barra con i numeri, una scheda per avviso con le sue azioni, i recapiti senza link,
  *   Nascondi e poi Ripristina dall'Archivio.
- * - La scheda socio: lo stato in testa, niente blocco "Da seguire", i consensi in sola lettura.
+ * - La scheda socio: lo stato in testa, niente blocco "Da seguire", niente consensi né documenti.
  * - Elenco soci: le colonne nuove, "Contatta" da tabella e tile (senza aprire la scheda).
  * - La dashboard: quattro tessere, una per avviso, con i numeri di Da fare.
  * - Le Regole: /admin/da-fare porta lì, un numero cambia la regola mentre si scrive, un avviso si
  *   spegne e sparisce; solo per l'amministratore, come il link della legenda degli stati.
  * - Da telefono, 390 px: nessuna scheda scorre di lato.
- * - Il portale: la domanda sui consensi al primo accesso; togliere un consenso, con "Annulla";
- *   niente più richiesta di rinnovo.
+ * - Il portale: niente domanda sui consensi; la riga «Revoca» per chi ne ha uno attivo, che li
+ *   toglie tutti; niente più richiesta di rinnovo.
  *
  * Come si usa:
  *   1. npx vite build        (nella radice: questo script serve il build corrente)
@@ -73,7 +73,7 @@ try {
 		{ nome: 'Sara', cognome: `Documenti${lettere}`, fine: fra(200), ingresso: 2 },
 		// Non entra da 20 giorni: Frequenza, e stato "In calo".
 		{ nome: 'Luca', cognome: `Assente${lettere}`, fine: fra(200), ingresso: 20 },
-		// Per il portale: tutto in regola, mai scelto i consensi.
+		// Per il portale: tutto in regola, con un consenso promozionale da revocare.
 		{ nome: 'Elena', cognome: `Portale${lettere}`, fine: fra(200), ingresso: 1 },
 		// Scaduto da 5 giorni: Scaduti.
 		{ nome: 'Paolo', cognome: `Scaduto${lettere}`, fine: fra(-5), ingresso: 6 },
@@ -98,6 +98,7 @@ try {
 		{ nome: 'Elena Portale', email: `vd.elena.${t}@test.local`, passwordHash, ruolo: 'member', linkedMemberId: elena.id },
 	]).returning();
 	id.account = account.map((a) => a.id);
+	await db.insert(consensi).values({ personaId: elena.personaId, tipo: 'marketing_email', valore: true, fonte: 'portale', autoreNome: nome(elena) });
 	const [admin, reception, socioPortale] = account;
 
 	app = buildApp({ logger: false, publicBaseUrl: BASE });
@@ -233,11 +234,8 @@ try {
 	controlla('Niente blocco "Da seguire"', await pg.getByText('Da seguire', { exact: true }).count() === 0);
 	controlla('Niente "Registra contatto" né "Rimanda"', await pg.getByRole('button', { name: /Registra contatto|Rimanda/ }).count() === 0);
 	controlla('Il diario racconta il Contattato', await pg.getByText(/Fatto:.*Non viene da un po'/).first().isVisible());
-	const consensiCard = pg.locator('div').filter({ has: pg.getByText('Comunicazioni promozionali', { exact: true }) }).last();
-	controlla('Consensi in sola lettura: niente caselle', await consensiCard.getByRole('checkbox').count() === 0);
-	await pg.getByRole('button', { name: 'Registra consenso firmato' }).click();
-	controlla('Senza modulo caricato, il consenso non si registra', await pg.getByText(/Prima carica il modulo firmato/).isVisible());
-	controlla('…e "Registra" resta spento', await pg.getByRole('button', { name: 'Registra', exact: true }).isDisabled());
+	controlla('Niente consensi né documenti nella scheda', await pg.getByText('Comunicazioni promozionali', { exact: true }).count() === 0
+		&& await pg.getByRole('heading', { name: /Documenti/ }).count() === 0);
 	await pg.screenshot({ path: schermata('5-scheda'), fullPage: true });
 	await pg.keyboard.press('Escape');
 
@@ -360,23 +358,19 @@ try {
 		await portale.locator('button[type=submit]').click();
 		await portale.waitForLoadState('networkidle');
 	}
-	await portale.getByText('Vuoi ricevere anche promozioni e novità?').waitFor();
-	controlla('La domanda al primo accesso', true);
-	await portale.getByRole('button', { name: 'Salva le mie scelte' }).click();
-	await portale.getByText('Vuoi ricevere anche promozioni e novità?').waitFor({ state: 'detached' });
-	controlla('Scelto anche il "no": la domanda non torna', (await db.select().from(consensi).where(eq(consensi.personaId, elena.personaId))).length === 3);
+	await portale.getByRole('heading', { name: /^Ciao/ }).waitFor();
+	controlla('Home: niente domanda sui consensi né QR', await portale.getByText('Vuoi ricevere anche promozioni e novità?').count() === 0
+		&& await portale.getByText(/Mostra il QR/).count() === 0);
 	await portale.goto(`${BASE}/member-portal/anagrafica`, { waitUntil: 'networkidle' });
-	const email = portale.getByRole('checkbox').first();
-	await email.click();
-	await portale.waitForLoadState('networkidle');
-	await email.click();
-	await portale.getByText(/^Tolto:/).waitFor();
-	controlla('Togliere è un tocco, con "Annulla"', await portale.getByRole('button', { name: 'Annulla' }).isVisible());
+	await portale.getByText('Le ricevi per email.').waitFor();
+	controlla('Profilo: la riga «Revoca», senza caselle', await portale.getByRole('checkbox').count() === 0);
+	await portale.getByRole('button', { name: 'Revoca', exact: true }).click();
+	await portale.getByRole('alertdialog').getByRole('button', { name: 'Revoca' }).click();
+	await portale.getByText('Consensi revocati').first().waitFor();
 	await portale.screenshot({ path: schermata('10-portale'), fullPage: true });
-	await portale.getByRole('button', { name: 'Annulla' }).click();
-	await portale.getByText(/^Tolto:/).waitFor({ state: 'detached' });
-	const ridato = await portale.waitForFunction(() => document.querySelector('[role=checkbox]')?.getAttribute('data-state') === 'checked', null, { timeout: 5000 }).then(() => true, () => false);
-	controlla('"Annulla" lo ridà', ridato);
+	const revoche = await db.select().from(consensi).where(eq(consensi.personaId, elena.personaId));
+	controlla('Revocato: una riga in più nel registro, e la riga sparisce', revoche.length === 2 && revoche.some((c) => c.valore === false && c.fonte === 'portale')
+		&& await portale.getByRole('button', { name: 'Revoca', exact: true }).count() === 0, JSON.stringify(revoche.map((c) => [c.valore, c.fonte])));
 	await portale.goto(`${BASE}/member-portal/abbonamento`, { waitUntil: 'networkidle' });
 	await portale.getByRole('heading', { name: 'Abbonamento' }).waitFor();
 	controlla('Abbonamento: niente richiesta di rinnovo', await portale.getByText(/Richiedi il rinnovo|Vuoi rinnovare/).count() === 0);

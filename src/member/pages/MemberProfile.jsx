@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { caricaProfilo } from "@/core/api/portale";
-import ConsensiComunicazioni from "@/member/components/ConsensiComunicazioni";
+import RevocaConsensi from "@/member/components/RevocaConsensi";
 import { useMemberAuth } from "@/member/session/MemberAuthContext";
 import { Card, CardContent } from "@/ui/primitivi/card";
 import { Button } from "@/ui/primitivi/button";
@@ -72,7 +72,7 @@ export default function MemberProfile() {
         </CardContent>
       </Card>
 
-      <ConsensiComunicazioni />
+      <RevocaConsensi />
 
       <Button variant="outline" className="w-full" onClick={() => setShowReport(true)}>
         <Pencil className="w-4 h-4 mr-1" /> Segnala una modifica

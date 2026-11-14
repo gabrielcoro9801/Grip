@@ -217,8 +217,8 @@ export const api = {
 	},
 
 	/**
-	 * Iscrivi, in un passo: { lead_id?, anagrafica, abbonamento?, certificato?, informativa_privacy,
-	 * consensi?, portale? } → { member, riattivato, accesso_portale }. Tutto in una transazione.
+	 * Iscrivi, in un passo: { lead_id?, anagrafica, abbonamento?, informativa_privacy, portale? }
+	 * → { member, riattivato, accesso_portale }. Tutto in una transazione.
 	 */
 	iscrivi(corpo) {
 		return request('/api/iscrivi', { method: 'POST', body: corpo });
@@ -374,7 +374,7 @@ export const api = {
 		},
 	},
 
-	/** La storia di una persona per la segreteria: diario e consensi. */
+	/** La storia di una persona per la segreteria: il diario. */
 	persone: {
 		/** { attivita } */
 		diario(personaId) {
@@ -382,18 +382,6 @@ export const api = {
 		},
 		nota(personaId, nota) {
 			return request(`/api/persone/${personaId}/note`, { method: 'POST', body: { nota } });
-		},
-		/** I consensi di oggi e il registro intero. → { consensi, storico } */
-		consensi(personaId) {
-			return request(`/api/persone/${personaId}/consensi`);
-		},
-		/**
-		 * Un consenso raccolto in reception (con il modulo firmato già fra i documenti) o la sua
-		 * revoca (con il motivo): { tipi, valore, documento_id?, nota?, atteso } → { consensi }.
-		 * 409 se il socio ha cambiato le sue scelte dal portale nel frattempo.
-		 */
-		registraConsensi(personaId, corpo) {
-			return request(`/api/persone/${personaId}/consensi`, { method: 'POST', body: corpo });
 		},
 		/**
 		 * Il "Fatto" su una cosa da fare: { canale, segnale, esito? } → { attivita }. Nasconde per

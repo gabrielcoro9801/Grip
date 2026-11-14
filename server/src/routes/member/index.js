@@ -404,8 +404,10 @@ export default async function memberRoutes(fastify) {
 		return { lette: lette.length };
 	});
 
-	// I consensi alle comunicazioni promozionali (shared/consensi.js): li dà e li toglie il socio,
-	// canale per canale. Ogni scelta si aggiunge al registro, con il nome del socio e "portale".
+	// I consensi alle comunicazioni promozionali (shared/consensi.js). Dal portale si **revocano**
+	// soltanto (decisione R3, docs/piani/portale.md): la revoca non si blocca mai (GDPR art. 7.3),
+	// mentre darli non serve più, perché le comunicazioni automatiche sono uscite
+	// dall'applicazione. Ogni revoca si aggiunge al registro, con il nome del socio e "portale".
 	const personaDelSocio = async (idSocio) => {
 		const [socio] = await db.select({ personaId: members.personaId, nome: members.fullName }).from(members).where(eq(members.id, idSocio)).limit(1);
 		return socio;
@@ -417,11 +419,11 @@ export default async function memberRoutes(fastify) {
 		return { consensi: await consensiDi(socio.personaId) };
 	});
 
-	/** PUT /consensi { tipo, valore } → { consensi } */
+	/** PUT /consensi { tipo, valore: false } → { consensi }. Solo per togliere. */
 	fastify.put('/consensi', async (request, reply) => {
 		const { tipo, valore } = request.body ?? {};
 		if (!tipoConsensoValido(tipo)) return reply.code(400).send({ error: 'Tipo di consenso non valido.' });
-		if (typeof valore !== 'boolean') return reply.code(400).send({ error: 'Indica se dai o togli il consenso.' });
+		if (valore !== false) return reply.code(400).send({ error: 'Dal portale un consenso si può solo revocare.' });
 		const socio = await personaDelSocio(request.idSocio);
 		await db.insert(consensi).values({ personaId: socio.personaId, tipo, valore, fonte: 'portale', autoreNome: socio.nome });
 		return { consensi: await consensiDi(socio.personaId) };

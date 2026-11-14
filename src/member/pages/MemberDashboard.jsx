@@ -10,7 +10,6 @@ import { LoadingState } from "@/ui/Spinner";
 import { ErrorState } from "@/ui/StateViews";
 import { formatData } from "@/core/domain/format";
 import { oggiIso, spostaGiorni } from "@/core/domain/giorni";
-import ConsensiComunicazioni from "@/member/components/ConsensiComunicazioni";
 
 /**
  * Le prossime lezioni prenotate, al massimo tre.
@@ -108,9 +107,6 @@ export default function MemberDashboard() {
 
 
       <ProssimeLezioni />
-
-      {/* Chi non ha mai scelto se ricevere promozioni se lo sente chiedere qui, una volta. */}
-      <ConsensiComunicazioni primaVolta />
 
       {/* Subscription summary */}
       <Card className="border-0 shadow-sm">

@@ -88,7 +88,7 @@ export function caricaConsensi() {
 	return api.richiesta(`${BASE}/consensi`);
 }
 
-/** Dà o toglie un consenso. → { consensi } */
-export function scegliConsenso(tipo, valore) {
-	return api.richiesta(`${BASE}/consensi`, { method: 'PUT', body: { tipo, valore } });
+/** Revoca un consenso: dal portale si può solo togliere. → { consensi } */
+export function revocaConsenso(tipo) {
+	return api.richiesta(`${BASE}/consensi`, { method: 'PUT', body: { tipo, valore: false } });
 }
