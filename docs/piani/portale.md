@@ -109,13 +109,13 @@ Una sola, generata con `npm run db:generate` alla fine di D-1 (dopo la 0061 di m
 - Telefono: barra in basso con **Home · Corsi · Le mie lezioni · Abbonamento**, target da 44 px (la regola `.portale` di `index.css`). In alto: logo, campanella con il numero, avatar con le iniziali che apre il Profilo.
 - Desktop (`lg`): le stesse quattro voci più **Notifiche** nel menu laterale; in fondo il nome del socio, che apre il Profilo.
 - Tema ed Esci passano dall'intestazione al Profilo.
-- Rotte: `/member-portal` (Home), `corsi`, `lezioni` (nuova, in D-3), `abbonamento`, `notifiche`, `profilo` (era `anagrafica`; `anagrafica` rimanda a `profilo`). `documenti` e `qr` rimandano alla Home.
+- Rotte: `/member-portal` (Home), `corsi`, `lezioni` (in D-2 una prima forma: le prossime con Disdici e le fisse; per intero in D-3), `abbonamento`, `notifiche`, `profilo` (era `anagrafica`; `anagrafica` rimanda a `profilo`). `documenti` e `qr` rimandano alla Home.
 
 ### Home (`MemberDashboard.jsx`, riscritta)
 1. **Banner** in cima per una notifica non letta su una lezione entro 48 ore (`lezione_id`): «Si è liberato un posto: sei prenotata a Pilates · Domani, gio 12 nov alle 18:30 · dalla lista d'attesa». Un tocco apre la notifica. (In D-2 il banner legge le notifiche che ci sono; la `lezione_id` arriva in D-3.)
 2. «Ciao, Giulia».
 3. **Abbonamento a una riga**: pallino di stato, «Abbonamento valido fino al 15 dic 2026», sotto «Open 6 mesi · mancano 34 giorni»; un tocco apre Abbonamento. Scaduto: in rosso, «Abbonamento scaduto il …».
-4. **Prossima lezione, grande**: stato, giorno, orario, sala, istruttore; **Disdici** e **Aggiungi al calendario**; sotto «Puoi disdire fino a domani alle 14:30». Nessuna: «Nessuna lezione prenotata» e «Prenota una lezione».
+4. **Prossima lezione, grande**: stato, giorno, orario, sala, istruttore; **Disdici** e **Aggiungi al calendario** (questo in D-3, con `ics.js`); sotto «Puoi disdire fino a domani alle 14:30». Nessuna: «Nessuna lezione prenotata» e «Prenota una lezione».
 5. Le due successive, una riga ciascuna, con la pillola dello stato; «Tutte le mie lezioni».
 6. **I tuoi corsi**: gli orari prenotati almeno 2 volte negli ultimi 60 giorni e non fissi, con «Prenota» (in D-3, da `GET /corsi/miei-orari`).
 - Via: la CTA del QR, la domanda sui consensi, il riquadro dei documenti, «Hai N cose da sistemare» (resta nelle Notifiche).
@@ -135,7 +135,7 @@ Una sola, generata con `npm run db:generate` alla fine di D-1 (dopo la 0061 di m
 
 ### I contatti della palestra
 - `GET /api/member/v1/palestra` → `{ nome, indirizzo, telefono, whatsapp, email, orari }`: `nome` e `indirizzo` da `organizations`, il resto da `impostazioni.contatti`. Campi vuoti: la riga non si mostra.
-- **Decisione presa**: lo staff li scrive in **Impostazioni › Palestra** (solo amministratore, `admin_users` in modifica): `GET`/`PUT /api/impostazioni/palestra`, con indirizzo e i quattro campi; il registro delle azioni lo dice. Il PDF lascia aperta la pagina («da scegliere»).
+- **Decisione presa** (rivista il 14/11: «una piccola pagina, ci penseremo poi a come farla bene»): lo staff li scrive nella pagina **Contatti** (`/admin/contatti`, sotto le impostazioni del menu; solo amministratore, `admin_users` in modifica): `GET`/`PUT /api/impostazioni/palestra`, con indirizzo e i quattro campi; il registro delle azioni lo dice. Il PDF lascia aperta la pagina («da scegliere»).
 
 ## D-3 · Corsi, Le mie lezioni, notifiche
 
@@ -234,7 +234,7 @@ Escono `POST /corsi/serie/:id/fissa` (senza fine) e `DELETE /corsi/fisse/:id`.
 | `src/staff/pages/crm/MemberDetail.jsx` | via QR, Documenti, Consensi; consenso dei genitori | D-1 |
 | `src/staff/components/soci/Iscrivi.jsx`, `CampiAnagrafica.jsx` | R2, R4 | D-1 |
 | `src/staff/pages/dafare/*`, `components/dafare/SchedaAvviso.jsx`, `pages/Dashboard.jsx` | via Documenti | D-1 |
-| `src/staff/pages/admin/…` | Impostazioni › Palestra | D-2 |
+| `src/staff/pages/admin/ContattiPalestra.jsx` | Contatti | D-2 |
 | `shared/corsi.js` | `MARGINE_RIPENSAMENTO_MINUTI`, `ORE_OFFERTA_POSTO`, `chiusuraLista`, `fasciaDelGiorno` | D-3 |
 
 Nessuna libreria nuova: `src/ui` (Card, Button, Dialog, Sheet se c'è, toast, Tabs, StatusBadge, LoadingState, ErrorState, EmptyState). Nessun colore nuovo: i token `primary`, `success`, `warning`, `destructive`, `muted`, `card`, `border`, chiaro e scuro. Le pillole: fondo al 10-14% del colore, testo nel colore pieno; il contrasto si misura (WCAG AA 4,5:1), soprattutto al buio.

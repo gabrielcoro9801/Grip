@@ -85,7 +85,7 @@ try {
 	await app.listen({ port: PORTA, host: '127.0.0.1' });
 	const BASE = `http://127.0.0.1:${PORTA}`;
 
-	browser = await chromium.launch();
+	browser = await chromium.launch({ channel: 'msedge' }).catch(() => chromium.launch());
 	const contesto = await browser.newContext();
 	const errori = [];
 
