@@ -23,6 +23,8 @@
 // che fa `pezziData` qui sotto, ed è anche il motivo per cui i formati ammessi restano un
 // elenco chiuso invece di stringhe libere.
 
+import { oggiIso, spostaGiorni } from './giorni.js';
+
 export const LOCALE = "it-IT";
 export const TIMEZONE = "Europe/Rome";
 export const VALUTA = "EUR";
@@ -216,3 +218,11 @@ export function toIsoDate(value) {
 // Il conto dei giorni (quanti ne mancano, spostarsi di N) non sta qui: sta in
 // `shared/giorni.js`, perché lo fa anche il server, e "oggi" dev'essere lo stesso giorno per
 // tutti e due. Ce n'erano quattro copie.
+
+/** Il giorno di una lezione come lo dice il portale: «Oggi, gio 12 nov», «Domani, ven 13 nov», «sab 14 nov». */
+export function giornoLezione(iso, oggi = oggiIso()) {
+  const giorno = formatData(iso, "giorno");
+  if (iso === oggi) return `Oggi, ${giorno}`;
+  if (iso === spostaGiorni(oggi, 1)) return `Domani, ${giorno}`;
+  return giorno;
+}

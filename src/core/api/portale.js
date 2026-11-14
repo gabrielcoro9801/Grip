@@ -1,4 +1,5 @@
 import { api } from './client.js';
+import { oggiIso, spostaGiorni } from '../domain/giorni.js';
 
 /**
  * Il portale soci visto dal lato del client: una funzione per schermata.
@@ -23,6 +24,21 @@ const BASE = '/api/member/v1';
 /** Anagrafica e abbonamento in corso: la schermata iniziale. */
 export function caricaProfilo() {
 	return api.richiesta(`${BASE}/profilo`);
+}
+
+/** Nome, indirizzo e recapiti della palestra (null quelli che mancano). */
+export function caricaPalestra() {
+	return api.richiesta(`${BASE}/palestra`);
+}
+
+/**
+ * Le proprie prossime lezioni (prenotate o in lista d'attesa, non ancora finite), in ordine,
+ * dall'agenda dei prossimi `giorni`. In D-3 arriva `GET /lezioni`, che le dà già così.
+ */
+export async function caricaMieProssime({ giorni = 30 } = {}) {
+	const dal = oggiIso();
+	const agenda = await caricaAgenda({ dal, al: spostaGiorni(dal, giorni) });
+	return agenda.giorni.flatMap((g) => g.lezioni).filter((l) => l.mia_prenotazione && !l.finita);
 }
 
 /** Lo storico degli abbonamenti: { abbonamenti }. */

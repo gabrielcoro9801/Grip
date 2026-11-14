@@ -23,6 +23,7 @@ const MemberSubscription = lazy(() => import('@/member/pages/MemberSubscription'
 const MemberProfile = lazy(() => import('@/member/pages/MemberProfile'));
 const MemberCoursesCalendar = lazy(() => import('@/member/pages/MemberCoursesCalendar'));
 const MemberNotifiche = lazy(() => import('@/member/pages/MemberNotifiche'));
+const MemberLezioni = lazy(() => import('@/member/pages/MemberLezioni'));
 
 export default function App() {
   return (
@@ -40,7 +41,10 @@ export default function App() {
                 <Route index element={<MemberDashboard />} />
                 <Route path="documenti" element={<Navigate to="/member-portal" replace />} />
                 <Route path="abbonamento" element={<MemberSubscription />} />
-                <Route path="anagrafica" element={<MemberProfile />} />
+                <Route path="profilo" element={<MemberProfile />} />
+                {/* Il Profilo si chiamava Anagrafica: un vecchio segnalibro arriva lo stesso. */}
+                <Route path="anagrafica" element={<Navigate to="/member-portal/profilo" replace />} />
+                <Route path="lezioni" element={<MemberLezioni />} />
                 <Route path="qr" element={<Navigate to="/member-portal" replace />} />
                 <Route path="corsi" element={<MemberCoursesCalendar />} />
                 <Route path="notifiche" element={<MemberNotifiche />} />
