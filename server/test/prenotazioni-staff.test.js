@@ -13,6 +13,7 @@ import {
 	members, staffAccounts, bookings, sessions, events, courses, rooms, subscriptions, auditLogs,
 } from '../src/db/schema/index.js';
 import { oggiIso, spostaGiorni } from '../../shared/giorni.js';
+import { categoriaDiProva, togliCategorieDiProva } from './categoriaDiProva.js';
 
 const PASSWORD = 'prova-prenotazioni-staff-1234';
 const suffisso = Date.now();
@@ -52,7 +53,7 @@ before(async () => {
 
 	const [sala] = await db.insert(rooms).values({ name: `Sala pstaff ${suffisso}` }).returning();
 	id.sala = sala.id;
-	const [corso] = await db.insert(courses).values({ name: `Corso pstaff ${suffisso}` }).returning();
+	const [corso] = await db.insert(courses).values({ categoryId: await categoriaDiProva(), name: `Corso pstaff ${suffisso}` }).returning();
 	id.corso = corso.id;
 	const giorno = spostaGiorni(oggiIso(), 3);
 	const [evento] = await db.insert(events).values({
@@ -70,6 +71,7 @@ after(async () => {
 	await db.delete(sessions).where(eq(sessions.id, id.lezione));
 	await db.delete(events).where(eq(events.id, id.evento));
 	await db.delete(courses).where(eq(courses.id, id.corso));
+	await togliCategorieDiProva();
 	await db.delete(rooms).where(eq(rooms.id, id.sala));
 	await db.delete(subscriptions).where(inArray(subscriptions.memberId, id.soci));
 	await db.delete(auditLogs).where(inArray(auditLogs.attoreId, id.account));

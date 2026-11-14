@@ -15,6 +15,7 @@ import { db, pool } from '../src/db/client.js';
 import { staffAccounts, rooms, courses, events, sessions } from '../src/db/schema/index.js';
 import { SALA_PRENOTATA } from '../../shared/sale.js';
 import { oggiIso, spostaGiorni } from '../../shared/giorni.js';
+import { categoriaDiProva, togliCategorieDiProva } from './categoriaDiProva.js';
 
 const PASSWORD = 'prova-sale-1234';
 
@@ -80,7 +81,7 @@ before(async () => {
 	assert.equal(accesso.statusCode, 200, `login fallito: ${accesso.body}`);
 	token = accesso.json().token;
 
-	const [corso] = await db.insert(courses).values({ name: `Corso sale ${suffisso}` }).returning();
+	const [corso] = await db.insert(courses).values({ categoryId: await categoriaDiProva(), name: `Corso sale ${suffisso}` }).returning();
 	idCorso = corso.id;
 
 	const res = await creaSala({ name: `Sala prova ${suffisso}` });
@@ -92,6 +93,7 @@ before(async () => {
 after(async () => {
 	await svuotaCalendario();
 	if (idCorso) await db.delete(courses).where(inArray(courses.id, [idCorso]));
+	await togliCategorieDiProva();
 	if (daPulire.sale.length) await db.delete(rooms).where(inArray(rooms.id, daPulire.sale));
 	if (emailStaff) await db.delete(staffAccounts).where(inArray(staffAccounts.email, [emailStaff]));
 	await app.close();

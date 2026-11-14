@@ -435,6 +435,13 @@
       "when": 1794655330871,
       "tag": "0061_eventi_singoli_allineati",
       "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1794676327724,
+      "tag": "0062_portale",
+      "breakpoints": true
     }
   ]
 }

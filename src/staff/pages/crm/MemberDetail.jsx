@@ -20,7 +20,7 @@ import { AvatarSocio, SceltaFoto } from "@/staff/components/soci/FotoSocio";
 import { caricaFile } from "@/staff/lib/uploads";
 import { canAccess, canEdit } from "@/staff/lib/permissions";
 import { motivoPasswordNonValida, LUNGHEZZA_MINIMA_PASSWORD } from "@/core/domain/password";
-import { etichettaSesso, etaA } from "@/core/domain/anagrafica";
+import { etichettaSesso, etaA, consensoGenitoriDaFirmare } from "@/core/domain/anagrafica";
 import { fase as faseDi } from "@/core/domain/segnali";
 import { generaPasswordTemporanea } from "@/staff/lib/passwordTemporanea";
 import { useToast } from "@/ui/primitivi/use-toast";
@@ -260,6 +260,9 @@ export default function MemberDetail() {
                 <DatoAnagrafico etichetta="Codice fiscale">{member.codice_fiscale}</DatoAnagrafico>
                 <DatoAnagrafico etichetta="Data di nascita">
                   {member.date_of_birth && `${formatData(member.date_of_birth, "breve")} (${etaA(member.date_of_birth)} anni)`}
+                  {consensoGenitoriDaFirmare(member) && (
+                    <span className="block text-warning font-normal">Consenso dei genitori da firmare</span>
+                  )}
                 </DatoAnagrafico>
                 <DatoAnagrafico etichetta="Sesso">{etichettaSesso(member.sesso)}</DatoAnagrafico>
                 <DatoAnagrafico etichetta="Residenza">{member.address}</DatoAnagrafico>

@@ -153,6 +153,15 @@ describe('modificare un socio', () => {
 	});
 });
 
+describe('il consenso dei genitori (R4)', () => {
+	test('una spunta in anagrafica: sì o no, e nient\'altro', async () => {
+		const res = await modifica(idSoci[0], { consenso_genitori_firmato: true });
+		assert.equal(res.statusCode, 200, res.body);
+		assert.equal(res.json().consenso_genitori_firmato, true);
+		assert.equal((await modifica(idSoci[0], { consenso_genitori_firmato: 'sì' })).json().consenso_genitori_firmato, false);
+	});
+});
+
 describe('i documenti', () => {
 	// Sono usciti dall'applicazione a novembre 2026 (docs/piani/portale.md): la tabella resta, ma
 	// dall'endpoint generico non si leggono né si scrivono più.

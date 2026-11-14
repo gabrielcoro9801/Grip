@@ -5,21 +5,22 @@
 // - una lezione della fissa si prenota come qualunque altra (`prenota`): se è piena si entra in
 //   lista d'attesa, se il socio è archiviato non si prenota; la prenotazione ricorda la fissa
 //   (`bookings.prenotazione_fissa_id`);
-// - una fissa vale da `dal` ad `al`. Lo staff la crea sempre con una fine: una data, o un numero
-//   di lezioni che diventa subito una data. La fine non va oltre l'abbonamento del socio né oltre
-//   l'ultima lezione della sessione. Il portale la crea senza fine, come prima (`al` vuoto);
+// - una fissa vale da `dal` ad `al`, e ha sempre una fine: una data, o un numero di lezioni che
+//   diventa subito una data. La fine non va oltre l'abbonamento del socio né oltre l'ultima
+//   lezione della sessione (`massimoFissa`). Dalla migrazione 0062 non ci sono più fisse senza
+//   fine: il portale crea fino al massimo, finché in D-4 non chiederà le date
+//   (docs/piani/portale.md);
 // - si prenota solo dove c'è un abbonamento valido quel giorno. Per le lezioni rimaste scoperte il
 //   socio riceve un avviso, una volta per ogni scadenza. Al rinnovo, o quando la sessione si
-//   allunga, ripartono da sole solo le fisse senza fine: quelle con una data restano com'erano;
+//   allunga, una fissa non riparte da sola: si allunga (in D-4, con la notifica «Allunga»);
 // - una lezione che il socio ha disdetto non gli si riprenota: una prenotazione per quella
 //   lezione esiste già, anche se disdetta, e la fissa la rispetta;
 // - cancellare una fissa disdice solo le prenotazioni nate da lei, dalla data scelta in poi:
 //   quelle fatte a mano restano.
 //
-// `applicaFisse` è idempotente — rifarla non prenota due volte — e la si chiama da più punti:
-// quando la fissa nasce o cambia, quando nasce un abbonamento, quando la sessione si allunga,
-// quando una sospensione finisce prima, quando il socio guarda l'agenda. Nessun processo
-// programmato da tenere in vita.
+// `applicaFisse` è idempotente — rifarla non prenota due volte — e la si chiama quando la fissa
+// nasce o cambia e quando una sospensione finisce prima. Nessun processo programmato da tenere in
+// vita.
 import { and, eq, gte, lte, inArray, isNull, or, max } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { prenotazioniFisse, sessions, bookings, events, courses, members } from '../db/schema/index.js';
@@ -66,17 +67,14 @@ export { fineCopertura };
 /**
  * Prenota le lezioni dovute delle fisse attive, filtrate per socio, sessione o fissa.
  *
- * @param soloSenzaFine solo le fisse senza `al`: è il caso dei richiami da fuori (un rinnovo, una
- *   sessione allungata, l'agenda del portale), che non devono far crescere una fissa con una data
  * @param da, a solo le lezioni fra queste date (la fine anticipata di una sospensione)
  * @returns {{ prenotate: number, inAttesa: number, scoperte: number }}
  */
-export async function applicaFisse({ memberId = null, eventId = null, fissaId = null, soloSenzaFine = false, da = null, a = null } = {}) {
+export async function applicaFisse({ memberId = null, eventId = null, fissaId = null, da = null, a = null } = {}) {
 	const filtri = [eq(prenotazioniFisse.attiva, true)];
 	if (memberId) filtri.push(eq(prenotazioniFisse.memberId, memberId));
 	if (eventId) filtri.push(eq(prenotazioniFisse.eventId, eventId));
 	if (fissaId) filtri.push(eq(prenotazioniFisse.id, fissaId));
-	if (soloSenzaFine) filtri.push(isNull(prenotazioniFisse.al));
 	const fisse = await db.select({ fissa: prenotazioniFisse, corso: courses.name })
 		.from(prenotazioniFisse)
 		.innerJoin(events, eq(prenotazioniFisse.eventId, events.id))
@@ -131,6 +129,22 @@ export async function applicaFisse({ memberId = null, eventId = null, fissaId = 
 }
 
 /**
+ * Fin dove può arrivare una fissa che parte da `dal` (oggi, se è prima): il minore fra la fine della
+ * copertura degli abbonamenti del socio e l'ultima lezione della sessione. Null se il socio non ha
+ * un abbonamento quel giorno o se la sessione non ha più lezioni.
+ */
+export async function massimoFissa({ memberId, eventId, dal = null }) {
+	const da = piuTardi(dal ?? oggiIso(), oggiIso());
+	const [[ultima], iscrizioni] = await Promise.all([
+		db.select({ data: max(sessions.date) }).from(sessions).where(and(eq(sessions.eventId, eventId), eq(sessions.status, 'active'))),
+		iscrizioniDelSocio(memberId),
+	]);
+	const copertura = fineCopertura(iscrizioni, da);
+	if (!ultima?.data || ultima.data < da || !copertura) return null;
+	return ultima.data < copertura ? ultima.data : copertura;
+}
+
+/**
  * Il periodo chiesto, controllato: `{ dal, al }` oppure `{ errore, messaggio }`.
  *
  * `numero` (per N lezioni) diventa la data della N-esima lezione da `dal`. La fine non va oltre
@@ -173,11 +187,10 @@ async function periodoValido({ memberId, eventId, dal, al = null, numero = null 
  * Crea una fissa e la applica subito.
  *
  * @param dal  il primo giorno: oggi o dopo (oggi, se manca)
- * @param al, numero la fine, come data o come numero di lezioni. Lo staff la deve dare; il
- *   portale no (`senzaFine`), e la sua fissa resta senza fine come prima.
+ * @param al, numero la fine, come data o come numero di lezioni: obbligatoria.
  * @returns { errore, messaggio } | { fissa, esito }
  */
-export async function creaFissa({ memberId, eventId, dal = null, al = null, numero = null, creataDa = '', senzaFine = false }) {
+export async function creaFissa({ memberId, eventId, dal = null, al = null, numero = null, creataDa = '' }) {
 	const [evento] = await db.select().from(events).where(eq(events.id, eventId)).limit(1);
 	if (!evento) return { errore: 404, messaggio: 'La sessione non esiste più.' };
 	if (evento.recurrenceType !== 'weekly' && evento.recurrenceType !== 'custom') {
@@ -187,10 +200,9 @@ export async function creaFissa({ memberId, eventId, dal = null, al = null, nume
 	const inizio = vuoto(dal) ? oggi : dal;
 	if (!eUnGiorno(inizio)) return { errore: 400, messaggio: 'La data di inizio non è valida.' };
 	if (inizio < oggi) return { errore: 400, messaggio: 'Una prenotazione fissa comincia oggi o più avanti.' };
-	const senzaData = vuoto(al) && vuoto(numero);
-	if (senzaData && !senzaFine) return { errore: 400, messaggio: 'Indica fino a quando: una data o un numero di lezioni.' };
+	if (vuoto(al) && vuoto(numero)) return { errore: 400, messaggio: 'Indica fino a quando: una data o un numero di lezioni.' };
 
-	const periodo = senzaData ? { dal: inizio, al: null } : await periodoValido({ memberId, eventId, dal: inizio, al, numero });
+	const periodo = await periodoValido({ memberId, eventId, dal: inizio, al, numero });
 	if (periodo.errore) return periodo;
 
 	const [attiva] = await db.select().from(prenotazioniFisse)

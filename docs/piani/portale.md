@@ -93,10 +93,14 @@ Una sola, generata con `npm run db:generate` alla fine di D-1 (dopo la 0061 di m
 | `prenotazioni_fisse.al` | CHECK `attiva = false or al is not null` | Dati + vincolo | Le attive senza fine prendono il minore fra la fine dell'abbonamento che copre oggi e l'ultima lezione della sessione; senza un abbonamento oggi (o con quella data prima dell'inizio) si chiudono (`attiva = false`, `terminata_il = oggi`) |
 | `courses.category_id` | uuid → NOT NULL | Cambia | Prima un `DO $$` che si ferma con l'elenco dei corsi senza categoria |
 | `organizations.impostazioni` | jsonb (c'è già) | Chiavi | `contatti: { telefono, whatsapp, email, orari }`: nessuna migrazione |
+| `ruoli.permessi` | jsonb | Dati | Via la chiave `crm_documents`: salvando un ruolo, un modulo sconosciuto si rifiuta |
+| `organizations.impostazioni` | jsonb | Dati | Via `documento_scaduto` e `documento_in_scadenza` da `segnali_spenti`, e `soglie.documentoInScadenzaGiorni` |
 
 - `notifiche.tipo` è varchar(32): i tipi nuovi non chiedono migrazione.
 - **Decisione presa**: la fine dell'abbonamento si legge da `subscriptions.end_date` senza lo slittamento delle sospensioni (in SQL non c'è `iscrizioniDelSocio`). È la data più corta: al peggio il socio riceve «Allunga».
 - **Decisione presa**: il CHECK sulle fisse attive rende impossibili le fisse senza fine; spariscono `soloSenzaFine` e `senzaFine` dal codice.
+- **Provata (14/11)** su una copia di `grip_locale` con quattro fisse senza fine: coperta dall'abbonamento (finisce con lui), coperta oltre l'ultima lezione (finisce con l'ultima lezione), senza abbonamento e con l'inizio dopo la copertura (chiuse). Poi applicata a `grip_locale`.
+- **Il codice che segue la 0062** (in D-1): `creaFissa` non ha più `senzaFine`, `applicaFisse` non ha più `soloSenzaFine`; il rinnovo, la sessione allungata e l'agenda del portale non chiamano più `applicaFisse`; la fissa del portale si crea fino a `massimoFissa`. I test che creano corsi si fanno una categoria (`server/test/categoriaDiProva.js`).
 - **In locale (14/11)**: `grip_locale` era ferma alla 0057; prima di applicare 0058-0061 se n'è fatta una copia, il database `grip_locale_prima_0058`. Ci sono 0 fisse attive e **un corso senza categoria («Cross Training»)**: dati sintetici, gli si dà una categoria prima della 0062. Prima di toccare la produzione si rifà lo stesso controllo.
 
 ## D-2 · La struttura

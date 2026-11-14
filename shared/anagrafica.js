@@ -67,6 +67,16 @@ export function eMinorenne(dataNascita, oggi = oggiIso()) {
   return anni !== null && anni < MAGGIORE_ETA;
 }
 
+/**
+ * Se a un socio manca il consenso dei genitori firmato: è minorenne e la spunta «firmato» non c'è.
+ * Era un documento caricato; da novembre 2026 è una spunta in anagrafica (decisione R4,
+ * docs/piani/portale.md). Non blocca niente: la scheda lo segnala.
+ * @param socio { date_of_birth, consenso_genitori_firmato }
+ */
+export function consensoGenitoriDaFirmare(socio, oggi = oggiIso()) {
+  return eMinorenne(socio?.date_of_birth, oggi) && !socio?.consenso_genitori_firmato;
+}
+
 // ---------------------------------------------------------------------------------------
 // Codice fiscale
 // ---------------------------------------------------------------------------------------

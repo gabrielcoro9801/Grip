@@ -12,6 +12,7 @@ import { buildApp } from '../src/app.js';
 import { db, pool } from '../src/db/client.js';
 import { members, staffAccounts, rooms, courses, events, sessions, bookings, subscriptions } from '../src/db/schema/index.js';
 import { oggiIso, spostaGiorni } from '../../shared/giorni.js';
+import { categoriaDiProva, togliCategorieDiProva } from './categoriaDiProva.js';
 
 const PASSWORD = 'prova-prenotazioni-1234';
 const CAPIENZA = 2;
@@ -73,7 +74,7 @@ before(async () => {
 
 	const [sala] = await db.insert(rooms).values({ name: `Sala pren ${suffisso}` }).returning();
 	idSala = sala.id;
-	const [corso] = await db.insert(courses).values({ name: `Corso pren ${suffisso}` }).returning();
+	const [corso] = await db.insert(courses).values({ categoryId: await categoriaDiProva(), name: `Corso pren ${suffisso}` }).returning();
 	idCorso = corso.id;
 	const [evento] = await db
 		.insert(events)
@@ -98,6 +99,7 @@ after(async () => {
 	if (idLezione) await db.delete(sessions).where(inArray(sessions.id, [idLezione]));
 	if (idEvento) await db.delete(events).where(inArray(events.id, [idEvento]));
 	if (idCorso) await db.delete(courses).where(inArray(courses.id, [idCorso]));
+	await togliCategorieDiProva();
 	if (idSala) await db.delete(rooms).where(inArray(rooms.id, [idSala]));
 	if (idSoci.length) await db.delete(staffAccounts).where(inArray(staffAccounts.linkedMemberId, idSoci));
 	await db.delete(staffAccounts).where(inArray(staffAccounts.nome, ['Reception Pren']));
@@ -341,7 +343,7 @@ describe('il calendario chiede un intervallo, non un numero fisso', () => {
 describe('il termine di disdetta del corso', () => {
 	test('oltre il termine il socio non disdice, la reception sì; senza termine si disdice', async () => {
 		const tra2Giorni = spostaGiorni(oggiIso(), 2);
-		const [corso] = await db.insert(courses).values({ name: `Corso termine ${Date.now()}`, disdettaEntroOre: 72 }).returning();
+		const [corso] = await db.insert(courses).values({ categoryId: await categoriaDiProva(), name: `Corso termine ${Date.now()}`, disdettaEntroOre: 72 }).returning();
 		const [evento] = await db.insert(events).values({
 			courseId: corso.id, roomId: idSala, capacity: 5, recurrenceType: 'single', startDate: tra2Giorni, startTime: '18:00', endTime: '19:00',
 		}).returning();

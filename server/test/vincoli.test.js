@@ -12,6 +12,7 @@ import { db, pool } from '../src/db/client.js';
 import {
 	members, staffAccounts, bookings, sessions, events, courses, rooms,
 } from '../src/db/schema/index.js';
+import { categoriaDiProva, togliCategorieDiProva } from './categoriaDiProva.js';
 
 const PASSWORD = 'prova-vincoli-1234';
 const suffisso = Date.now();
@@ -56,6 +57,7 @@ after(async () => {
 	if (pulizia.sessione) await db.delete(sessions).where(eq(sessions.id, pulizia.sessione));
 	if (pulizia.evento) await db.delete(events).where(eq(events.id, pulizia.evento));
 	if (pulizia.corso) await db.delete(courses).where(eq(courses.id, pulizia.corso));
+	await togliCategorieDiProva();
 	if (pulizia.sala) await db.delete(rooms).where(eq(rooms.id, pulizia.sala));
 	await db.delete(staffAccounts).where(eq(staffAccounts.linkedMemberId, idSocio));
 	if (idAccount.length) await db.delete(staffAccounts).where(inArray(staffAccounts.id, idAccount));
@@ -86,7 +88,7 @@ describe('una prenotazione viva per socio e lezione', () => {
 	test('la seconda è rifiutata, una annullata accanto no', async () => {
 		const [sala] = await db.insert(rooms).values({ name: `Sala vincoli ${suffisso}` }).returning();
 		pulizia.sala = sala.id;
-		const [corso] = await db.insert(courses).values({ name: `Corso vincoli ${suffisso}` }).returning();
+		const [corso] = await db.insert(courses).values({ categoryId: await categoriaDiProva(), name: `Corso vincoli ${suffisso}` }).returning();
 		pulizia.corso = corso.id;
 		const [evento] = await db.insert(events).values({
 			courseId: corso.id, roomId: sala.id, capacity: 10, recurrenceType: 'single',

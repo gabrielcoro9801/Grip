@@ -13,6 +13,7 @@ import {
 	motivoDataNascitaNonValida,
 	etaA,
 	eMinorenne,
+	consensoGenitoriDaFirmare,
 } from './anagrafica.js';
 
 describe('il codice fiscale', () => {
@@ -86,5 +87,15 @@ describe('la data di nascita e l\'età', () => {
 		assert.equal(eMinorenne('2008-10-08', '2026-10-07'), true);
 		assert.equal(eMinorenne('2008-10-07', '2026-10-07'), false);
 		assert.equal(eMinorenne(null, '2026-10-07'), false);
+	});
+});
+
+describe('il consenso dei genitori (R4: una spunta, non più un documento)', () => {
+	test('da firmare solo per il minorenne senza la spunta', () => {
+		const oggi = '2026-10-07';
+		assert.equal(consensoGenitoriDaFirmare({ date_of_birth: '2012-05-01' }, oggi), true);
+		assert.equal(consensoGenitoriDaFirmare({ date_of_birth: '2012-05-01', consenso_genitori_firmato: true }, oggi), false);
+		assert.equal(consensoGenitoriDaFirmare({ date_of_birth: '1990-05-01' }, oggi), false);
+		assert.equal(consensoGenitoriDaFirmare({}, oggi), false, 'senza data non lo si sa');
 	});
 });

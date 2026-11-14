@@ -14,6 +14,7 @@ import {
 	prenotazioniFisse,
 } from '../src/db/schema/index.js';
 import { oggiIso, spostaGiorni } from '../../shared/giorni.js';
+import { categoriaDiProva, togliCategorieDiProva } from './categoriaDiProva.js';
 
 const PASSWORD = 'prova-archivio-1234';
 const suffisso = Date.now();
@@ -56,7 +57,7 @@ before(async () => {
 	id.sala = sala.id;
 	const [istruttore] = await db.insert(instructors).values({ nome: 'Istruttore', cognome: `Archivio ${suffisso}` }).returning();
 	id.istruttore = istruttore.id;
-	const [corso] = await db.insert(courses).values({ name: `Corso archivio ${suffisso}`, instructorId: istruttore.id }).returning();
+	const [corso] = await db.insert(courses).values({ categoryId: await categoriaDiProva(), name: `Corso archivio ${suffisso}`, instructorId: istruttore.id }).returning();
 	id.corso = corso.id;
 	const domani = spostaGiorni(oggiIso(), 1);
 	const [evento] = await db.insert(events).values({
@@ -73,7 +74,7 @@ before(async () => {
 		courseId: corso.id, roomId: sala.id, capacity: 5, recurrenceType: 'weekly', giorno: 'Monday',
 		startDate: domani, endCondition: 'by_date', endDate: spostaGiorni(domani, 60), startTime: '19:00', endTime: '20:00',
 	}).returning();
-	const [fissa] = await db.insert(prenotazioniFisse).values({ memberId: id.soci[0], eventId: sessione.id, dal: oggiIso() }).returning();
+	const [fissa] = await db.insert(prenotazioniFisse).values({ memberId: id.soci[0], eventId: sessione.id, dal: oggiIso(), al: spostaGiorni(oggiIso(), 60) }).returning();
 	id.fissa = fissa.id;
 
 	// Un posto solo: il socio che se ne andrà lo occupa, l'altro è in lista d'attesa.
@@ -88,6 +89,7 @@ after(async () => {
 	await db.delete(sessions).where(eq(sessions.eventId, id.evento));
 	await db.delete(events).where(eq(events.courseId, id.corso));
 	await db.delete(courses).where(inArray(courses.instructorId, [id.istruttore]));
+	await togliCategorieDiProva();
 	await db.delete(instructors).where(eq(instructors.id, id.istruttore));
 	await db.delete(rooms).where(eq(rooms.id, id.sala));
 	await db.delete(subscriptions).where(inArray(subscriptions.memberId, id.soci));

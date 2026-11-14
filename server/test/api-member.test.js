@@ -21,6 +21,7 @@ import {
 	members, staffAccounts, subscriptions,
 	rooms, courses, events, sessions, bookings, consensi,
 } from '../src/db/schema/index.js';
+import { categoriaDiProva, togliCategorieDiProva } from './categoriaDiProva.js';
 
 const PASSWORD = 'prova-api-member-1234';
 
@@ -92,7 +93,7 @@ before(async () => {
 	// dei posti escano numeri e non le righe altrui.
 	const [sala] = await db.insert(rooms).values({ name: 'Sala API' }).returning();
 	idSala = sala.id;
-	const [corso] = await db.insert(courses).values({ name: 'Corso API' }).returning();
+	const [corso] = await db.insert(courses).values({ categoryId: await categoriaDiProva(), name: 'Corso API' }).returning();
 	idCorso = corso.id;
 	const [evento] = await db
 		.insert(events)
@@ -123,6 +124,7 @@ after(async () => {
 	if (idLezione) await db.delete(sessions).where(inArray(sessions.id, [idLezione]));
 	if (idEvento) await db.delete(events).where(inArray(events.id, [idEvento]));
 	if (idCorso) await db.delete(courses).where(inArray(courses.id, [idCorso]));
+	await togliCategorieDiProva();
 	if (idSala) await db.delete(rooms).where(inArray(rooms.id, [idSala]));
 	if (idAbbonamenti.length) await db.delete(subscriptions).where(inArray(subscriptions.id, idAbbonamenti));
 	if (idAccount.length) await db.delete(staffAccounts).where(inArray(staffAccounts.id, idAccount));

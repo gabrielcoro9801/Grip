@@ -268,6 +268,8 @@ export function anagraficaSocio(corpo, { creazione }) {
 		if (presente(rest, campo)) rest[campo] = telefonoNormalizzato(rest[campo]);
 	}
 	if (presente(rest, 'email')) rest.email = vuoto(rest.email) ? null : String(rest.email).trim();
+	// La spunta del consenso dei genitori (R4): sì o no, niente altro.
+	if (presente(rest, 'consenso_genitori_firmato')) rest.consenso_genitori_firmato = rest.consenso_genitori_firmato === true;
 	if (!creazione) rest.updated_date = new Date().toISOString();
 	return rest;
 }
@@ -571,6 +573,8 @@ const WRITE_TRANSFORMS = {
 				.limit(1);
 			if (istruttore && !istruttore.attivo) throw rifiuta(`«${istruttore.nome}» è disattivato: scegli un altro istruttore, o riattivalo.`);
 		}
+		// La categoria è obbligatoria (migrazione 0062): il portale apre i corsi per categoria.
+		if ((creazione || presente(rest, 'category_id')) && vuoto(rest.category_id)) throw rifiuta('Scegli la categoria del corso.');
 		return rest;
 	},
 

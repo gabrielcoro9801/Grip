@@ -2,8 +2,8 @@
 //
 // Le regole: si prenota come chiunque (piena → lista d'attesa), solo dove c'è un abbonamento; lo
 // staff dà sempre una fine (una data o un numero di lezioni), entro l'abbonamento e la sessione;
-// il portale crea senza fine, e solo quelle ripartono al rinnovo; una disdetta del socio non si
-// rifà; l'avviso per l'abbonamento arriva una volta sola; cambiare il periodo lavora sulla
+// il portale crea fino al massimo (migrazione 0062: niente più fisse senza fine), e al rinnovo
+// nessuna riparte da sola; una disdetta del socio non si rifà; l'avviso per l'abbonamento arriva una volta sola; cambiare il periodo lavora sulla
 // differenza; cancellare disdice solo le prenotazioni della fissa, dalla data scelta.
 import test, { before, after, describe } from 'node:test';
 import assert from 'node:assert/strict';
@@ -18,6 +18,7 @@ import { oggiIso, spostaGiorni } from '../../shared/giorni.js';
 import { dateGiuste } from '../src/lib/dateSettimanali.js';
 import { giornoDellaSettimana } from '../src/lib/calendario.js';
 import { terminaFissa } from '../src/lib/prenotazioniFisse.js';
+import { categoriaDiProva, togliCategorieDiProva } from './categoriaDiProva.js';
 
 const PASSWORD = 'prova-fisse-1234';
 const t = Date.now();
@@ -78,7 +79,7 @@ before(async () => {
 
 	const [sala] = await db.insert(rooms).values({ name: `Sala fisse ${t}` }).returning();
 	id.sala = sala.id;
-	const [corso] = await db.insert(courses).values({ name: `Yoga ${t}` }).returning();
+	const [corso] = await db.insert(courses).values({ categoryId: await categoriaDiProva(), name: `Yoga ${t}` }).returning();
 	id.corso = corso.id;
 	id.evento = await sessione(1);
 	id.altro = await sessione(5);
@@ -91,6 +92,7 @@ after(async () => {
 	await db.delete(sessions).where(inArray(sessions.eventId, [id.evento, id.altro]));
 	await db.delete(events).where(inArray(events.id, [id.evento, id.altro]));
 	await db.delete(courses).where(eq(courses.id, id.corso));
+	await togliCategorieDiProva();
 	await db.delete(rooms).where(eq(rooms.id, id.sala));
 	await db.delete(auditLogs).where(inArray(auditLogs.attoreId, id.account));
 	await db.delete(staffAccounts).where(inArray(staffAccounts.id, id.account));
@@ -114,7 +116,7 @@ describe('prenotare fisso', () => {
 		assert.equal((await come('reception', 'POST', '/api/prenotazioni-fisse', { member_id: id.soci[1], event_id: id.evento, numero: 1 })).statusCode, 409);
 	});
 
-	test('il primo socio dal portale: senza fine, fino alla fine del suo abbonamento, in lista dove è pieno, e un avviso', async () => {
+	test('il primo socio dal portale: fino alla fine del suo abbonamento, in lista dove è pieno', async () => {
 		const res = await come('socio', 'POST', `/api/member/v1/corsi/serie/${id.evento}/fissa`, {});
 		assert.equal(res.statusCode, 201, res.body);
 		const { prenotate, in_attesa: inAttesa, senza_abbonamento: scoperte } = res.json();
@@ -122,16 +124,13 @@ describe('prenotare fisso', () => {
 		const coperte = tutte.filter((l) => l.date <= spostaGiorni(oggi, 14));
 		assert.equal(prenotate, 0, 'il secondo socio ha già il posto');
 		assert.equal(inAttesa, coperte.length);
-		assert.equal(scoperte, tutte.length - coperte.length);
+		assert.equal(scoperte, 0, 'si ferma dove finisce l\'abbonamento: niente lezioni scoperte');
 		const [sua] = await db.select().from(prenotazioniFisse).where(and(eq(prenotazioniFisse.memberId, id.soci[0]), eq(prenotazioniFisse.eventId, id.evento)));
-		assert.equal(sua.al, null);
+		const massimo = [spostaGiorni(oggi, 14), tutte.at(-1).date].sort()[0];
+		assert.equal(sua.al, massimo, "il minore fra la fine dell'abbonamento e l'ultima lezione");
 		assert.equal(sua.dal, oggi);
-
-		// L'avviso arriva una volta: rileggere l'agenda riapplica la fissa, ma non riavvisa.
-		await come('socio', 'GET', '/api/member/v1/corsi/agenda');
 		const avvisi = await db.select().from(notifiche).where(and(eq(notifiche.memberId, id.soci[0]), eq(notifiche.tipo, 'fissa_senza_abbonamento')));
-		assert.equal(avvisi.length, 1);
-		assert.match(avvisi[0].testo, /si ferma al/);
+		assert.equal(avvisi.length, 0, 'senza lezioni scoperte non c\'è niente da avvisare');
 	});
 
 	test("nell'agenda la lezione dice che è una sessione fissa del socio, e l'elenco dà il suo giorno", async () => {
@@ -152,14 +151,13 @@ describe('prenotare fisso', () => {
 		assert.equal((await vive(0)).filter((r) => r.bookings.sessionId === una.bookings.sessionId).length, 0);
 	});
 
-	test('al rinnovo la fissa senza fine riparte da sola', async () => {
+	test('al rinnovo la fissa non cresce da sola: si allunga (D-4)', async () => {
 		const prima = (await diSocio(0)).length;
 		const rinnovo = await come('reception', 'POST', '/api/entities/Subscription', {
 			member_id: id.soci[0], plan_id: id.piano, start_date: spostaGiorni(oggi, 15),
 		});
 		assert.equal(rinnovo.statusCode, 201, rinnovo.body);
-		assert.equal((await diSocio(0)).length, (await lezioni()).length, 'tutte le lezioni ora hanno una prenotazione');
-		assert.ok((await diSocio(0)).length > prima);
+		assert.equal((await diSocio(0)).length, prima);
 	});
 });
 

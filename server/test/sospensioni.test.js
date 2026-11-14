@@ -12,6 +12,7 @@ import {
 } from '../src/db/schema/index.js';
 import { oggiIso, spostaGiorni } from '../../shared/giorni.js';
 import { giornoDellaSettimana } from '../src/lib/calendario.js';
+import { categoriaDiProva, togliCategorieDiProva } from './categoriaDiProva.js';
 
 const PASSWORD = 'prova-sospensioni-1234';
 const t = Date.now();
@@ -49,7 +50,7 @@ before(async () => {
 
 	// Una lezione dentro la sospensione che verrà (fra 3 giorni) e una dopo (fra 20), prenotate.
 	const [sala] = await db.insert(rooms).values({ name: `Sala sosp ${t}` }).returning();
-	const [corso] = await db.insert(courses).values({ name: `Corso sosp ${t}` }).returning();
+	const [corso] = await db.insert(courses).values({ categoryId: await categoriaDiProva(), name: `Corso sosp ${t}` }).returning();
 	const [evento] = await db.insert(events).values({
 		courseId: corso.id, roomId: sala.id, capacity: 5, recurrenceType: 'single', startDate: fra(3), startTime: '18:00', endTime: '19:00',
 	}).returning();
@@ -68,6 +69,7 @@ after(async () => {
 	await db.delete(sessions).where(eq(sessions.eventId, id.evento));
 	await db.delete(events).where(eq(events.id, id.evento));
 	await db.delete(courses).where(eq(courses.id, id.corso));
+	await togliCategorieDiProva();
 	await db.delete(rooms).where(eq(rooms.id, id.sala));
 	await db.delete(attivita).where(eq(attivita.personaId, id.persona));
 	await db.delete(sospensioni).where(inArray(sospensioni.memberId, [id.socio, id.altro]));

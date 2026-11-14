@@ -14,7 +14,7 @@ import { firmaUrl } from '../../lib/urlFirmati.js';
 import { statoIscrizione, motivoSenzaCopertura, sospensioneIl } from '../../../../shared/abbonamenti.js';
 import { oggiIso, eUnGiorno, giorniFra, giorniDaOggi, spostaGiorni, lezioneFinita } from '../../../../shared/giorni.js';
 import { limiteDisdetta, motivoDisdettaChiusa } from '../../../../shared/corsi.js';
-import { applicaFisse, creaFissa, terminaFissa, elencoFisse } from '../../lib/prenotazioniFisse.js';
+import { creaFissa, terminaFissa, elencoFisse, massimoFissa } from '../../lib/prenotazioniFisse.js';
 import { avvisiSocio } from '../../../../shared/avvisi.js';
 import { soglieEnte } from '../../lib/impostazioni.js';
 
@@ -175,10 +175,6 @@ export default async function memberRoutes(fastify) {
 		const motivo = motivoIntervalloNonValido(dal, al);
 		if (motivo) return reply.code(400).send({ error: motivo });
 
-		// Prima di mostrare l'agenda, le fisse del socio prenotano quello che devono: è il
-		// momento in cui lui guarda, e l'operazione è idempotente. Solo quelle senza fine: una
-		// fissa con una data l'ha decisa la reception, e non cresce da sola.
-		await applicaFisse({ memberId: request.idSocio, soloSenzaFine: true });
 		const mieFisse = new Set((await elencoFisse({ memberId: request.idSocio })).map((f) => f.event_id));
 
 		const righe = await db
@@ -341,14 +337,17 @@ export default async function memberRoutes(fastify) {
 	});
 
 	/**
-	 * Prenota fisso in una sessione, da oggi e senza fine: la regola di passaggio finché il portale
-	 * non chiede le date (docs/piani/corsi.md, «In sospeso»). `giorni`, se arriva, non conta più:
-	 * la sessione ha un giorno solo. Risponde con quante lezioni ha prenotato subito, quante in
-	 * lista d'attesa e quante sono rimaste senza abbonamento.
+	 * Prenota fisso in una sessione, da oggi fino al massimo (`massimoFissa`: la fine dell'abbonamento
+	 * o l'ultima lezione): la regola di passaggio finché il portale non chiede le date (D-4,
+	 * docs/piani/portale.md). Niente più fisse senza fine (migrazione 0062). `giorni`, se arriva,
+	 * non conta più. Risponde con quante lezioni ha prenotato subito e quante in lista d'attesa.
 	 */
 	fastify.post('/corsi/serie/:id/fissa', async (request, reply) => {
 		const [socio] = await db.select({ nome: members.fullName }).from(members).where(eq(members.id, request.idSocio)).limit(1);
-		const esito = await creaFissa({ memberId: request.idSocio, eventId: request.params.id, senzaFine: true, creataDa: socio?.nome ?? '' });
+		// Senza un massimo (niente abbonamento oggi, sessione finita) si chiede da oggi a oggi: il
+		// controllo del periodo risponde con il perché.
+		const al = await massimoFissa({ memberId: request.idSocio, eventId: request.params.id }) ?? oggiIso();
+		const esito = await creaFissa({ memberId: request.idSocio, eventId: request.params.id, al, creataDa: socio?.nome ?? '' });
 		if (esito.errore) return reply.code(esito.errore).send({ error: esito.messaggio });
 		reply.code(201);
 		return { fissa: { id: esito.fissa.id }, prenotate: esito.esito.prenotate, in_attesa: esito.esito.inAttesa, senza_abbonamento: esito.esito.scoperte };

@@ -17,6 +17,7 @@ import {
 	members, staffAccounts, subscriptions,
 	rooms, courses, events, sessions, bookings,
 } from '../src/db/schema/index.js';
+import { categoriaDiProva, togliCategorieDiProva } from './categoriaDiProva.js';
 
 const PASSWORD = 'prova-permessi-1234';
 
@@ -93,7 +94,7 @@ before(async () => {
 	// solo per sé, che è il punto.
 	const [sala] = await db.insert(rooms).values({ name: `Sala prova ${suffisso}` }).returning();
 	idSala = sala.id;
-	const [corso] = await db.insert(courses).values({ name: `Corso prova ${suffisso}` }).returning();
+	const [corso] = await db.insert(courses).values({ categoryId: await categoriaDiProva(), name: `Corso prova ${suffisso}` }).returning();
 	idCorso = corso.id;
 	const [evento] = await db
 		.insert(events)
@@ -132,6 +133,7 @@ after(async () => {
 	if (idSessioneCorso) await db.delete(sessions).where(inArray(sessions.id, [idSessioneCorso]));
 	if (idEvento) await db.delete(events).where(inArray(events.id, [idEvento]));
 	if (idCorso) await db.delete(courses).where(inArray(courses.id, [idCorso]));
+	await togliCategorieDiProva();
 	if (idSala) await db.delete(rooms).where(inArray(rooms.id, [idSala]));
 	if (idAbbonamenti.length) await db.delete(subscriptions).where(inArray(subscriptions.id, idAbbonamenti));
 	if (idAccount.length) await db.delete(staffAccounts).where(inArray(staffAccounts.id, idAccount));

@@ -32,7 +32,7 @@ import { oggiIso } from '../../../shared/giorni.js';
 // suo passo, `informativa_privacy`.
 const CAMPI_SOCIO = [
 	'nome', 'cognome', 'sesso', 'codice_fiscale', 'email', 'phone', 'date_of_birth', 'address',
-	'emergency_contact_name', 'emergency_contact_phone', 'notes', 'foto_url',
+	'emergency_contact_name', 'emergency_contact_phone', 'notes', 'foto_url', 'consenso_genitori_firmato',
 ];
 
 const scegli = (corpo, campi) => Object.fromEntries(campi.filter((c) => c in (corpo ?? {})).map((c) => [c, corpo[c]]));

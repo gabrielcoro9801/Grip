@@ -29,7 +29,7 @@ import {
 	daTenere, pianoRimozione, contiRimozione, applicaRimozione, descriviConti, hhmm, conflitti,
 } from '../lib/calendario.js';
 import { oggiIso, eUnGiorno, lezioneFinita, giorniFra } from '../../../shared/giorni.js';
-import { applicaFisse, chiudiFisseSenzaLezioni, fissaInCorso } from '../lib/prenotazioniFisse.js';
+import { chiudiFisseSenzaLezioni, fissaInCorso } from '../lib/prenotazioniFisse.js';
 import { motivoSalaNonPrenotabile, dataIt } from '../../../shared/sale.js';
 
 // Lo stesso tetto della creazione (EventFormDialog): una serie allungata di colpo di due anni è
@@ -433,8 +433,6 @@ export default async function calendarioRoutes(fastify) {
 		await registra(request.utente, {
 			tipoAzione: 'update', entitaTipo: 'event', entitaNome: esito.nomeCorso, entitaId: esito.evento.id, dettagli,
 		}, request.log);
-		// Le lezioni nuove di una sessione allungata entrano nelle fisse senza fine di chi le ha.
-		if (esito.conti.aggiunte) await applicaFisse({ eventId: esito.evento.id, soloSenzaFine: true });
 		return esito.conti;
 	}));
 }
