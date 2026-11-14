@@ -18,7 +18,7 @@ import { socioDiAccount } from '../auth/socioCorrente.js';
 import { registerPgErrorHandler } from './errorHandler.js';
 import { colonneFile, cancellaFileNonPiuUsati } from '../lib/fileCaricati.js';
 import { promuoviFinoACapienza } from '../lib/prenotazioni.js';
-import { conSaleBloccate } from '../lib/sale.js';
+import { conSaleBloccate, allineaEventoSingolo } from '../lib/sale.js';
 import { applicaFisse } from '../lib/prenotazioniFisse.js';
 import { registra, tipoEntita, nomeLeggibile, descriviModifica } from '../lib/registro.js';
 
@@ -298,6 +298,8 @@ export default async function entityRoutes(fastify) {
 		if (entityName === 'Session' && 'capacity' in body) {
 			await db.transaction((tx) => promuoviFinoACapienza(tx, row.id));
 		}
+		// Una lezione singola si porta dietro il suo evento: l'uso delle sale legge anche quello.
+		if (entityName === 'Session') await allineaEventoSingolo(row);
 		const vecchia = prima ? translateToSnakeCase(table, prima) : null;
 		const nuova = translateToSnakeCase(table, row);
 		if (vecchia) {

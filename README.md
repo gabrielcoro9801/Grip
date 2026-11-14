@@ -128,8 +128,11 @@ sul PostgreSQL locale: niente Railway.
   della categoria accetta `rgb()` e `#hex`.
 - **Backup** prima delle migrazioni: `../backup/grip_dev-prima-0058.dump` e
   `grip_dev-prima-0059.dump` (`pg_restore` per tornare indietro).
-- **Aperti**: le fisse create dal portale restano senza data di fine; una lezione singola
-  modificata dalla sua pagina cambia solo `sessions`, e l'uso delle sale legge anche `events`.
+- **Aperti**: le fisse create dal portale restano senza data di fine.
+- **Il 14/11, lezioni singole**: modificando una lezione singola dalla sua pagina anche il suo
+  evento prende sala, giorno, orario e capienza (`allineaEventoSingolo` in `lib/sale.js`), così la
+  sala di partenza non risulta più occupata. Migrazione `0061_eventi_singoli_allineati` per gli
+  eventi già disallineati (su grip_dev nessuno); backup in `../backup/grip_dev-prima-0061.dump`.
 - **Il 14/11**: un «Fatto» di Da fare nel diario dice solo «Fatto» (il mezzo non interessa);
   `verifica-fase3.mjs` è tolto (non serviva più); nella giornata a 390 px, con tre lezioni alla
   stessa ora, il nome del corso si schiacciava a zero e ora si vede (provato nel browser, con

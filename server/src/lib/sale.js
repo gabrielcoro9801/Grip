@@ -101,3 +101,20 @@ export async function conSaleBloccate(idSale, fn) {
 		return fn();
 	});
 }
+
+/**
+ * Riporta l'evento di una lezione singola su com'è la sua lezione: sala, giorno, orario e capienza.
+ *
+ * Una lezione singola si modifica dalla sua pagina, cioè su `sessions`; il suo evento (la riga di
+ * `events` con `recurrence_type = 'single'`) restava com'era. Il conto qui sopra legge anche gli
+ * eventi, e la sala di partenza risultava ancora occupata da una lezione che non c'era più.
+ * Le lezioni di una sessione non toccano l'evento: quello lo cambia Sessioni.
+ *
+ * @param lezione la riga di `sessions` dopo la modifica (nomi JS)
+ */
+export async function allineaEventoSingolo(lezione, conn = db) {
+	if (!lezione?.eventId) return;
+	await conn.update(events)
+		.set({ roomId: lezione.roomId, startDate: lezione.date, startTime: lezione.startTime, endTime: lezione.endTime, capacity: lezione.capacity })
+		.where(and(eq(events.id, lezione.eventId), eq(events.recurrenceType, 'single')));
+}

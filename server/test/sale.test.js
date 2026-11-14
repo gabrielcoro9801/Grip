@@ -243,6 +243,41 @@ describe('eliminare, annullare, o niente', () => {
 		assert.equal((await annulla(sala.id)).json().error, SALA_PRENOTATA);
 	});
 
+	test('una lezione singola spostata in un’altra sala si porta dietro il suo evento', async () => {
+		// Si cambiava solo la lezione: l'evento restava nella sala di partenza, e quella risultava
+		// occupata fino al giorno della lezione, anche se dentro non c'era più niente.
+		await svuotaCalendario();
+		const partenza = (await creaSala({ name: `Sala di partenza ${Date.now()}` })).json();
+		const arrivo = (await creaSala({ name: `Sala d'arrivo singola ${Date.now()}` })).json();
+		daPulire.sale.push(partenza.id, arrivo.id);
+		const { evento, lezione } = await fissaLezione(DOMANI, partenza.id);
+		const res = await come({ method: 'PUT', url: `/api/entities/Session/${lezione.id}`, payload: { room_id: arrivo.id, start_time: '12:00', end_time: '13:00', capacity: 12 } });
+		assert.equal(res.statusCode, 200, res.body);
+		const [dopo] = await db.select().from(events).where(inArray(events.id, [evento.id]));
+		assert.equal(dopo.roomId, arrivo.id);
+		assert.equal(dopo.startTime, '12:00:00');
+		assert.equal(dopo.capacity, 12);
+		assert.equal((await annulla(partenza.id)).statusCode, 200);
+		assert.equal((await annulla(arrivo.id)).json().error, SALA_PRENOTATA);
+	});
+
+	test('una lezione di una sessione non sposta la sessione', async () => {
+		await svuotaCalendario();
+		const altra = (await creaSala({ name: `Sala di una lezione ${Date.now()}` })).json();
+		daPulire.sale.push(altra.id);
+		const [evento] = await db.insert(events).values({
+			courseId: idCorso, roomId: idSala, capacity: 10, recurrenceType: 'weekly', giorno: 'Monday',
+			startDate: DOMANI, endCondition: 'by_date', endDate: giornoRelativo(30), startTime: '10:00', endTime: '11:00',
+		}).returning();
+		daPulire.eventi.push(evento.id);
+		const [lezione] = await db.insert(sessions).values({ eventId: evento.id, date: DOMANI, startTime: '10:00', endTime: '11:00', roomId: idSala, capacity: 10, status: 'active' }).returning();
+		daPulire.lezioni.push(lezione.id);
+		const res = await come({ method: 'PUT', url: `/api/entities/Session/${lezione.id}`, payload: { room_id: altra.id } });
+		assert.equal(res.statusCode, 200, res.body);
+		const [dopo] = await db.select().from(events).where(inArray(events.id, [evento.id]));
+		assert.equal(dopo.roomId, idSala);
+	});
+
 	test('una sala già annullata con un passato non si annulla di nuovo, e il cestino lo dice', async () => {
 		await svuotaCalendario();
 		const sala = (await creaSala({ name: `Sala già chiusa ${Date.now()}` })).json();

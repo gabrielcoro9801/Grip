@@ -428,6 +428,13 @@
       "when": 1794562727486,
       "tag": "0060_fisse_a_periodo",
       "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "when": 1794655330871,
+      "tag": "0061_eventi_singoli_allineati",
+      "breakpoints": true
     }
   ]
 }
