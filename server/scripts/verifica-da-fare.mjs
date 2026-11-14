@@ -233,7 +233,8 @@ try {
 	controlla('In testa lo stato: In calo', await pg.getByText('In calo', { exact: true }).first().isVisible());
 	controlla('Niente blocco "Da seguire"', await pg.getByText('Da seguire', { exact: true }).count() === 0);
 	controlla('Niente "Registra contatto" né "Rimanda"', await pg.getByRole('button', { name: /Registra contatto|Rimanda/ }).count() === 0);
-	controlla('Il diario racconta il Contattato', await pg.getByText(/Fatto:.*Non viene da un po'/).first().isVisible());
+	// Dal 14/11 un «Fatto» di Da fare nel diario dice solo «Fatto», senza il mezzo (shared/lead.js).
+	controlla('Il diario racconta il Contattato', await pg.getByText(/^Fatto · .*Non viene da un po'/).first().isVisible());
 	controlla('Niente consensi né documenti nella scheda', await pg.getByText('Comunicazioni promozionali', { exact: true }).count() === 0
 		&& await pg.getByRole('heading', { name: /Documenti/ }).count() === 0);
 	await pg.screenshot({ path: schermata('5-scheda'), fullPage: true });
@@ -269,8 +270,8 @@ try {
 	await tessere.first().waitFor();
 	const testi = (await tessere.allInnerTexts()).map((x) => x.replace(/\s+/g, ' ').trim());
 	const { da_fare: daFare } = await api(pg, '/api/dashboard');
-	controlla('Cinque tessere, una per avviso, con i numeri di Da fare',
-		testi.length === 5 && SCHEDE.every(([etichetta, , tipo], i) => testi[i] === `${etichetta} ${daFare[tipo]}`), JSON.stringify({ testi, daFare }));
+	controlla('Quattro tessere, una per avviso, con i numeri di Da fare',
+		testi.length === 4 && SCHEDE.every(([etichetta, , tipo], i) => testi[i] === `${etichetta} ${daFare[tipo]}`), JSON.stringify({ testi, daFare }));
 	controlla('Niente più liste doppie', await pg.getByText('Avvisi certificati').count() === 0 && await pg.getByText('Rinnovi abbonamenti').count() === 0);
 	await pg.screenshot({ path: schermata('7-dashboard'), fullPage: true });
 	await tessere.filter({ hasText: 'Scaduti' }).click();
