@@ -40,6 +40,7 @@ const Istruttori = lazy(() => import('@/staff/pages/corsi/Istruttori'));
 const Categorie = lazy(() => import('@/staff/pages/corsi/Categorie'));
 const Admin = lazy(() => import('@/staff/pages/admin/Admin'));
 const AuditLogPage = lazy(() => import('@/staff/pages/admin/AuditLogPage'));
+const ContattiPalestra = lazy(() => import('@/staff/pages/admin/ContattiPalestra'));
 
 // Il vecchio /crm/members/:id porta alla stessa scheda del socio: il redirect
 // deve portarsi dietro l'id, altrimenti un link salvato finisce sull'elenco.
@@ -111,6 +112,7 @@ export default function App() {
                 <Route path="/admin" element={<PermissionGate module="admin_users"><Admin /></PermissionGate>} />
                 {/* Le impostazioni di Da fare ora sono la sua scheda Regole. */}
                 <Route path="/admin/da-fare" element={<Navigate to="/da-fare/regole" replace />} />
+                <Route path="/admin/contatti" element={<PermissionGate module="admin_users"><ContattiPalestra /></PermissionGate>} />
                 <Route path="/log-audit" element={<PermissionGate module="audit_log"><AuditLogPage /></PermissionGate>} />
                 <Route path="/audit-log" element={<Navigate to="/log-audit" replace />} />
               </Route>

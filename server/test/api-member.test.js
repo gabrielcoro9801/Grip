@@ -13,13 +13,13 @@
 import test, { before, after, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import bcrypt from 'bcryptjs';
-import { inArray } from 'drizzle-orm';
+import { inArray, eq, desc } from 'drizzle-orm';
 import { buildApp } from '../src/app.js';
 import { db, pool } from '../src/db/client.js';
 import { oggiIso, spostaGiorni } from '../../shared/giorni.js';
 import {
 	members, staffAccounts, subscriptions,
-	rooms, courses, events, sessions, bookings, consensi,
+	rooms, courses, events, sessions, bookings, consensi, auditLogs,
 } from '../src/db/schema/index.js';
 import { categoriaDiProva, togliCategorieDiProva } from './categoriaDiProva.js';
 
@@ -133,7 +133,7 @@ after(async () => {
 	await pool.end();
 });
 
-const ROTTE = ['/api/member/v1/profilo', '/api/member/v1/abbonamenti', '/api/member/v1/corsi/agenda'];
+const ROTTE = ['/api/member/v1/profilo', '/api/member/v1/abbonamenti', '/api/member/v1/corsi/agenda', '/api/member/v1/palestra'];
 
 describe('chi può entrare', () => {
 	for (const rotta of ROTTE) {
@@ -313,6 +313,36 @@ describe('i consensi promozionali dal portale (R3)', () => {
 			assert.equal(tolto.json().consensi.marketing_email.valore, false);
 		} finally {
 			await db.delete(consensi).where(inArray(consensi.personaId, [socio.personaId]));
+		}
+	});
+});
+
+describe('i contatti della palestra (D-2)', () => {
+	const metti = (token, payload) => app.inject({ method: 'PUT', url: '/api/impostazioni/palestra', payload, headers: { authorization: `Bearer ${token}` } });
+
+	test("li scrive l'amministratore, il socio li legge, il registro lo dice", async () => {
+		const prima = (await app.inject({ method: 'GET', url: '/api/impostazioni/palestra', headers: { authorization: `Bearer ${tokenAdmin}` } })).json();
+		try {
+			assert.equal((await metti(tokenSocio, { telefono: '333 1234567' })).statusCode, 403, 'il socio no');
+			assert.equal((await metti(tokenAdmin, { telefono: 'non è un numero' })).statusCode, 400);
+			assert.equal((await metti(tokenAdmin, { email: 'senza-chiocciola' })).statusCode, 400);
+			assert.equal((await metti(tokenAdmin, { nome: '  ' })).statusCode, 400, 'il nome non si svuota');
+			assert.equal((await metti(tokenAdmin, { boh: 'x' })).statusCode, 400);
+			assert.equal((await metti(tokenAdmin, { orari: 'x'.repeat(501) })).statusCode, 400);
+
+			const res = await metti(tokenAdmin, { indirizzo: 'Via Roma 1, Padova', telefono: '049 123456', whatsapp: '333 1234567', email: '', orari: ' Lun-ven 8-21 ' });
+			assert.equal(res.statusCode, 200, res.body);
+			const letti = (await come(tokenSocio, '/api/member/v1/palestra')).json();
+			assert.deepEqual(
+				{ indirizzo: letti.indirizzo, telefono: letti.telefono, whatsapp: letti.whatsapp, email: letti.email, orari: letti.orari },
+				{ indirizzo: 'Via Roma 1, Padova', telefono: '049 123456', whatsapp: '333 1234567', email: null, orari: 'Lun-ven 8-21' },
+			);
+			assert.equal(letti.nome, prima.nome, 'il nome non cambia se non arriva');
+			const [voce] = await db.select().from(auditLogs).where(eq(auditLogs.entitaNome, 'Contatti della palestra')).orderBy(desc(auditLogs.timestamp)).limit(1);
+			assert.match(voce?.dettagli ?? '', /telefono/);
+		} finally {
+			const { nome, indirizzo, telefono, whatsapp, email, orari } = prima;
+			await metti(tokenAdmin, { nome, indirizzo, telefono, whatsapp, email, orari });
 		}
 	});
 });

@@ -16,7 +16,7 @@ import { oggiIso, eUnGiorno, giorniFra, giorniDaOggi, spostaGiorni, lezioneFinit
 import { limiteDisdetta, motivoDisdettaChiusa } from '../../../../shared/corsi.js';
 import { creaFissa, terminaFissa, elencoFisse, massimoFissa } from '../../lib/prenotazioniFisse.js';
 import { avvisiSocio } from '../../../../shared/avvisi.js';
-import { soglieEnte } from '../../lib/impostazioni.js';
+import { soglieEnte, contattiPalestra } from '../../lib/impostazioni.js';
 
 /**
  * L'API del portale soci.
@@ -154,6 +154,12 @@ export default async function memberRoutes(fastify) {
 			})),
 		};
 	});
+
+	/**
+	 * La palestra: nome, indirizzo e i recapiti che scrive l'amministratore (Amministrazione ›
+	 * Contatti). Un campo vuoto è null, e il portale non ne mostra la riga.
+	 */
+	fastify.get('/palestra', async () => contattiPalestra());
 
 	// --- I corsi -----------------------------------------------------------------------
 

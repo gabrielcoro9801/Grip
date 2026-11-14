@@ -194,5 +194,6 @@ export const SIDEBAR_PERMISSIONS = {
   "/calendario": "calendar",
   "/istruttore": "lezioni_istruttore",
   "/admin": "admin_users",
+  "/admin/contatti": "admin_users",
   "/log-audit": "audit_log",
 };

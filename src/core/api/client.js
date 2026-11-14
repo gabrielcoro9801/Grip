@@ -401,6 +401,9 @@ export const api = {
 	impostazioni: {
 		daFare() { return request('/api/impostazioni/da-fare'); },
 		salvaDaFare(corpo) { return request('/api/impostazioni/da-fare', { method: 'PUT', body: corpo }); },
+		/** Nome, indirizzo e recapiti della palestra che il socio vede nel portale. */
+		palestra() { return request('/api/impostazioni/palestra'); },
+		salvaPalestra(corpo) { return request('/api/impostazioni/palestra', { method: 'PUT', body: corpo }); },
 	},
 
 	/**
