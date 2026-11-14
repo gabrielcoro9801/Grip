@@ -80,7 +80,8 @@ export default function GiornoDialog({ giorno, lezioni, rooms, onClose, onNuovaL
                             className="flex h-full flex-col overflow-hidden rounded-md px-1.5 py-1 text-xs leading-tight hover:opacity-85 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                             style={{ background: `${colore}22`, color: colore, borderLeft: `3px solid ${colore}` }}
                           >
-                            <span className="font-semibold truncate">{l.corso}</span>
+                            {/* shrink-0: in un blocco stretto il resto va a capo, e senza questo il nome (che taglia) si schiacciava a zero. */}
+                            <span className="font-semibold truncate shrink-0">{l.corso}</span>
                             <span className="flex flex-wrap gap-x-1.5 text-foreground/80">
                               <span className="tabular-nums whitespace-nowrap">{hhmm(l.start_time)}–{hhmm(l.end_time)}</span>
                               <span className="truncate">{salaDi(l.room_id)}</span>

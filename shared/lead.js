@@ -452,9 +452,6 @@ export function contaFiltriLead(leads = [], oggi, soglie = SOGLIE_LEAD) {
 const quanto = (giorni) => (giorni <= 0 ? "oggi" : giorni === 1 ? "ieri" : `${giorni} giorni fa`);
 const dataBreve = (iso) => { const [a, m, g] = String(iso).slice(0, 10).split("-"); return `${g}/${m}/${a}`; };
 
-/** Come si dice un "Fatto" di Da fare, per mezzo: "Fatto: chiamato". */
-const FATTO_COME = { telefono: "chiamato", whatsapp: "messaggio", sms: "messaggio", email: "email", di_persona: "di persona" };
-
 /** Il massimo di una nota scritta nel diario di una persona. */
 export const NOTA_DIARIO_MASSIMO = 500;
 
@@ -472,8 +469,8 @@ export function descriviAttivita(a) {
     case "stato_automatico": return `Passato a «${statoLead(a.esito).etichetta}»`;
     case "iscrizione": return a.esito === "riattivato" ? "Tornato socio" : "Diventato socio";
     case "contatto":
-      // Il "Fatto" di Da fare: come, e per che cosa lo dice la riga (il segnale sta nel riferimento).
-      if (a.esito === "fatto") return `Fatto: ${FATTO_COME[a.canale] ?? etichettaCanaleContatto(a.canale).toLowerCase()}`;
+      // Il "Fatto" di Da fare: il mezzo non conta; per che cosa lo dice la riga (il segnale sta nel riferimento).
+      if (a.esito === "fatto") return "Fatto";
       return `${etichettaCanaleContatto(a.canale)}: ${etichetta(ESITI_CONTATTO, a.esito)}`;
     case "rimando": return `Rimandato al ${dataBreve(a.esito)}`;
     case "nota": return "Nota";

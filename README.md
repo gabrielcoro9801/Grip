@@ -128,10 +128,12 @@ sul PostgreSQL locale: niente Railway.
   della categoria accetta `rgb()` e `#hex`.
 - **Backup** prima delle migrazioni: `../backup/grip_dev-prima-0058.dump` e
   `grip_dev-prima-0059.dump` (`pg_restore` per tornare indietro).
-- **Aperti**: la riga di diario di «Contattato» senza il mezzo (rottura 1 del piano Da fare);
-  le fisse create dal portale restano senza data di fine; una lezione singola modificata dalla
-  sua pagina cambia solo `sessions`, e l'uso delle sale legge anche `events`;
-  `server/scripts/verifica-fase3.mjs` apre ancora `/da-fare?linea=frequenza`.
+- **Aperti**: le fisse create dal portale restano senza data di fine; una lezione singola
+  modificata dalla sua pagina cambia solo `sessions`, e l'uso delle sale legge anche `events`.
+- **Il 14/11**: un «Fatto» di Da fare nel diario dice solo «Fatto» (il mezzo non interessa);
+  `verifica-fase3.mjs` è tolto (non serviva più); nella giornata a 390 px, con tre lezioni alla
+  stessa ora, il nome del corso si schiacciava a zero e ora si vede (provato nel browser, con
+  il selettore del colore a 390 e 1366 px).
 
 ### 21 ottobre 2026 — Le comunicazioni automatiche escono dall'applicazione
 

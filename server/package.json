@@ -21,7 +21,6 @@
     "verifica:browser": "node scripts/verifica-browser.mjs",
     "verifica:pagine": "node scripts/verifica-pagine.mjs",
     "verifica:oggi": "node scripts/verifica-oggi.mjs",
-    "verifica:fase3": "node scripts/verifica-fase3.mjs",
     "verifica:da-fare": "node scripts/verifica-da-fare.mjs",
     "dati:da-fare": "node scripts/dati-da-fare.mjs"
   },

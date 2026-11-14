@@ -15,7 +15,7 @@ const RIGHE_VISIBILI = 6;
 // Le righe che scrive il sistema da solo: non hanno una nota da citare, ma un testo da leggere.
 const AUTOMATICHE = new Set(["segnale_aperto", "segnale_chiuso", "archiviazione_automatica"]);
 
-/** La riga in parole; un "Fatto" dice anche per che cosa: "Fatto: chiamato · Abbonamento in scadenza". */
+/** La riga in parole; un "Fatto" dice anche per che cosa: "Fatto · Abbonamento in scadenza". */
 function titolo(a) {
   const base = descriviAttivita(a);
   const segnali = a.tipo === "contatto" ? a.riferimento?.segnali ?? [] : [];

@@ -108,6 +108,11 @@ describe('la trattativa iscritta', () => {
 		assert.equal(descriviAttivita({ tipo: 'iscrizione', esito: 'riattivato' }), 'Tornato socio');
 		assert.equal(descriviAttivita({ tipo: 'richiamo', esito: '2026-10-12' }), 'Da richiamare il 12/10/2026');
 	});
+
+	test('un "Fatto" di Da fare non dice il mezzo, con o senza canale', () => {
+		assert.equal(descriviAttivita({ tipo: 'contatto', esito: 'fatto' }), 'Fatto');
+		assert.equal(descriviAttivita({ tipo: 'contatto', esito: 'fatto', canale: 'telefono' }), 'Fatto');
+	});
 });
 
 describe('Andamento, il sesso non indicato', () => {
