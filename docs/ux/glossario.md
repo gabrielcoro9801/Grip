@@ -62,6 +62,7 @@ distinguono dalla forma, punto per il socio e badge per il contatto.
 | **Annullata** | Una lezione che la palestra non tiene: le prenotazioni si disdicono da sole. | Cancellata |
 | **Annulla** | Solo nel messaggio che compare subito dopo «Prenota», per qualche secondo: disfa la prenotazione appena fatta. Nello storico è una disdetta. | — |
 | **Esci dalla lista** | Disdire una prenotazione in lista d'attesa. | — |
+| **Posto offerto** | Si è liberato un posto e il primo in lista d'attesa ha 12 ore per confermarlo; se non lo fa torna in attesa, in fondo, e il posto si offre al successivo. Al termine di disdetta la lista si chiude. | Promosso |
 
 ## I corsi
 

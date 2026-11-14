@@ -22,9 +22,10 @@ Obiettivo: il socio trova una lezione e la prenota in un tocco; intorno restano 
 | «Allunga la fissa» | Notifica al rinnovo e quando la sessione si allunga. A fine sospensione le lezioni si riprenotano. La disdetta per sospensione si segna con `motivo_disdetta = 'sospensione'` |
 | Documenti | Via tutto, dal portale e dal gestionale. Il codice va nel branch `archivio/documenti`, la tabella resta. Via avvisi, segnali, giallo al bancone, la scheda Documenti di Da fare |
 | QR | Via dal portale e dal gestionale. Gli ingressi a mano al bancone restano finché non c'è un lettore; `qr_accessi` resta |
-| Lista d'attesa | Promozione automatica solo finché il socio può ancora disdire; dopo, il posto liberato è di chi lo prende |
+| Lista d'attesa | **Rivista il 14/11**: un posto liberato si **offre** al primo in lista, che ha **12 ore** per confermarlo; se non conferma torna in attesa e l'offerta passa al successivo, e così via. Al termine di disdetta (2 ore prima, nei mockup) la lista **si chiude**: niente nuovi in attesa, nessuna offerta nuova, e il posto liberato è di chi lo prende |
 | Notifiche | Niente push: solo nel portale. Si ricaricano a ogni `visibilitychange` |
 | Barra | Quattro voci: Home · Corsi · Le mie lezioni · Abbonamento. Notifiche e Profilo dall'avatar. Su desktop la barra diventa il menu laterale |
+| Risposte del 14/11 | Si riprenotano tutte le disdette per sospensione; pillola «Confermata»; le rotte tolte escono da `v1`; i contatti li scrive l'amministratore; la spunta dei genitori non blocca (il socio ha il portale solo dopo l'iscrizione); i dati locali sono sintetici: si correggono a mano |
 | Rotture di D-1 | Tutte **A**: R1 la scheda Documenti di Da fare si toglie ora; R2 Iscrivi senza i due passi dei documenti; R3 in Profilo una riga «Revoca» solo per chi ha un consenso attivo; R4 consenso dei genitori come spunta «firmato» in anagrafica, con un campo su `members` |
 
 ## Le parole
@@ -86,6 +87,7 @@ Una sola, generata con `npm run db:generate` alla fine di D-1 (dopo la 0061 di m
 |---|---|---|---|
 | `members.consenso_genitori_firmato` | boolean not null default false | Aggiungi (R4) | `true` per chi ha un documento `consenso_genitori` |
 | `bookings.motivo_disdetta` | varchar(16) null, CHECK in (`sospensione`) | Aggiungi | NULL ovunque: le disdette di sospensioni già fatte non si riprenotano |
+| `bookings.posto_offerto_fino_a` | timestamptz null, CHECK solo su `waitlisted` | Aggiungi | NULL: nessuna offerta aperta |
 | `notifiche.lezione_id` | uuid null → `sessions`, on delete set null, indice | Aggiungi | NULL: le notifiche vecchie restano senza azione |
 | `notifiche.fissa_id` | uuid null → `prenotazioni_fisse`, on delete set null, indice | Aggiungi | NULL |
 | `prenotazioni_fisse.al` | CHECK `attiva = false or al is not null` | Dati + vincolo | Le attive senza fine prendono il minore fra la fine dell'abbonamento che copre oggi e l'ultima lezione della sessione; senza un abbonamento oggi (o con quella data prima dell'inizio) si chiudono (`attiva = false`, `terminata_il = oggi`) |
@@ -95,7 +97,7 @@ Una sola, generata con `npm run db:generate` alla fine di D-1 (dopo la 0061 di m
 - `notifiche.tipo` è varchar(32): i tipi nuovi non chiedono migrazione.
 - **Decisione presa**: la fine dell'abbonamento si legge da `subscriptions.end_date` senza lo slittamento delle sospensioni (in SQL non c'è `iscrizioniDelSocio`). È la data più corta: al peggio il socio riceve «Allunga».
 - **Decisione presa**: il CHECK sulle fisse attive rende impossibili le fisse senza fine; spariscono `soloSenzaFine` e `senzaFine` dal codice.
-- **In locale (14/11)**: `grip_locale` era ferma alla 0057; prima di applicare 0058-0061 se n'è fatta una copia, il database `grip_locale_prima_0058`. Ci sono 0 fisse attive e **un corso senza categoria («Cross Training»)**: la 0062 si fermerà finché non gli si dà una categoria. Prima di toccare la produzione si rifà lo stesso controllo.
+- **In locale (14/11)**: `grip_locale` era ferma alla 0057; prima di applicare 0058-0061 se n'è fatta una copia, il database `grip_locale_prima_0058`. Ci sono 0 fisse attive e **un corso senza categoria («Cross Training»)**: dati sintetici, gli si dà una categoria prima della 0062. Prima di toccare la produzione si rifà lo stesso controllo.
 
 ## D-2 · La struttura
 
@@ -148,10 +150,12 @@ Una sola, generata con `npm run db:generate` alla fine di D-1 (dopo la 0061 di m
 - Dati: `GET /corsi/catalogo`; le lezioni del foglio con `GET /corsi/agenda?sessione_id`.
 
 ### Lista d'attesa e ripensamento
-- **Regola 1 · promozione fino al termine**: `promuoviFinoACapienza` promuove solo se adesso è prima del termine di disdetta della lezione (`limiteDisdetta`), o prima dell'inizio se il corso non ha termine. La chiamano `disdici`, l'aumento di capienza (`entities/hooks.js`), `cambiaStato`, `eliminaPrenotazione`, la fine sospensione. Dopo il termine il posto liberato resta prenotabile: lo prende chi preme **Prenota**. Chi era in lista e preme Prenota con un posto libero passa da `waitlisted` a `confirmed` (oggi riceve 409).
-- **Proposta, da confermare**: dopo il termine la lista è **chiusa**: una lezione piena non accetta nuovi in attesa («La lista d'attesa si è chiusa: …»). Il PDF: «chiude la lista N ore prima», per non risultare prenotati senza saperlo.
+- **Regola 1 · l'offerta di 12 ore** (decisa il 14/11). Quando si libera un posto (una disdetta, la capienza che cresce, un'offerta scaduta), `promuoviFinoACapienza` non conferma più nessuno da solo: **offre** il posto al primo in lista. La prenotazione resta `waitlisted` con `posto_offerto_fino_a` = il minore fra adesso + 12 ore e la chiusura della lista; il posto conta come occupato. Il socio riceve `posto_offerto` («Si è liberato un posto a Pilates: confermalo entro le 18:30») e in Home il banner con **Conferma**. Confermando passa a `confirmed`; con **Esci dalla lista** il posto va al successivo.
+- **L'offerta scaduta**: il socio torna in attesa, **in fondo alla lista**, e l'offerta passa al successivo con la sua finestra di 12 ore, che parte dalla scadenza della precedente. Non serve un processo programmato: le scadenze si leggono dalle date, e `regolaOfferte(tx, lezione)` le sistema a ogni lettura o scrittura della lezione (agenda, Le mie lezioni, prenota, disdici) e nel giro notturno. *Decisione presa*: «torna in attesa» vuol dire in fondo, così il giro passa per tutti.
+- **La chiusura della lista**: al termine di disdetta del corso (`limiteDisdetta`; 2 ore nei mockup); senza termine, all'inizio della lezione. Da lì nessuna offerta nuova, nessun nuovo in attesa (una lezione piena dice «Piena · lista chiusa»), e un'offerta aperta scade alla chiusura. Il posto liberato è di chi preme **Prenota**: anche chi era in attesa, che passa da `waitlisted` a `confirmed` (oggi riceve 409). *Da confermare*: se «2 ore prima» è fisso per tutti i corsi o è il termine di disdetta di ciascuno (qui: il termine del corso).
+- `promosso_lista_attesa` («Posto confermato») non si scrive più dal portale: resta per la reception, che conferma a mano da `cambiaStato`. Nella pagina della lezione dello staff, accanto a chi ha un'offerta, «Posto offerto fino alle 18:30».
 - **Regola 2 · margine di 10 minuti**: il socio disdice sempre una prenotazione creata da meno di 10 minuti, anche oltre il termine. Costante `MARGINE_RIPENSAMENTO_MINUTI = 10` in `shared/corsi.js`; il controllo in `disdici`. Così «Annulla» del messaggio funziona anche a ridosso della lezione.
-- Il foglio della lezione piena: «La lezione è piena: entri in lista d'attesa, al 2° posto. Se si libera un posto entro martedì alle 18:00 ti prenotiamo noi e lo trovi in Notifiche e in Home. Dopo quell'ora il posto va a chi lo prende per primo.» **Entra in lista d'attesa** · Annulla.
+- Il foglio della lezione piena: «La lezione è piena: entri in lista d'attesa, al 2° posto. Se si libera un posto entro martedì alle 18:00 te lo offriamo: lo trovi in Notifiche e in Home, e hai 12 ore per confermarlo. Dopo quell'ora la lista si chiude e il posto va a chi lo prende per primo.» **Entra in lista d'attesa** · Annulla.
 
 ### Le mie lezioni (pagina nuova, `MemberLezioni.jsx`)
 - **Fisse**: orario, «fino al 15 dic 2026 · 5 lezioni prenotate»; **Allunga** o accorcia, **Termina** (D-4).
@@ -162,7 +166,7 @@ Una sola, generata con `npm run db:generate` alla fine di D-1 (dopo la 0061 di m
 
 ### Notifiche
 - Ogni riga: l'**origine** (Dalla palestra · Automatica · Dalla lista d'attesa), il tempo relativo («2 ore fa», «ieri»), un'**azione**: «Vedi la lezione», «Disdici», «Altre lezioni di mer 18 nov», «Allunga».
-- Tipi: `lezione_annullata` e `promosso_lista_attesa` ci sono già e prendono `lezione_id`; nuovi `fissa_da_allungare` e `sospensione_riprenotata` (D-4), con `fissa_id`/`lezione_id`. `fissa_senza_abbonamento` non si scrive più (le vecchie restano leggibili).
+- Tipi: `lezione_annullata` c'è già e prende `lezione_id`; nuovi `posto_offerto` (D-3), `fissa_da_allungare` e `sospensione_riprenotata` (D-4), con `fissa_id`/`lezione_id`. `fissa_senza_abbonamento` non si scrive più (le vecchie restano leggibili).
 - In cima, gli avvisi dell'abbonamento come oggi, o «Nessun avviso: abbonamento in regola.»
 - Il conteggio della campanella e il banner si ricaricano a ogni `visibilitychange` (oltre che al cambio di pagina). In fondo: «Il portale non manda email né notifiche sul telefono: quello che succede alle tue prenotazioni lo trovi qui e in Home.»
 
@@ -184,8 +188,8 @@ Escono `POST /corsi/serie/:id/fissa` (senza fine) e `DELETE /corsi/fisse/:id`.
 ### Regole
 - **Massimo**: il minore fra la copertura dell'abbonamento (`fineCopertura`, con le sospensioni) e l'ultima lezione della sessione. Il foglio lo dice: «Al massimo fino al 10 dic: l'ultima lezione coperta dal tuo abbonamento (scade il 15 dic)».
 - **Anteprima uguale all'esito**: una funzione sola calcola l'esito lezione per lezione; l'anteprima la chiama senza scrivere, `creaFissa`/`modificaFissa` scrivendo. Il test confronta le due.
-- **«Allunga»**: una notifica `fissa_da_allungare` quando il massimo di una fissa attiva supera il suo `al`: al **rinnovo** (vendita di un abbonamento, `routes/entities.js`) e quando la **sessione si allunga** (`POST /api/calendario/eventi/:id/data-fine`). Una volta sola per data di fine: si ricorda in `prenotazioni_fisse.avviso_inviato_per` (la colonna che usava l'avviso tolto). La notifica apre il foglio della fissa.
-- **Sospensione**: le prenotazioni disdette dalla sospensione prendono `motivo_disdetta = 'sospensione'` (`routes/soci.js`). Quando la sospensione finisce prima, le lezioni dei giorni tornati liberi si **riprenotano** (lista d'attesa se piena) e il socio riceve `sospensione_riprenotata`. *Da confermare*: si riprenotano **tutte** le disdette con quel motivo, anche quelle fatte a mano (proposta: sì, le ha disdette solo la sospensione), non solo quelle delle fisse come diceva `corsi.md` (M6). Si cambia `applicaFisse`, che oggi salta le lezioni con una prenotazione anche disdetta (corsi.md, «In sospeso» 3).
+- **«Allunga»**: una notifica `fissa_da_allungare` quando il massimo di una fissa attiva supera il suo `al`: al **rinnovo** (vendita di un abbonamento, `routes/entities.js`) e quando la **sessione si allunga** (`POST /api/calendario/eventi/:id/data-fine`). Una volta sola per data di fine: si ricorda in `prenotazioni_fisse.avviso_inviato_per` (la colonna che usava l'avviso tolto). La notifica apre il foglio della fissa **già compilato con il nuovo massimo** («fino al 15 mar 2027»), con l'anteprima: un tocco su «Allunga» basta, e il socio può scegliere un'altra data o un numero di lezioni. Le fisse senza fine che esistono già le chiude la 0062 alla fine dell'abbonamento in corso (dati sintetici): è la risposta ai due punti aperti di «GRIP - fisse dal portale senza data di fine».
+- **Sospensione**: le prenotazioni disdette dalla sospensione prendono `motivo_disdetta = 'sospensione'` (`routes/soci.js`). Quando la sospensione finisce prima, le lezioni dei giorni tornati liberi si **riprenotano** (lista d'attesa se piena) e il socio riceve `sospensione_riprenotata`. Si riprenotano **tutte** le disdette con quel motivo, anche quelle fatte a mano (deciso il 14/11), non solo quelle delle fisse come diceva `corsi.md` (M6). Si cambia `applicaFisse`, che oggi salta le lezioni con una prenotazione anche disdetta (corsi.md, «In sospeso» 3).
 
 ## Codice: server
 
@@ -201,7 +205,7 @@ Escono `POST /corsi/serie/:id/fissa` (senza fine) e `DELETE /corsi/fisse/:id`.
 | `routes/persone.js` | `GET`/`POST /api/persone/:id/consensi` | Togli | D-1 |
 | `routes/entities.js`, `entities/registry.js`, `entities/hooks.js` | `MemberDocument`, `QRAccesso`; Course con categoria obbligatoria (400); `consenso_genitori_firmato` in `anagraficaSocio` | Togli · Cambia | D-1 |
 | `routes/impostazioni.js` | `GET`/`PUT /api/impostazioni/palestra` | Aggiungi | D-2 |
-| `lib/prenotazioni.js` | `prenota` (lista chiusa; da attesa a confermata), `disdici` (10 minuti; `motivo`), `promuoviFinoACapienza` (fino al termine; `lezione_id`) | Cambia | D-3 |
+| `lib/prenotazioni.js` | `prenota` (lista chiusa; da attesa a confermata; conferma di un'offerta), `disdici` (10 minuti; `motivo`), `promuoviFinoACapienza` (offre invece di confermare), `regolaOfferte` | Cambia | D-3 |
 | `lib/notifiche.js` | `notifica` con `lezioneId`, `fissaId` | Cambia | D-3 |
 | `lib/prenotazioniFisse.js` | esito per lezione condiviso con l'anteprima; `massimoFissa`; `avvisaAllungabili`; `applicaFisse` riprenota le disdette per sospensione; via `soloSenzaFine`, `senzaFine`, l'avviso `fissa_senza_abbonamento` | Cambia | D-4 |
 | `routes/soci.js` | sospensione (`motivo_disdetta`), fine anticipata (riprenota e notifica) | Cambia | D-4 |
@@ -227,13 +231,13 @@ Escono `POST /corsi/serie/:id/fissa` (senza fine) e `DELETE /corsi/fisse/:id`.
 | `src/staff/components/soci/Iscrivi.jsx`, `CampiAnagrafica.jsx` | R2, R4 | D-1 |
 | `src/staff/pages/dafare/*`, `components/dafare/SchedaAvviso.jsx`, `pages/Dashboard.jsx` | via Documenti | D-1 |
 | `src/staff/pages/admin/…` | Impostazioni › Palestra | D-2 |
-| `shared/corsi.js` | `MARGINE_RIPENSAMENTO_MINUTI`, `terminePromozione`, `fasciaDelGiorno` | D-3 |
+| `shared/corsi.js` | `MARGINE_RIPENSAMENTO_MINUTI`, `ORE_OFFERTA_POSTO`, `chiusuraLista`, `fasciaDelGiorno` | D-3 |
 
 Nessuna libreria nuova: `src/ui` (Card, Button, Dialog, Sheet se c'è, toast, Tabs, StatusBadge, LoadingState, ErrorState, EmptyState). Nessun colore nuovo: i token `primary`, `success`, `warning`, `destructive`, `muted`, `card`, `border`, chiaro e scuro. Le pillole: fondo al 10-14% del colore, testo nel colore pieno; il contrasto si misura (WCAG AA 4,5:1), soprattutto al buio.
 
 ## Test
 
-**Da aggiungere (server, uno per regola)**: agenda per intervallo (campi, posti liberi, mio stato, motivi, copertura, 14 giorni, `sessione_id`); catalogo, miei-orari, lezioni, palestra; promozione solo prima del termine; lista chiusa dopo il termine; da attesa a confermata con un posto libero; margine di 10 minuti oltre il termine; token del socio rifiutato su `/api/prenotazioni`; fissa (al, numero, rifiuti oltre il massimo, anteprima uguale all'esito, termina); «Allunga» al rinnovo e all'allungamento, una volta sola; sospensione finita prima che riprenota, con attesa se piena; `PUT /consensi` solo per togliere; Iscrivi senza documenti; consenso dei genitori; `courses.category_id` obbligatoria.
+**Da aggiungere (server, uno per regola)**: agenda per intervallo (campi, posti liberi, mio stato, motivi, copertura, 14 giorni, `sessione_id`); catalogo, miei-orari, lezioni, palestra; offerta di 12 ore (conferma, scadenza che manda in fondo e passa al successivo, finestra tagliata alla chiusura); nessuna offerta e nessun nuovo in attesa dopo la chiusura; da attesa a confermata con un posto libero; margine di 10 minuti oltre il termine; token del socio rifiutato su `/api/prenotazioni`; fissa (al, numero, rifiuti oltre il massimo, anteprima uguale all'esito, termina); «Allunga» al rinnovo e all'allungamento, una volta sola; sospensione finita prima che riprenota, con attesa se piena; `PUT /consensi` solo per togliere; Iscrivi senza documenti; consenso dei genitori; `courses.category_id` obbligatoria.
 **Client**: `ics.js`, «I tuoi corsi», le fasce del giorno.
 
 Prima di dire finito un pacchetto: `npm run lint`, `npm test`, `cd server && npm test`, i `verifica:*` pertinenti, `npm run build`. Poi a mano a 390 px, in chiaro e in scuro: Prenota → Annulla → Le mie lezioni → Abbonamento. L'`.ics` si prova su un Android vero.
@@ -249,7 +253,8 @@ Prima di dire finito un pacchetto: `npm run lint`, `npm test`, `cd server && npm
 | Posti vuoti all'ultimo, lista piena | lista d'attesa | il posto resta prenotabile e la card lo mostra |
 | Margine di 10 minuti usato per tenersi posti | `disdici` | solo le proprie prenotazioni; da misurare |
 | Fisse senza fine migrate male | 0062 | prova su `grip_locale_prima_0058` e su una copia della produzione |
-| Il socio non vede una promozione | notifiche | stop al termine, banner in Home, `visibilitychange` |
+| Il socio non vede un'offerta | notifiche | banner in Home con Conferma, `visibilitychange`; l'offerta scade e passa al successivo |
+| Un'offerta che nessuno conferma tiene un posto vuoto | lista d'attesa | 12 ore al massimo per socio, tagliate alla chiusura |
 | `.ics` su Android | `ics.js` | link di Google Calendar |
 | Contrasto delle pillole al buio | CSS | misurato sui token |
 | File dei documenti cancellati dalla pulizia | `pulisci-file-orfani.js` | continua a leggere `member_documents` |
@@ -260,8 +265,8 @@ Prima di dire finito un pacchetto: `npm run lint`, `npm test`, `cd server && npm
 2. `organizations.impostazioni` c'è già (le soglie di Da fare): i contatti sono una chiave, non una colonna.
 3. La migrazione è la **0062** (la 0061 è `eventi_singoli_allineati`), non la 0061.
 4. «Richiedi il rinnovo» è già tolto dal portale (Da fare).
-5. Il commento di `routes/member/index.js` promette che dentro `v1` non si toglie una rotta né un campo. Il portale è solo web, rilasciato insieme al server, senza app installate: le rotte tolte da D-1 si tolgono, e il commento si riscrive. *Da confermare.*
-6. Lo stato `confirmed` nel glossario e in `StatusBadge` è **«Confermata»**; i mockup scrivono «Prenotata». Si tiene «Confermata» sulle pillole; «Prenotata: Yoga…» resta il messaggio dopo il tocco. *Da confermare.*
+5. Il commento di `routes/member/index.js` promette che dentro `v1` non si toglie una rotta né un campo. Il portale è solo web, rilasciato insieme al server, senza app installate: le rotte tolte da D-1 si tolgono, e il commento si riscrive (confermato il 14/11).
+6. Lo stato `confirmed` nel glossario e in `StatusBadge` è **«Confermata»**; i mockup scrivono «Prenotata». Si tiene «Confermata» sulle pillole; «Prenotata: Yoga…» resta il messaggio dopo il tocco (confermato il 14/11).
 
 ## Ipotesi
 Il dopo dei mockup è HTML con il CSS vero, non i componenti React: spaziature e stati (caricamento, vuoto, errore, offline) si rifanno sui componenti. «Prenotare in meno di 10 secondi» non è misurato. «I tuoi corsi» utile: nessun dato d'uso.
