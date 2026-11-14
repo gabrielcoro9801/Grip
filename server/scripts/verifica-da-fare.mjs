@@ -362,7 +362,7 @@ try {
 	await portale.getByRole('heading', { name: /^Ciao/ }).waitFor();
 	controlla('Home: niente domanda sui consensi né QR', await portale.getByText('Vuoi ricevere anche promozioni e novità?').count() === 0
 		&& await portale.getByText(/Mostra il QR/).count() === 0);
-	await portale.goto(`${BASE}/member-portal/anagrafica`, { waitUntil: 'networkidle' });
+	await portale.goto(`${BASE}/member-portal/profilo`, { waitUntil: 'networkidle' });
 	await portale.getByText('Le ricevi per email.').waitFor();
 	controlla('Profilo: la riga «Revoca», senza caselle', await portale.getByRole('checkbox').count() === 0);
 	await portale.getByRole('button', { name: 'Revoca', exact: true }).click();

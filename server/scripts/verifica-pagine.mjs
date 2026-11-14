@@ -42,7 +42,7 @@ const PIANO = `Piano Verifica ${suffisso}`;
 const CORSO = `Corso Verifica ${suffisso}`;
 // Corsi si apre sui giorni, da oggi; la lezione seminata è fra tre giorni. Nella vista "Per
 // corso" ci sono le categorie: si pretende che i dati dell'agenda siano arrivati e disegnati.
-// La lezione, prenotata, la mostra la home fra "Le tue prossime lezioni".
+// La lezione, prenotata, la mostrano la Home (la prossima lezione) e Le mie lezioni.
 const CATEGORIA = `Categoria Verifica ${suffisso}`;
 const NOME_SOCIO = 'Socio Giro Pagine';
 // Senza cifre: il contatore dei codici veri prende il massimo delle cifre, e un codice di prova
@@ -59,7 +59,7 @@ const PAGINE_STAFF = [
 	['/lead', COGNOME_LEAD], ['/lead/andamento', CANALE], ['/lead/canali', CANALE],
 	['/calendario', null], ['/calendario/sessioni', CORSO], ['/calendario/corsi', null],
 	['/calendario/sale', null], ['/calendario/istruttori', null], ['/calendario/categorie', null],
-	['/admin', null], ['/log-audit', null],
+	['/admin', null], ['/admin/contatti', 'Orari della reception'], ['/log-audit', null],
 ];
 
 // Per il portale il controllo è più severo: ogni pagina deve mostrare un dato preciso.
@@ -68,6 +68,9 @@ const PAGINE_SOCIO = [
 	['/member-portal', CORSO],
 	['/member-portal/corsi', CATEGORIA, (p) => p.getByRole('tab', { name: 'Per corso' }).click()],
 	['/member-portal/abbonamento', PIANO],
+	['/member-portal/lezioni', CORSO],
+	['/member-portal/profilo', CODICE_SOCIO],
+	// Il vecchio indirizzo del Profilo rimanda.
 	['/member-portal/anagrafica', CODICE_SOCIO],
 	['/member-portal/notifiche', 'Notifiche e avvisi'],
 ];
