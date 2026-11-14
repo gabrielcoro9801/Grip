@@ -4,7 +4,7 @@ import { useMemberAuth } from "@/member/session/MemberAuthContext";
 import { Link, useOutletContext } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/ui/primitivi/card";
 import { Button } from "@/ui/primitivi/button";
-import { CreditCard, QrCode, FileText, ChevronRight, Calendar, AlertCircle, AlertTriangle, CalendarCheck } from "lucide-react";
+import { CreditCard, FileText, ChevronRight, Calendar, AlertCircle, AlertTriangle, CalendarCheck } from "lucide-react";
 import StatusBadge from "@/ui/StatusBadge";
 import { LoadingState } from "@/ui/Spinner";
 import { ErrorState } from "@/ui/StateViews";
@@ -13,7 +13,7 @@ import { oggiIso, spostaGiorni } from "@/core/domain/giorni";
 import ConsensiComunicazioni from "@/member/components/ConsensiComunicazioni";
 
 /**
- * Le prossime lezioni prenotate, al massimo tre: è la seconda cosa che il socio apre, dopo il QR.
+ * Le prossime lezioni prenotate, al massimo tre.
  * Se l'agenda non arriva la sezione non c'è: la home resta utile anche senza.
  */
 function ProssimeLezioni() {
@@ -106,16 +106,6 @@ export default function MemberDashboard() {
         Ciao, {member?.nome?.split(" ")[0] || memberUser.nome}
       </h1>
 
-      {/* Il QR in cima: è la cosa che si apre davanti al tornello, con una mano. Stava sotto
-          l'abbonamento e, al primo accesso, sotto la domanda sui consensi. */}
-      <Link to="/member-portal/qr" className="flex items-center gap-4 rounded-xl bg-primary text-primary-foreground p-4 min-h-[72px] shadow-sm hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
-        <QrCode className="w-8 h-8 shrink-0" aria-hidden="true" />
-        <span className="flex-1">
-          <span className="block font-heading font-semibold">Mostra il QR per entrare</span>
-          <span className="block text-sm opacity-90">Il codice cambia ogni minuto</span>
-        </span>
-        <ChevronRight className="w-5 h-5 shrink-0" aria-hidden="true" />
-      </Link>
 
       <ProssimeLezioni />
 

@@ -1,6 +1,6 @@
 // Gli ingressi in palestra: il registro, e il controllo di chi è in regola.
 //
-// Il controllo pensato è passivo, un lettore QR sul tornello; finché non c'è, lo staff registra
+// Il controllo pensato è passivo, un lettore sul tornello; finché non c'è, lo staff registra
 // a mano le eccezioni (telefono dimenticato, abbonamento appena scaduto), anche a posteriori, e
 // può annullare un ingresso sbagliato. Il semaforo — verde, giallo o rosso, con gli avvisi di
 // shared/avvisi.js — si calcola al giorno dell'ingresso. Non sono presenze alle lezioni: dicono
@@ -16,13 +16,12 @@
 import { and, desc, eq, gte, lte, ne } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
-	members, memberDocuments, qrAccessi, ingressi, bookings, sessions, events, courses, staffAccounts,
+	members, memberDocuments, ingressi, bookings, sessions, events, courses, staffAccounts,
 } from '../db/schema/index.js';
 import { getUserFromRequest } from '../auth/tokens.js';
 import { canReadEntity, canWriteEntity } from '../auth/authorize.js';
 import { registerPgErrorHandler } from './errorHandler.js';
 import { registra } from '../lib/registro.js';
-import { semeDelCodice, verificaCodice } from '../lib/qrDinamico.js';
 import { firmaUrl } from '../lib/urlFirmati.js';
 import { situazioni } from '../lib/segnali.js';
 import { iscrizioniDelSocio } from '../lib/iscrizioni.js';
@@ -87,18 +86,6 @@ async function schedaIngresso(memberId, oggi = oggiIso()) {
 	};
 }
 
-/** Chi ha un QR valido adesso, o il perché no. Le stesse regole di /api/qr/verifica. */
-async function socioDalCodice(codice) {
-	const scansionato = String(codice ?? '').trim().toUpperCase();
-	const seme = semeDelCodice(scansionato);
-	if (!seme) return { motivo: 'Codice illeggibile.' };
-	const [qr] = await db.select().from(qrAccessi).where(eq(qrAccessi.codice, seme)).limit(1);
-	if (!qr) return { motivo: 'Codice sconosciuto.' };
-	if (qr.stato !== 'attivo') return { motivo: 'Codice revocato.' };
-	if (!verificaCodice(qr.codice, scansionato)) return { motivo: 'Codice scaduto: fattelo mostrare di nuovo.' };
-	return { memberId: qr.clienteId };
-}
-
 export default async function ingressiRoutes(fastify) {
 	registerPgErrorHandler(fastify);
 
@@ -116,36 +103,31 @@ export default async function ingressiRoutes(fastify) {
 	});
 
 	/**
-	 * POST /api/ingressi/verifica { codice } | { member_id, alle? }
+	 * POST /api/ingressi/verifica { member_id, alle? }
 	 * → { valido: false, motivo } | { valido: true, metodo, socio, semaforo, avvisi, lezioni_oggi, ultimo_ingresso }
 	 *
-	 * Non scrive niente. Con `member_id` è lo staff che sta per registrare a mano, con `alle` se
-	 * l'ingresso è di un altro momento; con `codice` è la stessa verifica che farà il tornello.
+	 * Non scrive niente: è lo staff che sta per registrare a mano, con `alle` se l'ingresso è di
+	 * un altro momento. Il codice QR non c'è più (docs/piani/portale.md): `metodo` è sempre manuale.
 	 */
 	fastify.post('/api/ingressi/verifica', async (request, reply) => {
-		const { codice, member_id: diretto, alle } = request.body ?? {};
+		const { member_id: memberId, alle } = request.body ?? {};
 		const quando = orarioIngresso(alle);
 		if (!quando) return reply.code(400).send({ error: 'Orario non valido.' });
-		let memberId = diretto;
-		if (!memberId) {
-			const esito = await socioDalCodice(codice);
-			if (!esito.memberId) return { valido: false, motivo: esito.motivo };
-			memberId = esito.memberId;
-		}
+		if (!memberId) return reply.code(400).send({ error: 'Indica il socio.' });
 		const scheda = await schedaIngresso(memberId, oggiIso(quando));
 		if (!scheda) return { valido: false, motivo: 'Socio inesistente.' };
-		return { valido: true, metodo: diretto ? 'manuale' : 'qr', ...scheda };
+		return { valido: true, metodo: 'manuale', ...scheda };
 	});
 
 	/**
-	 * POST /api/ingressi { member_id, metodo: 'qr'|'manuale', deroga?, entrato_alle? } → { ingresso }
+	 * POST /api/ingressi { member_id, deroga?, entrato_alle? } → { ingresso }
 	 *
 	 * Il semaforo si ricalcola qui, al giorno dell'ingresso, non si prende dal client. Rosso si
 	 * registra solo con la deroga, che finisce anche nel registro delle azioni. `entrato_alle`
 	 * serve a segnare dopo un ingresso già avvenuto: nel futuro no.
 	 */
 	fastify.post('/api/ingressi', async (request, reply) => {
-		const { member_id: memberId, metodo = 'qr', deroga = false, entrato_alle: alle } = request.body ?? {};
+		const { member_id: memberId, deroga = false, entrato_alle: alle } = request.body ?? {};
 		if (!memberId) return reply.code(400).send({ error: 'Indica il socio.' });
 		const quando = orarioIngresso(alle);
 		if (!quando) return reply.code(400).send({ error: "L'orario non è valido, o è nel futuro." });
@@ -157,7 +139,7 @@ export default async function ingressiRoutes(fastify) {
 		const [chi] = await db.select({ nome: staffAccounts.nome }).from(staffAccounts).where(eq(staffAccounts.id, request.utente.sub)).limit(1);
 		const [ingresso] = await db.insert(ingressi).values({
 			memberId, entratoAlle: quando, esito: ESITO[scheda.semaforo], avvisi: scheda.avvisi.map((a) => a.codice),
-			metodo: metodo === 'manuale' ? 'manuale' : 'qr', registratoDaId: request.utente.sub, registratoDaNome: chi?.nome ?? '',
+			metodo: 'manuale', registratoDaId: request.utente.sub, registratoDaNome: chi?.nome ?? '',
 		}).returning();
 		if (scheda.semaforo === 'rosso') {
 			await registra(request.utente, {

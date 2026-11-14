@@ -10,7 +10,7 @@ import { eq, inArray } from 'drizzle-orm';
 import { buildApp } from '../src/app.js';
 import { db, pool } from '../src/db/client.js';
 import {
-	members, staffAccounts, qrAccessi, bookings, sessions, events, courses, rooms,
+	members, staffAccounts, bookings, sessions, events, courses, rooms,
 } from '../src/db/schema/index.js';
 
 const PASSWORD = 'prova-vincoli-1234';
@@ -52,7 +52,6 @@ before(async () => {
 });
 
 after(async () => {
-	await db.delete(qrAccessi).where(eq(qrAccessi.clienteId, idSocio));
 	await db.delete(bookings).where(eq(bookings.memberId, idSocio));
 	if (pulizia.sessione) await db.delete(sessions).where(eq(sessions.id, pulizia.sessione));
 	if (pulizia.evento) await db.delete(events).where(eq(events.id, pulizia.evento));
@@ -80,22 +79,6 @@ describe('un account del portale per socio', () => {
 			linkedMemberId: '00000000-0000-4000-8000-000000000000',
 		}));
 		assert.equal(codice, '23503');
-	});
-});
-
-describe("un codice d'accesso attivo per socio", () => {
-	test('il secondo codice attivo è rifiutato con un messaggio che dice cosa fare', async () => {
-		const primo = await come({ method: 'POST', url: '/api/entities/QRAccesso', payload: { cliente_id: idSocio, codice: `GRIP-V1-${suffisso}`, stato: 'attivo' } });
-		assert.equal(primo.statusCode, 201, primo.body);
-
-		const secondo = await come({ method: 'POST', url: '/api/entities/QRAccesso', payload: { cliente_id: idSocio, codice: `GRIP-V2-${suffisso}`, stato: 'attivo' } });
-		assert.equal(secondo.statusCode, 400, secondo.body);
-		assert.match(secondo.json().error, /già un codice d'accesso attivo/);
-	});
-
-	test('uno revocato accanto a uno attivo va bene', async () => {
-		const res = await come({ method: 'POST', url: '/api/entities/QRAccesso', payload: { cliente_id: idSocio, codice: `GRIP-V3-${suffisso}`, stato: 'revocato' } });
-		assert.equal(res.statusCode, 201, res.body);
 	});
 });
 

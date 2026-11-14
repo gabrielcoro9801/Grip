@@ -26,7 +26,7 @@ import { buildApp } from '../src/app.js';
 import { db, pool } from '../src/db/client.js';
 import { enteDellaNumerazione } from '../src/lib/codiceSocio.js';
 import {
-	members, staffAccounts, subscriptions, memberDocuments, qrAccessi,
+	members, staffAccounts, subscriptions, memberDocuments,
 	rooms, courses, categories, events, sessions, bookings,
 	persone, trattative, attivita, consensi, canaliContatto, numberingCounters, auditLogs,
 } from '../src/db/schema/index.js';
@@ -70,7 +70,6 @@ const PAGINE_SOCIO = [
 	['/member-portal/corsi', CATEGORIA, (p) => p.getByRole('tab', { name: 'Per corso' }).click()],
 	['/member-portal/documenti', DOCUMENTO],
 	['/member-portal/abbonamento', PIANO],
-	['/member-portal/qr', NOME_SOCIO],
 	['/member-portal/anagrafica', CODICE_SOCIO],
 	['/member-portal/notifiche', 'Notifiche e avvisi'],
 ];
@@ -116,7 +115,6 @@ let browser;
 const idAccount = [];
 const idAbbonamenti = [];
 const idDocumenti = [];
-const idQr = [];
 const idPrenotazioni = [];
 let idSocio;
 let idSala;
@@ -162,12 +160,6 @@ try {
 		.values({ memberId: socio.id, documentType: 'certificato_medico', fileName: 'certificato.pdf', expiryDate: fraUnAnno })
 		.returning();
 	idDocumenti.push(...documenti.map((d) => d.id));
-
-	const qr = await db
-		.insert(qrAccessi)
-		.values({ clienteId: socio.id, clienteName: NOME_SOCIO, codice: `GRIP-VERI-PAGI-${suffisso}`.slice(0, 60), stato: 'attivo' })
-		.returning();
-	idQr.push(...qr.map((q) => q.id));
 
 	const [sala] = await db.insert(rooms).values({ name: 'Sala Verifica' }).returning();
 	idSala = sala.id;
@@ -288,7 +280,6 @@ try {
 	if (idCorso) await db.delete(courses).where(inArray(courses.id, [idCorso]));
 	if (idCategoria) await db.delete(categories).where(inArray(categories.id, [idCategoria]));
 	if (idSala) await db.delete(rooms).where(inArray(rooms.id, [idSala]));
-	if (idQr.length) await db.delete(qrAccessi).where(inArray(qrAccessi.id, idQr));
 	if (idDocumenti.length) await db.delete(memberDocuments).where(inArray(memberDocuments.id, idDocumenti));
 	if (idAbbonamenti.length) await db.delete(subscriptions).where(inArray(subscriptions.id, idAbbonamenti));
 	if (idAccount.length) await db.delete(staffAccounts).where(inArray(staffAccounts.id, idAccount));

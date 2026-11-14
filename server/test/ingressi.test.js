@@ -6,8 +6,7 @@ import bcrypt from 'bcryptjs';
 import { eq, inArray } from 'drizzle-orm';
 import { buildApp } from '../src/app.js';
 import { db, pool } from '../src/db/client.js';
-import { members, staffAccounts, subscriptions, memberDocuments, qrAccessi, ingressi, auditLogs } from '../src/db/schema/index.js';
-import { codiceDinamico } from '../src/lib/qrDinamico.js';
+import { members, staffAccounts, subscriptions, memberDocuments, ingressi, auditLogs } from '../src/db/schema/index.js';
 import { oggiIso, spostaGiorni } from '../../shared/giorni.js';
 
 const PASSWORD = 'prova-ingressi-1234';
@@ -18,7 +17,6 @@ const oggi = oggiIso();
 let app;
 const token = {};
 const id = { soci: {}, account: [] };
-const semi = {};
 
 const come = (chi, metodo, url, payload) =>
 	app.inject({ method: metodo, url, payload, headers: { authorization: `Bearer ${token[chi]}` } });
@@ -39,10 +37,6 @@ before(async () => {
 		{ memberId: m, documentType: 'documento_identita', expiryDate: spostaGiorni(oggi, 900) },
 	];
 	await db.insert(memberDocuments).values([...documenti(verde.id, spostaGiorni(oggi, 200)), ...documenti(giallo.id, spostaGiorni(oggi, -3)), ...documenti(assente.id, spostaGiorni(oggi, 200))]);
-	for (const [chi, m] of Object.entries({ verde, giallo, rosso })) {
-		semi[chi] = `GRIP-${chi.toUpperCase()}-${lettere}`;
-		await db.insert(qrAccessi).values({ clienteId: m.id, clienteName: m.fullName, codice: semi[chi] });
-	}
 	const passwordHash = await bcrypt.hash(PASSWORD, 4);
 	const account = await db.insert(staffAccounts).values([
 		{ nome: 'Reception Ingressi', email: `ing.rec.${t}@test.local`, passwordHash, ruolo: 'reception' },
@@ -58,7 +52,6 @@ before(async () => {
 after(async () => {
 	const tutti = Object.values(id.soci);
 	await db.delete(ingressi).where(inArray(ingressi.memberId, tutti));
-	await db.delete(qrAccessi).where(inArray(qrAccessi.clienteId, tutti));
 	await db.delete(memberDocuments).where(inArray(memberDocuments.memberId, tutti));
 	await db.delete(subscriptions).where(inArray(subscriptions.memberId, tutti));
 	await db.delete(auditLogs).where(inArray(auditLogs.attoreId, id.account));
@@ -68,14 +61,14 @@ after(async () => {
 	await pool.end();
 });
 
-const verifica = (chi, codice) => come('reception', 'POST', '/api/ingressi/verifica', { codice: codiceDinamico(semi[chi]) ?? codice });
+const verifica = (chi) => come('reception', 'POST', '/api/ingressi/verifica', { member_id: id.soci[chi] });
 
 describe('il semaforo', () => {
 	test('verde: in regola; giallo: certificato scaduto; rosso: senza abbonamento', async () => {
 		const v = (await verifica('verde')).json();
 		assert.equal(v.valido, true);
 		assert.equal(v.semaforo, 'verde');
-		assert.equal(v.metodo, 'qr');
+		assert.equal(v.metodo, 'manuale');
 		assert.equal(v.socio.nome, 'Verde Ingresso');
 
 		const g = (await verifica('giallo')).json();
@@ -87,26 +80,14 @@ describe('il semaforo', () => {
 		assert.equal(r.avvisi[0].codice, 'abbonamento_non_valido');
 	});
 
-	test('un codice inventato, o revocato, non è valido', async () => {
-		assert.deepEqual((await come('reception', 'POST', '/api/ingressi/verifica', { codice: 'XYZ' })).json(), { valido: false, motivo: 'Codice illeggibile.' });
-		await db.update(qrAccessi).set({ stato: 'revocato' }).where(eq(qrAccessi.codice, semi.verde));
-		try {
-			assert.equal((await verifica('verde')).json().motivo, 'Codice revocato.');
-		} finally {
-			await db.update(qrAccessi).set({ stato: 'attivo' }).where(eq(qrAccessi.codice, semi.verde));
-		}
-	});
-
-	test('la ricerca per nome dà la stessa scheda, con metodo manuale', async () => {
-		const m = (await come('reception', 'POST', '/api/ingressi/verifica', { member_id: id.soci.giallo })).json();
-		assert.equal(m.metodo, 'manuale');
-		assert.equal(m.semaforo, 'giallo');
+	test('senza il socio non si verifica: il codice QR non esiste più', async () => {
+		assert.equal((await come('reception', 'POST', '/api/ingressi/verifica', { codice: 'GRIP-XXXX' })).statusCode, 400);
 	});
 });
 
 describe('registrare', () => {
 	test('verde e giallo si registrano; rosso solo in deroga, e la deroga va nel registro', async () => {
-		const v = await come('reception', 'POST', '/api/ingressi', { member_id: id.soci.verde, metodo: 'qr' });
+		const v = await come('reception', 'POST', '/api/ingressi', { member_id: id.soci.verde });
 		assert.equal(v.statusCode, 201, v.body);
 		assert.equal(v.json().ingresso.esito, 'ammesso');
 		assert.equal((await come('reception', 'POST', '/api/ingressi', { member_id: id.soci.giallo })).json().ingresso.esito, 'ammesso_con_avvisi');
@@ -119,6 +100,7 @@ describe('registrare', () => {
 		assert.ok(voci.some((v) => /deroga/.test(v.dettagli)));
 
 		const [riga] = await db.select().from(ingressi).where(eq(ingressi.memberId, id.soci.giallo));
+		assert.equal(riga.metodo, 'manuale', 'anche se il client chiede altro');
 		assert.deepEqual(riga.avvisi, ['certificato_medico_scaduto']);
 		assert.equal(riga.registratoDaNome, 'Reception Ingressi');
 	});

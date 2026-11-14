@@ -103,7 +103,7 @@ function buildEntityClient(name) {
 }
 
 const ENTITY_NAMES = [
-	'Member', 'Subscription', 'Plan', 'MemberDocument', 'QRAccesso', 'CanaleContatto',
+	'Member', 'Subscription', 'Plan', 'MemberDocument', 'CanaleContatto',
 	'Course', 'Category', 'Instructor', 'Event', 'Session', 'Room', 'Booking',
 	'StaffAccount',
 	'Organization', 'AuditLog',
@@ -278,11 +278,11 @@ export const api = {
 
 	/** Gli ingressi in palestra (routes/ingressi.js). */
 	ingressi: {
-		/** { codice } | { member_id, alle? } → { valido, motivo? | socio, semaforo, avvisi, lezioni_oggi, ultimo_ingresso, metodo } */
+		/** { member_id, alle? } → { valido, motivo? | socio, semaforo, avvisi, lezioni_oggi, ultimo_ingresso, metodo } */
 		verifica(corpo) {
 			return request('/api/ingressi/verifica', { method: 'POST', body: corpo });
 		},
-		/** { member_id, metodo, deroga?, entrato_alle? } → { ingresso } */
+		/** { member_id, deroga?, entrato_alle? } → { ingresso } */
 		registra(corpo) {
 			return request('/api/ingressi', { method: 'POST', body: corpo });
 		},
@@ -446,23 +446,6 @@ export const api = {
 	segnali(filtri = {}) {
 		const q = new URLSearchParams(Object.entries(filtri).filter(([, v]) => v)).toString();
 		return request(`/api/segnali${q ? `?${q}` : ''}`);
-	},
-
-	/**
-	 * Il codice d'accesso che cambia ogni minuto.
-	 *
-	 * Passa dal server perché è lì che vive la chiave con cui viene firmato: derivarlo nel
-	 * browser vorrebbe dire spedire quella chiave a ogni visitatore.
-	 */
-	qr: {
-		codice(clienteId) {
-			const qs = clienteId ? `?cliente_id=${encodeURIComponent(clienteId)}` : '';
-			return request(`/api/qr/codice${qs}`);
-		},
-		/** Se il codice che si ha davanti vale adesso, e di chi è. Solo per lo staff. */
-		verifica(codice) {
-			return request('/api/qr/verifica', { method: 'POST', body: { codice } });
-		},
 	},
 
 	// Configurazione dei ruoli: la matrice dei permessi non è più una costante del codice.

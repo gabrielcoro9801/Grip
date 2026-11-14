@@ -18,7 +18,7 @@ import { buildApp } from '../src/app.js';
 import { db, pool } from '../src/db/client.js';
 import { oggiIso, spostaGiorni } from '../../shared/giorni.js';
 import {
-	members, staffAccounts, subscriptions, memberDocuments, qrAccessi,
+	members, staffAccounts, subscriptions, memberDocuments,
 	rooms, courses, events, sessions, bookings,
 } from '../src/db/schema/index.js';
 
@@ -32,7 +32,6 @@ let idEstraneo;
 const idAccount = [];
 const idAbbonamenti = [];
 const idDocumenti = [];
-const idQr = [];
 const idPrenotazioni = [];
 let idSala;
 let idCorso;
@@ -99,14 +98,6 @@ before(async () => {
 		.returning();
 	idDocumenti.push(...documenti.map((d) => d.id));
 
-	const qr = await db
-		.insert(qrAccessi)
-		.values([
-			{ clienteId: socio.id, clienteName: 'Socio API', codice: `GRIP-TEST-APIM-${suffisso}`.slice(0, 60), stato: 'attivo' },
-		])
-		.returning();
-	idQr.push(...qr.map((q) => q.id));
-
 	// Una lezione con due prenotazioni: la mia e quella di un altro. Serve a verificare che
 	// dei posti escano numeri e non le righe altrui.
 	const [sala] = await db.insert(rooms).values({ name: 'Sala API' }).returning();
@@ -143,7 +134,6 @@ after(async () => {
 	if (idEvento) await db.delete(events).where(inArray(events.id, [idEvento]));
 	if (idCorso) await db.delete(courses).where(inArray(courses.id, [idCorso]));
 	if (idSala) await db.delete(rooms).where(inArray(rooms.id, [idSala]));
-	if (idQr.length) await db.delete(qrAccessi).where(inArray(qrAccessi.id, idQr));
 	if (idDocumenti.length) await db.delete(memberDocuments).where(inArray(memberDocuments.id, idDocumenti));
 	if (idAbbonamenti.length) await db.delete(subscriptions).where(inArray(subscriptions.id, idAbbonamenti));
 	if (idAccount.length) await db.delete(staffAccounts).where(inArray(staffAccounts.id, idAccount));
@@ -152,7 +142,7 @@ after(async () => {
 	await pool.end();
 });
 
-const ROTTE = ['/api/member/v1/profilo', '/api/member/v1/abbonamenti', '/api/member/v1/documenti', '/api/member/v1/accesso', '/api/member/v1/corsi/agenda'];
+const ROTTE = ['/api/member/v1/profilo', '/api/member/v1/abbonamenti', '/api/member/v1/documenti', '/api/member/v1/corsi/agenda'];
 
 describe('chi può entrare', () => {
 	for (const rotta of ROTTE) {
@@ -240,24 +230,6 @@ describe('il socio vede le proprie cose, e solo quelle', () => {
 		}
 	});
 
-
-	test('il codice di accesso arriva firmato dal server', async () => {
-		const dati = (await come(tokenSocio, '/api/member/v1/accesso')).json();
-
-		assert.equal(dati.attivo, true);
-		assert.ok(dati.codice, 'doveva arrivare un codice');
-
-		// Il seme **compare** nel codice, ed è voluto: è un identificativo, come un nome
-		// utente. Quello che non si può indovinare è la firma che gli viene aggiunta, che
-		// dipende da una chiave che dal server non esce e cambia ogni minuto. Quindi il
-		// controllo giusto non è "il seme non c'è", ma "al seme è stato aggiunto qualcosa".
-		const [seme] = await db.select({ codice: qrAccessi.codice }).from(qrAccessi).where(inArray(qrAccessi.id, idQr));
-		assert.ok(String(dati.codice).startsWith(seme.codice), 'il codice deve partire dal seme');
-		assert.ok(dati.codice.length > seme.codice.length + 1, 'al seme deve essere aggiunta una firma');
-		assert.notEqual(dati.codice, seme.codice, 'è uscito il seme nudo, senza firma');
-
-		assert.ok(dati.valido_per_ms > 0 && dati.valido_per_ms <= 60_000);
-	});
 });
 
 describe("l'agenda dei corsi", () => {

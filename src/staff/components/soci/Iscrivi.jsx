@@ -11,7 +11,7 @@ import { useToast } from "@/ui/primitivi/use-toast";
 import CampiAnagrafica, { ANAGRAFICA_VUOTA, anagraficaDi, motivoAnagraficaIncompleta } from "@/staff/components/soci/CampiAnagrafica";
 import { SceltaFoto } from "@/staff/components/soci/FotoSocio";
 import { caricaFile } from "@/staff/lib/uploads";
-import { generaPasswordTemporanea } from "@/staff/lib/qrUtils";
+import { generaPasswordTemporanea } from "@/staff/lib/passwordTemporanea";
 import { dataFineAbbonamento, descriviDurata, motivoNonVendibile, oggiIso } from "@/core/domain/abbonamenti";
 import { TIPI_CONSENSO } from "@/core/domain/consensi";
 import { formatData, formatEuro } from "@/core/domain/format";

@@ -10,17 +10,15 @@ import { eq, inArray } from 'drizzle-orm';
 import { buildApp } from '../src/app.js';
 import { db, pool } from '../src/db/client.js';
 import {
-	members, staffAccounts, qrAccessi, bookings, sessions, events, courses, rooms, instructors, subscriptions, plans, auditLogs, attivita,
+	members, staffAccounts, bookings, sessions, events, courses, rooms, instructors, subscriptions, plans, auditLogs, attivita,
 	prenotazioniFisse,
 } from '../src/db/schema/index.js';
-import { codiceDinamico } from '../src/lib/qrDinamico.js';
 import { oggiIso, spostaGiorni } from '../../shared/giorni.js';
 
 const PASSWORD = 'prova-archivio-1234';
 const suffisso = Date.now();
 const lettere = String(suffisso).replace(/\d/g, (c) => 'ABCDEFGHIJ'[c]);
 const emailSocio = `archivio.socio.${suffisso}@test.local`;
-const SEME = `GRIP-ARCH-${lettere}`;
 
 let app;
 let tokenAdmin;
@@ -50,7 +48,6 @@ before(async () => {
 	tokenAdmin = (await login(account[0].email)).json().token;
 	tokenSocio = (await login(emailSocio)).json().token;
 
-	await db.insert(qrAccessi).values({ clienteId: id.soci[0], codice: SEME, stato: 'attivo' });
 	await db.insert(subscriptions).values(id.soci.map((s) => ({ memberId: s, planName: 'Prova', startDate: '2026-01-01', endDate: '2099-12-31' })));
 	const [tipo] = await db.insert(plans).values({ name: `Archivio ${suffisso}`, price: 30, durataValore: 1, durataUnita: 'mesi' }).returning();
 	id.tipo = tipo.id;
@@ -93,7 +90,6 @@ after(async () => {
 	await db.delete(courses).where(inArray(courses.instructorId, [id.istruttore]));
 	await db.delete(instructors).where(eq(instructors.id, id.istruttore));
 	await db.delete(rooms).where(eq(rooms.id, id.sala));
-	await db.delete(qrAccessi).where(inArray(qrAccessi.clienteId, id.soci));
 	await db.delete(subscriptions).where(inArray(subscriptions.memberId, id.soci));
 	await db.delete(plans).where(eq(plans.id, id.tipo));
 	await db.delete(auditLogs).where(inArray(auditLogs.entitaId, id.soci));
@@ -150,13 +146,6 @@ describe('archiviare un socio', () => {
 		assert.equal((await login(emailSocio)).statusCode, 401);
 	});
 
-	test('QR: alla porta non passa, e il codice del minuto non si calcola', async () => {
-		const verifica = await admin({ method: 'POST', url: '/api/qr/verifica', payload: { codice: codiceDinamico(SEME) } });
-		assert.equal(verifica.json().valido, false);
-		const codice = await admin({ method: 'GET', url: `/api/qr/codice?cliente_id=${id.soci[0]}` });
-		assert.equal(codice.json().codice, null);
-		assert.equal(codice.json().stato, 'archiviato');
-	});
 
 	test('non compra abbonamenti e non prenota', async () => {
 		const vendita = await admin({ method: 'POST', url: '/api/entities/Subscription', payload: { member_id: id.soci[0], plan_id: id.tipo } });
@@ -172,8 +161,6 @@ describe('archiviare un socio', () => {
 		assert.equal(res.statusCode, 200, res.body);
 		assert.equal(res.json().socio.archiviato_il, null);
 		assert.equal((await login(emailSocio)).statusCode, 200);
-		const verifica = await admin({ method: 'POST', url: '/api/qr/verifica', payload: { codice: codiceDinamico(SEME) } });
-		assert.equal(verifica.json().valido, true);
 		const [fissa] = await db.select().from(prenotazioniFisse).where(eq(prenotazioniFisse.id, id.fissa));
 		assert.equal(fissa.attiva, false, 'riattivato, le fisse non ripartono');
 	});

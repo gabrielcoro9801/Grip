@@ -24,7 +24,6 @@ const ENTITY_MODULES = {
 	Member: 'crm_members',
 	Subscription: 'crm_members',
 	Plan: 'crm_members',
-	QRAccesso: 'crm_members',
 	MemberDocument: 'crm_documents',
 
 	// I contatti di chi non è ancora socio, e i canali da cui arrivano. `Lead` non passa
@@ -136,7 +135,6 @@ const LETTURA = {
 	// Dati delle persone.
 	Member: ['crm_members', 'calendar', 'admin_users'],
 	Subscription: ['crm_members'],
-	QRAccesso: ['crm_members'],
 	MemberDocument: ['crm_documents'],
 	Lead: ['crm_leads'],
 	CanaleContatto: ['crm_leads'],

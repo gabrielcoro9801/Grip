@@ -155,7 +155,7 @@ function RegistraIngresso({ giorno, onChiudi, onRegistrato }) {
   const registra = async () => {
     setLavoro(true);
     try {
-      await api.ingressi.registra({ member_id: scelto.id, metodo: "manuale", deroga: rosso, entrato_alle: alle.toISOString() });
+      await api.ingressi.registra({ member_id: scelto.id, deroga: rosso, entrato_alle: alle.toISOString() });
       toast({ title: "Ingresso registrato", description: `${scelto.full_name} alle ${ora}.` });
       onRegistrato();
       onChiudi();
@@ -171,7 +171,7 @@ function RegistraIngresso({ giorno, onChiudi, onRegistrato }) {
         <DialogHeader>
           <DialogTitle>Registra ingresso</DialogTitle>
           <DialogDescription>
-            Per chi non può usare il QR, o entra lo stesso. {giorno === oggiIso() ? "Oggi" : `Il ${formatData(giorno, "breve")}`}.
+            Si segna a mano chi entra. {giorno === oggiIso() ? "Oggi" : `Il ${formatData(giorno, "breve")}`}.
           </DialogDescription>
         </DialogHeader>
 

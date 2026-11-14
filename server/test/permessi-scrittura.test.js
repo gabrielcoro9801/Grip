@@ -27,7 +27,7 @@ describe('nessuna entità resta senza una decisione', () => {
 
 describe("l'istruttore non modifica quello che può solo vedere", () => {
 	// La matrice predefinita gli dà crm_members:["view"] e crm_documents:["view"].
-	for (const entita of ['Member', 'Subscription', 'Plan', 'MemberDocument', 'QRAccesso']) {
+	for (const entita of ['Member', 'Subscription', 'Plan', 'MemberDocument']) {
 		test(`${entita} non è scrivibile da un istruttore`, () => {
 			assert.equal(canWriteEntity('istruttore', entita), false);
 		});

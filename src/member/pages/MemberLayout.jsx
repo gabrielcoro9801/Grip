@@ -6,7 +6,7 @@ import { LoadingState } from "@/ui/Spinner";
 import SelettoreTema from "@/ui/SelettoreTema";
 import { CambioPasswordObbligatorio } from "@/ui/CambioPassword";
 import { contaNotificheEAvvisi } from "@/core/api/portale";
-import { Dumbbell, Home, FileText, CreditCard, User, QrCode, LogOut, LayoutGrid, Bell } from "lucide-react";
+import { Dumbbell, Home, FileText, CreditCard, User, LogOut, LayoutGrid, Bell } from "lucide-react";
 
 // Una sola lista di destinazioni. Le barre erano due, con nomi diversi per lo
 // stesso posto ("QR Accesso" nella sidebar, "QR" in fondo allo schermo):
@@ -15,9 +15,8 @@ const navItems = [
   { label: "Home", path: "/member-portal", icon: Home, end: true, inBasso: true },
   { label: "Corsi", path: "/member-portal/corsi", icon: LayoutGrid, inBasso: true },
   { label: "Documenti", path: "/member-portal/documenti", icon: FileText },
-  { label: "Abbonamento", path: "/member-portal/abbonamento", icon: CreditCard },
+  { label: "Abbonamento", path: "/member-portal/abbonamento", icon: CreditCard, inBasso: true },
   { label: "Notifiche e avvisi", path: "/member-portal/notifiche", icon: Bell, notifiche: true },
-  { label: "QR accesso", path: "/member-portal/qr", icon: QrCode, inBasso: true },
   { label: "Anagrafica", path: "/member-portal/anagrafica", icon: User, inBasso: true },
 ];
 

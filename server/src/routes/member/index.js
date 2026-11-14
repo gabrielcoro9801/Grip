@@ -1,7 +1,7 @@
 import { eq, and, gte, lte, inArray, ne, desc, isNull, count } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import {
-	members, memberDocuments, qrAccessi,
+	members, memberDocuments,
 	courses, categories, instructors, rooms, events, sessions, bookings, notifiche, consensi,
 } from '../../db/schema/index.js';
 import { iscrizioniDelSocio } from '../../lib/iscrizioni.js';
@@ -9,10 +9,8 @@ import { consensiDi } from '../../lib/consensi.js';
 import { tipoConsensoValido } from '../../../../shared/consensi.js';
 import { getUserFromRequest } from '../../auth/tokens.js';
 import { socioDiAccount } from '../../auth/socioCorrente.js';
-import { codiceDinamico } from '../../lib/qrDinamico.js';
 import { prenota, disdici } from '../../lib/prenotazioni.js';
 import { firmaUrl } from '../../lib/urlFirmati.js';
-import { msResiduiFinestra } from '../../../../shared/qrDinamico.js';
 import { nomeDocumento, conStatoDocumenti } from '../../../../shared/anagrafica.js';
 import { statoIscrizione, motivoSenzaCopertura, sospensioneIl } from '../../../../shared/abbonamenti.js';
 import { oggiIso, eUnGiorno, giorniFra, giorniDaOggi, spostaGiorni, lezioneFinita } from '../../../../shared/giorni.js';
@@ -229,36 +227,6 @@ export default async function memberRoutes(fastify) {
 				caricato_da: d.caricatoDa,
 				note: d.notes,
 			})),
-		};
-	});
-
-	/**
-	 * Il codice d'accesso da mostrare alla reception.
-	 *
-	 * Il codice cambia ogni minuto e lo firma il server con una chiave che non esce da qui.
-	 * Il portale prima faceva due richieste — il QR del socio e poi il codice — e questa ne
-	 * fa una: davanti al tornello, con la rete della palestra, la differenza si sente.
-	 */
-	fastify.get('/accesso', async (request) => {
-		// Tutti i codici del socio, non solo quelli attivi: "non ne hai uno" e "il tuo è
-		// stato revocato" sono due cose diverse da dire a chi sta davanti al tornello, e
-		// distinguerle serve a mandarlo alla reception con la domanda giusta.
-		const suoi = await db
-			.select()
-			.from(qrAccessi)
-			.where(eq(qrAccessi.clienteId, request.idSocio));
-
-		const attivo = suoi.find((q) => q.stato === 'attivo');
-		if (!attivo) {
-			const stato = suoi.some((q) => q.stato === 'revocato') ? 'revocato' : 'assente';
-			return { stato, attivo: false, codice: null, valido_per_ms: null };
-		}
-
-		return {
-			stato: 'attivo',
-			attivo: true,
-			codice: codiceDinamico(attivo.codice),
-			valido_per_ms: msResiduiFinestra(),
 		};
 	});
 

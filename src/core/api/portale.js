@@ -37,17 +37,6 @@ export async function caricaDocumenti() {
 }
 
 /**
- * Il codice d'accesso del minuto corrente.
- *
- * Il codice lo firma il server: qui non si calcola niente, si chiede. `valido_per_ms` dice
- * quanto manca alla fine della finestra, ed è ciò su cui la schermata fa il conto alla
- * rovescia senza doversi sincronizzare con l'orologio del server.
- */
-export function caricaAccesso() {
-	return api.richiesta(`${BASE}/accesso`);
-}
-
-/**
  * Le lezioni prenotabili in un intervallo, già raggruppate per giorno e con i posti contati.
  *
  * Sostituisce sette richieste e l'incrocio che il browser faceva a mano — incluso lo

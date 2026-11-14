@@ -14,7 +14,7 @@ import { inArray } from 'drizzle-orm';
 import { buildApp } from '../src/app.js';
 import { db, pool } from '../src/db/client.js';
 import {
-	members, staffAccounts, subscriptions, qrAccessi,
+	members, staffAccounts, subscriptions,
 	rooms, courses, events, sessions, bookings,
 } from '../src/db/schema/index.js';
 
@@ -128,7 +128,6 @@ before(async () => {
 after(async () => {
 	// I codici di accesso li generano i test stessi e puntano al socio: vanno via per
 	// primi, o l'anagrafica resta agganciata da una chiave esterna.
-	if (idSocio) await db.delete(qrAccessi).where(inArray(qrAccessi.clienteId, [idSocio, idEstraneo]));
 	if (idPrenotazioni.length) await db.delete(bookings).where(inArray(bookings.id, idPrenotazioni));
 	if (idSessioneCorso) await db.delete(sessions).where(inArray(sessions.id, [idSessioneCorso]));
 	if (idEvento) await db.delete(events).where(inArray(events.id, [idEvento]));
@@ -212,29 +211,6 @@ describe('cosa un socio legge di sé', () => {
 });
 
 describe('cosa un socio può scrivere', () => {
-	test('il codice di accesso non se lo emette da sé', async () => {
-		// Prima poteva, con lo stato che voleva: bastava una richiesta per rifarsi una
-		// credenziale «attiva» dopo essere stati revocati, e la revoca durava fino alla
-		// visita successiva del socio. Ora il codice lo emette la palestra.
-		const res = await come(tokenSocio, {
-			method: 'POST',
-			url: '/api/entities/QRAccesso',
-			payload: { cliente_id: idSocio, codice: `PROVA-${Date.now()}`, stato: 'attivo' },
-		});
-		assert.equal(res.statusCode, 403);
-	});
-
-	test('e nemmeno passando da /bulk', async () => {
-		// La creazione singola imponeva l'intestatario, la creazione in blocco no: si
-		// aggirava il controllo cambiando indirizzo, non permessi.
-		const res = await come(tokenSocio, {
-			method: 'POST',
-			url: '/api/entities/QRAccesso/bulk',
-			payload: [{ cliente_id: idEstraneo, codice: `PROVA-BULK-${Date.now()}`, stato: 'attivo' }],
-		});
-		assert.equal(res.statusCode, 403);
-	});
-
 	test('non crea né modifica nulla che riguardi la gestione', async () => {
 		for (const entita of ['Member', 'Subscription', 'StaffAccount', 'Course']) {
 			const res = await come(tokenSocio, { method: 'POST', url: `/api/entities/${entita}`, payload: { nome: 'x' } });

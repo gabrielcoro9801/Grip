@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react';
-import { BrowserRouter as Router, Route, Routes } from 'react-router-dom';
+import { BrowserRouter as Router, Navigate, Route, Routes } from 'react-router-dom';
 import { Toaster } from '@/ui/primitivi/toaster';
 import PageNotFound from '@/ui/PageNotFound';
 import ScrollToTop from '@/ui/ScrollToTop';
@@ -22,7 +22,6 @@ const MemberDashboard = lazy(() => import('@/member/pages/MemberDashboard'));
 const MemberDocuments = lazy(() => import('@/member/pages/MemberDocuments'));
 const MemberSubscription = lazy(() => import('@/member/pages/MemberSubscription'));
 const MemberProfile = lazy(() => import('@/member/pages/MemberProfile'));
-const MemberQR = lazy(() => import('@/member/pages/MemberQR'));
 const MemberCoursesCalendar = lazy(() => import('@/member/pages/MemberCoursesCalendar'));
 const MemberNotifiche = lazy(() => import('@/member/pages/MemberNotifiche'));
 
@@ -43,7 +42,7 @@ export default function App() {
                 <Route path="documenti" element={<MemberDocuments />} />
                 <Route path="abbonamento" element={<MemberSubscription />} />
                 <Route path="anagrafica" element={<MemberProfile />} />
-                <Route path="qr" element={<MemberQR />} />
+                <Route path="qr" element={<Navigate to="/member-portal" replace />} />
                 <Route path="corsi" element={<MemberCoursesCalendar />} />
                 <Route path="notifiche" element={<MemberNotifiche />} />
               </Route>
