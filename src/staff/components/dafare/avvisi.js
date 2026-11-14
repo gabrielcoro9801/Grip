@@ -9,7 +9,6 @@ export const SCHEDE = [
   { tipo: "in_scadenza", path: "/da-fare" },
   { tipo: "scaduto", path: "/da-fare/scaduti" },
   { tipo: "frequenza", path: "/da-fare/frequenza" },
-  { tipo: "documento", path: "/da-fare/documenti" },
   { tipo: "compleanno", path: "/da-fare/compleanni" },
 ].map((s) => ({ ...s, ...TIPI_AVVISO.find((t) => t.valore === s.tipo) }));
 
@@ -32,8 +31,6 @@ export function regolaAvviso(tipo, soglie) {
       return `Compare quando l'abbonamento è scaduto senza un rinnovo. Se ne va con il rinnovo, o da solo ${giorni(s.scadutoGiorni)} dopo la scadenza.`;
     case "frequenza":
       return `Compare quando un socio non entra da ${giorni(s.segnali.assenzaGiorni)}, o nelle ultime 4 settimane viene meno del ${s.segnali.caloPercentuale}% della sua media (se viene almeno ${s.segnali.mediaMinimaCalo} volte ogni 4 settimane). Dopo «Contattato» o «Nascondi avviso» torna dopo ${giorni(s.frequenzaRiapriGiorni)}, se è ancora in calo.`;
-    case "documento":
-      return `Compare quando un documento obbligatorio è scaduto o scade entro ${giorni(s.documentoInScadenzaGiorni)}, uno per documento. Se ne va quando ne arriva uno nuovo dello stesso tipo.`;
     case "compleanno": {
       const prima = s.compleannoPrimaGiorni;
       const dopo = s.compleannoDopoGiorni;

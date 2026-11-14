@@ -1,4 +1,4 @@
-// L'anagrafica dei soci e i loro documenti, contro l'endpoint generico.
+// L'anagrafica dei soci, contro l'endpoint generico.
 //
 // Il codice fiscale è obbligatorio per chi nasce oggi, ma i soci registrati prima non ce
 // l'hanno: devono restare modificabili, senza che il codice si possa svuotare o scrivere male.
@@ -154,22 +154,10 @@ describe('modificare un socio', () => {
 });
 
 describe('i documenti', () => {
-	const carica = (payload) => come({ method: 'POST', url: '/api/entities/MemberDocument', payload: { member_id: idSoci[0], ...payload } });
-
-	test('quattro tipi, e ognuno con quello che gli serve', async () => {
-		assert.equal((await carica({ document_type: 'Certificato Medico', expiry_date: '2027-01-01' })).statusCode, 400, 'tipo non ammesso');
-		assert.equal((await carica({ document_type: 'xyz' })).statusCode, 400, 'tipo inventato');
-		assert.equal((await carica({ document_type: 'certificato_medico' })).statusCode, 400, 'certificato senza scadenza');
-		assert.equal((await carica({ document_type: 'documento_identita' })).statusCode, 400, 'identità senza scadenza');
-		assert.equal((await carica({ document_type: 'altro' })).statusCode, 400, 'altro senza titolo');
-
-		assert.equal((await carica({ document_type: 'certificato_medico', expiry_date: '2027-01-01' })).statusCode, 201);
-		assert.equal((await carica({ document_type: 'documento_identita', expiry_date: '2030-05-20' })).statusCode, 201);
-		assert.equal((await carica({ document_type: 'altro', titolo: 'Contratto' })).statusCode, 201);
-		// Il consenso dei genitori non scade: si carica senza data di scadenza.
-		assert.equal((await carica({ document_type: 'consenso_genitori' })).statusCode, 201);
-
-		const righe = await db.select().from(memberDocuments).where(eq(memberDocuments.memberId, idSoci[0]));
-		assert.equal(righe.length, 4);
+	// Sono usciti dall'applicazione a novembre 2026 (docs/piani/portale.md): la tabella resta, ma
+	// dall'endpoint generico non si leggono né si scrivono più.
+	test("non sono più un'entità", async () => {
+		assert.equal((await come({ method: 'GET', url: '/api/entities/MemberDocument' })).statusCode, 404);
+		assert.equal((await come({ method: 'POST', url: '/api/entities/MemberDocument', payload: { member_id: idSoci[0], document_type: 'altro', titolo: 'x' } })).statusCode, 404);
 	});
 });

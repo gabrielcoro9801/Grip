@@ -18,8 +18,8 @@ const MASSIMO = 200;
 
 /**
  * L'Archivio di Da fare: gli avvisi chiusi, divisi come la parte principale (una seconda fila con
- * le stesse cinque voci, ognuna con il suo numero). Ci sono anche quelli che si sono chiusi da
- * soli: un rinnovo, un documento caricato, un socio archiviato. Le 200 chiusure più recenti.
+ * le stesse quattro voci, ognuna con il suo numero). Ci sono anche quelli che si sono chiusi da
+ * soli: un rinnovo, un socio archiviato. Le 200 chiusure più recenti.
  *
  * Una riga dice chi, perché era in lista, com'è stato chiuso, da chi e quando («In automatico»
  * se l'ha chiuso GRIP). Un avviso nascosto si ripristina (P6): torna nella sua scheda.

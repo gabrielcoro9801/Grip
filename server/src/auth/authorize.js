@@ -20,11 +20,10 @@ import { canAccess } from '../../../shared/permissions.js';
  * rimaste a puntare a entità che non esistono più e a permessi che nessun ruolo può avere.
  */
 const ENTITY_MODULES = {
-	// Anagrafiche dei soci e i loro documenti.
+	// Anagrafiche dei soci e i loro abbonamenti.
 	Member: 'crm_members',
 	Subscription: 'crm_members',
 	Plan: 'crm_members',
-	MemberDocument: 'crm_documents',
 
 	// I contatti di chi non è ancora socio, e i canali da cui arrivano. `Lead` non passa
 	// dall'endpoint generico (una persona e la sua trattativa si scrivono insieme, in
@@ -135,7 +134,6 @@ const LETTURA = {
 	// Dati delle persone.
 	Member: ['crm_members', 'calendar', 'admin_users'],
 	Subscription: ['crm_members'],
-	MemberDocument: ['crm_documents'],
 	Lead: ['crm_leads'],
 	CanaleContatto: ['crm_leads'],
 	Booking: ['calendar'],

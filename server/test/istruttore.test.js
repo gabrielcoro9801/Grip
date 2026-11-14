@@ -116,8 +116,8 @@ describe('le mie lezioni', () => {
 		assert.ok(riga, 'la nota è nel diario del socio, la legge anche la reception');
 	});
 
-	test('con i permessi predefiniti l\'istruttore non apre più soci, documenti, contatti e diario', async () => {
-		for (const url of ['/api/segnali', `/api/persone/${id.persone[0]}/diario`, '/api/entities/MemberDocument', '/api/lead/lavoro']) {
+	test('con i permessi predefiniti l\'istruttore non apre più soci, contatti e diario', async () => {
+		for (const url of ['/api/segnali', `/api/persone/${id.persone[0]}/diario`, '/api/lead/lavoro']) {
 			assert.equal((await come('mia', 'GET', url)).statusCode, 403, url);
 		}
 	});

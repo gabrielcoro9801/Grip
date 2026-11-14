@@ -13,7 +13,7 @@ import { usoDellaSala } from '../lib/sale.js';
 import { iscrizioniPerSocio } from '../lib/iscrizioni.js';
 import { translateToSnakeCase } from './columnMaps.js';
 import {
-	sessoValido, normalizzaCodiceFiscale, codiceFiscaleValido, motivoDocumentoNonValido, tipoDocumentoValido,
+	sessoValido, normalizzaCodiceFiscale, codiceFiscaleValido,
 	normalizzaPartitaIva, partitaIvaValida, NOTE_ISTRUTTORE_MASSIMO, NOTE_SOCIO_MASSIMO, motivoDataNascitaNonValida,
 	normalizzaTelefono,
 } from '../../../shared/anagrafica.js';
@@ -423,19 +423,6 @@ const WRITE_TRANSFORMS = {
 		if (!rest.end_date) throw rifiuta("La data di inizio non è valida.");
 		rest.plan_name = tipo.name;
 		if (vuoto(rest.price_paid)) rest.price_paid = tipo.price;
-		return rest;
-	},
-
-	// Tipo fra i tre ammessi, titolo per gli "altri", scadenza per quelli che scadono. In modifica
-	// si controlla solo il tipo, se cambia: oggi i documenti si caricano e non si correggono.
-	async MemberDocument(body, { creazione }) {
-		const rest = { ...(body ?? {}) };
-		if (creazione) {
-			const motivo = motivoDocumentoNonValido(rest);
-			if (motivo) throw rifiuta(motivo);
-		} else if (presente(rest, 'document_type') && !tipoDocumentoValido(rest.document_type)) {
-			throw rifiuta('Tipo di documento non valido.');
-		}
 		return rest;
 	},
 

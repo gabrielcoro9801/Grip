@@ -13,16 +13,14 @@ const g = (n) => spostaGiorni(OGGI, n);
 const socio = { created_date: '2025-01-01', archiviato_il: null, date_of_birth: '1990-05-20' };
 const annuale = { id: 'a1', plan_name: 'Annuale', start_date: '2026-01-01', end_date: '2026-12-31' };
 const regolare = { ultimo: g(-2), quattro: 8, dodici: 24, totale: 120 };
-const certificato = { id: 'c1', document_type: 'certificato_medico', created_date: '2026-01-01', expiry_date: '2027-06-01' };
-const identita = { id: 'i1', document_type: 'documento_identita', created_date: '2026-01-01', expiry_date: '2030-01-01' };
-const persona = (extra = {}) => ({ socio, iscrizioni: [annuale], documenti: [certificato, identita], ingressi: regolare, ...extra });
+const persona = (extra = {}) => ({ socio, iscrizioni: [annuale], ingressi: regolare, ...extra });
 const di = (extra = {}, oggi = OGGI, soglie = SOGLIE) => avvisiDi(persona(extra), oggi, soglie);
 // Abbonamento lungo e niente ingressi registrati: le date dei compleanni vanno fino al 2028.
 const nato = (data) => ({ socio: { ...socio, date_of_birth: data }, iscrizioni: [{ ...annuale, end_date: '2030-12-31' }], ingressi: null });
 
 describe('i tipi', () => {
-	test('cinque avvisi, e ogni segnale per lo staff ne apre uno', () => {
-		assert.deepEqual(TIPI_AVVISO.map((t) => t.valore), ['in_scadenza', 'scaduto', 'frequenza', 'documento', 'compleanno']);
+	test('quattro avvisi, e ogni segnale per lo staff ne apre uno', () => {
+		assert.deepEqual(TIPI_AVVISO.map((t) => t.valore), ['in_scadenza', 'scaduto', 'frequenza', 'compleanno']);
 		const coperti = TIPI_AVVISO.flatMap((t) => t.segnali);
 		for (const s of SEGNALI) assert.ok(coperti.includes(s.valore), s.valore);
 	});
@@ -83,19 +81,6 @@ describe('quali avvisi si aprono', () => {
 		const [assente] = di({ ingressi: { ...regolare, ultimo: g(-20), quattro: 0 } });
 		assert.equal(assente.tipo, 'frequenza');
 		assert.equal(assente.dati.segnale, 'assente');
-	});
-
-	test('un avviso per documento, con l\'id del documento come chiave', () => {
-		const avvisi = di({ documenti: [
-			{ ...certificato, id: 'c9', file_name: 'c.pdf', expiry_date: g(-10) },
-			{ ...identita, id: 'i9', expiry_date: g(12) },
-		] });
-		assert.deepEqual(avvisi.map((a) => [a.tipo, a.chiave]), [['documento', 'c9'], ['documento', 'i9']]);
-		assert.equal(testoAvviso(avvisi[0], OGGI), 'Certificato medico scaduto il 30/09/2026 · 10 giorni fa');
-		assert.equal(avvisi[1].dati.tipo_documento, 'documento_identita');
-		assert.match(testoAvviso(avvisi[1], OGGI), /in scadenza il 22\/10\/2026 · tra 12 giorni$/);
-		// Quello che manca non apre niente.
-		assert.deepEqual(di({ documenti: [certificato] }), []);
 	});
 
 	test('il compleanno: da 3 giorni prima a 3 dopo, con l\'anno come chiave', () => {
@@ -164,13 +149,6 @@ describe('come si chiudono da soli', () => {
 		assert.equal(esitoChiusura(scaduto, { iscrizioni: [] }, g(50)), 'non_piu_da_fare');
 	});
 
-	test('documento caricato: uno nuovo dello stesso tipo', () => {
-		const vecchio = { id: 'c1', document_type: 'certificato_medico', created_date: '2025-10-01' };
-		const avviso = { tipo: 'documento', chiave: 'c1', dati: { tipo_documento: 'certificato_medico' } };
-		assert.equal(esitoChiusura(avviso, { documenti: [vecchio, { id: 'c2', document_type: 'certificato_medico', created_date: '2026-10-09' }] }, OGGI), 'documento_caricato');
-		assert.equal(esitoChiusura(avviso, { documenti: [vecchio, { id: 'i2', document_type: 'documento_identita', created_date: '2026-10-09' }] }, OGGI), 'non_piu_da_fare');
-	});
-
 	test('il compleanno si chiude dopo compleannoDopoGiorni', () => {
 		const avviso = { tipo: 'compleanno', chiave: '2026', dati: { data: g(-4) } };
 		assert.equal(esitoChiusura(avviso, {}, OGGI), 'chiuso_dopo_giorni');
@@ -200,8 +178,7 @@ describe('l\'ordine di ogni scheda', () => {
 		assert.deepEqual(nomi(ordina(l, 'frequenza')), ['B', 'C', 'A']);
 	});
 
-	test('documenti per data di scadenza, compleanni per data, a parità per nome', () => {
-		assert.deepEqual(nomi(ordina([avviso('documento', 'B', { data: g(5) }), avviso('documento', 'A', { data: g(-5) })], 'documento')), ['A', 'B']);
+	test('compleanni per data, a parità per nome', () => {
 		const l = [avviso('compleanno', 'Zeno', { data: g(1) }), avviso('compleanno', 'Anna', { data: g(1) }), avviso('compleanno', 'Bice', { data: g(-2) })];
 		assert.deepEqual(nomi(ordina(l, 'compleanno')), ['Bice', 'Anna', 'Zeno']);
 		assert.equal(l[0].nome, 'Zeno', 'non cambia l\'elenco che riceve');

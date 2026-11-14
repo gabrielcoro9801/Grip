@@ -13,14 +13,11 @@ import { SceltaFoto } from "@/staff/components/soci/FotoSocio";
 import { caricaFile } from "@/staff/lib/uploads";
 import { generaPasswordTemporanea } from "@/staff/lib/passwordTemporanea";
 import { dataFineAbbonamento, descriviDurata, motivoNonVendibile, oggiIso } from "@/core/domain/abbonamenti";
-import { TIPI_CONSENSO } from "@/core/domain/consensi";
 import { formatData, formatEuro } from "@/core/domain/format";
-import { spostaGiorni } from "@/core/domain/giorni";
 
 const PASSI = [
   { valore: "anagrafica", etichetta: "Anagrafica" },
   { valore: "abbonamento", etichetta: "Abbonamento", facoltativo: true },
-  { valore: "certificato", etichetta: "Certificato", facoltativo: true },
   { valore: "privacy", etichetta: "Privacy" },
   { valore: "accesso", etichetta: "Portale", facoltativo: true },
 ];
@@ -29,9 +26,10 @@ const INIZIO = { plan_id: "", start_date: oggiIso() };
 /**
  * Iscrivi: la finestra con cui si diventa soci, in un passo solo per la reception.
  *
- * Cinque passi — anagrafica, abbonamento, certificato, privacy, credenziali del portale — e un
- * salvataggio alla fine, in una transazione sul server (POST /api/iscrivi): o nasce tutto, o
- * niente. Abbonamento, certificato e portale si possono saltare; l'informativa privacy firmata no.
+ * Quattro passi — anagrafica, abbonamento, privacy, credenziali del portale — e un salvataggio
+ * alla fine, in una transazione sul server (POST /api/iscrivi): o nasce tutto, o niente.
+ * Abbonamento e portale si possono saltare; l'informativa privacy firmata no. (Il certificato e i
+ * consensi promozionali con il modulo firmato sono usciti a novembre 2026: docs/piani/portale.md.)
  *
  * Da un contatto (`lead`) parte da quello che si sa già — nome e recapiti, o tutta la vecchia
  * scheda di un ex socio — e la storia resta nel diario della persona. Senza contatto è chi entra
@@ -45,11 +43,7 @@ export default function Iscrivi({ aperto, lead = null, onChiudi }) {
   const [foto, setFoto] = useState({ file: null, rimossa: false });
   const [tipi, setTipi] = useState([]);
   const [abbonamento, setAbbonamento] = useState(INIZIO);
-  const [certificato, setCertificato] = useState({ file: null, expiry_date: spostaGiorni(oggiIso(), 365) });
   const [privacy, setPrivacy] = useState(false);
-  const [consensi, setConsensi] = useState({});
-  // Il modulo firmato con le comunicazioni promozionali: senza, la casella non vale (shared/consensi.js).
-  const [moduloConsensi, setModuloConsensi] = useState(null);
   const [password, setPassword] = useState("");
   const [salvando, setSalvando] = useState(false);
 
@@ -59,10 +53,7 @@ export default function Iscrivi({ aperto, lead = null, onChiudi }) {
     setPasso(0);
     setFoto({ file: null, rimossa: false });
     setAbbonamento(INIZIO);
-    setCertificato({ file: null, expiry_date: spostaGiorni(oggiIso(), 365) });
     setPrivacy(false);
-    setConsensi({});
-    setModuloConsensi(null);
     setPassword(generaPasswordTemporanea());
     setAnagrafica(lead ? {
       ...ANAGRAFICA_VUOTA, nome: lead.nome ?? "", cognome: lead.cognome ?? "", sesso: lead.sesso ?? "",
@@ -80,19 +71,15 @@ export default function Iscrivi({ aperto, lead = null, onChiudi }) {
   const conEmail = Boolean(anagrafica.email.trim());
   const incompleto = motivoAnagraficaIncompleta(anagrafica);
   const corrente = PASSI[passo];
-  const consensiDati = Object.values(consensi).some(Boolean);
   const ultimo = passo === PASSI.length - 1;
   // Si va avanti solo con il passo completo; i facoltativi si saltano.
   // Perché "Avanti" è spento, in parole, per lo screen reader: spento e basta non diceva niente.
   const bloccato = (corrente.valore === "anagrafica" && incompleto)
     || (corrente.valore === "privacy" && !privacy && "Serve l'informativa privacy firmata.")
-    || (corrente.valore === "privacy" && consensiDati && !moduloConsensi && "Con le comunicazioni promozionali serve il modulo firmato: caricalo, o togli le caselle.")
-    || (corrente.valore === "certificato" && certificato.file && !certificato.expiry_date && "Indica quando scade il certificato.")
     || null;
 
   const salta = () => {
     if (corrente.valore === "abbonamento") setAbbonamento(INIZIO);
-    if (corrente.valore === "certificato") setCertificato((c) => ({ ...c, file: null }));
     // L'ultimo passo saltato è "iscrivi senza accesso": si conferma subito, senza aspettare lo stato.
     if (ultimo) conferma({ senzaAccesso: true }); else setPasso((p) => p + 1);
   };
@@ -100,20 +87,15 @@ export default function Iscrivi({ aperto, lead = null, onChiudi }) {
   async function conferma({ senzaAccesso = false } = {}) {
     setSalvando(true);
     try {
-      // I file si caricano prima: il server riceve solo il loro indirizzo.
-      // ponytail: se poi l'iscrizione fallisce i file restano orfani; li toglie `npm run manutenzione:file-orfani`.
+      // La foto si carica prima: il server riceve solo il suo indirizzo.
+      // ponytail: se poi l'iscrizione fallisce il file resta orfano; lo toglie `npm run manutenzione:file-orfani`.
       const foto_url = foto.file ? (await caricaFile({ file: foto.file })).file_url : undefined;
-      const doc = certificato.file ? await caricaFile({ file: certificato.file }) : null;
-      const modulo = consensiDati && moduloConsensi ? await caricaFile({ file: moduloConsensi }) : null;
       const accesso = password && conEmail && !senzaAccesso ? { password } : undefined;
       const { member, riattivato, accesso_portale: portale } = await api.iscrivi({
         lead_id: lead?.id,
         anagrafica: { ...anagrafica, ...(foto_url ? { foto_url } : {}) },
         abbonamento: tipo ? { plan_id: tipo.id, start_date: abbonamento.start_date } : undefined,
-        certificato: doc ? { file_url: doc.file_url, file_name: doc.file_name ?? certificato.file.name, expiry_date: certificato.expiry_date } : undefined,
         informativa_privacy: privacy,
-        consensi: Object.keys(consensi).length ? consensi : undefined,
-        modulo_consensi: modulo ? { file_url: modulo.file_url, file_name: modulo.file_name ?? moduloConsensi.name } : undefined,
         portale: accesso,
       });
       toast({
@@ -177,47 +159,11 @@ export default function Iscrivi({ aperto, lead = null, onChiudi }) {
             </div>
           )}
 
-          {corrente.valore === "certificato" && (
-            <div className="space-y-3">
-              <div>
-                <Label htmlFor="iscrivi-certificato">Certificato medico (foto o file)</Label>
-                {/* `capture` apre la fotocamera sul telefono; dal computer si sceglie un file. */}
-                <Input id="iscrivi-certificato" type="file" accept="image/*,application/pdf" capture="environment"
-                  onChange={(e) => setCertificato((c) => ({ ...c, file: e.target.files?.[0] ?? null }))} />
-              </div>
-              <div>
-                <Label htmlFor="iscrivi-scadenza">Scade il</Label>
-                <Input id="iscrivi-scadenza" type="date" min={oggiIso()} value={certificato.expiry_date} onChange={(e) => setCertificato((c) => ({ ...c, expiry_date: e.target.value }))} />
-              </div>
-              <p className="text-xs text-muted-foreground">Se lo porta dopo, salta: il socio vedrà l'avviso nel portale.</p>
-            </div>
-          )}
-
           {corrente.valore === "privacy" && (
-            <div className="space-y-4">
-              <label className="flex items-start gap-3 text-sm">
-                <Checkbox checked={privacy} onCheckedChange={(v) => setPrivacy(v === true)} className="mt-0.5" aria-label="Informativa privacy firmata" />
-                <span><span className="font-medium">Ha ricevuto e firmato l'informativa privacy.</span> Serve per iscriversi.</span>
-              </label>
-              <fieldset className="space-y-2">
-                <legend className="text-sm font-medium">Comunicazioni promozionali (facoltative, dal modulo firmato)</legend>
-                {TIPI_CONSENSO.map((c) => (
-                  <label key={c.valore} className="flex items-center gap-3 text-sm">
-                    <Checkbox checked={consensi[c.valore] === true} onCheckedChange={(v) => setConsensi((s) => ({ ...s, [c.valore]: v === true }))} aria-label={c.etichetta} />
-                    {c.etichetta}
-                  </label>
-                ))}
-                {consensiDati && (
-                  <div>
-                    <Label htmlFor="iscrivi-modulo-consensi">Il modulo firmato (foto o file) *</Label>
-                    <Input id="iscrivi-modulo-consensi" type="file" accept="image/*,application/pdf" capture="environment"
-                      onChange={(e) => setModuloConsensi(e.target.files?.[0] ?? null)} />
-                    <p className="text-xs text-muted-foreground mt-1">È la prova del consenso: finisce fra i documenti del socio. Senza, togli le caselle.</p>
-                  </div>
-                )}
-                <p className="text-xs text-muted-foreground">Il socio le può cambiare quando vuole dal portale.</p>
-              </fieldset>
-            </div>
+            <label className="flex items-start gap-3 text-sm">
+              <Checkbox checked={privacy} onCheckedChange={(v) => setPrivacy(v === true)} className="mt-0.5" aria-label="Informativa privacy firmata" />
+              <span><span className="font-medium">Ha ricevuto e firmato l'informativa privacy.</span> Serve per iscriversi.</span>
+            </label>
           )}
 
           {corrente.valore === "accesso" && (

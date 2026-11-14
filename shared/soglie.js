@@ -1,5 +1,5 @@
 // Le soglie, in giorni, con cui GRIP decide che cosa c'è da fare: quando un contatto va
-// sollecitato, quando un abbonamento o un documento è "in scadenza".
+// sollecitato, quando un abbonamento è "in scadenza".
 //
 // Erano sparse, una per modulo, e nessuna palestra poteva cambiarle. Qui ci sono i valori
 // predefiniti; quelli scelti dalla palestra stanno in `organizations.impostazioni.soglie` e li
@@ -18,8 +18,6 @@ export const SOGLIE = Object.freeze({
   // Da quanti giorni prima della fine un abbonamento è "in scadenza": la segreteria deve avere
   // il tempo di proporre il rinnovo.
   abbonamentoInScadenzaGiorni: 14,
-  // Da quanti giorni prima della scadenza un documento è "in scadenza".
-  documentoInScadenzaGiorni: 30,
   // Le regole di Da fare (shared/daFare.js): quando un avviso compare, si chiude da solo o torna.
   scadutoGiorni: 60, // l'avviso di un abbonamento scaduto si chiude da solo tanti giorni dopo la fine
   frequenzaRiapriGiorni: 30, // dopo "Contattato" o "Nascondi avviso", la frequenza torna dopo tanto, se è ancora in calo

@@ -51,8 +51,6 @@ export default async function dashboardRoutes(fastify) {
 			kpi: {
 				soci_attivi: puo('Subscription') ? soci.filter((p) => !p.archiviato_il && p.valido).length : null,
 				soci_iscritti: iscritti,
-				// I documenti da sistemare hanno la loro tessera fra gli avvisi di Da fare: un numero
-				// solo, in un posto solo.
 				prossime_lezioni: prossime?.length ?? null,
 			},
 			da_fare: motore ? await avvisiAperti(motore) : null,
@@ -62,16 +60,15 @@ export default async function dashboardRoutes(fastify) {
 	});
 }
 
-// Gli archiviati hanno lasciato la palestra: non si contano, e non si richiamano per rinnovi o
-// certificati.
+// Gli archiviati hanno lasciato la palestra: non si contano, e non si richiamano per i rinnovi.
 async function contaSoci() {
 	const [{ quanti }] = await db.select({ quanti: count() }).from(members).where(isNull(members.archiviatoIl));
 	return Number(quanti);
 }
 
 /**
- * Gli avvisi aperti in ogni scheda di Da fare, adesso: le cinque tessere della dashboard
- * ({ in_scadenza, scaduto, frequenza, documento, compleanno }). Si allinea prima di contare, come
+ * Gli avvisi aperti in ogni scheda di Da fare, adesso: le quattro tessere della dashboard
+ * ({ in_scadenza, scaduto, frequenza, compleanno }). Si allinea prima di contare, come
  * fa Da fare: i numeri sono quelli della sua barra.
  */
 async function avvisiAperti({ oggi, soglie, persone }) {

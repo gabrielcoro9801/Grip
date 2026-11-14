@@ -10,7 +10,7 @@
 // Le uniche entità che il portale soci ha ragione di leggere.
 const LEGGIBILI = new Set([
 	// I propri dati
-	'Member', 'Subscription', 'MemberDocument',
+	'Member', 'Subscription',
 	'Booking',
 	// Il catalogo dei corsi, che serve a prenotare
 	'Course', 'Category', 'Instructor', 'Event', 'Session', 'Room',
@@ -23,7 +23,6 @@ const LEGGIBILI = new Set([
 const COLONNA_PROPRIETARIO = {
 	Member: 'id',
 	Subscription: 'member_id',
-	MemberDocument: 'member_id',
 };
 
 /**

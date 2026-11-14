@@ -6,7 +6,7 @@ import { LoadingState } from "@/ui/Spinner";
 import SelettoreTema from "@/ui/SelettoreTema";
 import { CambioPasswordObbligatorio } from "@/ui/CambioPassword";
 import { contaNotificheEAvvisi } from "@/core/api/portale";
-import { Dumbbell, Home, FileText, CreditCard, User, LogOut, LayoutGrid, Bell } from "lucide-react";
+import { Dumbbell, Home, CreditCard, User, LogOut, LayoutGrid, Bell } from "lucide-react";
 
 // Una sola lista di destinazioni. Le barre erano due, con nomi diversi per lo
 // stesso posto ("QR Accesso" nella sidebar, "QR" in fondo allo schermo):
@@ -14,7 +14,6 @@ import { Dumbbell, Home, FileText, CreditCard, User, LogOut, LayoutGrid, Bell } 
 const navItems = [
   { label: "Home", path: "/member-portal", icon: Home, end: true, inBasso: true },
   { label: "Corsi", path: "/member-portal/corsi", icon: LayoutGrid, inBasso: true },
-  { label: "Documenti", path: "/member-portal/documenti", icon: FileText },
   { label: "Abbonamento", path: "/member-portal/abbonamento", icon: CreditCard, inBasso: true },
   { label: "Notifiche e avvisi", path: "/member-portal/notifiche", icon: Bell, notifiche: true },
   { label: "Anagrafica", path: "/member-portal/anagrafica", icon: User, inBasso: true },
@@ -36,8 +35,7 @@ function Contatore({ n, className = "" }) {
 export default function MemberLayout() {
   const location = useLocation();
   const { memberUser, loading, logout, aggiornaUtente } = useMemberAuth();
-  // Quante cose aspettano il socio: notifiche da leggere più avvisi aperti (documenti,
-  // abbonamento). Si richiede a ogni cambio di pagina, che per un portale aperto dal telefono è
+  // Quante cose aspettano il socio: notifiche da leggere più avvisi aperti (l'abbonamento). Si richiede a ogni cambio di pagina, che per un portale aperto dal telefono è
   // il momento in cui il socio guarda. La pagina delle notifiche azzera le non lette quando le
   // segna lette; gli avvisi restano finché non si sistemano. Contesto dell'Outlet: la home ne
   // legge gli avvisi, la pagina azzera le non lette.

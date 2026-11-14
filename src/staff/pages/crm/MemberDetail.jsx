@@ -13,7 +13,6 @@ import CampiAnagrafica, { anagraficaDi, motivoAnagraficaIncompleta } from "@/sta
 import FisseSocio from "@/staff/components/soci/FisseSocio";
 import IngressiSocio from "@/staff/components/soci/IngressiSocio";
 import DiarioSocio from "@/staff/components/soci/DiarioSocio";
-import DocumentiSocio from "@/staff/components/soci/DocumentiSocio";
 import ConsensiSocio from "@/staff/components/soci/ConsensiSocio";
 import SospensioniSocio from "@/staff/components/soci/SospensioniSocio";
 import DialogoAbbandono from "@/staff/components/soci/DialogoAbbandono";
@@ -53,7 +52,6 @@ export default function MemberDetail() {
   const [conferma, dialogoConferma] = useConfirm();
   const [member, setMember] = useState(null);
   const [subscriptions, setSubscriptions] = useState([]);
-  const [documents, setDocuments] = useState([]);
   const [plans, setPlans] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -63,14 +61,6 @@ export default function MemberDetail() {
   const [anagrafica, setAnagrafica] = useState(null);
   const [foto, setFoto] = useState({ file: null, rimossa: false });
   const puoModificare = canEdit(staffUser?.ruolo, "crm_members");
-  // I documenti stanno sotto il loro modulo, non sotto le anagrafiche: è quello che il server
-  // controlla (auth/authorize.js). Nei ruoli di base i due permessi coincidono, ma un ruolo
-  // costruito a mano può avere l'uno e non l'altro — e allora carica ed elimina sarebbero
-  // pulsanti che chiamano l'API solo per prendersi un 403.
-  const puoModificareDocumenti = canEdit(staffUser?.ruolo, "crm_documents");
-  // Senza la visione il server rifiuta anche la lettura: la sezione non si mostra, invece di
-  // mostrarla vuota come se il socio non avesse documenti.
-  const puoVedereDocumenti = canAccess(staffUser?.ruolo, "crm_documents", "view");
   const [portalAccount, setPortalAccount] = useState(null);
   const [showPasswordDialog, setShowPasswordDialog] = useState(false);
   const [passwordForm, setPasswordForm] = useState({ password: "", confirm: "" });
@@ -94,19 +84,15 @@ export default function MemberDetail() {
       // sezioni dedicate, come Gestione corsi. Con loro se ne vanno le letture di tutte le
       // lezioni, gli eventi e i corsi dell'ente, che servivano solo a dare un nome a una
       // prenotazione.
-      // I documenti hanno un permesso loro: un ruolo che vede le anagrafiche ma non i
-      // certificati apre la scheda lo stesso, senza la sezione documenti.
-      const [m, p, s, d, sa] = await Promise.all([
+      const [m, p, s, sa] = await Promise.all([
         api.entities.Member.get(id),
         api.entities.Plan.list(),
         api.entities.Subscription.filter({ member_id: id }),
-        puoVedereDocumenti ? api.entities.MemberDocument.filter({ member_id: id }) : [],
         api.soci.accessoPortale(id),
       ]);
 
       setMember(m);
       setSubscriptions(s);
-      setDocuments(d);
       // Si propongono solo i tipi che si possono vendere oggi; il server lo ricontrolla.
       setPlans(p.filter(pl => !motivoNonVendibile(pl)));
       setPortalAccount(sa);
@@ -258,7 +244,7 @@ export default function MemberDetail() {
       </div>
 
       {/* La scheda com'era prima del CRM: l'anagrafica a tutta larghezza, poi abbonamenti,
-          documenti, fisse, accesso e comunicazioni su due colonne, e il diario in fondo. */}
+          fisse, accesso e comunicazioni su due colonne, e il diario in fondo. */}
       <div className="grid lg:grid-cols-2 gap-6">
         {/* Anagrafica: la tile principale, a tutta larghezza. Stesso ordine del modulo, così
             chi corregge un dato lo ritrova dove l'ha visto. */}
@@ -338,12 +324,6 @@ export default function MemberDetail() {
           </CardContent>
         </Card>
 
-        {puoVedereDocumenti && (
-          <div id="documenti" className="scroll-mt-4">
-            <DocumentiSocio socio={member} documenti={documents} puoModificare={puoModificareDocumenti} staffUser={staffUser} onCambio={loadData} />
-          </div>
-        )}
-
         {/* Le prenotazioni fisse: sono prenotazioni, quindi le vede chi vede il calendario. */}
         {canAccess(staffUser?.ruolo, "calendar", "view") && (
           <FisseSocio socio={member} puoModificare={canEdit(staffUser?.ruolo, "calendar")} />
@@ -391,7 +371,7 @@ export default function MemberDetail() {
         {/* Le comunicazioni promozionali: un dato del socio, non lavoro da fare. Si leggono qui e
             si cambiano solo con il modulo firmato o con il motivo (ConsensiSocio). */}
         {vedeDiario && (
-          <ConsensiSocio socio={member} documenti={documents} puoModificare={puoModificare} />
+          <ConsensiSocio socio={member} documenti={[]} puoModificare={puoModificare} />
         )}
 
         {/* Il diario: le note e la storia del socio, in sola lettura. Il lavoro da fare sta in

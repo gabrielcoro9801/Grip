@@ -7,7 +7,6 @@ export const ROLES = {
 
 export const MODULES = {
   crm_members: { label: "Gestione membri — Anagrafiche soci" },
-  crm_documents: { label: "Gestione membri — Documenti/certificati" },
   crm_leads: { label: "Lead — Contatti e canali" },
   calendar: { label: "Calendario & Prenotazioni" },
   // La vista dell'istruttore: le sue lezioni, chi è prenotato, presenti e no-show, le sue note.
@@ -29,7 +28,6 @@ export const MODULES = {
 export const PERMESSI_PREDEFINITI = {
   admin: {
     crm_members: ["view", "edit"],
-    crm_documents: ["view", "edit"],
     crm_leads: ["view", "edit"],
     calendar: ["view", "edit"],
     admin_users: ["view", "edit"],
@@ -37,7 +35,6 @@ export const PERMESSI_PREDEFINITI = {
   },
   reception: {
     crm_members: ["view", "edit"],
-    crm_documents: ["view", "edit"],
     crm_leads: ["view", "edit"],
     calendar: ["view", "edit"],
     admin_users: [],
@@ -47,7 +44,6 @@ export const PERMESSI_PREDEFINITI = {
   // alla fase 3 del CRM aveva in lettura soci, documenti e contatti (migrazione 0055).
   istruttore: {
     crm_members: [],
-    crm_documents: [],
     crm_leads: [],
     calendar: ["view", "edit"],
     lezioni_istruttore: ["view", "edit"],

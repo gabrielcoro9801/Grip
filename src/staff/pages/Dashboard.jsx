@@ -85,7 +85,7 @@ export default function Dashboard() {
           <h2 id="dashboard-da-fare" className="text-base font-heading font-semibold flex items-center gap-2 mb-3">
             <ListChecks className="w-4 h-4 text-primary" aria-hidden="true" /> Da fare
           </h2>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {SCHEDE.filter((s) => s.tipo in daFare).map((s) => (
               <Link key={s.tipo} to={s.path}
                 className="group rounded-lg bg-card shadow-sm p-3 hover:shadow-md transition-shadow focus:outline-none focus-visible:ring-2 focus-visible:ring-ring">

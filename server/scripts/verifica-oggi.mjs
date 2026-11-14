@@ -121,7 +121,7 @@ try {
 	controlla('Scheda: il diario ha "Di persona: proposto il rinnovo"', await diario.isVisible());
 	await pagina.screenshot({ path: path.join(os.tmpdir(), 'verifica-oggi-scheda.png'), fullPage: true });
 
-	// La dashboard: cinque tessere, una per avviso, con i numeri della barra di Da fare.
+	// La dashboard: quattro tessere, una per avviso, con i numeri della barra di Da fare.
 	await pagina.goto(`${BASE}/`, { waitUntil: 'networkidle' });
 	const tessere = pagina.locator('section[aria-labelledby="dashboard-da-fare"]').getByRole('link');
 	await tessere.first().waitFor();
@@ -132,8 +132,8 @@ try {
 		const barra = await (await fetch('/api/avvisi?tipo=compleanno', { headers: h })).json();
 		return { tessere: dash.da_fare, barra: barra.conteggi };
 	});
-	const ETICHETTE = { in_scadenza: 'In scadenza', scaduto: 'Scaduti', frequenza: 'Frequenza', documento: 'Documenti', compleanno: 'Compleanni' };
-	controlla('Dashboard: cinque tessere, con gli stessi numeri della barra di Da fare',
+	const ETICHETTE = { in_scadenza: 'In scadenza', scaduto: 'Scaduti', frequenza: 'Frequenza', compleanno: 'Compleanni' };
+	controlla('Dashboard: quattro tessere, con gli stessi numeri della barra di Da fare',
 		testi.join('|') === Object.entries(ETICHETTE).map(([tipo, e]) => `${e} ${conti.barra[tipo]}`).join('|')
 		&& JSON.stringify(conti.tessere) === JSON.stringify(conti.barra), JSON.stringify({ testi, ...conti }));
 	controlla('Dashboard: il socio a −3 giorni è contato fra gli In scadenza', conti.tessere.in_scadenza >= 1);

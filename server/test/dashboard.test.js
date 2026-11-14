@@ -8,7 +8,7 @@ import bcrypt from 'bcryptjs';
 import { eq, inArray } from 'drizzle-orm';
 import { buildApp } from '../src/app.js';
 import { db, pool } from '../src/db/client.js';
-import { avvisi, memberDocuments, members, staffAccounts, subscriptions } from '../src/db/schema/index.js';
+import { avvisi, members, staffAccounts, subscriptions } from '../src/db/schema/index.js';
 import { impostaMatrice, ripristinaMatricePredefinita, PERMESSI_PREDEFINITI } from '../../shared/permissions.js';
 import { oggiIso, spostaGiorni } from '../../shared/giorni.js';
 
@@ -44,13 +44,11 @@ before(async () => {
 		{ memberId: soci[1].id, planName: 'Vecchio', startDate: fra(-60), endDate: fra(-31) },
 		{ memberId: soci[1].id, planName: 'Nuovo', startDate: fra(-30), endDate: fra(60) },
 	]);
-	await db.insert(memberDocuments).values({ memberId: soci[0].id, documentType: 'certificato_medico', fileName: 'cert.pdf', expiryDate: fra(10) });
 });
 
 after(async () => {
 	ripristinaMatricePredefinita();
 	await db.delete(avvisi).where(inArray(avvisi.personaId, idPersone));
-	await db.delete(memberDocuments).where(inArray(memberDocuments.memberId, idSoci));
 	await db.delete(subscriptions).where(inArray(subscriptions.memberId, idSoci));
 	await db.delete(members).where(inArray(members.id, idSoci));
 	await db.delete(staffAccounts).where(inArray(staffAccounts.id, idAccount));
@@ -61,9 +59,9 @@ after(async () => {
 const leggi = (chi) => app.inject({ method: 'GET', url: '/api/dashboard', headers: { authorization: `Bearer ${token[chi]}` } });
 
 describe('i numeri li conta il server', () => {
-	test('gli avvisi di Da fare: cinque tessere, gli stessi numeri della barra', async () => {
+	test('gli avvisi di Da fare: quattro tessere, gli stessi numeri della barra', async () => {
 		const dati = (await leggi('admin')).json();
-		assert.deepEqual(Object.keys(dati.da_fare).sort(), ['compleanno', 'documento', 'frequenza', 'in_scadenza', 'scaduto']);
+		assert.deepEqual(Object.keys(dati.da_fare).sort(), ['compleanno', 'frequenza', 'in_scadenza', 'scaduto']);
 		// Gli altri file di test aggiungono soci mentre questo gira: i totali si confrontano solo nel tipo.
 		assert.ok(Object.values(dati.da_fare).every((n) => Number.isInteger(n) && n >= 0));
 		assert.ok(dati.da_fare.in_scadenza >= 1);
@@ -87,10 +85,10 @@ describe('i numeri li conta il server', () => {
 });
 
 describe('ogni parte a chi può leggerla', () => {
-	test('chi vede i soci riceve le cinque tessere; nessuna dei contatti', async () => {
+	test('chi vede i soci riceve le quattro tessere; nessuna dei contatti', async () => {
 		impostaMatrice({ permessi: { ...PERMESSI_PREDEFINITI, istruttore: { crm_members: ['view'], crm_leads: ['view'], calendar: ['view'] } }, capacita: {} });
 		const dati = (await leggi('istruttore')).json();
-		assert.equal(Object.keys(dati.da_fare).length, 5);
+		assert.equal(Object.keys(dati.da_fare).length, 4);
 		assert.ok(!('contatti' in dati.da_fare));
 	});
 

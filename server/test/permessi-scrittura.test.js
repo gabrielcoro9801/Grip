@@ -26,8 +26,8 @@ describe('nessuna entità resta senza una decisione', () => {
 });
 
 describe("l'istruttore non modifica quello che può solo vedere", () => {
-	// La matrice predefinita gli dà crm_members:["view"] e crm_documents:["view"].
-	for (const entita of ['Member', 'Subscription', 'Plan', 'MemberDocument']) {
+	// La matrice predefinita gli dà al più crm_members:["view"].
+	for (const entita of ['Member', 'Subscription', 'Plan']) {
 		test(`${entita} non è scrivibile da un istruttore`, () => {
 			assert.equal(canWriteEntity('istruttore', entita), false);
 		});
@@ -40,8 +40,8 @@ describe("l'istruttore non modifica quello che può solo vedere", () => {
 });
 
 describe('la reception fa il suo e non di più', () => {
-	test('gestisce soci, documenti e calendario', () => {
-		for (const entita of ['Member', 'MemberDocument', 'Booking', 'Session']) {
+	test('gestisce soci e calendario', () => {
+		for (const entita of ['Member', 'Booking', 'Session']) {
 			assert.equal(canWriteEntity('reception', entita), true, `${entita} dovrebbe essere suo`);
 		}
 	});

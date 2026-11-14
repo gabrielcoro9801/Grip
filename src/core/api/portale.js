@@ -20,7 +20,7 @@ import { api } from './client.js';
 
 const BASE = '/api/member/v1';
 
-/** Anagrafica, abbonamento in corso e riepilogo dei documenti: la schermata iniziale. */
+/** Anagrafica e abbonamento in corso: la schermata iniziale. */
 export function caricaProfilo() {
 	return api.richiesta(`${BASE}/profilo`);
 }
@@ -28,12 +28,6 @@ export function caricaProfilo() {
 /** Lo storico degli abbonamenti: { abbonamenti }. */
 export function caricaAbbonamenti() {
 	return api.richiesta(`${BASE}/abbonamenti`);
-}
-
-/** I propri documenti, con scadenze già valutate dal server. */
-export async function caricaDocumenti() {
-	const { documenti } = await api.richiesta(`${BASE}/documenti`);
-	return documenti;
 }
 
 /**

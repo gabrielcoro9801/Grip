@@ -4,21 +4,19 @@ import { Card, CardContent } from "@/ui/primitivi/card";
 import { Button } from "@/ui/primitivi/button";
 import { quando } from "@/core/domain/daFare";
 import { giorniFra, oggiIso } from "@/core/domain/giorni";
-import { Contact, CreditCard, UserX, Check, FileUp, Cake, EyeOff } from "lucide-react";
+import { Contact, CreditCard, UserX, Check, Cake, EyeOff } from "lucide-react";
 
 // Le azioni di ogni tipo, da sinistra. «Nascondi avviso» sta a destra, per tutti.
 const AZIONI = {
   in_scadenza: ["rinnova", "non_rinnova"],
   scaduto: ["rinnova", "non_rinnova"],
   frequenza: ["contattato"],
-  documento: ["carica"],
   compleanno: ["auguri_fatti"],
 };
 const PULSANTI = {
   rinnova: { etichetta: "Rinnova", icona: CreditCard, variant: "default" },
   non_rinnova: { etichetta: "Non rinnova", icona: UserX, variant: "outline" },
   contattato: { etichetta: "Contattato", icona: Check, variant: "default" },
-  carica: { etichetta: "Carica documento", icona: FileUp, variant: "default" },
   auguri_fatti: { etichetta: "Auguri fatti", icona: Cake, variant: "default" },
 };
 
@@ -49,13 +47,12 @@ function FraseAvviso({ avviso, oggi }) {
  *
  * @param avviso       una riga di GET /api/avvisi
  * @param puoModificare chi modifica i soci: senza, la scheda si legge e basta
- * @param puoCaricare  chi carica anche i documenti (crm_documents)
  * @param occupato     un'azione su questo avviso è in corso: i pulsanti si spengono
- * @param onAzione     (azione) con azione fra rinnova, non_rinnova, carica, contattato,
+ * @param onAzione     (azione) con azione fra rinnova, non_rinnova, contattato,
  *                     auguri_fatti, nascondi, recapiti
  */
-export default function SchedaAvviso({ avviso, oggi = oggiIso(), puoModificare, puoCaricare, occupato, onAzione }) {
-  const azioni = (AZIONI[avviso.tipo] ?? []).filter((a) => (a === "carica" ? puoCaricare : true));
+export default function SchedaAvviso({ avviso, oggi = oggiIso(), puoModificare, occupato, onAzione }) {
+  const azioni = AZIONI[avviso.tipo] ?? [];
   return (
     <Card className="border-0 shadow-sm h-full">
       <CardContent className="p-4 h-full flex flex-col gap-3">

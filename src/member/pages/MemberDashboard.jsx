@@ -4,7 +4,7 @@ import { useMemberAuth } from "@/member/session/MemberAuthContext";
 import { Link, useOutletContext } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/ui/primitivi/card";
 import { Button } from "@/ui/primitivi/button";
-import { CreditCard, FileText, ChevronRight, Calendar, AlertCircle, AlertTriangle, CalendarCheck } from "lucide-react";
+import { CreditCard, ChevronRight, Calendar, AlertCircle, AlertTriangle, CalendarCheck } from "lucide-react";
 import StatusBadge from "@/ui/StatusBadge";
 import { LoadingState } from "@/ui/Spinner";
 import { ErrorState } from "@/ui/StateViews";
@@ -91,7 +91,7 @@ export default function MemberDashboard() {
 
   return (
     <div className="max-w-3xl mx-auto p-4 sm:p-6 space-y-5">
-      {/* Se c'è qualcosa da sistemare (documenti, abbonamento) lo si dice in cima, con un link. */}
+      {/* Se c'è qualcosa da sistemare (l'abbonamento) lo si dice in cima, con un link. */}
       {conteggio?.avvisi > 0 && (
         <Link
           to="/member-portal/notifiche"
@@ -147,13 +147,6 @@ export default function MemberDashboard() {
         </CardContent>
       </Card>
 
-      {/* Documenti non è nella barra in basso: l'unica strada dal telefono, con l'abbonamento
-          ("Dettagli" qui sopra). Le tile di prima ripetevano anche Anagrafica, che nella barra c'è. */}
-      <Link to="/member-portal/documenti" className="flex items-center gap-3 rounded-xl bg-card shadow-sm p-4 min-h-11 hover:bg-muted/50">
-        <FileText className="w-5 h-5 text-primary shrink-0" aria-hidden="true" />
-        <span className="flex-1 text-sm font-medium">I tuoi documenti</span>
-        <ChevronRight className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
-      </Link>
     </div>
   );
 }

@@ -19,7 +19,6 @@ import { MemberAuthProvider } from '@/member/session/MemberAuthContext';
 // il portale sa già dove sta, e tutti i collegamenti dentro le pagine sono scritti così.
 const MemberLayout = lazy(() => import('@/member/pages/MemberLayout'));
 const MemberDashboard = lazy(() => import('@/member/pages/MemberDashboard'));
-const MemberDocuments = lazy(() => import('@/member/pages/MemberDocuments'));
 const MemberSubscription = lazy(() => import('@/member/pages/MemberSubscription'));
 const MemberProfile = lazy(() => import('@/member/pages/MemberProfile'));
 const MemberCoursesCalendar = lazy(() => import('@/member/pages/MemberCoursesCalendar'));
@@ -39,7 +38,7 @@ export default function App() {
             <Routes>
               <Route path="/member-portal" element={<MemberAuthProvider><MemberLayout /></MemberAuthProvider>}>
                 <Route index element={<MemberDashboard />} />
-                <Route path="documenti" element={<MemberDocuments />} />
+                <Route path="documenti" element={<Navigate to="/member-portal" replace />} />
                 <Route path="abbonamento" element={<MemberSubscription />} />
                 <Route path="anagrafica" element={<MemberProfile />} />
                 <Route path="qr" element={<Navigate to="/member-portal" replace />} />

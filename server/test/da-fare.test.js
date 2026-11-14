@@ -9,7 +9,7 @@ import { and, eq, inArray, sql } from 'drizzle-orm';
 import { buildApp } from '../src/app.js';
 import { db, pool } from '../src/db/client.js';
 import {
-	members, persone, staffAccounts, subscriptions, attivita, organizations, auditLogs, memberDocuments, ingressi, avvisi,
+	members, persone, staffAccounts, subscriptions, attivita, organizations, auditLogs, ingressi, avvisi,
 } from '../src/db/schema/index.js';
 import { giro } from '../src/giro.js';
 import { situazioni } from '../src/lib/segnali.js';
@@ -72,11 +72,6 @@ before(async () => {
 		{ memberId: id.soci.tornato, planName: 'Annuale', startDate: '2025-01-01', endDate: fra(200) },
 	]).returning();
 	abbonamenti.forEach((a, i) => { id.abbonamenti[nomi[i]] = a.id; });
-	await db.insert(memberDocuments).values(soci.flatMap((s) => [
-		// Il certificato di chi lascia scade fra 10 giorni: un avviso dei documenti.
-		{ memberId: s.id, documentType: 'certificato_medico', expiryDate: s.id === id.soci.lascia ? fra(10) : fra(300) },
-		{ memberId: s.id, documentType: 'documento_identita', expiryDate: fra(3000) },
-	]));
 	// Non entrano da 20 giorni: assenti, con l'avviso della frequenza.
 	await db.insert(ingressi).values([ingresso(id.soci.calo, giorniFa(20)), ingresso(id.soci.tornato, giorniFa(20))]);
 
@@ -107,7 +102,6 @@ after(async () => {
 	await db.delete(avvisi).where(inArray(avvisi.personaId, personeTutte));
 	await db.delete(attivita).where(inArray(attivita.personaId, personeTutte));
 	await db.delete(ingressi).where(inArray(ingressi.memberId, tutti));
-	await db.delete(memberDocuments).where(inArray(memberDocuments.memberId, tutti));
 	await db.delete(subscriptions).where(inArray(subscriptions.memberId, tutti));
 	await db.delete(auditLogs).where(eq(auditLogs.entitaTipo, 'impostazioni'));
 	await db.delete(staffAccounts).where(inArray(staffAccounts.id, id.account));
@@ -122,7 +116,7 @@ describe('gli avvisi', () => {
 		const res = await come('reception', 'GET', '/api/avvisi');
 		assert.equal(res.statusCode, 200, res.body);
 		const dati = res.json();
-		assert.deepEqual(Object.keys(dati.conteggi).sort(), ['compleanno', 'documento', 'frequenza', 'in_scadenza', 'scaduto']);
+		assert.deepEqual(Object.keys(dati.conteggi).sort(), ['compleanno', 'frequenza', 'in_scadenza', 'scaduto']);
 		assert.equal(dati.oggi, oggiIso());
 
 		const [scade] = dati.avvisi.filter((a) => a.persona_id === id.persone.scade && a.tipo === 'in_scadenza');
@@ -138,10 +132,10 @@ describe('gli avvisi', () => {
 		// Nell'ordine dell'urgenza: In scadenza dalla fine più vicina.
 		const inScadenza = dati.avvisi.filter((a) => a.tipo === 'in_scadenza').map((a) => a.dati.data);
 		assert.deepEqual(inScadenza, [...inScadenza].sort());
-		// Un avviso per documento, il certificato di chi lascia; il compleanno di domani.
+		// Chi lascia: l'abbonamento in scadenza e il compleanno di domani. I documenti non aprono più
+		// avvisi (docs/piani/portale.md).
 		const lascia = await avvisiDi('lascia');
-		assert.deepEqual(lascia.map((a) => a.tipo).filter((x) => x !== 'frequenza').sort(), ['compleanno', 'documento', 'in_scadenza']);
-		assert.equal(lascia.find((a) => a.tipo === 'documento').dati.tipo_documento, 'certificato_medico');
+		assert.deepEqual(lascia.map((a) => a.tipo).filter((x) => x !== 'frequenza').sort(), ['compleanno', 'in_scadenza']);
 
 		assert.equal((await come('istruttore', 'GET', '/api/avvisi')).statusCode, 403);
 		assert.equal((await come('socio', 'GET', '/api/avvisi')).statusCode, 403);
@@ -335,10 +329,6 @@ describe('il giro', () => {
 		const [lontano] = await db.insert(members).values({ nome: 'lontano', cognome: `DaFare${lettere}`, codiceSocio: `DFA${lettere}` }).returning();
 		id.soci.lontano = lontano.id; id.persone.lontano = lontano.personaId;
 		await db.insert(subscriptions).values({ memberId: lontano.id, planName: 'Vecchio', startDate: fra(-400), endDate: fra(-200) });
-		await db.insert(memberDocuments).values([
-			{ memberId: lontano.id, documentType: 'certificato_medico', expiryDate: fra(300) },
-			{ memberId: lontano.id, documentType: 'documento_identita', expiryDate: fra(3000) },
-		]);
 		await giro();
 		assert.equal(await statoDi('lontano'), null);
 

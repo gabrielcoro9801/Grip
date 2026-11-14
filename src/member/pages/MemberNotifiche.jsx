@@ -11,7 +11,6 @@ import { formatData } from "@/core/domain/format";
 const ICONE = { lezione_annullata: CalendarX, fissa_senza_abbonamento: Repeat };
 // Dove si sistema un avviso.
 const AZIONI = {
-  documenti: { percorso: "/member-portal/documenti", etichetta: "Vai ai documenti" },
   abbonamento: { percorso: "/member-portal/abbonamento", etichetta: "Vai all'abbonamento" },
 };
 // Gravità: colore, icona ed etichetta insieme, mai il colore da solo.
@@ -23,9 +22,9 @@ const GRAVITA = {
 /**
  * Notifiche e avvisi, due cose diverse nella stessa pagina.
  *
- * Gli **avvisi** sono quello che è vero adesso e va sistemato — un certificato scaduto, un
- * abbonamento in scadenza — e si calcolano a ogni apertura: spariscono da soli quando il socio
- * rinnova o porta il documento, quindi non si "leggono". Le **notifiche** sono le cose successe
+ * Gli **avvisi** sono quello che è vero adesso e va sistemato — un abbonamento scaduto o in
+ * scadenza — e si calcolano a ogni apertura: spariscono da soli quando il socio
+ * rinnova, quindi non si "leggono". Le **notifiche** sono le cose successe
  * (una lezione annullata, una prenotazione fissa ferma): aprire la pagina le segna come lette, e
  * le nuove restano evidenziate finché si resta qui.
  */
@@ -66,7 +65,7 @@ export default function MemberNotifiche() {
           <Card className="border-0 shadow-sm">
             <CardContent className="p-4 flex items-center gap-3 text-sm text-muted-foreground">
               <CheckCircle2 className="w-5 h-5 text-success shrink-0" aria-hidden="true" />
-              Tutto in regola: abbonamento e documenti a posto.
+              Nessun avviso: abbonamento in regola.
             </CardContent>
           </Card>
         ) : (

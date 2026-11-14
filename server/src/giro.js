@@ -110,12 +110,12 @@ async function archiviaSenzaAbbonamento(conn, oggi, soglie, persone) {
 
 /**
  * Il diario delle cose da fare dei soci: una riga quando un segnale compare ("Da fare: Abbonamento
- * in scadenza — scade tra 14 giorni"), una quando non c'è più (rinnovato, documento caricato,
+ * in scadenza — scade tra 14 giorni"), una quando non c'è più (rinnovato,
  * tornato in palestra). Un segnale "fatto" e nascosto per qualche giorno c'è ancora: non si
  * chiude. Quelli spenti dalla palestra non si scrivono né si chiudono.
  *
  * ponytail: un giro al giorno, quindi l'ora della riga è quella del giro; se servirà l'istante,
- * lo stesso confronto per una persona dopo un'iscrizione o un documento.
+ * lo stesso confronto per una persona dopo un'iscrizione.
  */
 async function scriviDaFare(conn, soglie, persone) {
 	const soci = persone.filter((p) => p.socio_id);

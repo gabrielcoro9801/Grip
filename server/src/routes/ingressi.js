@@ -16,7 +16,7 @@
 import { and, desc, eq, gte, lte, ne } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
-	members, memberDocuments, ingressi, bookings, sessions, events, courses, staffAccounts,
+	members, ingressi, bookings, sessions, events, courses, staffAccounts,
 } from '../db/schema/index.js';
 import { getUserFromRequest } from '../auth/tokens.js';
 import { canReadEntity, canWriteEntity } from '../auth/authorize.js';
@@ -54,10 +54,8 @@ const giornoSettimana = (iso) => {
 async function schedaIngresso(memberId, oggi = oggiIso()) {
 	const [socio] = await db.select().from(members).where(eq(members.id, memberId)).limit(1);
 	if (!socio) return null;
-	const [iscrizioni, documenti, lezioni, [ultimo]] = await Promise.all([
+	const [iscrizioni, lezioni, [ultimo]] = await Promise.all([
 		iscrizioniDelSocio(memberId),
-		db.select({ document_type: memberDocuments.documentType, created_date: memberDocuments.createdDate, expiry_date: memberDocuments.expiryDate })
-			.from(memberDocuments).where(eq(memberDocuments.memberId, memberId)),
 		db.select({ corso: courses.name, inizio: sessions.startTime, fine: sessions.endTime, stato: bookings.status })
 			.from(bookings)
 			.innerJoin(sessions, eq(bookings.sessionId, sessions.id))
@@ -68,7 +66,7 @@ async function schedaIngresso(memberId, oggi = oggiIso()) {
 		db.select({ alle: ingressi.entratoAlle }).from(ingressi).where(eq(ingressi.memberId, memberId)).orderBy(desc(ingressi.entratoAlle)).limit(1),
 	]);
 	const avvisi = avvisiSocio({
-		socio: { date_of_birth: socio.dateOfBirth, archiviato_il: socio.archiviatoIl }, iscrizioni, documenti, oggi,
+		socio: { date_of_birth: socio.dateOfBirth, archiviato_il: socio.archiviatoIl }, iscrizioni, oggi,
 	});
 	// I segnali valgono per chi entra adesso: un ingresso segnato a posteriori non ne ha.
 	const [situazione] = oggi === oggiIso() ? (await situazioni({ personaId: socio.personaId })).persone : [];

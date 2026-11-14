@@ -13,12 +13,12 @@
 import test, { before, after, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import bcrypt from 'bcryptjs';
-import { eq, inArray } from 'drizzle-orm';
+import { inArray } from 'drizzle-orm';
 import { buildApp } from '../src/app.js';
 import { db, pool } from '../src/db/client.js';
 import { oggiIso, spostaGiorni } from '../../shared/giorni.js';
 import {
-	members, staffAccounts, subscriptions, memberDocuments,
+	members, staffAccounts, subscriptions,
 	rooms, courses, events, sessions, bookings,
 } from '../src/db/schema/index.js';
 
@@ -31,7 +31,6 @@ let idSocio;
 let idEstraneo;
 const idAccount = [];
 const idAbbonamenti = [];
-const idDocumenti = [];
 const idPrenotazioni = [];
 let idSala;
 let idCorso;
@@ -89,15 +88,6 @@ before(async () => {
 		.returning();
 	idAbbonamenti.push(...abbonamenti.map((a) => a.id));
 
-	const documenti = await db
-		.insert(memberDocuments)
-		.values([
-			{ memberId: socio.id, documentType: 'certificato_medico', fileName: 'certificato.pdf', expiryDate: fraUnaSettimana },
-			{ memberId: estraneo.id, documentType: 'altro', titolo: "Documento dell'estraneo", fileName: 'altro.pdf' },
-		])
-		.returning();
-	idDocumenti.push(...documenti.map((d) => d.id));
-
 	// Una lezione con due prenotazioni: la mia e quella di un altro. Serve a verificare che
 	// dei posti escano numeri e non le righe altrui.
 	const [sala] = await db.insert(rooms).values({ name: 'Sala API' }).returning();
@@ -134,7 +124,6 @@ after(async () => {
 	if (idEvento) await db.delete(events).where(inArray(events.id, [idEvento]));
 	if (idCorso) await db.delete(courses).where(inArray(courses.id, [idCorso]));
 	if (idSala) await db.delete(rooms).where(inArray(rooms.id, [idSala]));
-	if (idDocumenti.length) await db.delete(memberDocuments).where(inArray(memberDocuments.id, idDocumenti));
 	if (idAbbonamenti.length) await db.delete(subscriptions).where(inArray(subscriptions.id, idAbbonamenti));
 	if (idAccount.length) await db.delete(staffAccounts).where(inArray(staffAccounts.id, idAccount));
 	await db.delete(members).where(inArray(members.id, [idSocio, idEstraneo]));
@@ -142,7 +131,7 @@ after(async () => {
 	await pool.end();
 });
 
-const ROTTE = ['/api/member/v1/profilo', '/api/member/v1/abbonamenti', '/api/member/v1/documenti', '/api/member/v1/corsi/agenda'];
+const ROTTE = ['/api/member/v1/profilo', '/api/member/v1/abbonamenti', '/api/member/v1/corsi/agenda'];
 
 describe('chi può entrare', () => {
 	for (const rotta of ROTTE) {
@@ -177,8 +166,13 @@ describe('il socio vede le proprie cose, e solo quelle', () => {
 
 		assert.equal(dati.abbonamento.giorni_alla_scadenza, 7);
 		assert.equal(dati.abbonamento.in_scadenza, true, 'a sette giorni deve risultare in scadenza');
-		assert.equal(dati.documenti.in_scadenza, 1);
-		assert.equal(dati.documenti.scaduti, 0);
+	});
+
+	test("documenti e codice d'accesso non ci sono più", async () => {
+		// Usciti dal portale a novembre 2026 (docs/piani/portale.md).
+		for (const rotta of ['/api/member/v1/documenti', '/api/member/v1/accesso']) {
+			assert.equal((await come(tokenSocio, rotta)).statusCode, 404, rotta);
+		}
 	});
 
 	test("gli abbonamenti dell'estraneo non compaiono", async () => {
@@ -188,47 +182,6 @@ describe('il socio vede le proprie cose, e solo quelle', () => {
 		assert.equal(abbonamenti[0].piano, 'Open 12 mesi');
 	});
 
-	test("i documenti dell'estraneo non compaiono", async () => {
-		const { documenti } = (await come(tokenSocio, '/api/member/v1/documenti')).json();
-
-		assert.equal(documenti.length, 1);
-		assert.equal(documenti[0].tipo, 'certificato_medico');
-		assert.equal(documenti[0].nome, 'Certificato medico');
-		assert.equal(documenti[0].scaduto, false);
-		assert.equal(documenti[0].in_scadenza, true);
-		assert.equal(documenti[0].stato, 'in_scadenza');
-	});
-
-	// Il caso che fa la differenza fra "hai un problema" e "avevi un problema": il socio ha
-	// rinnovato, e il certificato vecchio non deve continuare a contare come scaduto.
-	//
-	// Il vecchio si inserisce e si cancella dentro il test, perché tutte le altre prove di
-	// questo file contano un documento solo.
-	test('un certificato scaduto e già sostituito va in archivio, e non conta come scaduto', async () => {
-		const [vecchio] = await db
-			.insert(memberDocuments)
-			.values({
-				memberId: idSocio,
-				documentType: 'certificato_medico',
-				fileName: 'certificato-2019.pdf',
-				expiryDate: '2019-06-30',
-				createdDate: new Date('2019-01-10T09:00:00Z'),
-			})
-			.returning();
-
-		try {
-			const { documenti } = (await come(tokenSocio, '/api/member/v1/documenti')).json();
-			assert.equal(documenti.length, 2, 'restano consultabili entrambi');
-			assert.equal(documenti.find((d) => d.id === vecchio.id).stato, 'archiviato');
-			assert.equal(documenti.find((d) => d.id !== vecchio.id).stato, 'in_scadenza');
-
-			const dati = (await come(tokenSocio, '/api/member/v1/profilo')).json();
-			assert.equal(dati.documenti.scaduti, 0, 'sostituito non è un avviso');
-			assert.equal(dati.documenti.in_scadenza, 1);
-		} finally {
-			await db.delete(memberDocuments).where(eq(memberDocuments.id, vecchio.id));
-		}
-	});
 
 });
 
@@ -315,7 +268,7 @@ describe('il contratto resta quello promesso', () => {
 	test('il profilo ha i campi dichiarati', async () => {
 		const dati = (await come(tokenSocio, '/api/member/v1/profilo')).json();
 
-		assert.deepEqual(Object.keys(dati).sort(), ['abbonamento', 'documenti', 'socio']);
+		assert.deepEqual(Object.keys(dati).sort(), ['abbonamento', 'socio']);
 		assert.deepEqual(
 			Object.keys(dati.socio).sort(),
 			['codice_socio', 'contatto_emergenza', 'data_nascita', 'email', 'id', 'indirizzo', 'nome', 'note', 'telefono']

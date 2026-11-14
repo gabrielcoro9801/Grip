@@ -1,14 +1,14 @@
-// Che cosa c'è da sistemare per un socio, adesso: abbonamento e documenti.
+// Che cosa c'è da sistemare per un socio, adesso: l'abbonamento.
 //
-// Una regola sola per due posti: il controllo degli ingressi (semaforo verde, giallo, rosso) e la
-// sezione "Notifiche e avvisi" del portale. Se ne avessero una ciascuno, prima o poi il socio
-// leggerebbe "tutto in regola" sul telefono mentre all'ingresso lo fermano.
+// Una regola sola per due posti: il controllo degli ingressi (semaforo verde, giallo, rosso) e le
+// Notifiche del portale. Se ne avessero una ciascuno, prima o poi il socio leggerebbe "tutto in
+// regola" sul telefono mentre all'ingresso lo fermano. (I documenti sono usciti
+// dall'applicazione a novembre 2026: docs/piani/portale.md.)
 //
 // Gli avvisi non si salvano: si calcolano dalle date ogni volta, e spariscono da soli quando
-// il socio rinnova o porta il documento. Un avviso salvato resterebbe vero anche dopo.
+// il socio rinnova. Un avviso salvato resterebbe vero anche dopo.
 import { oggiIso, giorniFra, spostaGiorni } from './giorni.js';
 import { abbonamentoCopre, sospensioneIl, GIORNI_ABBONAMENTO_IN_SCADENZA } from './abbonamenti.js';
-import { TIPI_DOCUMENTO, tipoAtteso, conStatoDocumenti } from './anagrafica.js';
 
 const dataIt = (iso) => { const [a, m, g] = String(iso).slice(0, 10).split('-'); return `${g}/${m}/${a}`; };
 const fra = (giorni) => (giorni === 0 ? 'oggi' : giorni === 1 ? 'domani' : `fra ${giorni} giorni`);
@@ -17,16 +17,15 @@ const fra = (giorni) => (giorni === 0 ? 'oggi' : giorni === 1 ? 'domani' : `fra 
  * Gli avvisi di un socio a oggi, dal più grave.
  *
  * Gravità: `rosso` vuol dire che non dovrebbe entrare (abbonamento non valido oggi, socio
- * archiviato); `giallo` che entra ma qualcosa va sistemato (documenti scaduti, mancanti o in
- * scadenza, abbonamento in scadenza senza rinnovo).
+ * archiviato); `giallo` che entra ma qualcosa va sistemato (abbonamento in scadenza senza
+ * rinnovo).
  *
  * @param socio      { date_of_birth, archiviato_il }
  * @param iscrizioni [{ start_date, end_date }], passate da `conSospensioni` se il socio ne ha
- * @param documenti  [{ document_type, created_date, expiry_date }]
- * @param soglie     quelle della palestra (shared/soglie.js), per il "documento in scadenza"; senza, le predefinite
- * @returns [{ codice, gravita, titolo, testo, azione: 'abbonamento' | 'documenti' | null }]
+ * @param soglie     quelle della palestra (shared/soglie.js); senza, le predefinite
+ * @returns [{ codice, gravita, titolo, testo, azione: 'abbonamento' | null }]
  */
-export function avvisiSocio({ socio, iscrizioni = [], documenti = [], oggi = oggiIso(), soglie = null }) {
+export function avvisiSocio({ socio, iscrizioni = [], oggi = oggiIso(), soglie = null }) {
   const avvisi = [];
 
   if (socio?.archiviato_il) {
@@ -64,48 +63,8 @@ export function avvisiSocio({ socio, iscrizioni = [], documenti = [], oggi = ogg
     }
   }
 
-  for (const d of documentiDaSistemare({ socio, documenti, oggi, giorniInScadenza: soglie?.documentoInScadenzaGiorni })) {
-    const codice = `${d.tipo}_${d.stato}`;
-    if (d.stato === 'mancante') {
-      avvisi.push({ codice, gravita: 'giallo', titolo: `${d.nome} mancante`, testo: `Portalo in reception per essere in regola.`, azione: 'documenti' });
-    } else if (d.stato === 'scaduto') {
-      avvisi.push({ codice, gravita: 'giallo', titolo: `${d.nome} scaduto`, testo: `${d.scadenza ? `È scaduto il ${dataIt(d.scadenza)}: ` : ''}portane uno nuovo in reception.`, azione: 'documenti' });
-    } else {
-      avvisi.push({ codice, gravita: 'giallo', titolo: `${d.nome} in scadenza`, testo: `Scade il ${dataIt(d.scadenza)} (${fra(d.giorni)}): portane uno nuovo prima.`, azione: 'documenti' });
-    }
-  }
 
   return avvisi.sort((a, b) => (a.gravita === b.gravita ? 0 : a.gravita === 'rosso' ? -1 : 1));
-}
-
-/**
- * I documenti obbligatori di un socio che non sono a posto, uno per tipo: mancante, scaduto, o in
- * scadenza senza un sostituto già valido. Obbligatori sono i tipi con `atteso` (TIPI_DOCUMENTO,
- * il consenso dei genitori solo per i minorenni): un tipo reso obbligatorio domani entra da solo.
- * È la regola del portale, del controllo degli ingressi e della linea Documenti di Da fare.
- *
- * @returns [{ tipo, nome, stato: 'mancante'|'scaduto'|'in_scadenza', scadenza, giorni, documento_id, file_name }]
- */
-export function documentiDaSistemare({ socio, documenti = [], oggi = oggiIso(), giorniInScadenza }) {
-  const conStato = conStatoDocumenti(documenti, (d) => (d ? giorniFra(oggi, String(d).slice(0, 10)) : null), giorniInScadenza)
-    .filter((d) => d.stato !== 'archiviato');
-  const fuori = [];
-  for (const tipo of TIPI_DOCUMENTO) {
-    if (!tipoAtteso(tipo, socio, oggi)) continue;
-    const suoi = conStato.filter((d) => d.document_type === tipo.valore);
-    const voce = (stato, d = null) => ({
-      tipo: tipo.valore, nome: tipo.etichetta, stato,
-      scadenza: d?.expiry_date ? String(d.expiry_date).slice(0, 10) : null, giorni: d?.giorni_alla_scadenza ?? null,
-      documento_id: d?.id ?? null, file_name: d?.file_name ?? null,
-    });
-    if (suoi.length === 0) fuori.push(voce('mancante'));
-    else if (suoi.every((d) => d.stato === 'scaduto')) {
-      fuori.push(voce('scaduto', [...suoi].sort((a, b) => String(a.expiry_date).localeCompare(String(b.expiry_date))).pop()));
-    } else if (!suoi.some((d) => d.stato === 'valido') && suoi.some((d) => d.stato === 'in_scadenza')) {
-      fuori.push(voce('in_scadenza', suoi.find((x) => x.stato === 'in_scadenza')));
-    }
-  }
-  return fuori;
 }
 
 /** Il semaforo di una lista di avvisi: rosso se ce n'è uno rosso, giallo se ce n'è uno, altrimenti verde. */

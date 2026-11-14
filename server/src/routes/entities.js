@@ -330,8 +330,8 @@ export default async function entityRoutes(fastify) {
 		const { dbNameToColumn } = getColumnMaps(table);
 		const [row] = await db.delete(table).where(eq(dbNameToColumn.id, request.params.id)).returning();
 		if (!row) return reply.code(404).send({ error: 'Non trovato' });
-		// Eliminare un documento vuol dire eliminare anche il file: un certificato medico che
-		// resta sul disco dopo un "non si può recuperare" non è stato eliminato.
+		// Eliminare una riga vuol dire eliminare anche i suoi file (lib/fileCaricati.js): una foto
+		// che resta sul disco dopo un "non si può recuperare" non è stata eliminata.
 		const eliminata = translateToSnakeCase(table, row);
 		await cancellaFileNonPiuUsati(table, eliminata);
 		await registra(request.utente, {

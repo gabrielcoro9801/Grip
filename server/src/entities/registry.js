@@ -7,7 +7,6 @@ export const entityRegistry = {
 	Member: schema.members,
 	Subscription: schema.subscriptions,
 	Plan: schema.plans,
-	MemberDocument: schema.memberDocuments,
 	CanaleContatto: schema.canaliContatto,
 	Course: schema.courses,
 	Category: schema.categories,

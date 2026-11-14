@@ -6,7 +6,7 @@ import bcrypt from 'bcryptjs';
 import { eq, inArray } from 'drizzle-orm';
 import { buildApp } from '../src/app.js';
 import { db, pool } from '../src/db/client.js';
-import { members, staffAccounts, subscriptions, memberDocuments, ingressi, auditLogs } from '../src/db/schema/index.js';
+import { members, staffAccounts, subscriptions, ingressi, auditLogs } from '../src/db/schema/index.js';
 import { oggiIso, spostaGiorni } from '../../shared/giorni.js';
 
 const PASSWORD = 'prova-ingressi-1234';
@@ -25,18 +25,15 @@ const login = async (email) => (await app.inject({ method: 'POST', url: '/api/au
 before(async () => {
 	app = buildApp({ logger: false });
 	await app.ready();
-	// verde: abbonamento e documenti in regola; giallo: certificato scaduto; rosso: niente abbonamento;
+	// verde: abbonamento in regola; giallo: abbonamento in scadenza; rosso: niente abbonamento;
 	// assente: abbonamento valido da tempo ma mai entrato (rischio abbandono).
 	const [verde, giallo, rosso, assente] = await db.insert(members).values(['Verde', 'Giallo', 'Rosso', 'Assente'].map((n, i) => ({
 		nome: n, cognome: 'Ingresso', codiceSocio: `IN${'ABCD'[i]}${lettere}`, dateOfBirth: '1990-01-01', phone: '333 000000',
 	}))).returning();
 	id.soci = { verde: verde.id, giallo: giallo.id, rosso: rosso.id, assente: assente.id };
-	await db.insert(subscriptions).values([verde, giallo, assente].map((s) => ({ memberId: s.id, planName: 'Annuale', startDate: spostaGiorni(oggi, -60), endDate: spostaGiorni(oggi, 300) })));
-	const documenti = (m, scadenzaCertificato) => [
-		{ memberId: m, documentType: 'certificato_medico', expiryDate: scadenzaCertificato },
-		{ memberId: m, documentType: 'documento_identita', expiryDate: spostaGiorni(oggi, 900) },
-	];
-	await db.insert(memberDocuments).values([...documenti(verde.id, spostaGiorni(oggi, 200)), ...documenti(giallo.id, spostaGiorni(oggi, -3)), ...documenti(assente.id, spostaGiorni(oggi, 200))]);
+	await db.insert(subscriptions).values([verde, giallo, assente].map((s) => ({
+		memberId: s.id, planName: 'Annuale', startDate: spostaGiorni(oggi, -60), endDate: spostaGiorni(oggi, s === giallo ? 3 : 300),
+	})));
 	const passwordHash = await bcrypt.hash(PASSWORD, 4);
 	const account = await db.insert(staffAccounts).values([
 		{ nome: 'Reception Ingressi', email: `ing.rec.${t}@test.local`, passwordHash, ruolo: 'reception' },
@@ -52,7 +49,6 @@ before(async () => {
 after(async () => {
 	const tutti = Object.values(id.soci);
 	await db.delete(ingressi).where(inArray(ingressi.memberId, tutti));
-	await db.delete(memberDocuments).where(inArray(memberDocuments.memberId, tutti));
 	await db.delete(subscriptions).where(inArray(subscriptions.memberId, tutti));
 	await db.delete(auditLogs).where(inArray(auditLogs.attoreId, id.account));
 	await db.delete(staffAccounts).where(inArray(staffAccounts.id, id.account));
@@ -64,7 +60,7 @@ after(async () => {
 const verifica = (chi) => come('reception', 'POST', '/api/ingressi/verifica', { member_id: id.soci[chi] });
 
 describe('il semaforo', () => {
-	test('verde: in regola; giallo: certificato scaduto; rosso: senza abbonamento', async () => {
+	test('verde: in regola; giallo: abbonamento in scadenza; rosso: senza abbonamento', async () => {
 		const v = (await verifica('verde')).json();
 		assert.equal(v.valido, true);
 		assert.equal(v.semaforo, 'verde');
@@ -73,7 +69,7 @@ describe('il semaforo', () => {
 
 		const g = (await verifica('giallo')).json();
 		assert.equal(g.semaforo, 'giallo');
-		assert.deepEqual(g.avvisi.map((a) => a.codice), ['certificato_medico_scaduto']);
+		assert.deepEqual(g.avvisi.map((a) => a.codice), ['abbonamento_in_scadenza']);
 
 		const r = (await verifica('rosso')).json();
 		assert.equal(r.semaforo, 'rosso');
@@ -101,7 +97,7 @@ describe('registrare', () => {
 
 		const [riga] = await db.select().from(ingressi).where(eq(ingressi.memberId, id.soci.giallo));
 		assert.equal(riga.metodo, 'manuale', 'anche se il client chiede altro');
-		assert.deepEqual(riga.avvisi, ['certificato_medico_scaduto']);
+		assert.deepEqual(riga.avvisi, ['abbonamento_in_scadenza']);
 		assert.equal(riga.registratoDaNome, 'Reception Ingressi');
 	});
 
@@ -128,10 +124,6 @@ describe('a mano, a posteriori, e da annullare', () => {
 		const [socio] = await db.insert(members).values({ nome: 'Ieri', cognome: 'Ingresso', codiceSocio: `INE${lettere}`, dateOfBirth: '1990-01-01' }).returning();
 		id.soci.ieri = socio.id;
 		await db.insert(subscriptions).values({ memberId: socio.id, planName: 'Mensile', startDate: spostaGiorni(oggi, -30), endDate: ieri });
-		await db.insert(memberDocuments).values([
-			{ memberId: socio.id, documentType: 'certificato_medico', expiryDate: spostaGiorni(oggi, 200) },
-			{ memberId: socio.id, documentType: 'documento_identita', expiryDate: spostaGiorni(oggi, 900) },
-		]);
 		const alle = `${ieri}T10:00:00Z`;
 		assert.equal((await come('reception', 'POST', '/api/ingressi/verifica', { member_id: socio.id, alle })).json().semaforo, 'giallo');
 		assert.equal((await come('reception', 'POST', '/api/ingressi/verifica', { member_id: socio.id })).json().semaforo, 'rosso');
@@ -172,24 +164,19 @@ describe('le statistiche', () => {
 });
 
 describe('gli stessi avvisi nel portale del socio', () => {
-	test('in regola: nessun avviso; un certificato scaduto compare, e sparisce col nuovo', async () => {
+	test("in regola: nessun avviso; l'abbonamento che sta per finire compare, e sparisce col rinnovo", async () => {
 		const prima = (await come('socio', 'GET', '/api/member/v1/notifiche')).json();
 		assert.deepEqual(prima.avvisi_elenco, []);
 		assert.deepEqual(Object.keys((await come('socio', 'GET', '/api/member/v1/notifiche?solo_conteggio=1')).json()).sort(), ['avvisi', 'avvisi_gravi', 'non_lette']);
 
-		// Il certificato in regola si toglie: resta solo uno scaduto.
-		await db.delete(memberDocuments).where(eq(memberDocuments.memberId, id.soci.verde));
-		await db.insert(memberDocuments).values([
-			{ memberId: id.soci.verde, documentType: 'certificato_medico', expiryDate: spostaGiorni(oggi, -1) },
-			{ memberId: id.soci.verde, documentType: 'documento_identita', expiryDate: spostaGiorni(oggi, 900) },
-		]);
+		await db.update(subscriptions).set({ endDate: spostaGiorni(oggi, 2) }).where(eq(subscriptions.memberId, id.soci.verde));
 		const dopo = (await come('socio', 'GET', '/api/member/v1/notifiche')).json();
-		assert.deepEqual(dopo.avvisi_elenco.map((a) => a.codice), ['certificato_medico_scaduto']);
+		assert.deepEqual(dopo.avvisi_elenco.map((a) => a.codice), ['abbonamento_in_scadenza']);
 		assert.equal(dopo.avvisi, 1);
 		assert.equal(dopo.avvisi_gravi, false);
-		assert.equal(dopo.avvisi_elenco[0].azione, 'documenti');
+		assert.equal(dopo.avvisi_elenco[0].azione, 'abbonamento');
 
-		await db.insert(memberDocuments).values({ memberId: id.soci.verde, documentType: 'certificato_medico', expiryDate: spostaGiorni(oggi, 300) });
+		await db.insert(subscriptions).values({ memberId: id.soci.verde, planName: 'Annuale', startDate: spostaGiorni(oggi, 3), endDate: spostaGiorni(oggi, 365) });
 		assert.deepEqual((await come('socio', 'GET', '/api/member/v1/notifiche')).json().avvisi_elenco, []);
 	});
 });

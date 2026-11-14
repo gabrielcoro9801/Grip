@@ -5,10 +5,10 @@
  * nell'Archivio giusti, con l'esito giusto.
  *
  * I casi (un socio per caso, cognome «DatiDaFare…»):
- * - aperti, uno per scheda: In scadenza, Scaduti, Frequenza, Documenti, Compleanni;
+ * - aperti, uno per scheda: In scadenza, Scaduti, Frequenza, Compleanni;
  * - Nascosto (in Archivio), e Nascosto poi Ripristinato (di nuovo nella scheda);
  * - Contattato (Frequenza) e Auguri fatti (Compleanni), a mano;
- * - Rinnovato, Passato in Scaduti (con lo Scaduto che si apre), Documento caricato, Socio
+ * - Rinnovato, Passato in Scaduti (con lo Scaduto che si apre), Socio
  *   archiviato, Chiuso dopo N giorni (uno Scaduto e un Compleanno), Non più da fare: da soli.
  *
  * Come si usa: cd server && npm run dati:da-fare
@@ -23,7 +23,7 @@ import { eq, inArray, sql } from 'drizzle-orm';
 import { buildApp } from '../src/app.js';
 import { db, pool } from '../src/db/client.js';
 import {
-	members, persone, staffAccounts, subscriptions, attivita, organizations, memberDocuments, ingressi, avvisi,
+	members, persone, staffAccounts, subscriptions, attivita, organizations, ingressi, avvisi,
 } from '../src/db/schema/index.js';
 import { situazioni } from '../src/lib/segnali.js';
 import { allinea } from '../src/lib/avvisi.js';
@@ -67,12 +67,11 @@ try {
 	// --- I casi --------------------------------------------------------------------------------
 	// tipo: la scheda in cui si apre; fine: la fine dell'abbonamento (se non c'è, un Annuale
 	// lontano dalla scadenza); ultimo: l'ultimo ingresso, giorni fa (se non c'è, ieri);
-	// certificato: la scadenza del certificato medico (se c'è); nascita: la data di nascita.
+	// nascita: la data di nascita.
 	const CASI = [
 		{ caso: 'in_scadenza_aperto', tipo: 'in_scadenza', fine: fra(1) },
 		{ caso: 'scaduto_aperto', tipo: 'scaduto', fine: fra(-1) },
 		{ caso: 'frequenza_aperta', tipo: 'frequenza', ultimo: assenza + 5 },
-		{ caso: 'documento_aperto', tipo: 'documento', certificato: fra(1) },
 		{ caso: 'compleanno_aperto', tipo: 'compleanno', nascita: nascitaOggi },
 		{ caso: 'nascosto', tipo: 'scaduto', fine: fra(-1) },
 		{ caso: 'ripristinato', tipo: 'scaduto', fine: fra(-1) },
@@ -80,7 +79,6 @@ try {
 		{ caso: 'auguri_fatti', tipo: 'compleanno', nascita: nascitaOggi },
 		{ caso: 'rinnovato', tipo: 'in_scadenza', fine: fra(1) },
 		{ caso: 'passato_in_scaduti', tipo: 'in_scadenza', fine: fra(1) },
-		{ caso: 'documento_caricato', tipo: 'documento', certificato: fra(-1) },
 		{ caso: 'socio_archiviato', tipo: 'in_scadenza', fine: fra(1) },
 		{ caso: 'scaduto_chiuso_dopo_giorni', tipo: 'scaduto', fine: fra(-1) },
 		{ caso: 'compleanno_chiuso_dopo_giorni', tipo: 'compleanno', nascita: nascitaOggi },
@@ -98,9 +96,6 @@ try {
 		? { memberId: c.socio.id, planName: 'Mensile', startDate: spostaGiorni(c.fine, -30), endDate: c.fine }
 		: { memberId: c.socio.id, planName: 'Annuale', startDate: fra(-200), endDate: fra(300) }))).returning();
 	abbonamenti.forEach((a, i) => { CASI[i].abbonamento = a; });
-	const certificati = await db.insert(memberDocuments).values(CASI.filter((c) => c.certificato).map((c) => ({
-		memberId: c.socio.id, documentType: 'certificato_medico', expiryDate: c.certificato, fileName: 'certificato.pdf',
-	}))).returning();
 	// Tutti entrano ieri, tranne chi deve mancare da più dei giorni dell'assenza: la Frequenza resta
 	// solo dei suoi casi.
 	await db.insert(ingressi).values(CASI.map((c) => ({
@@ -160,10 +155,6 @@ try {
 	await come('POST', `/api/avvisi/${di('auguri_fatti').avviso.id}/chiudi`, { esito: 'auguri_fatti' });
 	// Rinnova: un abbonamento nuovo dal giorno dopo la fine.
 	await db.insert(subscriptions).values({ memberId: di('rinnovato').socio.id, planName: 'Mensile', startDate: fra(2), endDate: fra(32) });
-	// Carica documento: un certificato nuovo dello stesso tipo.
-	certificati.push(...await db.insert(memberDocuments).values({
-		memberId: di('documento_caricato').socio.id, documentType: 'certificato_medico', expiryDate: fra(365), fileName: 'certificato-nuovo.pdf',
-	}).returning());
 	// Non rinnova: «Perché se ne va?» archivia il socio.
 	await come('POST', `/api/soci/${di('socio_archiviato').socio.id}/archivia`, { motivo: 'prezzo' });
 	// È tornato: un ingresso oggi, e non manca più.
@@ -191,7 +182,7 @@ try {
 	const chiusoDi = (caso, tipo) => archivio.find((a) => a.persona_id === di(caso).socio.personaId && a.tipo === tipo);
 
 	console.log('\nNELLE SCHEDE');
-	for (const caso of ['in_scadenza_aperto', 'scaduto_aperto', 'frequenza_aperta', 'documento_aperto', 'compleanno_aperto', 'ripristinato']) {
+	for (const caso of ['in_scadenza_aperto', 'scaduto_aperto', 'frequenza_aperta', 'compleanno_aperto', 'ripristinato']) {
 		const { tipo } = di(caso);
 		const a = apertoDi(ora, caso, tipo);
 		controlla(`${caso}: nella scheda ${tipo}`, a && a.id === di(caso).avviso.id, JSON.stringify(a));
@@ -206,7 +197,6 @@ try {
 		['auguri_fatti', 'compleanno', 'auguri_fatti', true],
 		['rinnovato', 'in_scadenza', 'rinnovato', false],
 		['passato_in_scaduti', 'in_scadenza', 'passato_in_scaduti', false],
-		['documento_caricato', 'documento', 'documento_caricato', false],
 		['socio_archiviato', 'in_scadenza', 'socio_archiviato', false],
 		['scaduto_chiuso_dopo_giorni', 'scaduto', 'chiuso_dopo_giorni', false],
 		['compleanno_chiuso_dopo_giorni', 'compleanno', 'chiuso_dopo_giorni', false],
@@ -236,7 +226,6 @@ try {
 	}
 	if (creati.soci.length) {
 		await db.delete(ingressi).where(inArray(ingressi.memberId, creati.soci));
-		await db.delete(memberDocuments).where(inArray(memberDocuments.memberId, creati.soci));
 		await db.delete(subscriptions).where(inArray(subscriptions.memberId, creati.soci));
 		await db.delete(members).where(inArray(members.id, creati.soci));
 		await db.delete(persone).where(inArray(persone.id, creati.persone));

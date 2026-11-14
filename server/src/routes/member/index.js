@@ -1,7 +1,7 @@
 import { eq, and, gte, lte, inArray, ne, desc, isNull, count } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import {
-	members, memberDocuments,
+	members,
 	courses, categories, instructors, rooms, events, sessions, bookings, notifiche, consensi,
 } from '../../db/schema/index.js';
 import { iscrizioniDelSocio } from '../../lib/iscrizioni.js';
@@ -11,7 +11,6 @@ import { getUserFromRequest } from '../../auth/tokens.js';
 import { socioDiAccount } from '../../auth/socioCorrente.js';
 import { prenota, disdici } from '../../lib/prenotazioni.js';
 import { firmaUrl } from '../../lib/urlFirmati.js';
-import { nomeDocumento, conStatoDocumenti } from '../../../../shared/anagrafica.js';
 import { statoIscrizione, motivoSenzaCopertura, sospensioneIl } from '../../../../shared/abbonamenti.js';
 import { oggiIso, eUnGiorno, giorniFra, giorniDaOggi, spostaGiorni, lezioneFinita } from '../../../../shared/giorni.js';
 import { limiteDisdetta, motivoDisdettaChiusa } from '../../../../shared/corsi.js';
@@ -54,9 +53,10 @@ import { soglieEnte } from '../../lib/impostazioni.js';
  * ## La versione nel percorso
  *
  * `v1` sta nell'indirizzo perché è l'unica forma che si legge in un log e si prova con
- * `curl`. Dentro `v1` si **aggiunge**: non si toglie un campo e non se ne rinomina uno. Un
- * campo che non serve più resta e si documenta come ignorato. Rompere significa `v2`, con
- * `v1` vivo finché esistono installazioni che lo usano.
+ * `curl`. Finché il portale è solo una pagina web, rilasciata insieme al server, `v1` cambia
+ * con lui: a novembre 2026 ne sono usciti il codice d'accesso, i documenti e i consensi dati dal
+ * portale (docs/piani/portale.md). Il giorno in cui ci sarà un'app installata, dentro `v1` si
+ * aggiungerà soltanto, e rompere vorrà dire `v2`.
  */
 export default async function memberRoutes(fastify) {
 	fastify.addHook('preHandler', async (request, reply) => {
@@ -81,38 +81,17 @@ export default async function memberRoutes(fastify) {
 	/**
 	 * Quello che serve alla schermata iniziale e all'anagrafica, in una richiesta sola.
 	 *
-	 * `giorni_alla_scadenza` e `in_scadenza` li calcola il server. Oggi quelle soglie vivono
-	 * nel browser in due punti diversi — sette giorni in `MemberDashboard`, trenta in
-	 * `MemberDocuments` — cioè la stessa politica scritta due volte, in un posto dove nessuno
-	 * la cerca. Stando qui è una sola, ed è anche ciò che libera un client mobile dal doversi
-	 * portare dietro una libreria di date per rispondere a "scade presto?".
+	 * `giorni_alla_scadenza` e `in_scadenza` li calcola il server, con le soglie della palestra:
+	 * la politica sta in un posto solo, e il client non deve portarsi dietro una libreria di date
+	 * per rispondere a "scade presto?".
 	 */
 	fastify.get('/profilo', async (request) => {
 		const [socio] = await db.select().from(members).where(eq(members.id, request.idSocio)).limit(1);
-		if (!socio) return { socio: null, abbonamento: null, documenti: null };
+		if (!socio) return { socio: null, abbonamento: null };
 
 		// Con le date dopo le sospensioni, dalla più recente.
 		const [iscrizioni, soglie] = await Promise.all([iscrizioniDelSocio(request.idSocio), soglieEnte()]);
 		const abbonamenti = iscrizioni.reverse();
-
-		// Servono anche tipo e data di caricamento, non solo la scadenza: un certificato
-		// scaduto e già sostituito è archiviato, e non va contato fra quelli scaduti —
-		// altrimenti il socio che ha rinnovato si vede un avviso rosso che non sa come
-		// togliere. La regola sta in shared/anagrafica.js, la stessa della segreteria.
-		// Le soglie della palestra, per lo stato come per "in scadenza": il badge e il riquadro
-		// sotto devono dire la stessa cosa.
-		const documenti = conStatoDocumenti(
-			await db
-				.select({
-					document_type: memberDocuments.documentType,
-					created_date: memberDocuments.createdDate,
-					expiry_date: memberDocuments.expiryDate,
-				})
-				.from(memberDocuments)
-				.where(eq(memberDocuments.memberId, request.idSocio)),
-			giorniDaOggi,
-			soglie.documentoInScadenzaGiorni
-		);
 
 		// La corrente è la più recente ancora valida oggi; se non ce n'è, l'ultima scaduta. La
 		// colonna `status` non si guarda: nessuno la aggiorna, e sceglieva come "corrente" anche
@@ -151,11 +130,6 @@ export default async function memberRoutes(fastify) {
 				// Fermo oggi: fino a quando, e il giorno in cui riprende.
 				sospeso: sospensione ? { fino_al: sospensione.al, riprende_il: spostaGiorni(sospensione.al, 1) } : null,
 			},
-			documenti: {
-				totale: documenti.length,
-				in_scadenza: documenti.filter((d) => d.stato === 'in_scadenza').length,
-				scaduti: documenti.filter((d) => d.stato === 'scaduto').length,
-			},
 		};
 	});
 
@@ -177,55 +151,6 @@ export default async function memberRoutes(fastify) {
 				giorni_sospesi: a.giorni_sospesi,
 				// Quelle in corso o in arrivo: le passate sono già nella scadenza.
 				sospensioni: a.sospensioni.filter((s) => s.al >= oggi).map((s) => ({ dal: s.dal, al: s.al, riprende_il: spostaGiorni(s.al, 1) })),
-			})),
-		};
-	});
-
-	fastify.get('/documenti', async (request) => {
-		const soglie = await soglieEnte();
-		const righe = await db
-			.select()
-			.from(memberDocuments)
-			.where(eq(memberDocuments.memberId, request.idSocio))
-			.orderBy(desc(memberDocuments.createdDate));
-
-		// Lo stato dipende da tutti i documenti del socio, non dal singolo: un certificato
-		// scaduto è "archiviato" se ne è arrivato uno nuovo, "scaduto" se è ancora l'ultimo.
-		// I nomi delle colonne qui sono in camelCase, quelli della regola condivisa no.
-		const stati = new Map(
-			conStatoDocumenti(
-				righe.map((d) => ({
-					id: d.id,
-					document_type: d.documentType,
-					created_date: d.createdDate,
-					expiry_date: d.expiryDate,
-				})),
-				giorniDaOggi,
-				soglie.documentoInScadenzaGiorni
-			).map((d) => [d.id, d.stato])
-		);
-
-		return {
-			documenti: righe.map((d) => ({
-				id: d.id,
-				tipo: d.documentType,
-				// Come lo si chiama: "Certificato medico", o il titolo di un documento "altro".
-				nome: nomeDocumento({ document_type: d.documentType, titolo: d.titolo }),
-				titolo: d.titolo,
-				nome_file: d.fileName,
-				// Firmato: senza firma /uploads/ non apre piu niente (lib/urlFirmati.js).
-				url: firmaUrl(d.fileUrl),
-				scadenza: d.expiryDate,
-				giorni_alla_scadenza: giorniDaOggi(d.expiryDate),
-				// `scaduto` e `in_scadenza` restano quello che dicono: fatti sulla data, e
-				// c'erano prima. `stato` è la lettura completa — valido, in_scadenza,
-				// scaduto, archiviato — ed è quella che le schermate usano per il bollino.
-				scaduto: scaduto(d.expiryDate),
-				in_scadenza: entroGiorni(d.expiryDate, soglie.documentoInScadenzaGiorni) && !scaduto(d.expiryDate),
-				stato: stati.get(d.id),
-				caricato_il: d.createdDate,
-				caricato_da: d.caricatoDa,
-				note: d.notes,
 			})),
 		};
 	});
@@ -504,18 +429,16 @@ export default async function memberRoutes(fastify) {
 }
 
 /**
- * Che cosa c'è da sistemare per il socio adesso: abbonamento e documenti, con la stessa regola
- * del controllo degli ingressi (shared/avvisi.js). Si calcola a ogni lettura e non si salva: un
- * avviso sparisce da solo quando il socio rinnova o porta il documento.
+ * Che cosa c'è da sistemare per il socio adesso: l'abbonamento, con la stessa regola del controllo
+ * degli ingressi (shared/avvisi.js). Si calcola a ogni lettura e non si salva: un avviso sparisce
+ * da solo quando il socio rinnova.
  */
 async function avvisiDelSocio(memberId) {
-	const [[socio], iscrizioni, documenti] = await Promise.all([
+	const [[socio], iscrizioni] = await Promise.all([
 		db.select({ dateOfBirth: members.dateOfBirth, archiviatoIl: members.archiviatoIl }).from(members).where(eq(members.id, memberId)).limit(1),
 		iscrizioniDelSocio(memberId),
-		db.select({ document_type: memberDocuments.documentType, created_date: memberDocuments.createdDate, expiry_date: memberDocuments.expiryDate })
-			.from(memberDocuments).where(eq(memberDocuments.memberId, memberId)),
 	]);
-	return avvisiSocio({ socio: { date_of_birth: socio?.dateOfBirth, archiviato_il: socio?.archiviatoIl }, iscrizioni, documenti })
+	return avvisiSocio({ socio: { date_of_birth: socio?.dateOfBirth, archiviato_il: socio?.archiviatoIl }, iscrizioni })
 		.map(({ codice, gravita, titolo, testo, azione }) => ({ codice, gravita, titolo, testo, azione }));
 }
 
@@ -525,11 +448,6 @@ async function avvisiDelSocio(memberId) {
 // istante, e confrontare istanti farebbe dire "scade fra 0 giorni" a un abbonamento che
 // scade stasera e "fra 1" a uno che scade domani mattina presto. Il conto sta in
 // `shared/giorni.js`, e "oggi" è quello di Roma.
-
-function scaduto(data) {
-	const giorni = giorniDaOggi(data);
-	return giorni !== null && giorni < 0;
-}
 
 function entroGiorni(data, soglia) {
 	const giorni = giorniDaOggi(data);

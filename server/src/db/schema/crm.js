@@ -1,4 +1,6 @@
-// Dominio CRM/membership: Member, Subscription, Plan, MemberDocument, QRAccesso.
+// Dominio CRM/membership: Member, Subscription, Plan. Le tabelle `member_documents` e `qr_accessi`
+// restano con i loro dati, ma documenti e QR sono usciti dall'applicazione a novembre 2026
+// (docs/piani/portale.md, branch archivio/documenti): nessuna rotta le scrive più.
 // Campi dedotti dall'uso reale nel codice (il datastore precedente non aveva schema).
 import { sql } from 'drizzle-orm';
 import { pgTable, uuid, varchar, text, boolean, integer, numeric, date, timestamp, jsonb, check, uniqueIndex, index } from 'drizzle-orm/pg-core';

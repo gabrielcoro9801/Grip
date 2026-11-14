@@ -1,7 +1,7 @@
 // Le persone della palestra con il loro stato e i loro segnali, calcolati in blocco.
 //
 // Le regole stanno in shared/segnali.js; qui si raccolgono i dati con poche query aggregate —
-// abbonamenti, documenti, ultimo ingresso e conteggi a 4 e 12 settimane, l'ultimo contatto del
+// abbonamenti, ultimo ingresso e conteggi a 4 e 12 settimane, l'ultimo contatto del
 // bancone per segnale dal diario — e si passa ogni persona al motore, in memoria. Lo leggono Da
 // fare (lib/avvisi.js), l'elenco dei soci, la scheda e la dashboard: un solo conto per tutti.
 //
@@ -10,7 +10,7 @@
 import { and, count, eq, gte, inArray, max, ne, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
-	persone, members, trattative, memberDocuments, ingressi, attivita,
+	persone, members, trattative, ingressi, attivita,
 } from '../db/schema/index.js';
 import { iscrizioniPerSocio } from './iscrizioni.js';
 import { soglieEnte } from './impostazioni.js';
@@ -23,15 +23,6 @@ const mezzanotteRoma = (giorno) => sql`((${giorno})::date)::timestamp AT TIME ZO
 // Le iscrizioni finite da più di così non cambiano più la fase di nessuno.
 const GIORNI_STORICO_ABBONAMENTI = 400;
 
-const raggruppa = (righe, chiave) => {
-	const m = new Map();
-	for (const r of righe) {
-		if (!m.has(r[chiave])) m.set(r[chiave], []);
-		m.get(r[chiave]).push(r);
-	}
-	return m;
-};
-
 /**
  * Le persone con la loro situazione di oggi: i soci (anche ex) e i contatti con una trattativa.
  * Con `personaId`, una sola.
@@ -39,7 +30,7 @@ const raggruppa = (righe, chiave) => {
  * @returns {{ oggi, soglie, persone: [{ persona_id, socio_id, trattativa_id, nome, telefono, email,
  *   codice_socio, archiviato_il, fase, segnali, ultimo_ingresso, ingressi_4, media_4, scadenza,
  *   abbonamento, valido, grezzi }] }}
- *   `grezzi` ({ archiviato_il, date_of_birth, iscrizioni, documenti }) serve a Da fare per capire
+ *   `grezzi` ({ archiviato_il, date_of_birth, iscrizioni }) serve a Da fare per capire
  *   come si è chiuso un avviso: resta sul server, le rotte che mandano le persone al browser lo tolgono.
  */
 export async function situazioni({ personaId = null, conn = db, adesso = new Date() } = {}) {
@@ -58,15 +49,11 @@ export async function situazioni({ personaId = null, conn = db, adesso = new Dat
 	// Con una persona sola si legge solo quello che è suo.
 	const suoi = (colonna) => (personaId ? inArray(colonna, idSoci.length ? idSoci : ['00000000-0000-0000-0000-000000000000']) : undefined);
 
-	const [elencoTrattative, iscrizioni, documenti, conteggi, misurati, fatti] = await Promise.all([
+	const [elencoTrattative, iscrizioni, conteggi, misurati, fatti] = await Promise.all([
 		conn.select().from(trattative)
 			.where(and(ne(trattative.stato, 'iscritto'), personaId ? eq(trattative.personaId, personaId) : undefined)),
 		// Con le date dopo le sospensioni (lib/iscrizioni.js).
 		iscrizioniPerSocio(personaId ? idSoci : null, { conn, fineDal: spostaGiorni(oggi, -GIORNI_STORICO_ABBONAMENTI) }),
-		conn.select({
-			id: memberDocuments.id, member_id: memberDocuments.memberId, file_name: memberDocuments.fileName,
-			document_type: memberDocuments.documentType, created_date: memberDocuments.createdDate, expiry_date: memberDocuments.expiryDate,
-		}).from(memberDocuments).where(suoi(memberDocuments.memberId)),
 		conn.select({
 			member_id: ingressi.memberId, ultimo: max(ingressi.entratoAlle), totale: count(),
 			quattro: sql`count(*) filter (where ${ingressi.entratoAlle} >= ${mezzanotteRoma(dal4)})`.mapWith(Number),
@@ -96,7 +83,6 @@ export async function situazioni({ personaId = null, conn = db, adesso = new Dat
 			trattativaDi.set(t.personaId, t);
 		}
 	}
-	const documentiDi = raggruppa(documenti, 'member_id');
 	const conteggiDi = new Map(conteggi.map((c) => [c.member_id, c]));
 	const fattiDi = new Map();
 	for (const f of fatti.rows ?? fatti) {
@@ -117,11 +103,9 @@ export async function situazioni({ personaId = null, conn = db, adesso = new Dat
 			}
 			: null;
 		const iscrizioniSocio = iscrizioni.get(a.socio_id) ?? [];
-		const documentiSocio = documentiDi.get(a.socio_id) ?? [];
 		const { fase, segnali, copertura } = segnaliPersona({
 			socio: a.socio_id ? { created_date: a.created_date, archiviato_il: a.archiviato_il, date_of_birth: a.date_of_birth } : null,
 			iscrizioni: iscrizioniSocio,
-			documenti: documentiSocio,
 			ingressi: ingressiSocio,
 			contatti: { perSegnale: fattiDi.get(a.persona_id) ?? {} },
 			oggi, soglie,
@@ -147,7 +131,7 @@ export async function situazioni({ personaId = null, conn = db, adesso = new Dat
 			// Entrato oggi, dal tornello o registrato a mano: i segnali del bancone gli valgono ancora.
 			entrato_oggi: Boolean(c?.oggi),
 			// I dati da cui Da fare capisce come si è chiuso un avviso (shared/daFare.js, esitoChiusura).
-			grezzi: { archiviato_il: a.archiviato_il, date_of_birth: a.date_of_birth, iscrizioni: iscrizioniSocio, documenti: documentiSocio },
+			grezzi: { archiviato_il: a.archiviato_il, date_of_birth: a.date_of_birth, iscrizioni: iscrizioniSocio },
 		});
 	}
 	return { oggi, soglie, persone: elenco };

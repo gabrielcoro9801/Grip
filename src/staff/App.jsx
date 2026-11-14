@@ -64,7 +64,7 @@ export default function App() {
                   <Route index element={<ElencoAvvisi key="in_scadenza" tipo="in_scadenza" />} />
                   <Route path="scaduti" element={<ElencoAvvisi key="scaduto" tipo="scaduto" />} />
                   <Route path="frequenza" element={<ElencoAvvisi key="frequenza" tipo="frequenza" />} />
-                  <Route path="documenti" element={<ElencoAvvisi key="documento" tipo="documento" />} />
+                  <Route path="documenti" element={<Navigate to="/da-fare" replace />} />
                   <Route path="compleanni" element={<ElencoAvvisi key="compleanno" tipo="compleanno" />} />
                   <Route path="archivio" element={<ArchivioAvvisi />} />
                   <Route path="regole" element={<Regole />} />
