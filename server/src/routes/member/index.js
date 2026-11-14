@@ -11,7 +11,7 @@ import { getUserFromRequest } from '../../auth/tokens.js';
 import { socioDiAccount } from '../../auth/socioCorrente.js';
 import { prenota, disdici } from '../../lib/prenotazioni.js';
 import { firmaUrl } from '../../lib/urlFirmati.js';
-import { statoIscrizione, motivoSenzaCopertura, sospensioneIl } from '../../../../shared/abbonamenti.js';
+import { statoIscrizione, motivoSenzaCopertura, sospensioneIl, fineCopertura } from '../../../../shared/abbonamenti.js';
 import { oggiIso, eUnGiorno, giorniFra, giorniDaOggi, spostaGiorni, lezioneFinita } from '../../../../shared/giorni.js';
 import { limiteDisdetta, motivoDisdettaChiusa } from '../../../../shared/corsi.js';
 import { creaFissa, terminaFissa, elencoFisse, massimoFissa } from '../../lib/prenotazioniFisse.js';
@@ -138,6 +138,9 @@ export default async function memberRoutes(fastify) {
 		const oggi = oggiIso();
 
 		return {
+			// L'ultimo giorno in cui si può prenotare senza interruzioni, rinnovi compresi; null se
+			// oggi nessun abbonamento copre. Aggiunto in D-2 (docs/piani/portale.md).
+			prenotabile_fino_al: fineCopertura(righe, oggi),
 			abbonamenti: righe.reverse().map((a) => ({
 				id: a.id,
 				piano: a.plan_name,

@@ -184,6 +184,11 @@ describe('il socio vede le proprie cose, e solo quelle', () => {
 		assert.equal(abbonamenti[0].piano, 'Open 12 mesi');
 	});
 
+	test('dice fino a quando si può prenotare (D-2)', async () => {
+		const dati = (await come(tokenSocio, '/api/member/v1/abbonamenti')).json();
+		assert.equal(dati.prenotabile_fino_al, fraUnaSettimana, 'la fine del suo abbonamento');
+	});
+
 
 });
 
