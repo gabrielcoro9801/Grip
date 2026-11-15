@@ -2,14 +2,11 @@
 // e AuditLog (registro delle azioni, scritto dal server in server/src/lib/registro.js).
 import { pgTable, uuid, varchar, text, boolean, integer, timestamp, jsonb, primaryKey, uniqueIndex } from 'drizzle-orm/pg-core';
 
-// L'intestazione dell'ente: serve a dare un nome e un logo alle schermate.
+// L'intestazione dell'ente: il nome e l'indirizzo della palestra, e le sue scelte.
 export const organizations = pgTable('organizations', {
 	id: uuid('id').defaultRandom().primaryKey(),
 	nome: varchar('nome', { length: 255 }).notNull().default('La mia palestra'),
-	ragioneSociale: varchar('ragione_sociale', { length: 255 }),
-	pivaCf: varchar('piva_cf', { length: 32 }),
 	indirizzo: text('indirizzo'),
-	logoUrl: text('logo_url'),
 	// Le scelte della palestra che cambiano il comportamento di GRIP: per ora le soglie dei giorni
 	// (shared/soglie.js, soglieDi). Vuoto vuol dire "i valori predefiniti".
 	impostazioni: jsonb('impostazioni').notNull().default({}),

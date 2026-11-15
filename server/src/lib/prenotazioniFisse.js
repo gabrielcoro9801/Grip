@@ -23,7 +23,7 @@
 // `applicaFisse` è idempotente — rifarla non prenota due volte — e la si chiama quando la fissa
 // nasce o cambia e quando una sospensione finisce prima. Nessun processo programmato da tenere in
 // vita.
-import { and, eq, gte, lte, inArray, isNull, or, max } from 'drizzle-orm';
+import { and, eq, gte, lte, inArray, isNull, or, not, max, desc, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { prenotazioniFisse, sessions, bookings, events, courses, members } from '../db/schema/index.js';
 import { abbonamentoCopre, sospensioneIl, fineCopertura } from '../../../shared/abbonamenti.js';
@@ -402,13 +402,14 @@ export async function chiudiFisseSenzaLezioni(tx, eventId) {
 
 /**
  * Le fisse, con corso, giorno, orario e socio, per il portale, la scheda del socio e le sessioni.
- * @param soloInCorso solo quelle attive e non finite (vedi `fissaInCorso`)
+ * @param concluse invece di quelle in corso, quelle finite o cancellate (vedi `fissaInCorso`), dalla
+ *                 più recente: `terminata_il` è il giorno in cui è stata chiusa prima della fine.
  */
-export async function elencoFisse({ memberId = null, eventId = null, soloInCorso = true } = {}) {
+export async function elencoFisse({ memberId = null, eventId = null, concluse = false } = {}) {
 	const filtri = [];
 	if (memberId) filtri.push(eq(prenotazioniFisse.memberId, memberId));
 	if (eventId) filtri.push(eq(prenotazioniFisse.eventId, eventId));
-	if (soloInCorso) filtri.push(fissaInCorso());
+	filtri.push(concluse ? not(fissaInCorso()) : fissaInCorso());
 	return db.select({
 		id: prenotazioniFisse.id, member_id: prenotazioniFisse.memberId, event_id: prenotazioniFisse.eventId,
 		dal: prenotazioniFisse.dal, al: prenotazioniFisse.al,
@@ -422,5 +423,7 @@ export async function elencoFisse({ memberId = null, eventId = null, soloInCorso
 		.innerJoin(courses, eq(events.courseId, courses.id))
 		.innerJoin(members, eq(prenotazioniFisse.memberId, members.id))
 		.where(filtri.length ? and(...filtri) : undefined)
-		.orderBy(courses.name, members.fullName);
+		.orderBy(...(concluse
+			? [desc(sql`coalesce(${prenotazioniFisse.terminataIl}, ${prenotazioniFisse.al})`), courses.name]
+			: [courses.name, members.fullName]));
 }

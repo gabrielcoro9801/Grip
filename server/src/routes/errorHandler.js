@@ -28,7 +28,6 @@ const VINCOLI_CON_MESSAGGIO = {
 	trattative_canale_id_canali_contatto_id_fk: 'Da questo canale sono arrivati dei contatti o dei soci: disattivalo invece di eliminarlo.',
 	trattative_una_aperta_idx: 'Questa persona ha già un contatto aperto: lavora quello.',
 	bookings_attiva_unica_idx: 'Il socio è già prenotato a questa lezione.',
-	qr_accessi_attivo_unico_idx: "Il socio ha già un codice d'accesso attivo: revoca quello prima di crearne un altro.",
 	staff_accounts_linked_member_id_idx: 'Il socio ha già un account per il portale.',
 };
 
@@ -38,14 +37,7 @@ const VINCOLI_CON_MESSAGGIO = {
 const CHI_CITA = {
 	subscriptions: 'abbonamenti',
 	bookings: 'prenotazioni',
-	member_documents: 'documenti',
-	qr_accessi: "codici d'accesso",
 	staff_accounts: 'un account',
-	// L'allenamento è uscito dall'applicazione (ramo archivio/allenamento), le sue tabelle
-	// no: un socio che aveva schede resta citato da lì.
-	exercise_plans: 'schede di allenamento',
-	workout_sessions: 'allenamenti registrati',
-	workout_logs: 'allenamenti registrati',
 	sessions: 'lezioni in calendario',
 	events: 'eventi in calendario',
 	courses: 'corsi',

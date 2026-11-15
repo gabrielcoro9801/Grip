@@ -42,11 +42,15 @@ export default async function prenotazioniFisseRoutes(fastify) {
 	};
 
 	/**
-	 * GET /api/prenotazioni-fisse?member_id&event_id → { fisse } (quelle in corso)
+	 * GET /api/prenotazioni-fisse?member_id&event_id&concluse=1 → { fisse } (quelle in corso, o con
+	 * `concluse=1` quelle finite o cancellate, con `terminata_il`)
 	 * Ogni fissa: id, member_id, event_id, dal, al, socio, codice_socio, corso, giorno, inizio, fine…
 	 */
 	fastify.get('/api/prenotazioni-fisse', async (request) => {
-		let fisse = await elencoFisse({ memberId: request.query?.member_id || null, eventId: request.query?.event_id || null });
+		let fisse = await elencoFisse({
+			memberId: request.query?.member_id || null, eventId: request.query?.event_id || null,
+			concluse: request.query?.concluse === '1',
+		});
 		if (ristrettoAi(request.utente, 'prenotazioni')) {
 			const suoi = new Set((await eventiDi(String(request.utente.sub))).map((e) => e.id));
 			fisse = fisse.filter((f) => suoi.has(f.event_id));

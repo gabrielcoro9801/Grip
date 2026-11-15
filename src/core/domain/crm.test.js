@@ -64,13 +64,10 @@ describe('i consensi', () => {
 		assert.deepEqual(attuali.marketing_push, { valore: false, fonte: null, il: null, senza_prova: false });
 	});
 
-	test('dalla reception vale solo con il modulo firmato, e decade se il modulo sparisce', () => {
-		const riga = (extra) => ({ tipo: 'marketing_email', valore: true, fonte: 'reception', created_date: '2026-09-01T10:00:00Z', ...extra });
-		assert.equal(consensiAttuali([riga({ documento_id: 'd1', documento_presente: true })]).marketing_email.valore, true);
-		const senza = consensiAttuali([riga({ documento_id: 'd1', documento_presente: false })]).marketing_email;
+	test("dalla reception non vale più: il modulo firmato che lo provava non c'è", () => {
+		const senza = consensiAttuali([{ tipo: 'marketing_email', valore: true, fonte: 'reception', created_date: '2026-09-01T10:00:00Z' }]).marketing_email;
 		assert.equal(senza.valore, false);
 		assert.equal(senza.senza_prova, true);
-		assert.equal(consensiAttuali([riga({})]).marketing_email.valore, false, 'senza modulo non vale');
 	});
 
 	test("l'ultima scelta si trova anche con le date del database (Date, non testo)", () => {

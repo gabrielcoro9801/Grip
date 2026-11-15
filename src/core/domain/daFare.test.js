@@ -2,7 +2,7 @@
 import test, { describe } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-	TIPI_AVVISO, ESITI, avvisiDi, esitoChiusura, ordina, esitoAManoValido, etichettaEsito, quando, testoAvviso,
+	TIPI_AVVISO, ESITI, avvisiDi, esitoChiusura, ordina, esitoAManoValido, etichettaEsito, quando,
 } from './daFare.js';
 import { SEGNALI } from './segnali.js';
 import { spostaGiorni } from './giorni.js';
@@ -58,11 +58,9 @@ describe('quali avvisi si aprono', () => {
 		const mensile = { id: 'm1', plan_name: 'Mensile', start_date: '2025-01-01', end_date: g(4) };
 		const [prima] = di({ iscrizioni: [mensile] });
 		assert.deepEqual(prima, { tipo: 'in_scadenza', chiave: 'm1', dati: { data: g(4), abbonamento: 'Mensile', iscrizione_id: 'm1', frase: 'Abbonamento in scadenza il 14/10/2026' } });
-		assert.equal(testoAvviso(prima, OGGI), 'Abbonamento in scadenza il 14/10/2026 · tra 4 giorni');
 		const [dopo] = di({ iscrizioni: [mensile] }, g(5));
 		assert.equal(dopo.tipo, 'scaduto');
 		assert.equal(dopo.chiave, 'm1');
-		assert.equal(testoAvviso(dopo, g(5)), 'Abbonamento scaduto il 14/10/2026 · 1 giorno fa');
 	});
 
 	test('lo scaduto esce dopo scadutoGiorni', () => {
@@ -77,7 +75,6 @@ describe('quali avvisi si aprono', () => {
 		assert.equal(calo.tipo, 'frequenza');
 		assert.equal(calo.chiave, OGGI);
 		assert.equal(calo.dati.frase, 'Frequenza media ogni 4 settimane: 8,3 · Entrate nelle ultime 4 settimane: 2');
-		assert.equal(testoAvviso(calo, OGGI), calo.dati.frase);
 		const [assente] = di({ ingressi: { ...regolare, ultimo: g(-20), quattro: 0 } });
 		assert.equal(assente.tipo, 'frequenza');
 		assert.equal(assente.dati.segnale, 'assente');
@@ -86,7 +83,6 @@ describe('quali avvisi si aprono', () => {
 	test('il compleanno: da 3 giorni prima a 3 dopo, con l\'anno come chiave', () => {
 		const [c] = di(nato('1990-10-13'));
 		assert.deepEqual(c, { tipo: 'compleanno', chiave: '2026', dati: { data: '2026-10-13', frase: 'Compleanno il 13/10' } });
-		assert.equal(testoAvviso(c, OGGI), 'Compleanno il 13/10 · tra 3 giorni');
 		assert.equal(di(nato('1990-10-07'))[0]?.tipo, 'compleanno');
 		assert.deepEqual(di(nato('1990-10-14')), []);
 		assert.deepEqual(di(nato('1990-10-06')), []);

@@ -5,9 +5,7 @@
 // trattativa resta, chiusa come *iscritto*, e la persona diventa socia senza perdere la storia.
 import { sql } from 'drizzle-orm';
 import { pgTable, uuid, varchar, boolean, integer, date, timestamp, check, index, uniqueIndex } from 'drizzle-orm/pg-core';
-import { staffAccounts } from './hr.js';
 import { persone } from './persone.js';
-import { categories } from './courses.js';
 
 // Come ci ha contattato: Instagram, passaparola, in sede. La lista la decide l'ente — ogni
 // palestra ha i suoi canali — e un canale non più usato si disattiva invece di sparire, così
@@ -39,10 +37,6 @@ export const trattative = pgTable('trattative', {
 	ultimaRispostaIl: date('ultima_risposta_il'),
 	richiamareIl: date('richiamare_il'),
 	motivoChiusura: varchar('motivo_chiusura', { length: 32 }),
-	// Chi dello staff la segue: "i miei contatti", e un domani i conti per operatore.
-	assegnataAId: uuid('assegnata_a_id').references(() => staffAccounts.id, { onDelete: 'set null' }),
-	// Che cosa cerca ("il corso bimbi"): una categoria di corsi invece di una frase nella nota.
-	interesseCategoriaId: uuid('interesse_categoria_id').references(() => categories.id, { onDelete: 'set null' }),
 	createdDate: timestamp('created_date', { withTimezone: true }).notNull().defaultNow(),
 	updatedDate: timestamp('updated_date', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({

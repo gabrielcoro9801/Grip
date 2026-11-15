@@ -268,7 +268,7 @@ connessione al database ed esce, anche quando fallisce (codice d'uscita 1).
 Uscite dall'applicazione il 21 ottobre 2026: il codice è nel tag `archivio/comunicazioni-2026-10` e nel
 branch `archivio/comunicazioni`. `INVII_REALI` e `CHIAVE_SEGRETI` non servono più; se sono già
 impostate su Railway si possono togliere. Le tabelle `messaggi`, `modelli_messaggio` e
-`segreti_canali` restano nel database, con i loro dati.
+`segreti_canali` le elimina la migrazione 0064, insieme ai loro dati: backup prima del deploy.
 
 ---
 

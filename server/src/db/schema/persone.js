@@ -95,7 +95,7 @@ export const avvisi = pgTable('avvisi', {
 
 // I consensi alle comunicazioni promozionali (shared/consensi.js), come registro: una riga per
 // ogni scelta. Il valore di oggi è l'ultima riga di ogni tipo — e un consenso dato in reception
-// vale solo finché c'è il modulo firmato che lo prova (`documento_id`, fra i documenti del socio).
+// non vale: la sua prova era il modulo firmato fra i documenti del socio, tolti con la 0065.
 export const consensi = pgTable('consensi', {
 	id: uuid('id').defaultRandom().primaryKey(),
 	personaId: uuid('persona_id').notNull().references(() => persone.id, { onDelete: 'cascade' }),
@@ -103,10 +103,6 @@ export const consensi = pgTable('consensi', {
 	valore: boolean('valore').notNull(),
 	fonte: varchar('fonte', { length: 16 }).notNull(),
 	autoreNome: varchar('autore_nome', { length: 255 }).notNull(),
-	// Il modulo firmato (member_documents, tipo consenso_marketing). Senza vincolo di chiave
-	// esterna (crm.js importa già questo file): se il documento sparisce, il consenso decade, e lo
-	// si legge con un join (routes/persone.js, consensiDi).
-	documentoId: uuid('documento_id'),
 	// Perché lo si toglie dalla reception ("l'ha chiesto per email il 10/10").
 	nota: varchar('nota', { length: 500 }),
 	createdDate: timestamp('created_date', { withTimezone: true }).notNull().defaultNow(),

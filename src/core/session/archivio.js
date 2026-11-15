@@ -39,10 +39,6 @@ export function impostaArchivio(nuovo) {
 	archivio = nuovo;
 }
 
-export function archivioCorrente() {
-	return archivio;
-}
-
 /**
  * L'archivio può non funzionare: navigazione privata, cookie bloccati, spazio esaurito.
  *

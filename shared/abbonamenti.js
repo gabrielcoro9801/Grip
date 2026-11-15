@@ -198,9 +198,6 @@ export function conSospensioni(iscrizioni = [], sospensioni = []) {
 	return righe;
 }
 
-/** Vera se l'iscrizione vale ancora oggi (attiva o in scadenza). */
-export const iscrizioneValida = (iscrizione, oggi = oggiIso()) => statoIscrizione(iscrizione, oggi) !== 'expired';
-
 const iso = (d) => d.toISOString().slice(0, 10);
 const giorniNelMese = (anno, mese) => new Date(Date.UTC(anno, mese + 1, 0)).getUTCDate();
 
