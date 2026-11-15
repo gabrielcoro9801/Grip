@@ -18,12 +18,13 @@ export function giornoEsteso(iso) {
 /**
  * @param tx       la transazione (o `db`)
  * @param idSoci   a chi; i doppioni si tolgono
- * @param avviso   { tipo, titolo, testo }
+ * @param avviso   { tipo, titolo, testo, lezioneId?, fissaId? }: la lezione o la fissa di cui parla,
+ *                 per l'azione della notifica nel portale («Vedi la lezione», «Allunga»)
  * @returns quante notifiche ha scritto
  */
-export async function notifica(tx, idSoci, { tipo, titolo, testo }) {
+export async function notifica(tx, idSoci, { tipo, titolo, testo, lezioneId = null, fissaId = null }) {
 	const destinatari = [...new Set((idSoci ?? []).filter(Boolean))];
 	if (!destinatari.length) return 0;
-	await tx.insert(notifiche).values(destinatari.map((memberId) => ({ memberId, tipo, titolo, testo })));
+	await tx.insert(notifiche).values(destinatari.map((memberId) => ({ memberId, tipo, titolo, testo, lezioneId, fissaId })));
 	return destinatari.length;
 }

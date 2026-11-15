@@ -17,7 +17,7 @@ import { memberPuoLeggere, memberPuoScrivere, colonnaProprietario, colonnaPropri
 import { socioDiAccount } from '../auth/socioCorrente.js';
 import { registerPgErrorHandler } from './errorHandler.js';
 import { colonneFile, cancellaFileNonPiuUsati } from '../lib/fileCaricati.js';
-import { promuoviFinoACapienza } from '../lib/prenotazioni.js';
+import { regolaOfferte } from '../lib/prenotazioni.js';
 import { conSaleBloccate, allineaEventoSingolo } from '../lib/sale.js';
 import { registra, tipoEntita, nomeLeggibile, descriviModifica } from '../lib/registro.js';
 
@@ -289,9 +289,9 @@ export default async function entityRoutes(fastify) {
 		const [prima] = await db.select().from(table).where(eq(dbNameToColumn.id, request.params.id)).limit(1);
 		const [row] = await db.update(table).set(data).where(eq(dbNameToColumn.id, request.params.id)).returning();
 		if (!row) return reply.code(404).send({ error: 'Non trovato' });
-		// Una capienza cresciuta libera posti: chi è in lista d'attesa entra, in ordine.
+		// Una capienza cresciuta libera posti: si offrono a chi è in lista d'attesa, in ordine.
 		if (entityName === 'Session' && 'capacity' in body) {
-			await db.transaction((tx) => promuoviFinoACapienza(tx, row.id));
+			await db.transaction((tx) => regolaOfferte(tx, row.id));
 		}
 		// Una lezione singola si porta dietro il suo evento: l'uso delle sale legge anche quello.
 		if (entityName === 'Session') await allineaEventoSingolo(row);

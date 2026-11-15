@@ -454,7 +454,8 @@ describe('le notifiche nel portale', () => {
 		assert.equal(elenco.statusCode, 200, elenco.body);
 		const { notifiche: mie, non_lette: nonLette } = elenco.json();
 		assert.ok(mie.length > 0 && nonLette > 0);
-		assert.deepEqual(Object.keys(mie[0]).sort(), ['creata_il', 'id', 'letta', 'testo', 'tipo', 'titolo']);
+		// `lezione_id`, `fissa_id` e `lezione` sono aggiunte di D-3: l'azione della notifica.
+		assert.deepEqual(Object.keys(mie[0]).sort(), ['creata_il', 'fissa_id', 'id', 'letta', 'lezione', 'lezione_id', 'testo', 'tipo', 'titolo']);
 		assert.equal((await come('socio', 'GET', '/api/member/v1/notifiche?solo_conteggio=1')).json().non_lette, nonLette);
 
 		const lette = await come('socio', 'POST', '/api/member/v1/notifiche/lette');

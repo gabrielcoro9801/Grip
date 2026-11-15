@@ -239,6 +239,56 @@ describe("l'agenda dei corsi", () => {
 	});
 });
 
+describe('le rotte nuove dei corsi (D-3)', () => {
+	test("`sessione_id`: le lezioni di una sessione sola; un id malformato è un 400", async () => {
+		const dati = (await come(tokenSocio, `/api/member/v1/corsi/agenda?dal=${oggi}&al=${spostaGiorni(oggi, 30)}&sessione_id=${idEvento}`)).json();
+		const tutte = dati.giorni.flatMap((g) => g.lezioni);
+		assert.deepEqual(tutte.map((l) => l.id), [idLezione]);
+		assert.equal(tutte[0].sessione_id, idEvento);
+		assert.equal((await come(tokenSocio, '/api/member/v1/corsi/agenda?sessione_id=boh')).statusCode, 400);
+	});
+
+	test('il catalogo: categoria, corso, orari, e la categoria della mia ultima prenotazione', async () => {
+		const dati = (await come(tokenSocio, '/api/member/v1/corsi/catalogo')).json();
+		const corso = dati.categorie.flatMap((c) => c.corsi).find((c) => c.id === idCorso);
+		assert.ok(corso, 'il corso con una lezione futura');
+		assert.deepEqual(corso.orari.map((o) => [o.sessione_id, o.inizio, o.lezioni, o.mia_fissa]), [[idEvento, '18:30', 1, false]]);
+		const categoria = dati.categorie.find((c) => c.corsi.some((x) => x.id === idCorso));
+		assert.equal(dati.categoria_recente, categoria.id);
+	});
+
+	test('le mie lezioni: le mie, anche disdette e annullate; i miei orari: quelli frequenti, con la prossima da prenotare', async () => {
+		const date = [spostaGiorni(oggi, -14), spostaGiorni(oggi, -7), spostaGiorni(oggi, 14), spostaGiorni(oggi, 3)];
+		const nuove = await db.insert(sessions).values(date.map((d, i) => ({
+			eventId: idEvento, date: d, startTime: '18:30', endTime: '19:30', roomId: idSala, capacity: 2, status: i === 3 ? 'cancelled' : 'active',
+		}))).returning();
+		const prenotate = await db.insert(bookings).values([
+			{ sessionId: nuove[0].id, memberId: idSocio, memberName: 'Socio API', status: 'confirmed' },
+			{ sessionId: nuove[1].id, memberId: idSocio, memberName: 'Socio API', status: 'cancelled' },
+			{ sessionId: nuove[3].id, memberId: idSocio, memberName: 'Socio API', status: 'cancelled' },
+			{ sessionId: nuove[0].id, memberId: idEstraneo, memberName: 'Estraneo API', status: 'confirmed' },
+		]).returning();
+		try {
+			const { lezioni } = (await come(tokenSocio, '/api/member/v1/lezioni')).json();
+			const perId = new Map(lezioni.map((l) => [l.id, l]));
+			assert.ok(!perId.has(nuove[2].id), 'non prenotata: non è mia');
+			assert.equal(perId.get(nuove[1].id).mia_prenotazione.stato, 'cancelled', 'la disdetta si vede');
+			assert.equal(perId.get(nuove[3].id).annullata, true, "l'annullata dalla palestra si vede come tale");
+			assert.equal(perId.get(idLezione).mia_prenotazione.stato, 'confirmed');
+			assert.ok(!JSON.stringify(lezioni).includes(idEstraneo));
+
+			// Due volte negli ultimi 60 giorni (una disdetta non conta): ancora no.
+			assert.deepEqual((await come(tokenSocio, '/api/member/v1/corsi/miei-orari')).json().lezioni, []);
+			await db.update(bookings).set({ status: 'confirmed' }).where(eq(bookings.id, prenotate[1].id));
+			const { lezioni: mieiOrari } = (await come(tokenSocio, '/api/member/v1/corsi/miei-orari')).json();
+			assert.deepEqual(mieiOrari.map((l) => l.id), [nuove[2].id], 'la prossima che non ho già prenotato');
+		} finally {
+			await db.delete(bookings).where(inArray(bookings.id, prenotate.map((p) => p.id)));
+			await db.delete(sessions).where(inArray(sessions.id, nuove.map((l) => l.id)));
+		}
+	});
+});
+
 describe('prenotare e disdire dal portale', () => {
 	const posta = (token, url, payload) =>
 		app.inject({ method: 'POST', url, payload, headers: { authorization: `Bearer ${token}` } });
@@ -295,7 +345,13 @@ describe('il contratto resta quello promesso', () => {
 			Object.keys(mia).sort(),
 			// `motivo_non_prenotabile` e `finita` sono aggiunte (null / false quando si può
 			// prenotare): un client che non le conosce le ignora, e il contratto non si rompe.
-			['categoria', 'corso', 'data', 'disdetta_fino_a', 'fine', 'finita', 'id', 'inizio', 'istruttore', 'mia_prenotazione', 'motivo_disdetta_chiusa', 'motivo_non_prenotabile', 'posti', 'sala', 'serie']
+			// D-3 aggiunge `sessione_id`, `annullata`, `lista_chiude_il`, `lista_chiusa`.
+			['annullata', 'categoria', 'corso', 'data', 'disdetta_fino_a', 'fine', 'finita', 'id', 'inizio', 'istruttore', 'lista_chiude_il', 'lista_chiusa', 'mia_prenotazione', 'motivo_disdetta_chiusa', 'motivo_non_prenotabile', 'posti', 'sala', 'serie', 'sessione_id']
+		);
+		assert.deepEqual(
+			Object.keys(mia.mia_prenotazione).sort(),
+			// D-3 aggiunge l'offerta, la fissa, il motivo della disdetta e quando è stata fatta.
+			['creata_il', 'fissa', 'id', 'motivo_disdetta', 'posizione_attesa', 'posto_offerto_fino_a', 'stato']
 		);
 		assert.deepEqual(
 			Object.keys(mia.posti).sort(),

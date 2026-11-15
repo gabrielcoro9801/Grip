@@ -69,3 +69,23 @@ export function giorniFra(da, a) {
 
 /** Quanti giorni mancano a una data, contati da oggi a Roma. Negativo se è passata. */
 export const giorniDaOggi = (giorno) => giorniFra(oggiIso(), giorno);
+
+/** I minuti fra l'ora di Roma e UTC in quell'istante (60 d'inverno, 120 d'estate). */
+function scartoRoma(ms) {
+	const p = Object.fromEntries(new Intl.DateTimeFormat('en-GB', {
+		timeZone: 'Europe/Rome', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+	}).formatToParts(new Date(ms)).map((x) => [x.type, x.value]));
+	return (Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute) - Math.floor(ms / 60_000) * 60_000) / 60_000;
+}
+
+/**
+ * L'istante di un'ora di Roma: «il 15 novembre alle 18:00» → 17:00 UTC. Serve dove l'orario di
+ * una lezione diventa una scadenza da salvare (un posto offerto fino alla chiusura della lista).
+ * Nell'ora che d'autunno si ripete vale la prima delle due.
+ */
+export function istanteRoma(giorno, ora) {
+	const indovinato = Date.parse(`${String(giorno).slice(0, 10)}T${String(ora).slice(0, 5)}:00Z`);
+	if (Number.isNaN(indovinato)) return null;
+	const primo = indovinato - scartoRoma(indovinato) * 60_000;
+	return new Date(indovinato - scartoRoma(primo) * 60_000);
+}

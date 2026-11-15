@@ -1,4 +1,6 @@
-// Prenotare e disdire, con le regole applicate dove nessuno può saltarle.
+// Prenotare e disdire, con le regole applicate dove nessuno può saltarle: la capienza, la lista
+// d'attesa con l'offerta di 12 ore e la sua chiusura, il termine di disdetta e i 10 minuti per
+// ripensarci (docs/piani/portale.md, D-3).
 //
 // Prima capienza e lista d'attesa vivevano solo nel browser: contava lui i posti e mandava
 // al server una riga con lo stato già dentro, che veniva scritta senza guardare. Bastava
@@ -7,10 +9,11 @@
 import test, { before, after, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import bcrypt from 'bcryptjs';
-import { eq, inArray } from 'drizzle-orm';
+import { eq, and, inArray } from 'drizzle-orm';
 import { buildApp } from '../src/app.js';
 import { db, pool } from '../src/db/client.js';
-import { members, staffAccounts, rooms, courses, events, sessions, bookings, subscriptions } from '../src/db/schema/index.js';
+import { members, staffAccounts, rooms, courses, events, sessions, bookings, subscriptions, notifiche } from '../src/db/schema/index.js';
+import { prenota as prenotaLib, disdici as disdiciLib, regolaOfferte } from '../src/lib/prenotazioni.js';
 import { oggiIso, spostaGiorni } from '../../shared/giorni.js';
 import { categoriaDiProva, togliCategorieDiProva } from './categoriaDiProva.js';
 
@@ -109,159 +112,210 @@ after(async () => {
 	await pool.end();
 });
 
-const prenota = (token, corpo = {}) =>
-	come(token, { method: 'POST', url: '/api/prenotazioni', payload: { session_id: idLezione, ...corpo } });
+// Il socio prenota e disdice dal portale; la reception dalle sue rotte, per conto di un socio.
+const dalPortale = (i, url) => come(tokenSocio[i], { method: 'POST', url: `/api/member/v1${url}` });
+async function prenotaSocio(i, lezione = idLezione) {
+	const res = await dalPortale(i, `/corsi/lezioni/${lezione}/prenota`);
+	const p = res.statusCode < 300 ? res.json().prenotazione : null;
+	return { statusCode: res.statusCode, body: res.body, json: () => res.json(), p: p && { id: p.id, status: p.stato, waitlist_position: p.posizione_attesa } };
+}
+const disdiciSocio = (i, idPrenotazione) => dalPortale(i, `/corsi/prenotazioni/${idPrenotazione}/disdici`);
+const prenotaStaff = (memberId, corpo = {}) =>
+	come(tokenStaff, { method: 'POST', url: '/api/prenotazioni', payload: { session_id: idLezione, member_id: memberId, ...corpo } });
+const righe = () => db.select().from(bookings).where(eq(bookings.sessionId, idLezione));
+const perId = async () => new Map((await righe()).map((b) => [b.id, b]));
+const ORA = 3_600_000;
 
 describe('la capienza la decide il server', () => {
 	test('i primi due entrano, il terzo va in lista', async () => {
 		await pulisciPrenotazioni();
-		const primo = await prenota(tokenSocio[0]);
-		const secondo = await prenota(tokenSocio[1]);
-		const terzo = await prenota(tokenSocio[2]);
+		const primo = await prenotaSocio(0);
+		const secondo = await prenotaSocio(1);
+		const terzo = await prenotaSocio(2);
 
-		assert.equal(primo.json().booking.status, 'confirmed');
-		assert.equal(secondo.json().booking.status, 'confirmed');
-		assert.equal(terzo.json().booking.status, 'waitlisted');
-		assert.equal(terzo.json().booking.waitlist_position, 1);
+		assert.equal(primo.p.status, 'confirmed');
+		assert.equal(secondo.p.status, 'confirmed');
+		assert.equal(terzo.p.status, 'waitlisted');
+		assert.equal(terzo.p.waitlist_position, 1);
 
-		const quarto = await prenota(tokenSocio[3]);
-		assert.equal(quarto.json().booking.waitlist_position, 2, 'la coda si numera in ordine');
+		const quarto = await prenotaSocio(3);
+		assert.equal(quarto.p.waitlist_position, 2, 'la coda si numera in ordine');
 	});
 
 	test("chiedere 'confirmed' su una lezione piena non serve a niente", async () => {
 		// È l'attacco che il vecchio codice non poteva vedere: la riga arrivava già decisa
 		// dal browser, e il server la scriveva così com'era.
 		await pulisciPrenotazioni();
-		await prenota(tokenSocio[0]);
-		await prenota(tokenSocio[1]);
+		await prenotaSocio(0);
+		await prenotaSocio(1);
 
-		const furbo = await come(tokenSocio[2], {
-			method: 'POST',
-			url: '/api/prenotazioni',
-			payload: { session_id: idLezione, status: 'confirmed', waitlist_position: null },
-		});
+		const furbo = await prenotaStaff(idSoci[2], { status: 'confirmed', waitlist_position: null });
 		assert.equal(furbo.json().booking.status, 'waitlisted', 'lo stato lo decide il conto dei posti');
-
-		const confermate = await db
-			.select()
-			.from(bookings)
-			.where(eq(bookings.sessionId, idLezione));
-		assert.equal(
-			confermate.filter((b) => b.status === 'confirmed').length,
-			CAPIENZA,
-			'la lezione non supera mai la capienza',
-		);
+		assert.equal((await righe()).filter((b) => b.status === 'confirmed').length, CAPIENZA, 'la lezione non supera mai la capienza');
 	});
 
 	test("due richieste sull'ultimo posto danno un esito coerente", async () => {
 		// ⚠️ Questo test **non dimostra** che il `FOR UPDATE` funzioni: passa anche
 		// togliendolo. Due `app.inject` lanciati insieme, contro un database locale veloce,
-		// finiscono per serializzarsi da soli, e la corsa non si riproduce.
-		//
-		// Il blocco resta perché la corsa è reale altrove — più richieste in volo su un
-		// database più lento, o due repliche del server che non si parlano — e lì
-		// l'alternativa è una lezione con un iscritto di troppo. Ma la garanzia sta nel
-		// codice, non in questa prova: se un giorno qualcuno toglie il `.for('update')`,
-		// non sarà questo test a fermarlo.
+		// finiscono per serializzarsi da soli, e la corsa non si riproduce. La garanzia sta nel
+		// codice, non in questa prova.
 		await pulisciPrenotazioni();
-		await prenota(tokenSocio[0]); // riempie il primo dei due posti
+		await prenotaSocio(0); // riempie il primo dei due posti
 
-		const [a, b] = await Promise.all([prenota(tokenSocio[1]), prenota(tokenSocio[2])]);
-		const stati = [a.json().booking.status, b.json().booking.status].sort();
-		assert.deepEqual(stati, ['confirmed', 'waitlisted']);
+		const [a, b] = await Promise.all([prenotaSocio(1), prenotaSocio(2)]);
+		assert.deepEqual([a.p.status, b.p.status].sort(), ['confirmed', 'waitlisted']);
 	});
 
 	test('due prenotazioni sulla stessa lezione non si possono avere', async () => {
 		await pulisciPrenotazioni();
-		await prenota(tokenSocio[0]);
-		const doppia = await prenota(tokenSocio[0]);
-		assert.equal(doppia.statusCode, 409);
-	});
-
-	test('un socio non prenota a nome di un altro', async () => {
-		await pulisciPrenotazioni();
-		const res = await prenota(tokenSocio[0], { member_id: idSoci[1] });
-		assert.equal(res.statusCode, 201);
-		assert.equal(res.json().booking.member_id, idSoci[0], "l'intestatario lo impone il server");
+		await prenotaSocio(0);
+		assert.equal((await prenotaSocio(0)).statusCode, 409);
 	});
 
 	test('una lezione già passata non si prenota', async () => {
 		await pulisciPrenotazioni();
 		const [passata] = await db
 			.insert(sessions)
-			.values({
-				eventId: idEvento, date: '2020-01-01', startTime: '10:00', endTime: '11:00',
-				roomId: idSala, capacity: 10,
-			})
+			.values({ eventId: idEvento, date: '2020-01-01', startTime: '10:00', endTime: '11:00', roomId: idSala, capacity: 10 })
 			.returning();
-		const res = await come(tokenSocio[0], {
-			method: 'POST',
-			url: '/api/prenotazioni',
-			payload: { session_id: passata.id },
-		});
-		assert.equal(res.statusCode, 400);
+		assert.equal((await prenotaSocio(0, passata.id)).statusCode, 400);
 		await db.delete(sessions).where(eq(sessions.id, passata.id));
 	});
 
-	test('dal vecchio endpoint generico un socio non ci arriva più', async () => {
-		const res = await come(tokenSocio[0], {
-			method: 'POST',
-			url: '/api/entities/Booking',
-			payload: { session_id: idLezione, member_id: idSoci[0], status: 'confirmed' },
-		});
-		assert.equal(res.statusCode, 403, 'la scorciatoia che saltava il conto dei posti è chiusa');
+	test('il socio prenota solo dal portale: le rotte della reception e il vecchio endpoint gli dicono 403', async () => {
+		await pulisciPrenotazioni();
+		const sua = (await prenotaSocio(0)).p;
+		for (const [method, url, payload] of [
+			['POST', '/api/prenotazioni', { session_id: idLezione }],
+			['POST', `/api/prenotazioni/${sua.id}/disdici`],
+			['POST', '/api/entities/Booking', { session_id: idLezione, member_id: idSoci[0], status: 'confirmed' }],
+		]) {
+			assert.equal((await come(tokenSocio[0], { method, url, payload })).statusCode, 403, `${method} ${url}`);
+		}
 	});
 });
 
-describe('disdire sistema la lista', () => {
-	test('chi disdice un posto confermato promuove il primo in attesa', async () => {
+describe("disdire offre il posto al primo in lista, per 12 ore", () => {
+	test('chi disdice un posto confermato lo offre al primo in attesa, che riceve una notifica', async () => {
 		await pulisciPrenotazioni();
-		const primo = (await prenota(tokenSocio[0])).json().booking;
-		await prenota(tokenSocio[1]);
-		const terzo = (await prenota(tokenSocio[2])).json().booking;
-		const quarto = (await prenota(tokenSocio[3])).json().booking;
+		await db.delete(notifiche).where(inArray(notifiche.memberId, idSoci));
+		const primo = (await prenotaSocio(0)).p;
+		await prenotaSocio(1);
+		const terzo = (await prenotaSocio(2)).p;
+		const quarto = (await prenotaSocio(3)).p;
 
-		const res = await come(tokenSocio[0], { method: 'POST', url: `/api/prenotazioni/${primo.id}/disdici` });
-		assert.equal(res.statusCode, 200);
-		assert.equal(res.json().promoted, true);
+		const prima = Date.now();
+		const res = await disdiciSocio(0, primo.id);
+		assert.equal(res.statusCode, 200, res.body);
 
-		const dopo = await db.select().from(bookings).where(eq(bookings.sessionId, idLezione));
-		const perId = new Map(dopo.map((b) => [b.id, b]));
-		assert.equal(perId.get(terzo.id).status, 'confirmed', 'il primo della coda entra');
-		assert.equal(perId.get(quarto.id).status, 'waitlisted');
-		assert.equal(perId.get(quarto.id).waitlistPosition, 1, 'e la coda si rinumera');
+		const dopo = await perId();
+		assert.equal(dopo.get(terzo.id).status, 'waitlisted', 'resta in lista, ma il posto è suo');
+		const fino = dopo.get(terzo.id).postoOffertoFinoA.getTime();
+		assert.ok(Math.abs(fino - (prima + 12 * ORA)) < 60_000, 'per 12 ore');
+		assert.equal(dopo.get(quarto.id).postoOffertoFinoA, null);
+		assert.equal(dopo.get(quarto.id).waitlistPosition, 2);
+
+		const [avviso] = await db.select().from(notifiche).where(and(eq(notifiche.memberId, idSoci[2]), eq(notifiche.tipo, 'posto_offerto')));
+		assert.ok(avviso, 'la notifica posto_offerto');
+		assert.equal(avviso.lezioneId, idLezione);
+
+		// Nel portale: il posto offerto conta come occupato, e per lui c'è la scadenza.
+		const agenda = (await come(tokenSocio[2], { method: 'GET', url: '/api/member/v1/corsi/agenda?dal=2026-12-01&al=2026-12-01' })).json();
+		const lezione = agenda.giorni[0].lezioni.find((l) => l.id === idLezione);
+		assert.equal(lezione.posti.liberi, 0);
+		assert.ok(lezione.mia_prenotazione.posto_offerto_fino_a);
 	});
 
-	test('chi rinuncia dalla lista non promuove nessuno: nessun posto si libera', async () => {
-		await pulisciPrenotazioni();
-		await prenota(tokenSocio[0]);
-		await prenota(tokenSocio[1]);
-		const terzo = (await prenota(tokenSocio[2])).json().booking;
-		const quarto = (await prenota(tokenSocio[3])).json().booking;
-
-		const res = await come(tokenSocio[2], { method: 'POST', url: `/api/prenotazioni/${terzo.id}/disdici` });
-		assert.equal(res.json().promoted, false);
-
-		const dopo = await db.select().from(bookings).where(eq(bookings.id, quarto.id));
-		assert.equal(dopo[0].status, 'waitlisted');
-		assert.equal(dopo[0].waitlistPosition, 1, 'ma la coda scala');
+	test('confermando, con «prenota», il posto diventa suo', async () => {
+		const res = await prenotaSocio(2);
+		assert.equal(res.statusCode, 201, res.body);
+		assert.equal(res.p.status, 'confirmed');
+		const coda = (await righe()).filter((b) => b.status === 'waitlisted');
+		assert.deepEqual(coda.map((b) => [b.memberId, b.waitlistPosition]), [[idSoci[3], 1]], 'e la coda scala');
 	});
 
-	test('un socio non disdice la prenotazione di un altro', async () => {
+	test('chi rinuncia dalla lista non offre niente a nessuno: nessun posto si libera', async () => {
 		await pulisciPrenotazioni();
-		const altrui = (await prenota(tokenSocio[0])).json().booking;
-		const res = await come(tokenSocio[1], { method: 'POST', url: `/api/prenotazioni/${altrui.id}/disdici` });
-		assert.equal(res.statusCode, 404);
+		await prenotaSocio(0);
+		await prenotaSocio(1);
+		const terzo = (await prenotaSocio(2)).p;
+		const quarto = (await prenotaSocio(3)).p;
+		assert.equal((await disdiciSocio(2, terzo.id)).statusCode, 200);
+		const dopo = (await perId()).get(quarto.id);
+		assert.equal(dopo.postoOffertoFinoA, null);
+		assert.equal(dopo.waitlistPosition, 1, 'ma la coda scala');
+	});
 
-		const dopo = await db.select().from(bookings).where(eq(bookings.id, altrui.id));
-		assert.equal(dopo[0].status, 'confirmed', 'resta come stava');
+	test("un'offerta scaduta manda in fondo, e il posto passa al successivo dalla scadenza", async () => {
+		await pulisciPrenotazioni();
+		const primo = (await prenotaSocio(0)).p;
+		await prenotaSocio(1);
+		const terzo = (await prenotaSocio(2)).p;
+		const quarto = (await prenotaSocio(3)).p;
+		await disdiciSocio(0, primo.id);
+		// L'offerta al terzo è scaduta un'ora fa: nessuno l'ha confermata.
+		const scaduta = new Date(Date.now() - ORA);
+		await db.update(bookings).set({ postoOffertoFinoA: scaduta }).where(eq(bookings.id, terzo.id));
+
+		// Leggere l'agenda mette in regola la lista: non serve un processo che guardi.
+		await come(tokenSocio[1], { method: 'GET', url: '/api/member/v1/corsi/agenda?dal=2026-12-01&al=2026-12-01' });
+		const dopo = await perId();
+		assert.equal(dopo.get(terzo.id).postoOffertoFinoA, null);
+		assert.equal(dopo.get(terzo.id).waitlistPosition, 2, 'in fondo alla lista');
+		assert.equal(dopo.get(quarto.id).waitlistPosition, 1);
+		assert.equal(dopo.get(quarto.id).postoOffertoFinoA.getTime(), scaduta.getTime() + 12 * ORA, '12 ore dalla scadenza di prima');
+	});
+
+	test('il socio non disdice la prenotazione di un altro', async () => {
+		await pulisciPrenotazioni();
+		const altrui = (await prenotaSocio(0)).p;
+		assert.equal((await disdiciSocio(1, altrui.id)).statusCode, 404);
+		assert.equal((await perId()).get(altrui.id).status, 'confirmed', 'resta come stava');
 	});
 
 	test('la reception può disdire per conto di un socio', async () => {
 		await pulisciPrenotazioni();
-		const sua = (await prenota(tokenSocio[0])).json().booking;
+		const sua = (await prenotaSocio(0)).p;
 		const res = await come(tokenStaff, { method: 'POST', url: `/api/prenotazioni/${sua.id}/disdici` });
-		assert.equal(res.statusCode, 200);
+		assert.equal(res.statusCode, 200, res.body);
+	});
+});
+
+// La lezione è l'1 dicembre alle 10, il corso non ha un termine: la lista chiude alle 10 (le 9 UTC).
+describe("la chiusura della lista d'attesa", () => {
+	const CHIUSURA = new Date('2026-12-01T09:00:00Z');
+
+	test("un'offerta non va oltre la chiusura, e dopo non se ne fanno di nuove", async () => {
+		await pulisciPrenotazioni();
+		const primo = (await prenotaSocio(0)).p;
+		await prenotaSocio(1);
+		const terzo = (await prenotaSocio(2)).p;
+		const quarto = (await prenotaSocio(3)).p;
+		// Due ore prima della chiusura: l'offerta dura due ore, non dodici.
+		const esito = await disdiciLib({ bookingId: primo.id, adesso: new Date(CHIUSURA.getTime() - 2 * ORA) });
+		assert.equal(esito.offerta?.id, terzo.id);
+		assert.equal((await perId()).get(terzo.id).postoOffertoFinoA.getTime(), CHIUSURA.getTime());
+
+		// Dopo la chiusura l'offerta è scaduta: il terzo va in fondo e nessuno riceve il posto.
+		await db.transaction((tx) => regolaOfferte(tx, idLezione, new Date(CHIUSURA.getTime() + 60_000)));
+		const dopo = await perId();
+		assert.equal(dopo.get(terzo.id).postoOffertoFinoA, null);
+		assert.equal(dopo.get(quarto.id).postoOffertoFinoA, null, 'la lista è chiusa');
+		assert.equal(dopo.get(terzo.id).waitlistPosition, 2);
+	});
+
+	test('dopo la chiusura il posto libero è di chi lo prende, anche di chi era in lista; un nuovo non entra in lista', async () => {
+		const dopoChiusura = new Date(CHIUSURA.getTime() + 60_000);
+		const quarto = (await righe()).find((b) => b.memberId === idSoci[3]);
+		const preso = await prenotaLib({ sessionId: idLezione, memberId: idSoci[3], adesso: dopoChiusura });
+		assert.equal(preso.creata?.status, 'confirmed', JSON.stringify(preso));
+		assert.equal(preso.creata.id, quarto.id, 'la stessa prenotazione, da attesa a confermata');
+
+		// Ora è piena: chi non c'era non entra nemmeno in lista.
+		await db.delete(bookings).where(and(eq(bookings.sessionId, idLezione), eq(bookings.memberId, idSoci[0])));
+		const fuori = await prenotaLib({ sessionId: idLezione, memberId: idSoci[0], adesso: dopoChiusura });
+		assert.equal(fuori.errore, 409);
+		assert.equal(fuori.codice, 'lista_chiusa');
 	});
 });
 
@@ -274,38 +328,37 @@ describe('senza un abbonamento quel giorno non si prenota', () => {
 	test('scaduto prima della lezione: rifiutato, dal portale come dalla reception', async () => {
 		await pulisciPrenotazioni();
 		await db.update(subscriptions).set({ endDate: '2026-11-30' }).where(eq(subscriptions.memberId, idSoci[0]));
-		const dalSocio = await prenota(tokenSocio[0]);
+		const dalSocio = await prenotaSocio(0);
 		assert.equal(dalSocio.statusCode, 400);
 		assert.match(dalSocio.json().error, /abbonamento valido/);
-		assert.equal((await prenota(tokenStaff, { member_id: idSoci[0] })).statusCode, 400);
+		assert.equal((await prenotaStaff(idSoci[0])).statusCode, 400);
 	});
 
 	test('che comincia proprio il giorno della lezione: si prenota', async () => {
 		await pulisciPrenotazioni();
 		await db.update(subscriptions).set({ startDate: '2026-12-01', endDate: '2026-12-31' }).where(eq(subscriptions.memberId, idSoci[0]));
-		assert.equal((await prenota(tokenSocio[0])).statusCode, 201);
+		assert.equal((await prenotaSocio(0)).statusCode, 201);
 	});
 });
 
 // La promozione esisteva solo nella disdetta: portando una lezione da 2 a 4 posti, chi era in
-// lista d'attesa restava lì con due posti vuoti davanti.
-describe('una capienza che cresce promuove la lista d’attesa', () => {
+// lista d'attesa restava lì con due posti vuoti davanti. Ora il posto nuovo si offre.
+describe("una capienza che cresce offre i posti alla lista d'attesa", () => {
 	after(async () => {
 		await db.update(sessions).set({ capacity: CAPIENZA }).where(eq(sessions.id, idLezione));
 	});
 
-	test('entrano in ordine quanti ci stanno, e la coda si rinumera', async () => {
+	test('si offrono in ordine quanti ce ne stanno', async () => {
 		await pulisciPrenotazioni();
-		for (const token of tokenSocio) assert.equal((await prenota(token)).statusCode, 201);
+		for (const i of [0, 1, 2, 3]) assert.equal((await prenotaSocio(i)).statusCode, 201);
 		// Due confermati, due in attesa (posizioni 1 e 2).
 		const res = await come(tokenStaff, { method: 'PUT', url: `/api/entities/Session/${idLezione}`, payload: { capacity: CAPIENZA + 1, modified_manually: true } });
 		assert.equal(res.statusCode, 200, res.body);
 
-		const righe = await db.select().from(bookings).where(eq(bookings.sessionId, idLezione));
-		const perSocio = Object.fromEntries(righe.map((r) => [r.memberId, r]));
-		assert.equal(perSocio[idSoci[2]].status, 'confirmed', 'il primo in attesa entra');
-		assert.equal(perSocio[idSoci[3]].status, 'waitlisted');
-		assert.equal(perSocio[idSoci[3]].waitlistPosition, 1, 'e chi resta sale al primo posto della coda');
+		const perSocio = Object.fromEntries((await righe()).map((r) => [r.memberId, r]));
+		assert.ok(perSocio[idSoci[2]].postoOffertoFinoA, 'il primo in attesa riceve il posto');
+		assert.equal(perSocio[idSoci[3]].postoOffertoFinoA, null);
+		assert.equal(perSocio[idSoci[3]].waitlistPosition, 2);
 	});
 });
 
@@ -324,7 +377,7 @@ describe('il calendario chiede un intervallo, non un numero fisso', () => {
 	// contati (GET /api/calendario/lezioni), e la vecchia rotta non c'è più.
 	test('le lezioni di un intervallo arrivano con i posti contati', async () => {
 		await pulisciPrenotazioni();
-		assert.equal((await prenota(tokenSocio[0])).statusCode, 201);
+		assert.equal((await prenotaSocio(0)).statusCode, 201);
 		const dentro = (await come(tokenStaff, { method: 'GET', url: '/api/calendario/lezioni?dal=2026-11-30&al=2026-12-02' })).json().lezioni;
 		assert.equal(dentro.find((l) => l.id === idLezione)?.confermati, 1);
 		const fuori = (await come(tokenStaff, { method: 'GET', url: '/api/calendario/lezioni?dal=2026-12-02&al=2026-12-10' })).json().lezioni;
@@ -339,9 +392,10 @@ describe('il calendario chiede un intervallo, non un numero fisso', () => {
 });
 
 // Il termine di disdetta sta sul corso e vale per il socio che disdice da sé: oltre, la
-// prenotazione resta, e la reception può ancora disdirla.
+// prenotazione resta, e la reception può ancora disdirla. Tranne nei primi 10 minuti dopo
+// averla fatta: è l'«Annulla» del tocco sbagliato.
 describe('il termine di disdetta del corso', () => {
-	test('oltre il termine il socio non disdice, la reception sì; senza termine si disdice', async () => {
+	test('oltre il termine il socio non disdice (tranne nei primi 10 minuti), la reception sì; senza termine si disdice', async () => {
 		const tra2Giorni = spostaGiorni(oggiIso(), 2);
 		const [corso] = await db.insert(courses).values({ categoryId: await categoriaDiProva(), name: `Corso termine ${Date.now()}`, disdettaEntroOre: 72 }).returning();
 		const [evento] = await db.insert(events).values({
@@ -351,23 +405,26 @@ describe('il termine di disdetta del corso', () => {
 			eventId: evento.id, date: tra2Giorni, startTime: '18:00', endTime: '19:00', roomId: idSala, capacity: 5,
 		}).returning();
 		try {
-			const pren = await come(tokenSocio[0], { method: 'POST', url: '/api/prenotazioni', payload: { session_id: lezione.id } });
+			// Appena fatta: si annulla anche oltre il termine.
+			const appena = await prenotaSocio(0, lezione.id);
+			assert.equal(appena.statusCode, 201, appena.body);
+			assert.equal((await disdiciSocio(0, appena.p.id)).statusCode, 200, 'nei primi 10 minuti sì');
+
+			const pren = await prenotaStaff(idSoci[0], { session_id: lezione.id });
 			assert.equal(pren.statusCode, 201, pren.body);
 			const idPren = pren.json().booking.id;
+			await db.update(bookings).set({ createdDate: new Date(Date.now() - 11 * 60_000) }).where(eq(bookings.id, idPren));
 
-			const rifiutata = await come(tokenSocio[0], { method: 'POST', url: `/api/prenotazioni/${idPren}/disdici` });
+			const rifiutata = await disdiciSocio(0, idPren);
 			assert.equal(rifiutata.statusCode, 400);
 			assert.match(rifiutata.json().error, /72 ore prima.*reception/);
-			// Lo stesso dal portale.
-			const portale = await come(tokenSocio[0], { method: 'POST', url: `/api/member/v1/corsi/prenotazioni/${idPren}/disdici` });
-			assert.equal(portale.statusCode, 400);
-
 			assert.equal((await come(tokenStaff, { method: 'POST', url: `/api/prenotazioni/${idPren}/disdici` })).statusCode, 200);
 
 			// Tolto il termine, il socio torna a disdire fino alla fine.
 			await db.update(courses).set({ disdettaEntroOre: null }).where(eq(courses.id, corso.id));
-			const di_nuovo = await come(tokenSocio[1], { method: 'POST', url: '/api/prenotazioni', payload: { session_id: lezione.id } });
-			assert.equal((await come(tokenSocio[1], { method: 'POST', url: `/api/prenotazioni/${di_nuovo.json().booking.id}/disdici` })).statusCode, 200);
+			const di_nuovo = await prenotaSocio(1, lezione.id);
+			await db.update(bookings).set({ createdDate: new Date(Date.now() - 11 * 60_000) }).where(eq(bookings.id, di_nuovo.p.id));
+			assert.equal((await disdiciSocio(1, di_nuovo.p.id)).statusCode, 200);
 		} finally {
 			await db.delete(bookings).where(eq(bookings.sessionId, lezione.id));
 			await db.delete(sessions).where(eq(sessions.id, lezione.id));

@@ -3,14 +3,15 @@
 // Il socio prenota e disdice. Lo staff crea prenotazioni per conto dei soci, conferma chi era in
 // lista d'attesa (oltre la capienza solo se lo dice), rimette in lista, riattiva una disdetta,
 // riordina la lista e cancella gli errori. Tutto finisce nelle stesse righe che legge il portale.
+// Un posto che si libera non va più al primo in lista: gli si offre, per 12 ore (D-3 del portale).
 import test, { before, after, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import bcrypt from 'bcryptjs';
-import { eq, inArray } from 'drizzle-orm';
+import { eq, and, inArray } from 'drizzle-orm';
 import { buildApp } from '../src/app.js';
 import { db, pool } from '../src/db/client.js';
 import {
-	members, staffAccounts, bookings, sessions, events, courses, rooms, subscriptions, auditLogs,
+	members, staffAccounts, bookings, sessions, events, courses, rooms, subscriptions, auditLogs, notifiche,
 } from '../src/db/schema/index.js';
 import { oggiIso, spostaGiorni } from '../../shared/giorni.js';
 import { categoriaDiProva, togliCategorieDiProva } from './categoriaDiProva.js';
@@ -111,6 +112,9 @@ describe('gli stati', () => {
 		assert.equal(forzata.statusCode, 200, forzata.body);
 		assert.equal((await statoDi(3)).status, 'confirmed');
 		assert.equal((await statoDi(2)).waitlistPosition, 1, 'la lista si rinumera');
+		const avvisi = await db.select().from(notifiche).where(and(eq(notifiche.memberId, id.soci[3]), eq(notifiche.tipo, 'promosso_lista_attesa')));
+		assert.equal(avvisi.length, 1, 'chi la reception conferma dalla lista lo sa');
+		assert.equal(avvisi[0].lezioneId, id.lezione);
 	});
 
 	test('rimettere in lista va in coda', async () => {
@@ -120,19 +124,26 @@ describe('gli stati', () => {
 		assert.equal((await statoDi(3)).waitlistPosition, 2);
 	});
 
-	test('annullare una confermata libera il posto: il primo in lista sale', async () => {
+	test('annullare una confermata libera il posto: si offre al primo in lista', async () => {
 		const res = await reception({ method: 'POST', url: `/api/prenotazioni/${prenotazioneDi[1]}/stato`, payload: { stato: 'cancelled' } });
 		assert.equal(res.statusCode, 200, res.body);
+		assert.deepEqual(res.json().offerti.map((o) => o.id), [prenotazioneDi[2]]);
 		assert.equal((await statoDi(1)).status, 'cancelled');
-		assert.equal((await statoDi(2)).status, 'confirmed');
-		assert.equal((await statoDi(3)).waitlistPosition, 1);
+		assert.equal((await statoDi(2)).status, 'waitlisted', 'in lista, con il posto offerto');
+		assert.ok((await statoDi(2)).postoOffertoFinoA > new Date());
+		assert.equal((await statoDi(3)).waitlistPosition, 2);
+
+		const pagina = (await reception({ method: 'GET', url: `/api/calendario/lezioni/${id.lezione}` })).json();
+		assert.ok(pagina.prenotazioni.find((p) => p.id === prenotazioneDi[2]).posto_offerto_fino_a, 'la pagina della lezione lo dice');
 	});
 
-	test("riattivare una disdetta la rimette in lista se non c'è posto", async () => {
+	test("riattivare una disdetta la rimette in lista se non c'è posto: il posto offerto conta", async () => {
+		const forzare = await reception({ method: 'POST', url: `/api/prenotazioni/${prenotazioneDi[1]}/stato`, payload: { stato: 'confirmed' } });
+		assert.equal(forzare.statusCode, 409, 'il posto offerto è occupato');
 		const res = await reception({ method: 'POST', url: `/api/prenotazioni/${prenotazioneDi[1]}/stato`, payload: { stato: 'waitlisted' } });
 		assert.equal(res.statusCode, 200, res.body);
 		assert.equal((await statoDi(1)).status, 'waitlisted');
-		assert.equal((await statoDi(1)).waitlistPosition, 2);
+		assert.equal((await statoDi(1)).waitlistPosition, 3);
 	});
 });
 
@@ -141,21 +152,25 @@ describe("la lista d'attesa", () => {
 		const res = await reception({ method: 'POST', url: `/api/prenotazioni/${prenotazioneDi[1]}/posizione`, payload: { posizione: 1 } });
 		assert.equal(res.statusCode, 200, res.body);
 		assert.equal((await statoDi(1)).waitlistPosition, 1);
-		assert.equal((await statoDi(3)).waitlistPosition, 2);
+		assert.equal((await statoDi(3)).waitlistPosition, 3);
 	});
 });
 
 describe('eliminare un errore', () => {
-	test('la riga sparisce, e il posto liberato va al primo in lista', async () => {
+	test('la riga sparisce, e il posto liberato si offre al primo in lista senza offerta', async () => {
 		const res = await reception({ method: 'DELETE', url: `/api/prenotazioni/${prenotazioneDi[0]}` });
 		assert.equal(res.statusCode, 200, res.body);
 		assert.equal(await statoDi(0), undefined);
-		assert.equal((await statoDi(1)).status, 'confirmed');
-		assert.equal((await statoDi(3)).waitlistPosition, 1);
+		assert.deepEqual(res.json().offerti.map((o) => o.id), [prenotazioneDi[1]]);
+		assert.ok((await statoDi(1)).postoOffertoFinoA, 'il primo della lista');
+		assert.ok((await statoDi(2)).postoOffertoFinoA, "e l'offerta di prima resta");
+		assert.equal((await statoDi(3)).waitlistPosition, 3);
 	});
 
-	test('il socio non può usare le rotte della reception', async () => {
+	test('il socio non può usare le rotte della reception: prenota dal portale', async () => {
 		for (const [metodo, url, payload] of [
+			['POST', '/api/prenotazioni', { session_id: id.lezione }],
+			['POST', `/api/prenotazioni/${prenotazioneDi[3]}/disdici`, undefined],
 			['POST', `/api/prenotazioni/${prenotazioneDi[3]}/stato`, { stato: 'confirmed', oltre_capienza: true }],
 			['POST', `/api/prenotazioni/${prenotazioneDi[3]}/posizione`, { posizione: 1 }],
 			['DELETE', `/api/prenotazioni/${prenotazioneDi[3]}`, undefined],

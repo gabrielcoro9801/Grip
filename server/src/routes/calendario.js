@@ -140,7 +140,7 @@ export default async function calendarioRoutes(fastify) {
 	/**
 	 * GET /api/calendario/lezioni/:id
 	 * → { lezione, prenotazioni: [{ id, member_id, nome, cognome, codice_socio, status,
-	 *     waitlist_position, prenotazione_fissa_id, created_date }] }
+	 *     waitlist_position, posto_offerto_fino_a, prenotazione_fissa_id, created_date }] }
 	 * Una lezione vecchia si apre comunque: la pagina chiede sempre al server.
 	 */
 	fastify.get('/api/calendario/lezioni/:id', (request, reply) => rispondi(reply, async () => {
@@ -155,6 +155,7 @@ export default async function calendarioRoutes(fastify) {
 		const prenotazioni = await db.select({
 			id: bookings.id, member_id: bookings.memberId, nome: members.nome, cognome: members.cognome,
 			codice_socio: members.codiceSocio, status: bookings.status, waitlist_position: bookings.waitlistPosition,
+			posto_offerto_fino_a: bookings.postoOffertoFinoA,
 			prenotazione_fissa_id: bookings.prenotazioneFissaId, created_date: bookings.createdDate,
 		})
 			.from(bookings)

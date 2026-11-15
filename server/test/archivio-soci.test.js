@@ -116,7 +116,7 @@ describe('archiviare un socio', () => {
 		assert.equal((await admin({ method: 'POST', url: `/api/soci/${id.soci[0]}/archivia`, payload: { motivo: 'altro' } })).statusCode, 400);
 	});
 
-	test('si archivia, e la sua prenotazione futura passa a chi aspettava', async () => {
+	test('si archivia, e la sua prenotazione futura si offre a chi aspettava', async () => {
 		const res = await admin({ method: 'POST', url: `/api/soci/${id.soci[0]}/archivia`, payload: { motivo: 'trasferimento', nota: 'Va a Milano' } });
 		assert.equal(res.statusCode, 200, res.body);
 		assert.equal(res.json().socio.archiviato_il, oggiIso());
@@ -124,7 +124,9 @@ describe('archiviare un socio', () => {
 
 		const righe = await db.select().from(bookings).where(eq(bookings.sessionId, id.lezione));
 		assert.equal(righe.find((b) => b.memberId === id.soci[0]).status, 'cancelled');
-		assert.equal(righe.find((b) => b.memberId === id.soci[1]).status, 'confirmed', 'chi era in lista è promosso');
+		const chiAspettava = righe.find((b) => b.memberId === id.soci[1]);
+		assert.equal(chiAspettava.status, 'waitlisted');
+		assert.ok(chiAspettava.postoOffertoFinoA, 'a chi era in lista si offre il posto');
 	});
 
 	test('le sue prenotazioni fisse si chiudono da oggi, e il registro lo dice (K11)', async () => {

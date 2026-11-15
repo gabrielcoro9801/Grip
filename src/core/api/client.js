@@ -138,10 +138,7 @@ export const api = {
 				body: { session_id: sessionId, member_id: memberId },
 			});
 		},
-		disdici(bookingId) {
-			return request(`/api/prenotazioni/${bookingId}/disdici`, { method: 'POST' });
-		},
-		/** Solo staff: porta una prenotazione a confirmed / waitlisted / cancelled. → { booking, promossi } */
+		/** Solo staff: porta una prenotazione a confirmed / waitlisted / cancelled. → { booking, offerti } */
 		cambiaStato(bookingId, stato, { oltreCapienza = false } = {}) {
 			return request(`/api/prenotazioni/${bookingId}/stato`, { method: 'POST', body: { stato, oltre_capienza: oltreCapienza } });
 		},
@@ -149,7 +146,7 @@ export const api = {
 		spostaInLista(bookingId, posizione) {
 			return request(`/api/prenotazioni/${bookingId}/posizione`, { method: 'POST', body: { posizione } });
 		},
-		/** Solo staff: cancella davvero una prenotazione inserita per errore. → { eliminata, promossi } */
+		/** Solo staff: cancella davvero una prenotazione inserita per errore. → { eliminata, offerti } */
 		elimina(bookingId) {
 			return request(`/api/prenotazioni/${bookingId}`, { method: 'DELETE' });
 		},

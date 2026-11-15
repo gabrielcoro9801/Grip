@@ -10,7 +10,7 @@
 import test, { before, after, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import bcrypt from 'bcryptjs';
-import { inArray } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import { buildApp } from '../src/app.js';
 import { db, pool } from '../src/db/client.js';
 import {
@@ -220,19 +220,18 @@ describe('cosa un socio può scrivere', () => {
 		}
 	});
 
-	test('prenota un corso, e la prenotazione è sua', async () => {
+	test('prenota un corso dal portale, e la prenotazione è sua', async () => {
 		// Prenotare era semplicemente impossibile: il portale mostrava il pulsante e il
-		// server rispondeva 403. Ora si passa da /api/prenotazioni, che è anche il posto
-		// dove si contano i posti — vedi prenotazioni.test.js per quelle regole.
-		const res = await come(tokenSocio, {
-			method: 'POST',
-			url: '/api/prenotazioni',
-			// L'intestatario lo impone il server: qui si chiede di prenotare per un altro.
-			payload: { session_id: idSessioneCorso, member_id: idEstraneo },
-		});
-		assert.equal(res.statusCode, 201);
-		assert.equal(res.json().booking.member_id, idSocio, 'non si prenota a nome di un altro');
-		idPrenotazioni.push(res.json().booking.id);
+		// server rispondeva 403. Ora si passa dal portale, che usa la stessa funzione della
+		// reception — vedi prenotazioni.test.js per quelle regole. La rotta della reception, a
+		// un socio, dice 403 (D-3): un contratto solo.
+		const vecchia = await come(tokenSocio, { method: 'POST', url: '/api/prenotazioni', payload: { session_id: idSessioneCorso, member_id: idEstraneo } });
+		assert.equal(vecchia.statusCode, 403);
+		const res = await come(tokenSocio, { method: 'POST', url: `/api/member/v1/corsi/lezioni/${idSessioneCorso}/prenota` });
+		assert.equal(res.statusCode, 201, res.body);
+		const [riga] = await db.select().from(bookings).where(eq(bookings.id, res.json().prenotazione.id));
+		assert.equal(riga.memberId, idSocio, 'non si prenota a nome di un altro');
+		idPrenotazioni.push(riga.id);
 	});
 
 	test("l'endpoint generico non è più una scorciatoia per prenotare", async () => {
