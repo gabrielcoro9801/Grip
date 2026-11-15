@@ -292,7 +292,7 @@ export const api = {
 	/** Le prenotazioni fisse viste dal gestionale (routes/prenotazioniFisse.js). */
 	prenotazioniFisse: {
 		/**
-		 * { member_id?, event_id? } → { fisse } (quelle in corso)
+		 * { member_id?, event_id?, concluse? } → { fisse } (quelle in corso; con concluse: 1 quelle finite)
 		 * Ogni fissa: id, member_id, event_id, dal, al, socio, codice_socio, corso, giorno, inizio, fine, creata_da…
 		 */
 		elenco(filtri = {}) {

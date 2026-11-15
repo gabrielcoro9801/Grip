@@ -4,7 +4,7 @@ process.env.TZ = 'Europe/Rome';
 import test, { describe } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-	campiCambiati, lezioniDellaSerie, pianificaModifica, descriviSerie, divergeDalModello, descriviRimozione, fineAttualeSerie,
+	campiCambiati, lezioniDellaSerie, pianificaModifica, divergeDalModello, descriviRimozione,
 	richiesteConflitti, conflittiPerLezione, nomeGiorno,
 } from './modificaEvento.js';
 
@@ -55,12 +55,6 @@ describe('togliere lezioni, raccontato prima di farlo', () => {
 		);
 		assert.equal(descriviRimozione({ aggiunte: 4 }), 'Verranno aggiunte 4 lezioni.');
 		assert.equal(descriviRimozione({}), 'Nessuna lezione cambia.');
-	});
-
-	test('una sessione a occorrenze finisce con la sua ultima lezione', () => {
-		const aOccorrenze = { ...evento, end_condition: 'by_count', end_date: null, occurrence_count: 6 };
-		assert.equal(fineAttualeSerie(aOccorrenze, serie), '2026-11-10');
-		assert.equal(fineAttualeSerie(evento, []), '2026-11-10');
 	});
 });
 
@@ -157,9 +151,7 @@ describe('le lezioni che non si possono cambiare', () => {
 });
 
 describe('come si racconta una sessione', () => {
-	test('il suo giorno, e la fine', () => {
-		assert.equal(descriviSerie(evento), 'Ogni martedì, dal 06/10/2026 al 10/11/2026');
-		assert.equal(descriviSerie({ ...evento, end_condition: 'by_count', occurrence_count: 12 }), 'Ogni martedì, dal 06/10/2026 per 12 lezioni');
+	test('il suo giorno', () => {
 		assert.equal(nomeGiorno('Sunday'), 'domenica');
 	});
 

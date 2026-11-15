@@ -2,7 +2,7 @@
 import test, { describe } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-	segnaliPersona, esitoPrenotazione, coperturaAbbonamento, eCompleanno, compleannoVicino, daFare, perche, fase,
+	segnaliPersona, coperturaAbbonamento, eCompleanno, compleannoVicino, daFare, perche, fase,
 	SEGNALI, CODICI_SEGNALE, regolaSegnale,
 } from './segnali.js';
 import { spostaGiorni } from './giorni.js';
@@ -195,26 +195,6 @@ describe('i segnali', () => {
 
 	test('ogni segnale per lo staff ha la sua regola', () => {
 		for (const s of SEGNALI) assert.ok(regolaSegnale(s.valore), `${s.valore} senza regola`);
-	});
-});
-
-describe('presenze e no-show', () => {
-	const lezione = { data: '2026-10-08', inizio: '18:00', fine: '19:00' };
-	const roma = (data, ora) => new Date(`${data}T${ora}:00+02:00`);
-
-	test('entrato da un\'ora prima alla fine: presente', () => {
-		assert.equal(esitoPrenotazione(lezione, [roma('2026-10-08', '17:00')], roma('2026-10-10', '09:00')), 'presente');
-		assert.equal(esitoPrenotazione(lezione, [roma('2026-10-08', '19:00')], roma('2026-10-10', '09:00')), 'presente');
-	});
-
-	test('entrato troppo presto, un altro giorno o mai, a lezione finita: no-show', () => {
-		assert.equal(esitoPrenotazione(lezione, [roma('2026-10-08', '16:59')], roma('2026-10-10', '09:00')), 'no_show');
-		assert.equal(esitoPrenotazione(lezione, [roma('2026-10-09', '18:10')], roma('2026-10-10', '09:00')), 'no_show');
-		assert.equal(esitoPrenotazione(lezione, [], roma('2026-10-08', '19:01')), 'no_show');
-	});
-
-	test('a lezione non finita, senza ingresso, non è ancora niente', () => {
-		assert.equal(esitoPrenotazione(lezione, [], roma('2026-10-08', '18:30')), 'in_attesa');
 	});
 });
 

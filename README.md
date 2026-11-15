@@ -105,6 +105,27 @@ Tre punti che si sbagliano quasi sempre, spiegati lì per esteso:
 
 ## Stato del progetto
 
+### 15 novembre 2026 (notte) — Pulizia: tabelle dismesse e codice morto (ramo `pulizia-codice-morto`)
+
+Una migrazione, `0064_via_tabelle_dismesse` (scritta a mano). **Elimina dati: backup prima di applicarla.**
+
+- **Tabelle tolte**: quelle dell'allenamento (`exercises`, `exercise_plans`, `workout_sessions`,
+  `workout_logs`), delle comunicazioni (`messaggi`, `modelli_messaggio`, `segreti_canali`) e del QR
+  (`qr_accessi`). Il codice resta sui tag d'archivio; i dati no. `schema/fitness.js` e
+  `schema/messaggi.js` non ci sono più.
+- **Codice mai chiamato** tolto, con i test che lo tenevano in vita: tra gli altri `descriviSerie`,
+  `timeOverlap`, `testoAvviso`, `esitoPrenotazione`, `daChiudereComeNonRaggiungibile` (la regola vive
+  in SQL in `giro.js`). Via anche la dipendenza `recharts`, mai importata.
+- **Colonne inutili** (migrazione `0065_via_colonne_inutili`, anche questa da backup): in
+  `organizations` ragione sociale, P.IVA/CF e logo; in `members` `gdpr_consent` e la sua data
+  (l'informativa firmata resta obbligatoria per iscriversi); in `trattative` l'operatore assegnato e
+  la categoria d'interesse, che nessuna schermata compilava.
+- **I documenti dei soci** escono anche dal database: via `member_documents` e
+  `consensi.documento_id`. Un consenso promozionale dato in reception, che valeva solo con il modulo
+  firmato fra i documenti, non vale più: il socio lo ridà dal portale.
+- **Le prenotazioni fisse concluse** si vedono nella scheda del socio, sotto quelle in corso
+  («Concluse»), con il giorno in cui una fissa è stata chiusa prima della fine.
+
 ### 15 novembre 2026 (sera) — Utenti, ruoli e istruttori (ramo `utenti-ruoli-istruttori`)
 
 Il piano è in `docs/piani/` e nel deck del 15/11. Una migrazione, `0063_utenti_ruoli_istruttori`

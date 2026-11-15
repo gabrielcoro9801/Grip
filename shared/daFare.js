@@ -66,12 +66,6 @@ export function quando(data, oggi = oggiIso()) {
 	return `${-n} ${n === -1 ? 'giorno' : 'giorni'} fa`;
 }
 
-/** La frase della scheda: «Abbonamento in scadenza il 04/11/2026 · tra 4 giorni». */
-export function testoAvviso(avviso, oggi = oggiIso()) {
-	const { frase = '', data = null } = avviso.dati ?? {};
-	return data && avviso.tipo !== 'frequenza' ? `${frase} · ${quando(data, oggi)}` : frase;
-}
-
 /**
  * Gli avvisi aperti di una persona oggi: [{ tipo, chiave, dati }]. `dati` è l'istantanea che
  * resta in Archivio: la data a cui si riferisce, la frase, e quello che serve alle azioni.

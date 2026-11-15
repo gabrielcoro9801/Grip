@@ -7,7 +7,7 @@ import { eq, inArray, sql } from 'drizzle-orm';
 import { buildApp } from '../src/app.js';
 import { db, pool } from '../src/db/client.js';
 import {
-	members, staffAccounts, subscriptions, memberDocuments, consensi, attivita, plans, auditLogs,
+	members, staffAccounts, subscriptions, consensi, attivita, plans, auditLogs,
 } from '../src/db/schema/index.js';
 import { carattereDiControllo } from '../../shared/anagrafica.js';
 import { oggiIso } from '../../shared/giorni.js';
@@ -52,7 +52,6 @@ after(async () => {
 	if (idSoci.length) {
 		await db.delete(staffAccounts).where(inArray(staffAccounts.linkedMemberId, idSoci));
 		await db.delete(subscriptions).where(inArray(subscriptions.memberId, idSoci));
-		await db.delete(memberDocuments).where(inArray(memberDocuments.memberId, idSoci));
 		await db.delete(auditLogs).where(inArray(auditLogs.entitaId, idSoci));
 		await db.delete(consensi).where(inArray(consensi.personaId, soci.map((s) => s.personaId)));
 		await db.delete(attivita).where(inArray(attivita.personaId, soci.map((s) => s.personaId)));
@@ -99,13 +98,10 @@ describe('iscrivi in un passo', () => {
 		const { member, riattivato, accesso_portale: accesso } = res.json();
 		assert.equal(riattivato, false);
 		assert.equal(accesso, 'creato');
-		assert.equal(member.gdpr_consent, true);
-		assert.equal(member.gdpr_consent_date, inizio);
 
 		const [abbonamento] = await db.select().from(subscriptions).where(eq(subscriptions.memberId, member.id));
 		assert.equal(abbonamento.endDate, dataFineAbbonamento(inizio, 1, 'mesi'));
 		assert.equal(Number(abbonamento.pricePaid), 45);
-		assert.deepEqual(await db.select().from(memberDocuments).where(eq(memberDocuments.memberId, member.id)), []);
 		assert.deepEqual(await db.select().from(consensi).where(eq(consensi.personaId, member.persona_id)), []);
 		const diario = await db.select().from(attivita).where(eq(attivita.personaId, member.persona_id));
 		// Le righe "Da fare" del giro (se un altro file lo lancia intanto) non sono dell'iscrizione.

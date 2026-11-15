@@ -5,15 +5,22 @@ import { Button } from "@/ui/primitivi/button";
 import { useToast } from "@/ui/primitivi/use-toast";
 import { nomeGiorno, hhmm } from "@/staff/lib/modificaEvento";
 import { periodoFissa } from "@/staff/lib/fisse";
+import { dataIt } from "@/core/domain/sale";
 import FissaFormDialog from "@/staff/components/courses/FissaFormDialog";
 import CancellaFissaDialog from "@/staff/components/courses/CancellaFissaDialog";
-import { Pencil, Plus, Repeat } from "lucide-react";
+import { ChevronDown, Pencil, Plus, Repeat } from "lucide-react";
+import { cn } from "@/ui/utils";
 
 /** La sessione di una fissa, come la vuole la finestra della fissa. */
 const sessioneDella = (f) => ({ id: f.event_id, corso: f.corso, giorno: f.giorno, start_time: f.inizio, end_time: f.fine });
 
+/** Il periodo di una fissa conclusa: arrivata alla sua data di fine, o chiusa prima (`terminata_il`). */
+const periodoConclusa = (f) => (f.terminata_il
+  ? `dal ${dataIt(f.dal)} · chiusa il ${dataIt(f.terminata_il)}`
+  : periodoFissa(f));
+
 /**
- * Le prenotazioni fisse di un socio, nella sua scheda: quelle in corso, aggiungerne una per suo
+ * Le prenotazioni fisse di un socio, nella sua scheda: quelle in corso (e, a richiesta, le concluse), aggiungerne una per suo
  * conto, cambiarne il periodo, cancellarla da un giorno in poi. Le finestre sono le stesse di
  * Sessioni (FissaFormDialog, CancellaFissaDialog): qui il socio è fisso e la sessione si sceglie.
  *
@@ -23,6 +30,8 @@ const sessioneDella = (f) => ({ id: f.event_id, corso: f.corso, giorno: f.giorno
 export default function FisseSocio({ socio, puoModificare }) {
   const { toast } = useToast();
   const [fisse, setFisse] = useState(null);
+  const [concluse, setConcluse] = useState([]);
+  const [mostraConcluse, setMostraConcluse] = useState(false);
   const [sessioni, setSessioni] = useState([]);
   const [nuova, setNuova] = useState(false);
   const [inModifica, setInModifica] = useState(null);
@@ -30,6 +39,7 @@ export default function FisseSocio({ socio, puoModificare }) {
 
   const carica = useCallback(() => {
     api.prenotazioniFisse.elenco({ member_id: socio.id }).then((r) => setFisse(r.fisse)).catch(() => setFisse([]));
+    api.prenotazioniFisse.elenco({ member_id: socio.id, concluse: 1 }).then((r) => setConcluse(r.fisse)).catch(() => setConcluse([]));
   }, [socio.id]);
   useEffect(() => { carica(); }, [carica]);
 
@@ -84,6 +94,30 @@ export default function FisseSocio({ socio, puoModificare }) {
               </li>
             ))}
           </ul>
+        )}
+
+        {concluse.length > 0 && (
+          <div className="mt-3">
+            <button
+              type="button" aria-expanded={mostraConcluse} onClick={() => setMostraConcluse((v) => !v)}
+              className="flex items-center gap-1 text-sm font-medium text-muted-foreground hover:text-foreground"
+            >
+              <ChevronDown className={cn("w-4 h-4 transition-transform", !mostraConcluse && "-rotate-90")} aria-hidden="true" />
+              Concluse ({concluse.length})
+            </button>
+            {mostraConcluse && (
+              <ul className="space-y-2 mt-2">
+                {concluse.map((f) => (
+                  <li key={f.id} className="p-3 rounded-lg border border-border/60">
+                    <p className="text-sm font-medium truncate text-muted-foreground">{f.corso}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {f.giorno ? `Ogni ${nomeGiorno(f.giorno)}` : "Date scelte"} · {hhmm(f.inizio)}–{hhmm(f.fine)} · {periodoConclusa(f)}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         )}
       </CardContent>
 

@@ -258,6 +258,11 @@ describe('cambiare il periodo', () => {
 		assert.equal(dopo.attiva, false);
 		assert.equal(dopo.terminataIl, oggi);
 		assert.equal((await vive(2, id.altro)).length, 0);
+
+		const elenco = async (q) => (await come('reception', 'GET', `/api/prenotazioni-fisse?member_id=${id.soci[2]}${q}`)).json().fisse;
+		assert.ok(!(await elenco('')).some((f) => f.id === fissa.id), 'non è più fra quelle in corso');
+		const conclusa = (await elenco('&concluse=1')).find((f) => f.id === fissa.id);
+		assert.equal(conclusa?.terminata_il, oggi, 'fra le concluse, con il giorno in cui è stata chiusa');
 	});
 });
 

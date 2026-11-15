@@ -395,13 +395,6 @@ export function applicaAzione(lead, azione, oggi) {
   return { errore: "Azione sconosciuta." };
 }
 
-/** Se un lead è da chiudere da solo come non raggiungibile: troppi tentativi, e l'ultimo da tanto. */
-export function daChiudereComeNonRaggiungibile(lead, oggi, soglie = SOGLIE_LEAD) {
-  return lead.stato === "in_attesa"
-    && (Number(lead.tentativi_senza_risposta) || 0) >= soglie.tentativiMassimi
-    && (giorniDa(lead.ultimo_contatto_il, oggi) ?? 0) >= soglie.nonRaggiungibileGiorni;
-}
-
 /** I filtri rapidi della pagina Contatti, nell'ordine in cui compaiono. */
 export const FILTRI_LEAD = [
   { valore: "aperti", etichetta: "Aperti" },

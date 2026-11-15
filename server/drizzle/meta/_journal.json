@@ -449,6 +449,20 @@
       "when": 1794770000000,
       "tag": "0063_utenti_ruoli_istruttori",
       "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "7",
+      "when": 1794860000000,
+      "tag": "0064_via_tabelle_dismesse",
+      "breakpoints": true
+    },
+    {
+      "idx": 65,
+      "version": "7",
+      "when": 1794870000000,
+      "tag": "0065_via_colonne_inutili",
+      "breakpoints": true
     }
   ]
 }

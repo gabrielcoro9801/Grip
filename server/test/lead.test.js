@@ -294,7 +294,7 @@ describe('i canali', () => {
 
 describe("l'iscrizione", () => {
 	// Il passo dell'anagrafica del flusso Iscrivi (routes/iscrizioni.js); gli altri passi hanno i loro test.
-	const iscrivi = (id, { gdpr_consent: _privacy, ...anagrafica }) => post('reception', '/api/iscrivi', { lead_id: id, anagrafica, informativa_privacy: true });
+	const iscrivi = (id, anagrafica) => post('reception', '/api/iscrivi', { lead_id: id, anagrafica, informativa_privacy: true });
 	const anagraficaCompleta = { nome: 'Anna Maria', cognome: 'Verdi', sesso: 'F', codice_fiscale: CF.toLowerCase(), date_of_birth: '1985-12-10' };
 
 	test('senza codice fiscale valido o senza data di nascita non si fa, e il contatto resta', async () => {
@@ -314,7 +314,7 @@ describe("l'iscrizione", () => {
 		await post('reception', `/api/lead/${lead.id}/contatto`, { canale: 'telefono', esito: 'risposto', nota: 'Passa giovedì' });
 
 		const corpo = {
-			...anagraficaCompleta, phone: '333 111 2222', email: 'anna@test.local', gdpr_consent: true,
+			...anagraficaCompleta, phone: '333 111 2222', email: 'anna@test.local',
 			full_name: 'Nome Inventato', codice_socio: '999999', notes: lead.note,
 		};
 		const lunga = await iscrivi(lead.id, { ...corpo, notes: 'x'.repeat(141) });
@@ -329,8 +329,6 @@ describe("l'iscrizione", () => {
 		assert.equal(member.codice_fiscale, CF, 'normalizzato in maiuscolo');
 		assert.equal(member.phone, '+393331112222');
 		assert.equal(member.notes, 'Chiede del corso bimbi');
-		assert.equal(member.gdpr_consent, true);
-		assert.ok(member.gdpr_consent_date);
 		if (idEnte) assert.match(member.codice_socio, /^\d{6}$/);
 		assert.notEqual(member.codice_socio, '999999', 'il codice lo assegna il contatore');
 		assert.equal(member.persona_id, lead.persona_id, 'è la stessa persona');

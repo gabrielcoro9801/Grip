@@ -13,9 +13,6 @@ import { postiOccupati } from "../../core/domain/corsi.js";
 /** "09:00:00" dal database, "09:00" dal modulo: si confrontano ore e minuti. */
 export const hhmm = (t) => String(t ?? "").slice(0, 5);
 
-/** Una sessione ha più lezioni generate da una regola; una lezione singola ne ha una. */
-export const eUnaSerie = (evento) => evento?.recurrence_type === "weekly" || evento?.recurrence_type === "custom";
-
 // I campi che stanno su ogni lezione, e quelli che la sessione tiene come modello per le sue lezioni.
 const CAMPI_LEZIONE = ["date", "room_id", "start_time", "end_time", "capacity"];
 export const CAMPI_MODELLO = ["room_id", "start_time", "end_time", "capacity"];
@@ -35,16 +32,6 @@ export function fineEvento(evento) {
 
 /** "martedì" — il giorno di una sessione, per le frasi. */
 export const nomeGiorno = (giorno) => (DAYS_IT[giorno] ?? giorno ?? "").toLowerCase();
-
-/** La regola della sessione in una riga: "Ogni martedì, dal 01/10/2026 al 20/12/2026". */
-export function descriviSerie(evento) {
-  if (evento.recurrence_type === "custom") return "Date scelte una per una";
-  if (evento.recurrence_type !== "weekly") return "";
-  const fine = evento.end_condition === "by_count"
-    ? `per ${evento.occurrence_count} lezioni`
-    : `al ${dataIt(evento.end_date)}`;
-  return `Ogni ${nomeGiorno(evento.giorno)}, dal ${dataIt(evento.start_date)} ${fine}`;
-}
 
 /**
  * Quello che il modulo ha cambiato rispetto a com'era all'apertura, e solo quello.
@@ -66,16 +53,6 @@ export function campiCambiati(prima, dopo) {
   if (dopo.date !== prima.date) cambi.date = dopo.date;
   if (dopo.end_date && dopo.end_date !== prima.end_date) cambi.end_date = dopo.end_date;
   return cambi;
-}
-
-/**
- * Dove finisce una sessione oggi: la data fine se c'è, altrimenti l'ultima lezione che ha in
- * calendario (una sessione contata a occorrenze). È il valore da cui parte il campo "Data fine".
- */
-export function fineAttualeSerie(evento, lezioni) {
-  return fineEvento(evento)
-    ?? lezioni.filter((l) => l.event_id === evento.id).map((l) => l.date).sort().pop()
-    ?? evento.start_date;
 }
 
 const n = (quante, una, tante) => `${quante} ${quante === 1 ? una : tante}`;

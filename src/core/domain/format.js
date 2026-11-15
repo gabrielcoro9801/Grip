@@ -26,7 +26,6 @@
 import { oggiIso, oraIso, spostaGiorni, giorniFra } from './giorni.js';
 
 export const LOCALE = "it-IT";
-export const TIMEZONE = "Europe/Rome";
 export const VALUTA = "EUR";
 
 const PLACEHOLDER = "—";

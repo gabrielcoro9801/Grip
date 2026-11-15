@@ -35,7 +35,7 @@ const AZIONI = {
 
 // I campi della persona e quelli della trattativa che si scrivono registrando o correggendo un lead.
 const CAMPI_PERSONA = ['nome', 'cognome', 'telefono', 'email', 'sesso', 'anno_nascita', 'note'];
-const CAMPI_TRATTATIVA = ['data_contatto', 'canale_id', 'interesse_categoria_id', 'assegnata_a_id'];
+const CAMPI_TRATTATIVA = ['data_contatto', 'canale_id'];
 
 const presente = (corpo, campo) => Object.prototype.hasOwnProperty.call(corpo, campo);
 const vuotoANull = (v) => (v === undefined || v === null || String(v).trim() === '' ? null : v);
@@ -49,7 +49,6 @@ const colonneLead = {
 	stato: trattative.stato, stato_dal: trattative.statoDal, tentativi_senza_risposta: trattative.tentativiSenzaRisposta,
 	ultimo_contatto_il: trattative.ultimoContattoIl, ultima_risposta_il: trattative.ultimaRispostaIl,
 	richiamare_il: trattative.richiamareIl, motivo_chiusura: trattative.motivoChiusura,
-	assegnata_a_id: trattative.assegnataAId, interesse_categoria_id: trattative.interesseCategoriaId,
 	created_date: trattative.createdDate,
 	// Chi ha già una scheda da socio (anche archiviata): i suoi dati si cambiano da lì.
 	socio_id: members.id, socio_archiviato_il: members.archiviatoIl,
@@ -190,7 +189,7 @@ export default async function leadRoutes(fastify) {
 	/**
 	 * POST /api/lead → 201 { lead }
 	 *
-	 *   { nome, cognome?, telefono?, email?, sesso?, anno_nascita?, note?, data_contatto, canale_id, interesse_categoria_id? }
+	 *   { nome, cognome?, telefono?, email?, sesso?, anno_nascita?, note?, data_contatto, canale_id }
 	 *   { persona_id, data_contatto, canale_id, … }  — una persona già nota (un ex socio, un
 	 *     contatto chiuso) che torna: le si apre una trattativa nuova, senza toccarne i dati.
 	 */

@@ -1,6 +1,5 @@
-// Dominio CRM/membership: Member, Subscription, Plan. Le tabelle `member_documents` e `qr_accessi`
-// restano con i loro dati, ma documenti e QR sono usciti dall'applicazione a novembre 2026
-// (docs/piani/portale.md, branch archivio/documenti): nessuna rotta le scrive più.
+// Dominio CRM/membership: Member, Subscription, Plan. I documenti dei soci sono usciti
+// dall'applicazione a novembre 2026 (branch archivio/documenti), la loro tabella con la 0065.
 // Campi dedotti dall'uso reale nel codice (il datastore precedente non aveva schema).
 import { sql } from 'drizzle-orm';
 import { pgTable, uuid, varchar, text, boolean, integer, numeric, date, timestamp, jsonb, check, uniqueIndex, index } from 'drizzle-orm/pg-core';
@@ -25,8 +24,6 @@ export const members = pgTable('members', {
 	address: text('address'),
 	emergencyContactName: varchar('emergency_contact_name', { length: 255 }),
 	emergencyContactPhone: varchar('emergency_contact_phone', { length: 64 }),
-	gdprConsent: boolean('gdpr_consent').default(false),
-	gdprConsentDate: date('gdpr_consent_date'),
 	// Progressivo a 6 cifre (es. "000007"), assegnato dal contatore (lib/codiceSocio.js).
 	//
 	// È la chiave con cui la palestra riconosce un socio: obbligatorio e univoco. Non è la
@@ -113,41 +110,6 @@ export const sospensioni = pgTable('sospensioni', {
 }, (table) => ({
 	periodoValido: check('sospensioni_periodo_valido', sql`${table.al} >= ${table.dal}`),
 	socio: index('sospensioni_member_id_idx').on(table.memberId),
-}));
-
-export const memberDocuments = pgTable('member_documents', {
-	id: uuid('id').defaultRandom().primaryKey(),
-	memberId: uuid('member_id').notNull().references(() => members.id),
-	// Tre tipi, vincolati: prima era testo libero, e la Dashboard cercava "Medical Certificate"
-	// mentre il modulo scriveva "Certificato Medico" — l'avviso delle scadenze non è mai
-	// scattato. Le etichette sono in shared/anagrafica.js.
-	documentType: varchar('document_type', { length: 32 }).notNull(), // certificato_medico | documento_identita | consenso_genitori | consenso_marketing | altro
-	// Il nome di un documento "altro" (es. "Contratto"): per gli altri due il tipo basta.
-	titolo: varchar('titolo', { length: 255 }),
-	fileName: varchar('file_name', { length: 255 }),
-	fileUrl: text('file_url'),
-	expiryDate: date('expiry_date'),
-	notes: text('notes'),
-	caricatoDa: varchar('caricato_da', { length: 255 }),
-	createdDate: timestamp('created_date', { withTimezone: true }).notNull().defaultNow(),
-}, (table) => ({
-	tipoValido: check('member_documents_tipo_valido', sql`${table.documentType} IN ('certificato_medico', 'documento_identita', 'consenso_genitori', 'consenso_marketing', 'altro')`),
-	socio: index('member_documents_member_id_idx').on(table.memberId),
-}));
-
-export const qrAccessi = pgTable('qr_accessi', {
-	id: uuid('id').defaultRandom().primaryKey(),
-	// Nonostante il nome storico "cliente_id", nel codice punta sempre a members.id.
-	clienteId: uuid('cliente_id').notNull().references(() => members.id),
-	clienteName: varchar('cliente_name', { length: 255 }),
-	codice: varchar('codice', { length: 64 }).notNull().unique(), // formato GRIP-XXXX-XXXX-XXXX-XXXX
-	dataGenerazione: timestamp('data_generazione', { withTimezone: true }).notNull().defaultNow(),
-	stato: varchar('stato', { length: 16 }).notNull().default('attivo'), // attivo | revocato
-}, (table) => ({
-	socio: index('qr_accessi_cliente_id_idx').on(table.clienteId),
-	// Un socio ha un codice attivo alla volta: con due, la porta e il telefono potevano
-	// sceglierne ognuno uno diverso (`limit(1)` senza ordine), e revocarne uno lasciava l'altro.
-	unAttivo: uniqueIndex('qr_accessi_attivo_unico_idx').on(table.clienteId).where(sql`${table.stato} = 'attivo'`),
 }));
 
 // Gli ingressi in palestra: dal QR (il tornello, quando ci sarà) o registrati a mano dallo staff (routes/ingressi.js).

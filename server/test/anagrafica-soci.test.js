@@ -8,7 +8,7 @@ import bcrypt from 'bcryptjs';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { buildApp } from '../src/app.js';
 import { db, pool } from '../src/db/client.js';
-import { members, staffAccounts, memberDocuments, numberingCounters, persone } from '../src/db/schema/index.js';
+import { members, staffAccounts, numberingCounters, persone } from '../src/db/schema/index.js';
 import { enteDellaNumerazione } from '../src/lib/codiceSocio.js';
 
 const PASSWORD = 'prova-anagrafica-1234';
@@ -46,7 +46,6 @@ before(async () => {
 
 after(async () => {
 	if (idSoci.length) {
-		await db.delete(memberDocuments).where(inArray(memberDocuments.memberId, idSoci));
 		await db.delete(members).where(inArray(members.id, idSoci));
 	}
 	await db.delete(staffAccounts).where(inArray(staffAccounts.id, idAccount));

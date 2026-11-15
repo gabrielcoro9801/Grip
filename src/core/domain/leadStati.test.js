@@ -3,7 +3,7 @@
 import test, { describe } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-	applicaAzione, condizioniLead, contaFiltriLead, daChiudereComeNonRaggiungibile, descriviTempoLead, SOGLIE_LEAD,
+	applicaAzione, condizioniLead, contaFiltriLead, descriviTempoLead, SOGLIE_LEAD,
 } from './lead.js';
 import { spostaGiorni } from './giorni.js';
 
@@ -53,7 +53,6 @@ describe('le azioni', () => {
 		const riaperto = applicaAzione(chiuso, { tipo: 'riapri' }, OGGI);
 		assert.equal(riaperto.campi.stato, 'in_attesa');
 		assert.equal(riaperto.campi.tentativi_senza_risposta, 0);
-		assert.equal(daChiudereComeNonRaggiungibile({ ...chiuso, ...riaperto.campi }, OGGI), false, 'non si richiude da solo');
 		assert.equal(applicaAzione({ ...nuovo, stato: 'non_interessato' }, { tipo: 'riapri' }, OGGI).campi.stato, 'nuovo', 'mai contattato: torna nuovo');
 	});
 });
@@ -67,13 +66,6 @@ describe('le condizioni di tempo', () => {
 		assert.ok(condizioniLead(inAttesa(SOGLIE_LEAD.ultimoTentativoGiorni - 1), OGGI).has('da_ricontattare'));
 		const ultimo = condizioniLead(inAttesa(SOGLIE_LEAD.ultimoTentativoGiorni), OGGI);
 		assert.ok(ultimo.has('ultimo_tentativo') && !ultimo.has('da_ricontattare'));
-	});
-
-	test('non raggiungibile da solo: tentativi bastanti e l\'ultimo abbastanza lontano, tutte e due', () => {
-		const { tentativiMassimi: n, nonRaggiungibileGiorni: g } = SOGLIE_LEAD;
-		assert.equal(daChiudereComeNonRaggiungibile(inAttesa(g, n), OGGI), true);
-		assert.equal(daChiudereComeNonRaggiungibile(inAttesa(g - 1, n), OGGI), false);
-		assert.equal(daChiudereComeNonRaggiungibile(inAttesa(g, n - 1), OGGI), false);
 	});
 
 	test('richiami di oggi, conversazioni ferme, da recuperare, chiusi', () => {

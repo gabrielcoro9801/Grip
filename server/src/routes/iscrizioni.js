@@ -77,8 +77,6 @@ export default async function iscrizioniRoutes(fastify) {
 		verificaCampiFile({ foto_url: anagrafica.foto_url });
 		if (corpo.informativa_privacy !== true) return reply.code(400).send({ error: "Serve l'informativa privacy firmata." });
 		const oggi = oggiIso();
-		anagrafica.gdpr_consent = true;
-		anagrafica.gdpr_consent_date = oggi;
 		const password = corpo.portale?.password;
 		if (corpo.portale) {
 			const nonValida = motivoPasswordNonValida(password);

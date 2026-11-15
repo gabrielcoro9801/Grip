@@ -14,7 +14,7 @@
 // Il rischio si spiega in parole, non con un punteggio: "3 ingressi in 4 settimane contro 9 di
 // media · scade tra 9 giorni". Chi chiama deve sapere perché sta chiamando.
 // ponytail: regole esplicite; un modello statistico solo quando ci saranno i dati di molte palestre.
-import { oggiIso, oraIso, giorniFra, spostaGiorni, lezioneFinita } from './giorni.js';
+import { oggiIso, giorniFra, spostaGiorni } from './giorni.js';
 import { abbonamentoCopre, sospensioneIl } from './abbonamenti.js';
 import { avvisiSocio } from './avvisi.js';
 import { SOGLIE } from './soglie.js';
@@ -87,35 +87,9 @@ export const regolaSegnale = (v, soglie = SOGLIE) => PER_SEGNALE[v]?.regola?.(so
 /** Tutti i codici che la palestra può spegnere. */
 export const CODICI_SEGNALE = Object.keys(PER_SEGNALE);
 
-// Gli ingressi da cui una lezione conta come frequentata: dall'ora prima dell'inizio alla fine.
-export const MINUTI_PRIMA_DELLA_LEZIONE = 60;
 // Quanta storia serve per parlare di calo: la media si fa su 12 settimane, e un socio più giovane
 // (o ripreso da una sospensione più di recente) non ce l'ha. Non è una scelta della palestra.
 const GIORNI_STORIA_PER_IL_CALO = 84;
-
-const minuti = (hhmm) => { const [h, m] = String(hhmm).slice(0, 5).split(':').map(Number); return h * 60 + m; };
-
-/**
- * Com'è andata una prenotazione confermata: `presente` se il socio è entrato da un'ora prima
- * dell'inizio alla fine della lezione, `no_show` se non è entrato e la lezione è finita,
- * `in_attesa` altrimenti. Si calcola, non si salva: un ingresso registrato dopo lo corregge.
- *
- * @param lezione  { data: 'AAAA-MM-GG', inizio: 'HH:MM', fine: 'HH:MM' }
- * @param ingressi gli istanti di ingresso del socio (Date o ISO)
- */
-export function esitoPrenotazione(lezione, ingressi = [], adesso = new Date()) {
-	const giorno = String(lezione.data).slice(0, 10);
-	const da = minuti(lezione.inizio) - MINUTI_PRIMA_DELLA_LEZIONE;
-	const a = minuti(lezione.fine);
-	const entrato = ingressi.some((i) => {
-		const t = new Date(i);
-		if (oggiIso(t) !== giorno) return false;
-		const m = minuti(oraIso(t));
-		return m >= da && m <= a;
-	});
-	if (entrato) return 'presente';
-	return lezioneFinita({ date: giorno, end_time: lezione.fine }, adesso) ? 'no_show' : 'in_attesa';
-}
 
 const giorno = (d) => (d ? String(d).slice(0, 10) : null);
 const dataIt = (iso) => { const [a, m, g] = iso.split('-'); return `${g}/${m}/${a}`; };

@@ -19,7 +19,6 @@ import { readdir, stat } from 'node:fs/promises';
 import { isNotNull } from 'drizzle-orm';
 import { db, pool } from './db/client.js';
 import { entityRegistry } from './entities/registry.js';
-import { memberDocuments } from './db/schema/index.js';
 import { annunciaDatabase } from './lib/descriviDatabase.js';
 import { UPLOAD_DIR, colonneFile, cancellaFile } from './lib/fileCaricati.js';
 import { nomeFileDa } from './lib/urlFirmati.js';
@@ -31,9 +30,7 @@ annunciaDatabase();
 console.log(`Cartella: ${UPLOAD_DIR}\n`);
 
 const citati = new Set();
-// I documenti dei soci non sono più un'entità (sono usciti dall'applicazione a novembre 2026), ma
-// la tabella resta con i suoi file: non sono orfani, e non si cancellano.
-for (const table of [...Object.values(entityRegistry), memberDocuments]) {
+for (const table of Object.values(entityRegistry)) {
 	for (const [, colonna] of colonneFile(table)) {
 		const righe = await db.select({ url: colonna }).from(table).where(isNotNull(colonna));
 		for (const { url } of righe) {

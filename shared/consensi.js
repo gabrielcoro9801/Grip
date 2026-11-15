@@ -15,27 +15,21 @@ export const TIPI_CONSENSO = [
 
 export const tipoConsensoValido = (v) => TIPI_CONSENSO.some((t) => t.valore === v);
 
-/**
- * Da dove arriva un consenso: dal portale (il socio), dalla reception (modulo firmato), da un form
- * pubblico, o dal link di disiscrizione in fondo a un messaggio (che lo toglie soltanto).
- */
-export const FONTI_CONSENSO = ["portale", "reception", "form", "disiscrizione"];
-
 const istante = (d) => (d ? new Date(d).getTime() : 0);
 
 /**
  * Se una riga del registro dà davvero il consenso. Dal portale (o da un form) la prova è la riga
  * stessa: chi, quando, da dove (GDPR art. 7.1 non chiede una forma scritta). Dalla reception la
- * prova è il modulo firmato caricato fra i documenti del socio: finché non c'è, o se viene
- * eliminato, il consenso non vale.
+ * prova era il modulo firmato fra i documenti del socio: i documenti non ci sono più (migrazione
+ * 0065), quindi un consenso dato in reception non vale.
  */
-export const consensoProvato = (r) => Boolean(r.valore) && (r.fonte !== "reception" || Boolean(r.documento_presente));
+export const consensoProvato = (r) => Boolean(r.valore) && r.fonte !== "reception";
 
 /**
  * Il valore attuale di ogni consenso, dalle righe del registro: l'ultima per tipo (per istante:
  * le date arrivano dal database come Date, e come testo non si confrontano). Senza righe il
  * consenso non c'è.
- * @param righe [{ tipo, valore, fonte, created_date, documento_id?, documento_presente? }]
+ * @param righe [{ tipo, valore, fonte, created_date }]
  * @returns { [tipo]: { valore, fonte, il, senza_prova } } — `senza_prova`: dato in reception, ma
  *   il modulo non c'è (più): vale come non dato.
  */
