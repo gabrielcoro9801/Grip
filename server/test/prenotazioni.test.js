@@ -264,6 +264,13 @@ describe("disdire offre il posto al primo in lista, per 12 ore", () => {
 		assert.equal(dopo.get(terzo.id).waitlistPosition, 2, 'in fondo alla lista');
 		assert.equal(dopo.get(quarto.id).waitlistPosition, 1);
 		assert.equal(dopo.get(quarto.id).postoOffertoFinoA.getTime(), scaduta.getTime() + 12 * ORA, '12 ore dalla scadenza di prima');
+		const avvisi = await db.select().from(notifiche).where(and(eq(notifiche.memberId, idSoci[2]), eq(notifiche.tipo, 'offerta_scaduta')));
+		assert.equal(avvisi.length, 1, 'chi torna in fondo lo sa');
+		assert.match(avvisi[0].testo, /al 2° posto/);
+
+		// Rileggere non riavvisa.
+		await come(tokenSocio[1], { method: 'GET', url: '/api/member/v1/corsi/agenda?dal=2026-12-01&al=2026-12-01' });
+		assert.equal((await db.select().from(notifiche).where(and(eq(notifiche.memberId, idSoci[2]), eq(notifiche.tipo, 'offerta_scaduta')))).length, 1);
 	});
 
 	test('il socio non disdice la prenotazione di un altro', async () => {

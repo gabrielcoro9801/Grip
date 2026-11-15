@@ -11,12 +11,12 @@ import { oggiIso } from "@/core/domain/giorni";
 // Un'icona per tipo di notifica; un tipo nuovo che la pagina non conosce prende la campanella.
 const ICONE = {
   lezione_annullata: CalendarX, fissa_senza_abbonamento: Repeat, fissa_da_allungare: Repeat,
-  posto_offerto: Ticket, promosso_lista_attesa: CalendarCheck, sospensione_riprenotata: CalendarCheck,
+  posto_offerto: Ticket, offerta_scaduta: Ticket, promosso_lista_attesa: CalendarCheck, sospensione_riprenotata: CalendarCheck,
 };
 // Da dove viene (D-3): la palestra che ha fatto qualcosa, la lista d'attesa, o GRIP da solo.
 const ORIGINE = {
   lezione_annullata: "Dalla palestra", promosso_lista_attesa: "Dalla palestra",
-  posto_offerto: "Dalla lista d'attesa",
+  posto_offerto: "Dalla lista d'attesa", offerta_scaduta: "Dalla lista d'attesa",
   fissa_senza_abbonamento: "Automatica", fissa_da_allungare: "Automatica", sospensione_riprenotata: "Automatica",
 };
 /** Che cosa si può fare da una notifica, se c'è qualcosa: { percorso, etichetta }. */

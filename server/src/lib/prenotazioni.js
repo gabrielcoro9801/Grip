@@ -231,7 +231,8 @@ export async function disdici({ bookingId, soloDelSocio = null, motivo = null, a
  * - alla chiusura della lista (il termine di disdetta del corso) non si offre più niente.
  *
  * Si notifica (`posto_offerto`) solo un'offerta ancora aperta: una già scaduta nel passato,
- * ricostruita adesso, non serve più a nessuno.
+ * ricostruita adesso, non serve più a nessuno. Chi torna in fondo per un'offerta scaduta lo sa
+ * (`offerta_scaduta`, una volta sola anche se il giro lo ha rimandato in fondo più volte).
  *
  * @returns le prenotazioni a cui ha appena offerto un posto, ancora aperte
  */
@@ -249,6 +250,7 @@ export async function regolaOfferte(tx, sessionId, adesso = new Date()) {
 	const chiusura = chiusuraLista(lezione, lezione.corso.ore)?.getTime() ?? 0;
 	const capienza = lezione.capacity ?? 0;
 	const nuove = new Set();
+	const tornati = new Set();
 
 	const offri = (t) => {
 		if (!viva || t >= chiusura) return;
@@ -269,6 +271,7 @@ export async function regolaOfferte(tx, sessionId, adesso = new Date()) {
 		const t = scaduta.fino;
 		scaduta.fino = null;
 		nuove.delete(scaduta);
+		tornati.add(scaduta);
 		coda.splice(coda.indexOf(scaduta), 1);
 		coda.push(scaduta);
 		offri(t);
@@ -293,6 +296,19 @@ export async function regolaOfferte(tx, sessionId, adesso = new Date()) {
 			titolo: `Si è liberato un posto: ${nome}`,
 			testo: `C'è un posto per te a ${nome} di ${giornoEsteso(lezione.date)} alle ${String(lezione.startTime).slice(0, 5)}. `
 				+ `Confermalo entro ${quando(new Date(c.fino), adesso)}: dopo passa al prossimo in lista.`,
+		});
+	}
+	const quandoLezione = `${giornoEsteso(lezione.date)} alle ${String(lezione.startTime).slice(0, 5)}`;
+	for (const c of tornati) {
+		if (!viva || c.fino) continue;
+		await notifica(tx, [c.riga.memberId], {
+			tipo: 'offerta_scaduta',
+			lezioneId: lezione.id,
+			titolo: `Posto non confermato: ${nome}`,
+			testo: `Il posto che si era liberato a ${nome} di ${quandoLezione} non è stato confermato in tempo ed è passato al prossimo. `
+				+ (ora >= chiusura
+					? "Sei ancora in lista d'attesa, ma la lista è chiusa: se si libera un posto, è di chi lo prende per primo."
+					: `Sei di nuovo in lista d'attesa, al ${coda.indexOf(c) + 1}° posto.`),
 		});
 	}
 	return aperte.map((c) => ({ ...c.riga, postoOffertoFinoA: new Date(c.fino) }));

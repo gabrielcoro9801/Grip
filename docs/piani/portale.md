@@ -183,6 +183,7 @@ Una sola, generata con `npm run db:generate` alla fine di D-1 (dopo la 0061 di m
 - Il banner della Home: prima un posto offerto (con Conferma), poi una notifica non letta su una lezione dei prossimi due giorni.
 - «Prenota ogni giovedì» nel foglio dell'orario usa ancora la regola di passaggio (fino al massimo): il foglio con le date è D-4.
 - Il margine di 10 minuti vale per il socio; la reception disdice sempre.
+- Deciso il 15/11: nel gestionale un posto offerto conta come preso (calendario, dashboard, capienza); chi torna in fondo per un'offerta scaduta riceve `offerta_scaduta`, con il suo nuovo posto in lista.
 - `dati:portale` crea una socia con tutto da guardare a mano (`giulia.portale@grip.local` / `portale1234`) e resta nel database; `-- --togli` la toglie.
 
 ## D-4 · Fisse con date
