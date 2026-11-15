@@ -60,15 +60,19 @@ const COLONNE_LEZIONE = {
 	colore: categories.color,
 };
 
-/** Quante prenotazioni confermate e in attesa ha ogni lezione: Map<id, { confermati, in_attesa }>. */
+/**
+ * Quante prenotazioni confermate e in attesa ha ogni lezione, e quanti posti sono offerti a chi è in
+ * lista (contano come occupati, D-3 del portale): Map<id, { confermati, offerti, in_attesa }>.
+ */
 async function postiContati(idLezioni) {
 	if (!idLezioni.length) return new Map();
 	const righe = await db.select({
 		id: bookings.sessionId,
 		confermati: sql`count(*) filter (where ${bookings.status} = 'confirmed')`.mapWith(Number),
 		inAttesa: sql`count(*) filter (where ${bookings.status} = 'waitlisted')`.mapWith(Number),
+		offerti: sql`count(*) filter (where ${bookings.status} = 'waitlisted' and ${bookings.postoOffertoFinoA} > now())`.mapWith(Number),
 	}).from(bookings).where(inArray(bookings.sessionId, idLezioni)).groupBy(bookings.sessionId);
-	return new Map(righe.map((r) => [r.id, { confermati: r.confermati, in_attesa: r.inAttesa }]));
+	return new Map(righe.map((r) => [r.id, { confermati: r.confermati, offerti: r.offerti, in_attesa: r.inAttesa }]));
 }
 
 const lezioneApi = ({ lezione, sessione, corso, colore }, posti) => ({
@@ -77,7 +81,7 @@ const lezioneApi = ({ lezione, sessione, corso, colore }, posti) => ({
 	room_id: lezione.roomId, capacity: lezione.capacity, status: lezione.status, modified_manually: lezione.modifiedManually,
 	course_id: corso.id, corso: corso.nome, instructor_id: corso.instructorId, category_id: corso.categoriaId, colore: colore ?? null,
 	sessione: sessioneApi(sessione),
-	confermati: posti?.confermati ?? 0, in_attesa: posti?.in_attesa ?? 0,
+	confermati: posti?.confermati ?? 0, offerti: posti?.offerti ?? 0, in_attesa: posti?.in_attesa ?? 0,
 });
 
 export default async function calendarioRoutes(fastify) {
@@ -111,7 +115,7 @@ export default async function calendarioRoutes(fastify) {
 	 * GET /api/calendario/lezioni?dal=AAAA-MM-GG&al=AAAA-MM-GG
 	 * GET /api/calendario/lezioni?evento_id=…&dal=AAAA-MM-GG     (le lezioni di una sessione da quel giorno)
 	 * → { lezioni: [{ id, event_id, date, start_time, end_time, room_id, capacity, status,
-	 *     modified_manually, course_id, corso, instructor_id, category_id, colore, sessione, confermati, in_attesa }] }
+	 *     modified_manually, course_id, corso, instructor_id, category_id, colore, sessione, confermati, offerti, in_attesa }] }
 	 */
 	fastify.get('/api/calendario/lezioni', (request, reply) => rispondi(reply, async () => {
 		const { dal, al, evento_id: idEvento } = request.query ?? {};

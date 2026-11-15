@@ -10,6 +10,7 @@ import { ErrorState } from "@/ui/StateViews";
 import { formatData } from "@/core/domain/format";
 import { etichettaMotivoAbbandono } from "@/core/domain/lead";
 import { SCHEDE } from "@/staff/components/dafare/avvisi";
+import { postiOccupati } from "@/core/domain/corsi";
 
 /**
  * La home del gestionale: i numeri, e quanti avvisi aspettano in ogni scheda di Da fare.
@@ -142,7 +143,7 @@ export default function Dashboard() {
                 // Le prime nove: le altre stanno in Prenotazioni.
                 <ul className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
                   {prossime.slice(0, 9).map((l) => {
-                    const piena = l.confermati >= l.capacity;
+                    const piena = postiOccupati(l) >= l.capacity;
                     return (
                       <li key={l.id} className="flex items-center justify-between gap-3 p-3 rounded-lg bg-muted/50">
                         <div className="min-w-0">
@@ -152,7 +153,7 @@ export default function Dashboard() {
                           </p>
                         </div>
                         <div className="text-right shrink-0">
-                          <p className={`text-sm font-semibold tabular-nums ${piena ? "text-warning" : ""}`}>{l.confermati}/{l.capacity} posti</p>
+                          <p className={`text-sm font-semibold tabular-nums ${piena ? "text-warning" : ""}`}>{postiOccupati(l)}/{l.capacity} posti</p>
                           {l.in_attesa > 0 && <p className="text-xs text-muted-foreground">{l.in_attesa} in attesa</p>}
                         </div>
                       </li>

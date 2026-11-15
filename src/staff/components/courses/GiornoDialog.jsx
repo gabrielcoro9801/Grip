@@ -5,6 +5,7 @@ import { Button } from "@/ui/primitivi/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/ui/primitivi/dialog";
 import { formatData } from "@/core/domain/format";
 import { disponiLezioni, intervalloOre } from "@/staff/lib/vistaGiorno";
+import { postiOccupati } from "@/core/domain/corsi";
 
 const hhmm = (t) => String(t ?? "").slice(0, 5);
 // L'altezza di un'ora nella colonna, in pixel: un'ora di lezione tiene nome, orario e sala.
@@ -85,7 +86,7 @@ export default function GiornoDialog({ giorno, lezioni, rooms, onClose, onNuovaL
                             <span className="flex flex-wrap gap-x-1.5 text-foreground/80">
                               <span className="tabular-nums whitespace-nowrap">{hhmm(l.start_time)}–{hhmm(l.end_time)}</span>
                               <span className="truncate">{salaDi(l.room_id)}</span>
-                              <span className="tabular-nums whitespace-nowrap">{l.confermati}/{l.capacity} posti</span>
+                              <span className="tabular-nums whitespace-nowrap">{postiOccupati(l)}/{l.capacity} posti</span>
                             </span>
                           </Link>
                         </li>

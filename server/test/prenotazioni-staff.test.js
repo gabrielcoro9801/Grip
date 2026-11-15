@@ -135,6 +135,7 @@ describe('gli stati', () => {
 
 		const pagina = (await reception({ method: 'GET', url: `/api/calendario/lezioni/${id.lezione}` })).json();
 		assert.ok(pagina.prenotazioni.find((p) => p.id === prenotazioneDi[2]).posto_offerto_fino_a, 'la pagina della lezione lo dice');
+		assert.equal(pagina.lezione.offerti, 1, 'e conta il posto come preso');
 	});
 
 	test("riattivare una disdetta la rimette in lista se non c'è posto: il posto offerto conta", async () => {

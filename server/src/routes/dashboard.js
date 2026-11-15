@@ -89,8 +89,8 @@ async function motiviAbbandono(oggi) {
 }
 
 /**
- * Le lezioni da adesso a fra sette giorni, una riga per lezione con i posti: confermati, capienza
- * e lista d'attesa. Erano le prenotazioni, una per riga: cinque card "Cross Training" uguali per
+ * Le lezioni da adesso a fra sette giorni, una riga per lezione con i posti: confermati, offerti a
+ * chi è in lista (occupati anche loro), capienza e lista d'attesa. Erano le prenotazioni, una per riga: cinque card "Cross Training" uguali per
  * una lezione sola, e un "Prossime lezioni: 131" che contava prenotazioni.
  */
 async function prossimeLezioni(oggi) {
@@ -100,6 +100,7 @@ async function prossimeLezioni(oggi) {
 			capacity: sessions.capacity, course_name: courses.name, room_name: rooms.name,
 			confermati: sql`count(${bookings.id}) filter (where ${bookings.status} = 'confirmed')`.mapWith(Number),
 			in_attesa: sql`count(${bookings.id}) filter (where ${bookings.status} = 'waitlisted')`.mapWith(Number),
+			offerti: sql`count(${bookings.id}) filter (where ${bookings.status} = 'waitlisted' and ${bookings.postoOffertoFinoA} > now())`.mapWith(Number),
 		})
 		.from(sessions)
 		.innerJoin(events, eq(sessions.eventId, events.id))

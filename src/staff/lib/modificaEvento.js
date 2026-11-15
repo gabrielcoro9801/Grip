@@ -8,6 +8,7 @@
 // Import relativi con l'estensione, come eventUtils.js: così il file si carica con `node --test`.
 import { DAYS_IT } from "./courseValidation.js";
 import { motivoSalaNonPrenotabile, dataIt } from "../../core/domain/sale.js";
+import { postiOccupati } from "../../core/domain/corsi.js";
 
 /** "09:00:00" dal database, "09:00" dal modulo: si confrontano ore e minuti. */
 export const hhmm = (t) => String(t ?? "").slice(0, 5);
@@ -163,7 +164,8 @@ export function divergeDalModello(lezione, modello) {
  * Una lezione non si cambia se finirebbe in una sala annullata o sospesa quel giorno, sopra
  * un'altra lezione nella stessa sala o con lo stesso istruttore (`conflitti`, dal server), con
  * l'inizio dopo la fine (una sessione a cui si sposta solo l'inizio può averne una che finiva
- * prima), o con meno posti dei soci già confermati (`lezione.confermati`, contati dal server).
+ * prima), o con meno posti di quelli già presi (`postiOccupati`: i confermati e i posti offerti a
+ * chi è in lista, contati dal server).
  *
  * `modified_manually` dice se la lezione, dopo, sarà diversa dal modello della sua sessione: è
  * quello che la pagina della lezione mostra come "Orario diverso dalla sessione".
@@ -194,9 +196,9 @@ export function pianificaModifica(lezioni, cambi, modello, { rooms, conflitti = 
       }
       if (spostata && conflitti.has(lezione.id)) return conflitti.get(lezione.id);
       if ("capacity" in cambi) {
-        const confermati = Number(lezione.confermati ?? 0);
-        if (cambi.capacity < confermati) {
-          return `${dataBreve(dopo.date)}: ${confermati} soci già confermati, la capienza non può scendere a ${cambi.capacity}.`;
+        const presi = postiOccupati(lezione);
+        if (cambi.capacity < presi) {
+          return `${dataBreve(dopo.date)}: ${presi} posti già presi, la capienza non può scendere a ${cambi.capacity}.`;
         }
       }
       return null;

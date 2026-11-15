@@ -73,3 +73,6 @@ export function fasciaDelGiorno(ora) {
   if (hh < '18:00') return 'pomeriggio';
   return 'sera';
 }
+
+/** I posti presi di una lezione del gestionale: i confermati e quelli offerti a chi è in lista. */
+export const postiOccupati = (lezione) => Number(lezione?.confermati ?? 0) + Number(lezione?.offerti ?? 0);
