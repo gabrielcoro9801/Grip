@@ -366,6 +366,8 @@ export default async function memberRoutes(fastify) {
 			fisse: fisse.map((f) => ({
 				id: f.id, serie_id: f.event_id, corso: f.corso, giorni: f.giorno ? [f.giorno] : [],
 				inizio: String(f.inizio).slice(0, 5), fine: String(f.fine).slice(0, 5), creata_il: f.creata_il,
+				// D-3: da quando a quando vale (Le mie lezioni: «fino al 15 dic 2026»).
+				dal: f.dal, al: f.al,
 			})),
 		};
 	});

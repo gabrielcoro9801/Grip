@@ -2,13 +2,33 @@ import React, { useState, useEffect, useCallback } from "react";
 import { Link, useOutletContext } from "react-router-dom";
 import { caricaNotifiche, segnaNotificheLette } from "@/core/api/portale";
 import { Card, CardContent } from "@/ui/primitivi/card";
-import { Bell, CalendarX, Repeat, AlertTriangle, XCircle, ChevronRight, CheckCircle2 } from "lucide-react";
+import { Bell, CalendarX, CalendarCheck, Repeat, AlertTriangle, XCircle, ChevronRight, CheckCircle2, Ticket } from "lucide-react";
 import { LoadingState } from "@/ui/Spinner";
 import { ErrorState } from "@/ui/StateViews";
-import { formatData } from "@/core/domain/format";
+import { formatData, tempoFa } from "@/core/domain/format";
+import { oggiIso } from "@/core/domain/giorni";
 
 // Un'icona per tipo di notifica; un tipo nuovo che la pagina non conosce prende la campanella.
-const ICONE = { lezione_annullata: CalendarX, fissa_senza_abbonamento: Repeat };
+const ICONE = {
+  lezione_annullata: CalendarX, fissa_senza_abbonamento: Repeat, fissa_da_allungare: Repeat,
+  posto_offerto: Ticket, promosso_lista_attesa: CalendarCheck, sospensione_riprenotata: CalendarCheck,
+};
+// Da dove viene (D-3): la palestra che ha fatto qualcosa, la lista d'attesa, o GRIP da solo.
+const ORIGINE = {
+  lezione_annullata: "Dalla palestra", promosso_lista_attesa: "Dalla palestra",
+  posto_offerto: "Dalla lista d'attesa",
+  fissa_senza_abbonamento: "Automatica", fissa_da_allungare: "Automatica", sospensione_riprenotata: "Automatica",
+};
+/** Che cosa si può fare da una notifica, se c'è qualcosa: { percorso, etichetta }. */
+function azioneDi(n) {
+  if (n.tipo === "lezione_annullata") {
+    if (!n.lezione || n.lezione.data < oggiIso()) return null;
+    return { percorso: `/member-portal/corsi?giorno=${n.lezione.data}`, etichetta: `Altre lezioni di ${formatData(n.lezione.data, "giorno")}` };
+  }
+  if (n.tipo === "fissa_da_allungare") return { percorso: "/member-portal/lezioni", etichetta: "Allunga" };
+  if (n.lezione_id || n.fissa_id) return { percorso: "/member-portal/lezioni", etichetta: "Vedi la lezione" };
+  return null;
+}
 // Dove si sistema un avviso.
 const AZIONI = {
   abbonamento: { percorso: "/member-portal/abbonamento", etichetta: "Vai all'abbonamento" },
@@ -115,14 +135,19 @@ export default function MemberNotifiche() {
                         <Icona className="w-4 h-4" aria-hidden="true" />
                       </div>
                       <div className="min-w-0 flex-1">
-                        <div className="flex items-baseline justify-between gap-2">
-                          <p className="text-sm font-semibold">
-                            {n.titolo}
-                            {!n.letta && <span className="ml-2 text-[10px] font-medium uppercase tracking-wide text-primary">Nuova</span>}
-                          </p>
-                          <time className="text-xs text-muted-foreground shrink-0" dateTime={n.creata_il}>{formatData(n.creata_il, "breve")}</time>
-                        </div>
-                        <p className="text-sm text-muted-foreground mt-0.5">{n.testo}</p>
+                        <p className="text-sm font-semibold">
+                          {n.titolo}
+                          {!n.letta && <span className="ml-2 text-[10px] font-medium uppercase tracking-wide text-primary">Nuova</span>}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {ORIGINE[n.tipo] ?? "Dalla palestra"} · <time dateTime={n.creata_il}>{tempoFa(n.creata_il)}</time>
+                        </p>
+                        <p className="text-sm text-muted-foreground mt-1">{n.testo}</p>
+                        {azioneDi(n) && (
+                          <Link to={azioneDi(n).percorso} className="mt-1 inline-flex items-center gap-1 min-h-11 text-sm font-medium text-primary hover:underline">
+                            {azioneDi(n).etichetta} <ChevronRight className="w-4 h-4" aria-hidden="true" />
+                          </Link>
+                        )}
                       </div>
                     </CardContent>
                   </Card>
@@ -132,6 +157,9 @@ export default function MemberNotifiche() {
           </ul>
         )}
       </section>
+      <p className="text-xs text-muted-foreground text-center">
+        Il portale non manda email né notifiche sul telefono: quello che succede alle tue prenotazioni lo trovi qui e in Home.
+      </p>
     </div>
   );
 }

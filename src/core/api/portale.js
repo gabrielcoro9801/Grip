@@ -32,13 +32,34 @@ export function caricaPalestra() {
 }
 
 /**
- * Le proprie prossime lezioni (prenotate o in lista d'attesa, non ancora finite), in ordine,
- * dall'agenda dei prossimi `giorni`. In D-3 arriva `GET /lezioni`, che le dà già così.
+ * Le mie lezioni: quelle che ho prenotato fra `dal` e `al` (di base dagli ultimi 30 giorni ai
+ * prossimi 60), anche disdette o annullate dalla palestra. → [lezione]
  */
+export async function caricaLezioni({ dal, al } = {}) {
+	const parametri = new URLSearchParams();
+	if (dal) parametri.set('dal', dal);
+	if (al) parametri.set('al', al);
+	const coda = parametri.toString();
+	const { lezioni } = await api.richiesta(`${BASE}/lezioni${coda ? `?${coda}` : ''}`);
+	return lezioni;
+}
+
+/** Le prossime lezioni vive (prenotate o in lista, non finite né annullate), in ordine. */
 export async function caricaMieProssime({ giorni = 30 } = {}) {
 	const dal = oggiIso();
-	const agenda = await caricaAgenda({ dal, al: spostaGiorni(dal, giorni) });
-	return agenda.giorni.flatMap((g) => g.lezioni).filter((l) => l.mia_prenotazione && !l.finita);
+	const lezioni = await caricaLezioni({ dal, al: spostaGiorni(dal, giorni) });
+	return lezioni.filter((l) => l.mia_prenotazione && l.mia_prenotazione.stato !== 'cancelled' && !l.finita && !l.annullata);
+}
+
+/** Il catalogo per «Per corso»: { categorie: [{ …, corsi: [{ …, orari }] }], categoria_recente }. */
+export function caricaCatalogo() {
+	return api.richiesta(`${BASE}/corsi/catalogo`);
+}
+
+/** «I tuoi corsi»: la prossima lezione degli orari che prenoto spesso. → [lezione] */
+export async function caricaMieiOrari() {
+	const { lezioni } = await api.richiesta(`${BASE}/corsi/miei-orari`);
+	return lezioni;
 }
 
 /** Lo storico degli abbonamenti: { abbonamenti }. */
@@ -52,10 +73,11 @@ export function caricaAbbonamenti() {
  * Sostituisce sette richieste e l'incrocio che il browser faceva a mano — incluso lo
  * scaricamento di tutte le prenotazioni altrui per contare i posti liberi.
  */
-export function caricaAgenda({ dal, al } = {}) {
+export function caricaAgenda({ dal, al, sessione = null } = {}) {
 	const parametri = new URLSearchParams();
 	if (dal) parametri.set('dal', dal);
 	if (al) parametri.set('al', al);
+	if (sessione) parametri.set('sessione_id', sessione);
 	const coda = parametri.toString();
 	return api.richiesta(`${BASE}/corsi/agenda${coda ? `?${coda}` : ''}`);
 }
