@@ -27,7 +27,7 @@ const VUOTI = Object.fromEntries(CAMPI.map((c) => [c.chiave, ""]));
 
 export default function ContattiPalestra() {
   const { staffUser } = useStaffAuth();
-  const puoCambiare = canEdit(staffUser?.ruolo, "admin_users");
+  const puoCambiare = canEdit(staffUser?.ruolo, "impostazioni");
   const { toast } = useToast();
   const [valori, setValori] = useState(null);
   const [errore, setErrore] = useState(null);

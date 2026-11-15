@@ -32,7 +32,7 @@ export default function DaFareLayout() {
   const tabs = useMemo(() => [
     ...SCHEDE.map((s) => ({ label: s.etichetta, path: s.path, end: s.path === "/da-fare", conta: conteggi?.[s.tipo] })),
     { label: "Archivio", path: "/da-fare/archivio" },
-    ...(canEdit(staffUser?.ruolo, "admin_users") ? [{ label: "Regole", path: "/da-fare/regole" }] : []),
+    ...(canEdit(staffUser?.ruolo, "impostazioni") ? [{ label: "Regole", path: "/da-fare/regole" }] : []),
   ], [conteggi, staffUser?.ruolo]);
 
   const contesto = useMemo(() => ({ conteggi, aggiornaConteggi: setConteggi, ricaricaConteggi }), [conteggi, ricaricaConteggi]);

@@ -10,7 +10,7 @@ import { eq, inArray } from 'drizzle-orm';
 import { buildApp } from '../src/app.js';
 import { db, pool } from '../src/db/client.js';
 import {
-	members, staffAccounts, bookings, sessions, events, courses, rooms, instructors, subscriptions, plans, auditLogs, attivita,
+	members, staffAccounts, bookings, sessions, events, courses, rooms, subscriptions, plans, auditLogs, attivita,
 	prenotazioniFisse,
 } from '../src/db/schema/index.js';
 import { oggiIso, spostaGiorni } from '../../shared/giorni.js';
@@ -55,7 +55,7 @@ before(async () => {
 
 	const [sala] = await db.insert(rooms).values({ name: `Sala archivio ${suffisso}` }).returning();
 	id.sala = sala.id;
-	const [istruttore] = await db.insert(instructors).values({ nome: 'Istruttore', cognome: `Archivio ${suffisso}` }).returning();
+	const [istruttore] = await db.insert(staffAccounts).values({ nome: `Istruttore Archivio ${suffisso}`, email: `istr.archivio.${suffisso}@test.local`, passwordHash: 'non-si-accede', ruolo: 'istruttore', istruttore: true }).returning();
 	id.istruttore = istruttore.id;
 	const [corso] = await db.insert(courses).values({ categoryId: await categoriaDiProva(), name: `Corso archivio ${suffisso}`, instructorId: istruttore.id }).returning();
 	id.corso = corso.id;
@@ -90,7 +90,7 @@ after(async () => {
 	await db.delete(events).where(eq(events.courseId, id.corso));
 	await db.delete(courses).where(inArray(courses.instructorId, [id.istruttore]));
 	await togliCategorieDiProva();
-	await db.delete(instructors).where(eq(instructors.id, id.istruttore));
+	await db.delete(staffAccounts).where(eq(staffAccounts.id, id.istruttore));
 	await db.delete(rooms).where(eq(rooms.id, id.sala));
 	await db.delete(subscriptions).where(inArray(subscriptions.memberId, id.soci));
 	await db.delete(plans).where(eq(plans.id, id.tipo));
@@ -177,13 +177,13 @@ describe('archiviare un socio', () => {
 
 describe('istruttori e corsi disattivati', () => {
 	test('a un istruttore disattivato non si assegna un corso', async () => {
-		assert.equal((await admin({ method: 'PUT', url: `/api/entities/Instructor/${id.istruttore}`, payload: { attivo: false } })).statusCode, 200);
+		assert.equal((await admin({ method: 'PUT', url: `/api/entities/StaffAccount/${id.istruttore}`, payload: { attivo: false } })).statusCode, 200);
 		const res = await admin({ method: 'POST', url: '/api/entities/Course', payload: { name: `Nuovo ${suffisso}`, instructor_id: id.istruttore } });
 		assert.equal(res.statusCode, 400);
 		assert.match(res.json().error, /disattivato/);
 		// Il corso che già tiene resta com'è, e si può ancora modificare.
 		assert.equal((await admin({ method: 'PUT', url: `/api/entities/Course/${id.corso}`, payload: { description: 'ok' } })).statusCode, 200);
-		await admin({ method: 'PUT', url: `/api/entities/Instructor/${id.istruttore}`, payload: { attivo: true } });
+		await admin({ method: 'PUT', url: `/api/entities/StaffAccount/${id.istruttore}`, payload: { attivo: true } });
 	});
 
 	test('un corso disattivato non si programma più', async () => {

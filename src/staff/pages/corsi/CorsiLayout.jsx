@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Outlet } from "react-router-dom";
-import { CalendarDays, Repeat, LayoutList, DoorOpen, UserCog, Tags } from "lucide-react";
+import { CalendarDays, Repeat, LayoutList, DoorOpen, Tags } from "lucide-react";
 import { api } from "@/core/api/client";
 import SectionTabs from "@/staff/components/SectionTabs";
 import PageContainer from "@/staff/components/PageContainer";
@@ -22,7 +22,6 @@ const tabsBase = [
   { label: "Sessioni", path: "/calendario/sessioni", icon: Repeat },
   { label: "Catalogo corsi", path: "/calendario/corsi", icon: LayoutList },
   { label: "Sale", path: "/calendario/sale", icon: DoorOpen },
-  { label: "Istruttori", path: "/calendario/istruttori", icon: UserCog },
   { label: "Categorie", path: "/calendario/categorie", icon: Tags },
 ];
 
@@ -43,13 +42,13 @@ export default function CorsiLayout() {
   const [caricato, setCaricato] = useState(false);
   const loadData = useCallback(async () => {
     try {
-      const [courses, categories, instructors, rooms] = await Promise.all([
+      const [courses, categories, elenco, rooms] = await Promise.all([
         api.entities.Course.list(),
         api.entities.Category.list(),
-        api.entities.Instructor.list(),
+        api.istruttori.elenco(),
         api.entities.Room.list(),
       ]);
-      setData({ courses, categories, instructors, rooms });
+      setData({ courses, categories, instructors: elenco.elenco, rooms });
       setCaricato(true);
       setErrore(null);
     } catch (err) {

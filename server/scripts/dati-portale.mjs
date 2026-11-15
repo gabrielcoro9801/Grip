@@ -19,7 +19,7 @@ import bcrypt from 'bcryptjs';
 import { eq, inArray, like } from 'drizzle-orm';
 import { db, pool } from '../src/db/client.js';
 import {
-	members, staffAccounts, subscriptions, sospensioni, rooms, categories, instructors, courses, events, sessions,
+	members, staffAccounts, subscriptions, sospensioni, rooms, categories, courses, events, sessions,
 	bookings, notifiche, prenotazioniFisse, organizations,
 } from '../src/db/schema/index.js';
 import { prenota, disdici } from '../src/lib/prenotazioni.js';
@@ -57,7 +57,7 @@ async function togli() {
 	if (idEventi.length) await db.delete(events).where(inArray(events.id, idEventi));
 	if (idCorsi.length) await db.delete(courses).where(inArray(courses.id, idCorsi));
 	await db.delete(categories).where(eq(categories.name, 'Benessere (prova)'));
-	await db.delete(instructors).where(eq(instructors.notes, MARCA));
+	await db.delete(staffAccounts).where(eq(staffAccounts.note, MARCA));
 	await db.delete(rooms).where(eq(rooms.name, 'Sala 2 (prova)'));
 	if (ids.length) await db.delete(members).where(inArray(members.id, ids));
 	return ids.length;
@@ -99,7 +99,8 @@ try {
 
 		const [sala] = await db.insert(rooms).values({ name: 'Sala 2 (prova)' }).returning();
 		const [categoria] = await db.insert(categories).values({ name: 'Benessere (prova)', color: '#10b981' }).returning();
-		const [istruttrice] = await db.insert(instructors).values({ nome: 'Elisa', cognome: 'Paccagnella', notes: MARCA }).returning();
+		// Un'istruttrice è un account con la spunta «Istruttore» (senza accesso: nessuna password la apre).
+		const [istruttrice] = await db.insert(staffAccounts).values({ nome: 'Elisa Paccagnella', email: `elisa.${CODICE.toLowerCase()}@test.local`, passwordHash: 'non-si-accede', ruolo: 'istruttore', istruttore: true, note: MARCA }).returning();
 		const base = { categoria: categoria.id, istruttore: istruttrice.id, sala: sala.id };
 
 		// Pilates, ogni settimana da domani: la fissa di Giulia fino alla quarta lezione. La sessione

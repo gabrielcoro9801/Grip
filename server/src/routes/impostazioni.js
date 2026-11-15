@@ -6,7 +6,7 @@
 // dei segnali, ognuno con la sua regola in parole (shared/segnali.js, `regolaSegnale`).
 //
 // Le legge chi vede soci o contatti (servono a spiegare perché uno è in lista); le cambia solo
-// l'amministratore (`admin_users`). Ogni cambio passa dal registro delle azioni.
+// l'amministratore (il modulo `impostazioni`). Ogni cambio passa dal registro delle azioni.
 //
 // I contatti: nome e indirizzo sono colonne di `organizations`, telefono, WhatsApp, email e orari
 // della reception una chiave di `impostazioni` (nessuna migrazione). Per ora una pagina piccola:
@@ -77,8 +77,8 @@ export default async function impostazioniRoutes(fastify) {
 		if (!utente) return reply.code(401).send({ error: 'Non autenticato.' });
 		const legge = request.method === 'GET';
 		const puo = legge
-			? ['crm_members', 'crm_leads', 'admin_users'].some((m) => canAccess(utente.ruolo, m, 'view'))
-			: canAccess(utente.ruolo, 'admin_users', 'edit');
+			? ['crm_members', 'crm_leads', 'impostazioni'].some((m) => canAccess(utente.ruolo, m, 'view'))
+			: canAccess(utente.ruolo, 'impostazioni', 'edit');
 		if (utente.ruolo === 'member' || !puo) {
 			return reply.code(403).send({ error: legge ? 'Non consentito.' : 'Solo l\'amministratore cambia le impostazioni.' });
 		}

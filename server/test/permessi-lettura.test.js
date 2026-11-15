@@ -64,9 +64,9 @@ describe('un ruolo costruito a mano', () => {
 		assert.equal(canReadEntity('segreteria', 'MemberDocument'), false);
 	});
 
-	test('con il solo calendario vede i nomi dei soci, ma non le loro iscrizioni', () => {
+	test('con le sole prenotazioni vede i soci e le loro prenotazioni, non le iscrizioni', () => {
 		impostaMatrice({
-			permessi: { ...PERMESSI_PREDEFINITI, sala: { calendar: ['view', 'edit'] } },
+			permessi: { ...PERMESSI_PREDEFINITI, sala: { prenotazioni: ['view', 'edit'] } },
 			capacita: {},
 		});
 		assert.equal(canReadEntity('sala', 'Member'), true);
@@ -140,7 +140,7 @@ describe("dall'API", () => {
 	});
 
 	test("l'accesso al portale non lo chiede chi non ha le anagrafiche", async () => {
-		impostaMatrice({ permessi: { ...PERMESSI_PREDEFINITI, istruttore: { calendar: ['view'] } }, capacita: {} });
+		impostaMatrice({ permessi: { ...PERMESSI_PREDEFINITI, istruttore: { prenotazioni: ['view'] } }, capacita: {} });
 		try {
 			const risposta = await leggi('istruttore', '/api/soci/00000000-0000-0000-0000-000000000000/accesso-portale');
 			assert.equal(risposta.statusCode, 403);

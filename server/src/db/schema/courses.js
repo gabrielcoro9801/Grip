@@ -7,6 +7,7 @@
 import { pgTable, uuid, varchar, text, boolean, integer, date, time, jsonb, timestamp, check, index, uniqueIndex } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { members } from './crm.js';
+import { staffAccounts } from './hr.js';
 
 export const categories = pgTable('categories', {
 	id: uuid('id').defaultRandom().primaryKey(),
@@ -14,28 +15,6 @@ export const categories = pgTable('categories', {
 	color: varchar('color', { length: 16 }).notNull().default('#3b82f6'),
 });
 
-// Anagrafica di chi tiene i corsi.
-//
-// Nome e cognome separati, come per i soci: il nome completo lo calcola il database, e lo
-// leggono calendario, portale e catalogo senza sapere come è fatto. Codice fiscale e partita
-// IVA erano un campo solo ("tax_id"), in cui finiva l'uno o l'altra: ora sono due, e il codice
-// fiscale è obbligatorio (lo impone il server: gli istruttori registrati prima possono non
-// averlo, e lo completano alla prima modifica).
-export const instructors = pgTable('instructors', {
-	id: uuid('id').defaultRandom().primaryKey(),
-	nome: varchar('nome', { length: 120 }).notNull(),
-	cognome: varchar('cognome', { length: 120 }).notNull(),
-	fullName: varchar('full_name', { length: 255 }).generatedAlwaysAs(sql`trim(nome || ' ' || cognome)`),
-	codiceFiscale: varchar('codice_fiscale', { length: 16 }),
-	partitaIva: varchar('partita_iva', { length: 11 }),
-	contactEmail: varchar('contact_email', { length: 255 }),
-	contactPhone: varchar('contact_phone', { length: 64 }),
-	// Stanno in tre righe della tile: il limite lo impone il server (NOTE_ISTRUTTORE_MASSIMO).
-	notes: text('notes'),
-	// Chi ha tenuto dei corsi non si elimina — il calendario passato perderebbe il suo nome — ma
-	// smette di comparire fra quelli a cui si assegna un corso.
-	attivo: boolean('attivo').notNull().default(true),
-});
 
 // La sala non ha una capienza: quanta gente entra a lezione lo decide l'evento, che nella
 // stessa stanza cambia da corso a corso. La sospensione è sempre un periodo, da data a data
@@ -65,7 +44,8 @@ export const courses = pgTable('courses', {
 	name: varchar('name', { length: 255 }).notNull(),
 	// Obbligatoria dalla migrazione 0062: il portale apre i corsi per categoria.
 	categoryId: uuid('category_id').notNull().references(() => categories.id),
-	instructorId: uuid('instructor_id').references(() => instructors.id),
+	// L'account di chi tiene il corso: uno con la spunta «Istruttore» (hooks.js, Course).
+	instructorId: uuid('instructor_id').references(() => staffAccounts.id),
 	description: text('description'),
 	// Un corso andato in calendario non si elimina; disattivato non si programma più, e le
 	// lezioni già fissate restano com'erano.

@@ -9,6 +9,7 @@ import { canReadEntity, canWriteEntity } from '../auth/authorize.js';
 import { registerPgErrorHandler } from './errorHandler.js';
 import { registra } from '../lib/registro.js';
 import { creaFissa, modificaFissa, terminaFissa, elencoFisse } from '../lib/prenotazioniFisse.js';
+import { ristrettoAi, istruttoreDi, eventiDi } from '../auth/suoi.js';
 
 const dataIt = (iso) => (iso ? String(iso).slice(0, 10).split('-').reverse().join('/') : '');
 const periodo = (f) => (f.al ? `dal ${dataIt(f.dal)} al ${dataIt(f.al)}` : `dal ${dataIt(f.dal)}, senza fine`);
@@ -25,6 +26,14 @@ export default async function prenotazioniFisseRoutes(fastify) {
 		const permesso = request.method === 'GET' ? canReadEntity(utente.ruolo, 'Booking') : canWriteEntity(utente.ruolo, 'Booking');
 		if (!permesso) return reply.code(403).send({ error: 'Il tuo ruolo non consente questa operazione.' });
 		request.utente = utente;
+		if (ristrettoAi(utente, 'prenotazioni')) {
+			if (request.method !== 'GET') {
+				const evento = request.params.id
+					? (await db.select({ e: prenotazioniFisse.eventId }).from(prenotazioniFisse).where(eq(prenotazioniFisse.id, request.params.id)).limit(1))[0]?.e
+					: request.body?.event_id;
+				if ((await istruttoreDi('Event', evento)) !== String(utente.sub)) return reply.code(403).send({ error: 'Puoi gestire solo le fisse dei corsi di cui sei istruttore.' });
+			}
+		}
 	});
 
 	const nomeSocio = async (memberId) => {
@@ -37,7 +46,11 @@ export default async function prenotazioniFisseRoutes(fastify) {
 	 * Ogni fissa: id, member_id, event_id, dal, al, socio, codice_socio, corso, giorno, inizio, fine…
 	 */
 	fastify.get('/api/prenotazioni-fisse', async (request) => {
-		const fisse = await elencoFisse({ memberId: request.query?.member_id || null, eventId: request.query?.event_id || null });
+		let fisse = await elencoFisse({ memberId: request.query?.member_id || null, eventId: request.query?.event_id || null });
+		if (ristrettoAi(request.utente, 'prenotazioni')) {
+			const suoi = new Set((await eventiDi(String(request.utente.sub))).map((e) => e.id));
+			fisse = fisse.filter((f) => suoi.has(f.event_id));
+		}
 		return { fisse };
 	});
 

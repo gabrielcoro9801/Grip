@@ -16,13 +16,11 @@ import { db } from '../db/client.js';
 import { ruoli, staffAccounts } from '../db/schema/index.js';
 import { getUserFromRequest } from '../auth/tokens.js';
 import {
-	MODULES, CAPACITA, NOMI_CAPACITA, PRESIDIO_AMMINISTRATORE,
-	canAccess, puo, applicaLimiti, matriceCorrente,
+	MODULES, CAPACITA, NOMI_CAPACITA, AZIONI, RUOLO_AMMINISTRATORE,
+	canAccess, puo, applicaLimiti, matriceCorrente, concedeDiPiu,
 } from '../../../shared/permissions.js';
 import { caricaMatrice } from '../lib/ruoli.js';
 import { registerPgErrorHandler } from './errorHandler.js';
-
-const AZIONI = ['view', 'edit'];
 
 /**
  * Il nome tecnico di un ruolo, ricavato dall'etichetta.
@@ -54,8 +52,9 @@ function eccessiDi(chiSalva, permessi, capacita) {
 		if (!MODULES[modulo]) return `Modulo sconosciuto: ${modulo}`;
 		for (const azione of azioni ?? []) {
 			if (!AZIONI.includes(azione)) return `Azione sconosciuta: ${azione}`;
-			if (!canAccess(chiSalva, modulo, azione)) eccessi.push(`${MODULES[modulo].label} (${azione})`);
 		}
+		// Il modulo nel suo insieme: «Istruttore» con «Vede» si valuta insieme.
+		if (concedeDiPiu(chiSalva, modulo, azioni ?? [])) eccessi.push(MODULES[modulo].label);
 	}
 	for (const c of capacita ?? []) {
 		if (!NOMI_CAPACITA.includes(c)) return `Capacità sconosciuta: ${c}`;
@@ -73,15 +72,11 @@ export default async function ruoliRoutes(fastify) {
 	fastify.addHook('preHandler', async (request, reply) => {
 		const user = getUserFromRequest(request);
 		if (!user) return reply.code(401).send({ error: 'Non autenticato.' });
-		if (!canAccess(user.ruolo, 'admin_users', 'edit')) {
-			return reply.code(403).send({ error: 'Il tuo ruolo non consente di configurare i permessi.' });
-		}
-		// La lettura resta a chi amministra gli utenti: deve poter vedere cosa comporta un
-		// ruolo prima di assegnarlo. Ridisegnarlo no — quello è dell'amministratore.
-		if (request.method !== 'GET' && user.ruolo !== PRESIDIO_AMMINISTRATORE.ruolo) {
-			return reply.code(403).send({
-				error: "Solo l'amministratore può creare, modificare o eliminare i ruoli.",
-			});
+		// La lettura la vede chi gestisce gli utenti (deve sapere cosa comporta un ruolo prima di
+		// assegnarlo) o i ruoli. Ridisegnarli serve il permesso Ruoli in modifica.
+		const lettura = canAccess(user.ruolo, 'utenti', 'view') || canAccess(user.ruolo, 'ruoli', 'view');
+		if (request.method === 'GET' ? !lettura : !canAccess(user.ruolo, 'ruoli', 'edit')) {
+			return reply.code(403).send({ error: 'Il tuo ruolo non consente di configurare i ruoli.' });
 		}
 		request.currentUser = user;
 	});

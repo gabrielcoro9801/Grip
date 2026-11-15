@@ -4,7 +4,7 @@
 import bcrypt from 'bcryptjs';
 import { eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { members, staffAccounts } from '../db/schema/index.js';
+import { members, staffAccounts, ruoli } from '../db/schema/index.js';
 import { signToken, getUserFromRequest } from '../auth/tokens.js';
 import { matriceCorrente } from '../../../shared/permissions.js';
 import { motivoPasswordNonValida } from '../../../shared/password.js';
@@ -27,13 +27,17 @@ function ipDi(request) {
 // Include i permessi del suo ruolo, perché la matrice non è più una costante del codice:
 // l'interfaccia deve sapere cosa mostrare, e deve saperlo da chi la decide. Sono i permessi
 // del solo ruolo dell'utente — gli altri non lo riguardano.
-function toPublicUser(account) {
+async function toPublicUser(account) {
 	const matrice = matriceCorrente();
+	// Il nome visibile del ruolo («Tesoriere», «Administrator»): il menu lo mostra al posto del nome tecnico.
+	const [ruolo] = await db.select({ label: ruoli.label }).from(ruoli).where(eq(ruoli.nome, account.ruolo)).limit(1);
 	return {
 		id: account.id,
 		nome: account.nome,
 		email: account.email,
 		ruolo: account.ruolo,
+		ruolo_label: ruolo?.label ?? account.ruolo,
+		protetto: account.protetto,
 		attivo: account.attivo,
 		linked_member_id: account.linkedMemberId,
 		// Vera se la password l'ha scelta qualcun altro: le schermate mostrano solo il cambio
@@ -92,7 +96,7 @@ export default async function authRoutes(fastify) {
 			.set({ lastActivityDate: new Date() })
 			.where(eq(staffAccounts.id, account.id));
 
-		const user = toPublicUser(account);
+		const user = await toPublicUser(account);
 		// `tv` nel token: e' cio che permette di revocare questa sessione (auth/revoca.js).
 		return { token: signToken({ sub: account.id, ruolo: account.ruolo, tv: account.tokenVersion }), user };
 	});
@@ -107,7 +111,7 @@ export default async function authRoutes(fastify) {
 		const [account] = await db.select().from(staffAccounts).where(eq(staffAccounts.id, claims.sub)).limit(1);
 		if (!account || !account.attivo) return reply.code(401).send({ error: 'Non autenticato.' });
 
-		return { user: toPublicUser(account) };
+		return { user: await toPublicUser(account) };
 	});
 
 	// POST /api/auth/logout — con i JWT stateless il logout è lato client (scarta il
@@ -132,6 +136,8 @@ export default async function authRoutes(fastify) {
 
 		const [account] = await db.select().from(staffAccounts).where(eq(staffAccounts.id, claims.sub)).limit(1);
 		if (!account) return reply.code(401).send({ error: 'Non autenticato.' });
+		// La password del primo amministratore sta nel file di configurazione del server: qui non si cambia.
+		if (account.protetto) return reply.code(403).send({ error: 'La password del primo amministratore sta nel file di configurazione del server.' });
 
 		if (!(await bcrypt.compare(currentPassword, account.passwordHash))) {
 			return reply.code(400).send({ error: 'Password attuale non corretta.' });
@@ -159,7 +165,7 @@ export default async function authRoutes(fastify) {
 		return {
 			success: true,
 			token: signToken({ sub: aggiornato.id, ruolo: aggiornato.ruolo, tv: aggiornato.tokenVersion }),
-			user: toPublicUser(aggiornato),
+			user: await toPublicUser(aggiornato),
 		};
 	});
 }

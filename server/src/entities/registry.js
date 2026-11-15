@@ -10,7 +10,6 @@ export const entityRegistry = {
 	CanaleContatto: schema.canaliContatto,
 	Course: schema.courses,
 	Category: schema.categories,
-	Instructor: schema.instructors,
 	Event: schema.events,
 	Session: schema.sessions,
 	Room: schema.rooms,

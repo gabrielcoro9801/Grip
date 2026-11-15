@@ -6,9 +6,10 @@ import { firmaUrl, togliFirma } from '../lib/urlFirmati.js';
 import { db } from '../db/client.js';
 import { assegnaCodiceSocio } from '../lib/codiceSocio.js';
 import {
-	plans, rooms, sessions, subscriptions, members, courses, instructors, events as eventsTable, staffAccounts,
+	plans, rooms, sessions, subscriptions, members, courses, events as eventsTable, staffAccounts,
 } from '../db/schema/index.js';
 import { motivoPasswordNonValida } from '../../../shared/password.js';
+import { ruoloEccede, RUOLO_AMMINISTRATORE } from '../../../shared/permissions.js';
 import { usoDellaSala } from '../lib/sale.js';
 import { iscrizioniPerSocio } from '../lib/iscrizioni.js';
 import { translateToSnakeCase } from './columnMaps.js';
@@ -311,15 +312,47 @@ const WRITE_TRANSFORMS = {
 			password, password_hash: _hash, token_version: _versione, password_da_cambiare: _obbligo, ...rest
 		} = body ?? {};
 		if (creazione && !password) throw rifiuta('La password è obbligatoria.');
-		// L'istruttore collegato (la vista "Le mie lezioni"): uno che esiste, o nessuno. Un account
-		// del portale è un socio, non un istruttore.
-		if (presente(rest, 'instructor_id')) {
-			if (vuoto(rest.instructor_id)) rest.instructor_id = null;
-			else {
-				if (rest.ruolo === 'member') throw rifiuta("Un account del portale non si collega a un istruttore.");
-				const [istruttore] = await db.select({ id: instructors.id }).from(instructors).where(eq(instructors.id, rest.instructor_id)).limit(1);
-				if (!istruttore) throw rifiuta("L'istruttore scelto non esiste più.");
+		const prima = creazione ? null : (await db.select().from(staffAccounts).where(eq(staffAccounts.id, id)).limit(1))[0];
+		const ruoloFinale = presente(rest, 'ruolo') ? rest.ruolo : prima?.ruolo;
+		// Il primo amministratore (protetto) ha email, password e ruolo nel file di configurazione del
+		// server: qui non si cambiano, e non si disattiva.
+		if (prima?.protetto) {
+			if (password) throw rifiuta('La password del primo amministratore sta nel file di configurazione del server.');
+			if (presente(rest, 'email') && rest.email !== prima.email) throw rifiuta("L'email del primo amministratore sta nel file di configurazione del server.");
+			if (presente(rest, 'ruolo') && rest.ruolo !== prima.ruolo) throw rifiuta('Il ruolo del primo amministratore non si cambia.');
+			if (presente(rest, 'attivo') && rest.attivo === false) throw rifiuta('Il primo amministratore non si disattiva.');
+		}
+		// Chi non è amministratore non crea né modifica un account amministratore, e non assegna un
+		// ruolo con più permessi dei suoi (la stessa regola di routes/ruoli.js).
+		if (utente?.ruolo !== RUOLO_AMMINISTRATORE) {
+			if (prima?.ruolo === RUOLO_AMMINISTRATORE) throw rifiuta("Solo l'amministratore modifica un account amministratore.");
+			if ((creazione || presente(rest, 'ruolo')) && ruoloEccede(utente?.ruolo, ruoloFinale)) {
+				throw rifiuta('Non puoi assegnare un ruolo con permessi che tu stesso non hai.');
 			}
+		}
+		// I dati di chi tiene i corsi: facoltativi, ma scritti bene se ci sono. Il telefono si
+		// normalizza come quello dei soci.
+		if (presente(rest, 'telefono')) rest.telefono = telefonoNormalizzato(rest.telefono);
+		if (presente(rest, 'codice_fiscale')) {
+			if (vuoto(rest.codice_fiscale)) rest.codice_fiscale = null;
+			else {
+				rest.codice_fiscale = normalizzaCodiceFiscale(rest.codice_fiscale);
+				if (!codiceFiscaleValido(rest.codice_fiscale)) throw rifiuta('Il codice fiscale non è valido: controlla di averlo scritto bene.');
+			}
+		}
+		if (presente(rest, 'partita_iva')) {
+			if (vuoto(rest.partita_iva)) rest.partita_iva = null;
+			else {
+				rest.partita_iva = normalizzaPartitaIva(rest.partita_iva);
+				if (!partitaIvaValida(rest.partita_iva)) throw rifiuta('La partita IVA non è valida: sono undici cifre, controlla di averla scritta bene.');
+			}
+		}
+		if (presente(rest, 'note')) {
+			if (vuoto(rest.note)) rest.note = null;
+			else if (String(rest.note).length > NOTE_ISTRUTTORE_MASSIMO) throw rifiuta(`Le note stanno in ${NOTE_ISTRUTTORE_MASSIMO} caratteri.`);
+		}
+		if (presente(rest, 'istruttore') && rest.istruttore === true && ruoloFinale === 'member') {
+			throw rifiuta('Un account del portale non tiene corsi.');
 		}
 		if (password) {
 			const nonValida = motivoPasswordNonValida(password);
@@ -513,40 +546,6 @@ const WRITE_TRANSFORMS = {
 		return rest;
 	},
 
-	// Un istruttore: nome e cognome (il nome completo lo calcola il database), codice fiscale
-	// obbligatorio e scritto bene, partita IVA facoltativa ma scritta bene, note in tre righe.
-	// Chi è stato registrato prima del codice fiscale obbligatorio lo completa alla prima
-	// modifica che lo tocca; cambiare solo lo stato (attivo) non lo pretende.
-	async Instructor(body, { creazione }) {
-		const { full_name: _calcolato, ...rest } = body ?? {};
-		for (const campo of ['nome', 'cognome']) {
-			if (presente(rest, campo)) rest[campo] = String(rest[campo] ?? '').trim();
-			if ((creazione || presente(rest, campo)) && vuoto(rest[campo])) {
-				throw rifiuta(campo === 'nome' ? 'Il nome è obbligatorio.' : 'Il cognome è obbligatorio.');
-			}
-		}
-		if (creazione || presente(rest, 'codice_fiscale')) {
-			if (vuoto(rest.codice_fiscale)) throw rifiuta('Il codice fiscale è obbligatorio.');
-			rest.codice_fiscale = normalizzaCodiceFiscale(rest.codice_fiscale);
-			if (!codiceFiscaleValido(rest.codice_fiscale)) throw rifiuta('Il codice fiscale non è valido: controlla di averlo scritto bene.');
-		}
-		if (presente(rest, 'partita_iva')) {
-			if (vuoto(rest.partita_iva)) rest.partita_iva = null;
-			else {
-				rest.partita_iva = normalizzaPartitaIva(rest.partita_iva);
-				if (!partitaIvaValida(rest.partita_iva)) throw rifiuta('La partita IVA non è valida: sono undici cifre, controlla di averla scritta bene.');
-			}
-		}
-		if (presente(rest, 'notes')) {
-			if (vuoto(rest.notes)) rest.notes = null;
-			else if (String(rest.notes).length > NOTE_ISTRUTTORE_MASSIMO) throw rifiuta(`Le note stanno in ${NOTE_ISTRUTTORE_MASSIMO} caratteri.`);
-		}
-		for (const campo of ['contact_email', 'contact_phone']) {
-			if (presente(rest, campo) && vuoto(rest[campo])) rest[campo] = null;
-		}
-		return rest;
-	},
-
 	// Un corso si assegna solo a un istruttore attivo. Disattivare il corso, o cambiargli nome e
 	// descrizione, non guarda l'istruttore: quello che conta è a chi lo si sta affidando adesso.
 	async Course(body, { creazione }) {
@@ -566,12 +565,13 @@ const WRITE_TRANSFORMS = {
 			else if (String(rest.description).length > NOTE_CORSO_MASSIMO) throw rifiuta(`Le note stanno in ${NOTE_CORSO_MASSIMO} caratteri.`);
 		}
 		if ((creazione || presente(rest, 'instructor_id')) && !vuoto(rest.instructor_id)) {
-			const [istruttore] = await db
-				.select({ nome: instructors.fullName, attivo: instructors.attivo })
-				.from(instructors)
-				.where(eq(instructors.id, rest.instructor_id))
+			const [chi] = await db
+				.select({ nome: staffAccounts.nome, attivo: staffAccounts.attivo, istruttore: staffAccounts.istruttore })
+				.from(staffAccounts)
+				.where(eq(staffAccounts.id, rest.instructor_id))
 				.limit(1);
-			if (istruttore && !istruttore.attivo) throw rifiuta(`«${istruttore.nome}» è disattivato: scegli un altro istruttore, o riattivalo.`);
+			if (!chi?.istruttore) throw rifiuta("Il corso si assegna a un utente con la spunta «Istruttore».");
+			if (!chi.attivo) throw rifiuta(`«${chi.nome}» è disattivato: scegli un altro istruttore, o riattivalo.`);
 		}
 		// La categoria è obbligatoria (migrazione 0062): il portale apre i corsi per categoria.
 		if ((creazione || presente(rest, 'category_id')) && vuoto(rest.category_id)) throw rifiuta('Scegli la categoria del corso.');

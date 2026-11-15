@@ -1,75 +1,72 @@
 export const ROLES = {
-  admin: { label: "Admin generale", description: "Accesso completo a tutti i moduli" },
+  admin: { label: "Administrator", description: "Accesso completo a tutti i moduli" },
   reception: { label: "Reception / Staff", description: "Accesso operativo quotidiano" },
-  istruttore: { label: "Istruttore", description: "Accesso limitato ai propri corsi" },
+  istruttore: { label: "Istruttore", description: "Lavora sui corsi che tiene" },
   member: { label: "Socio", description: "Portale soci: corsi, prenotazioni, abbonamento" },
 };
 
+// Le azioni: `view` vede, `edit` modifica, `suoi` (l'opzione «Istruttore») limita a ciò che
+// riguarda i corsi di cui l'utente è istruttore. Ogni modulo dichiara le sue.
+export const AZIONI = ["view", "edit", "suoi"];
+
 export const MODULES = {
-  crm_members: { label: "Gestione membri — Anagrafiche soci" },
-  crm_leads: { label: "Lead — Contatti e canali" },
-  calendar: { label: "Calendario & Prenotazioni" },
-  // La vista dell'istruttore: le sue lezioni, chi è prenotato, presenti e no-show, le sue note.
-  // Vede solo i soci delle sue lezioni, e solo con un account collegato a un istruttore. Di base
-  // ce l'ha l'istruttore; un titolare che insegna se la dà dai ruoli.
-  lezioni_istruttore: { label: "Le mie lezioni (istruttore)" },
-  admin_users: { label: "Admin & Profili" },
-  audit_log: { label: "Log accessi / azioni" },
+  dashboard: { label: "Dashboard", azioni: ["view"] },
+  crm_members: { label: "Soci", azioni: ["view", "edit"] },
+  crm_leads: { label: "Lead", azioni: ["view", "edit"] },
+  calendario: { label: "Calendario e lezioni", azioni: ["view", "edit", "suoi"] },
+  prenotazioni: { label: "Prenotazioni", azioni: ["view", "edit", "suoi"] },
+  corsi: { label: "Corsi e categorie", azioni: ["view", "edit", "suoi"] },
+  sale: { label: "Sale", azioni: ["view", "edit"] },
+  utenti: { label: "Utenti", azioni: ["view", "edit"] },
+  ruoli: { label: "Ruoli", azioni: ["view", "edit"] },
+  impostazioni: { label: "Impostazioni", azioni: ["view", "edit"] },
+  audit_log: { label: "Registro delle azioni", azioni: ["view"] },
 };
 
 /**
  * La matrice di partenza: quali aree vede ogni ruolo.
  *
- * È il valore predefinito, non l'ultima parola. L'ente può ridefinire i propri ruoli — una
- * ASD grande vuole un tesoriere in sola lettura, una piccola non ha nemmeno il PT — e le
- * definizioni salvate prevalgono su queste. Quello che nessuna configurazione può
- * scavalcare è in LIMITI_INVALICABILI, più sotto.
+ * È il valore predefinito, non l'ultima parola. L'ente può ridefinire i propri ruoli, e le
+ * definizioni salvate prevalgono su queste. Quello che nessuna configurazione può scavalcare è
+ * in LIMITI_INVALICABILI, più sotto.
  */
 export const PERMESSI_PREDEFINITI = {
   admin: {
+    dashboard: ["view"],
     crm_members: ["view", "edit"],
     crm_leads: ["view", "edit"],
-    calendar: ["view", "edit"],
-    admin_users: ["view", "edit"],
+    calendario: ["view", "edit"],
+    prenotazioni: ["view", "edit"],
+    corsi: ["view", "edit"],
+    sale: ["view", "edit"],
+    utenti: ["view", "edit"],
+    ruoli: ["view", "edit"],
+    impostazioni: ["view", "edit"],
     audit_log: ["view"],
   },
   reception: {
+    dashboard: ["view"],
     crm_members: ["view", "edit"],
     crm_leads: ["view", "edit"],
-    calendar: ["view", "edit"],
-    admin_users: [],
-    audit_log: [],
+    calendario: ["view", "edit"],
+    prenotazioni: ["view", "edit"],
+    corsi: ["view", "edit"],
+    sale: ["view", "edit"],
   },
-  // L'istruttore vede i soci delle sue lezioni dalla sua vista, non le anagrafiche di tutti: fino
-  // alla fase 3 del CRM aveva in lettura soci, documenti e contatti (migrazione 0055).
+  // L'istruttore lavora sui corsi che tiene, e basta. Dalla sua pagina di arrivo vede le sezioni
+  // che gli spettano; non ha la dashboard.
   istruttore: {
-    crm_members: [],
-    crm_leads: [],
-    calendar: ["view", "edit"],
-    lezioni_istruttore: ["view", "edit"],
-    admin_users: [],
-    audit_log: [],
+    calendario: ["view", "edit", "suoi"],
+    prenotazioni: ["view", "edit", "suoi"],
+    corsi: ["view", "suoi"],
   },
   member: {},
 };
 
 /**
- * Azioni privilegiate che la matrice modulo → ruolo non sa esprimere.
- *
- * La matrice dice *a quali aree* un ruolo accede, e per la maggior parte dei casi basta.
- * Non basta però quando due ruoli usano la stessa area per fare cose diverse: un
- * dipendente e un amministratore entrano entrambi in "Personale", ma il primo guarda le
- * proprie timbrature e il secondo quelle di tutti e approva le ferie. Sulla matrice
- * risultano identici.
- *
- * Prima questa distinzione era scritta nelle pagine come `ruolo === "admin"`, in quattordici
- * punti: aggiungere un ruolo significava andarli a cercare uno per uno, e dimenticarne uno
- * significava mostrare a qualcuno un pulsante che non gli spetta. Qui hanno un nome e un
- * posto solo.
+ * Azioni privilegiate che la matrice modulo → ruolo non sa esprimere. Il catalogo è vuoto da
+ * quando le aree che ne avevano non fanno più parte dell'applicazione: il meccanismo resta.
  */
-// Il catalogo è vuoto da quando le aree che avevano azioni privilegiate — contabilità,
-// documenti fiscali, gestione del personale — non fanno più parte dell'applicazione. Il
-// meccanismo resta: serve al primo modulo che tornerà ad avere un'azione di questo tipo.
 export const CAPACITA = {};
 
 export const NOMI_CAPACITA = Object.keys(CAPACITA);
@@ -85,38 +82,21 @@ export const CAPACITA_PREDEFINITE = {
 // Il limite invalicabile
 // ---------------------------------------------------------------------------------------
 //
-// I ruoli sono configurabili dall'ente: è quello che serve per vendere l'applicazione ad
-// associazioni diverse, che hanno organigrammi diversi. Una matrice interamente
-// configurabile è però anche il modo più facile per aprire un buco con una spunta sbagliata,
-// e i due casi qui sotto non sono errori che ci si può permettere di scoprire dopo.
-//
 // Queste regole vivono nel codice apposta: non c'è una schermata che le allenta.
 
 /**
- * Il socio non è un ruolo dello staff, è chi entra nel portale.
- *
- * Quello che può leggere è deciso da server/src/auth/memberScope.js, non da questa matrice,
- * ed è il confine che una volta lasciava passare i cedolini di tutti. Concedergli un modulo
- * dello staff da una schermata di configurazione significherebbe riaprire quella falla con
- * un clic, quindi qui non gli si concede mai niente, comunque sia configurato.
+ * Il socio non è un ruolo dello staff, è chi entra nel portale. Quello che può leggere è deciso
+ * da server/src/auth/memberScope.js, non da questa matrice.
  */
 export const RUOLI_NON_CONFIGURABILI = new Set(["member"]);
 
 /**
- * L'amministratore non può perdere la gestione degli utenti.
- *
- * Senza questa garanzia, un salvataggio sbagliato toglierebbe a tutti l'accesso alla
- * schermata da cui si assegnano i permessi — e non ci sarebbe più modo di rimediare
- * dall'applicazione. È una porta che deve restare aperta dall'interno.
+ * Il ruolo dell'amministratore non si configura: ha tutto, tranne «Istruttore», che non ha
+ * senso per chi gestisce l'ente. Così non può perdere la gestione di utenti e ruoli.
  */
-export const PRESIDIO_AMMINISTRATORE = { ruolo: "admin", modulo: "admin_users", azioni: ["view", "edit"] };
+export const RUOLO_AMMINISTRATORE = "admin";
 
-/**
- * Applica il limite a una matrice qualunque, da qualunque parte arrivi.
- *
- * Si chiama sia quando si salvano i ruoli sia quando si caricano: fidarsi di ciò che è già
- * in banca dati significherebbe che una riga scritta a mano scavalca il limite.
- */
+/** Applica il limite a una matrice qualunque, da qualunque parte arrivi. */
 export function applicaLimiti({ permessi = {}, capacita = {} } = {}) {
   const p = JSON.parse(JSON.stringify(permessi));
   const c = JSON.parse(JSON.stringify(capacita));
@@ -126,9 +106,10 @@ export function applicaLimiti({ permessi = {}, capacita = {} } = {}) {
     c[ruolo] = [];
   }
 
-  const { ruolo, modulo, azioni } = PRESIDIO_AMMINISTRATORE;
-  p[ruolo] = { ...(p[ruolo] ?? {}) };
-  p[ruolo][modulo] = [...new Set([...(p[ruolo][modulo] ?? []), ...azioni])];
+  // L'amministratore ha ogni azione di ogni modulo, tranne quelle «Istruttore».
+  p[RUOLO_AMMINISTRATORE] = Object.fromEntries(
+    Object.entries(MODULES).map(([m, meta]) => [m, meta.azioni.filter((a) => a !== "suoi")]),
+  );
 
   return { permessi: p, capacita: c };
 }
@@ -138,12 +119,10 @@ export function applicaLimiti({ permessi = {}, capacita = {} } = {}) {
 // ---------------------------------------------------------------------------------------
 //
 // Le funzioni di controllo sono chiamate ovunque e in modo sincrono, quindi la matrice vive
-// qui come stato del modulo: il server la carica all'avvio, l'interfaccia al login, e
-// entrambi partono dai valori predefiniti finché non l'hanno fatto.
+// qui come stato del modulo: il server la carica all'avvio, l'interfaccia al login.
 //
 // ⚠️ Essendo stato di modulo, vale per tutta l'applicazione: va bene finché l'installazione
-// serve una sola organizzazione, che è il caso oggi. Servendone più d'una andrebbe legata
-// alla richiesta.
+// serve una sola organizzazione, che è il caso oggi.
 let matriceInUso = applicaLimiti({ permessi: PERMESSI_PREDEFINITI, capacita: CAPACITA_PREDEFINITE });
 
 /** Sostituisce la matrice in uso. Il limite viene riapplicato comunque. */
@@ -183,17 +162,42 @@ export function canEdit(role, module) {
   return canAccess(role, module, "edit");
 }
 
-/** Mappa percorso sidebar → modulo permesso (null = tutti i ruoli; un elenco = basta uno dei moduli) */
+/**
+ * Se il ruolo lavora solo sui corsi che tiene in quel modulo (l'opzione «Istruttore»). Chi ha
+ * «suoi» è limitato a quelli, anche se ha anche la modifica.
+ */
+export function soloSuoi(role, module) {
+  return canAccess(role, module, "suoi");
+}
+
+/**
+ * Se concedere `azioni` su `modulo` darebbe più di quanto `chi` può dare. «Istruttore» (suoi)
+ * restringe, quindi concederlo non è mai un'eccesso. Chi è limitato ai suoi concede solo ruoli
+ * limitati allo stesso modo. È la regola di «non concedi ciò che non hai».
+ */
+export function concedeDiPiu(chi, modulo, azioni) {
+  const ampie = azioni.filter((a) => a !== "suoi");
+  if (soloSuoi(chi, modulo)) {
+    return ampie.length > 0 && (!azioni.includes("suoi") || ampie.some((a) => !canAccess(chi, modulo, a)));
+  }
+  return ampie.some((a) => !canAccess(chi, modulo, a));
+}
+
+/** Se un ruolo ha permessi che chi sta salvando non possiede. */
+export function ruoloEccede(chi, ruoloAssegnato) {
+  const permessi = matriceInUso.permessi[ruoloAssegnato] ?? {};
+  return Object.entries(permessi).some(([modulo, azioni]) => concedeDiPiu(chi, modulo, azioni));
+}
+
+/** Mappa percorso sidebar → modulo permesso (null = tutti; un elenco = basta uno dei moduli) */
 export const SIDEBAR_PERMISSIONS = {
-  // Da fare sono gli avvisi dei soci: la vede chi segue i soci. Chi segue solo i contatti lavora
-  // nella sezione Lead (prima vedeva la voce e trovava «Accesso negato»).
+  // Da fare sono gli avvisi dei soci: la vede chi segue i soci.
   "/da-fare": "crm_members",
-  "/": null,
+  "/": "dashboard",
   "/crm": "crm_members",
   "/lead": "crm_leads",
-  "/calendario": "calendar",
-  "/istruttore": "lezioni_istruttore",
-  "/admin": "admin_users",
-  "/admin/contatti": "admin_users",
+  "/calendario": ["calendario", "prenotazioni", "corsi"],
+  "/admin": ["utenti", "ruoli"],
+  "/admin/contatti": "impostazioni",
   "/log-audit": "audit_log",
 };

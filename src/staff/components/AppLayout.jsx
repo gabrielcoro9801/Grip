@@ -1,12 +1,12 @@
 import React, { useState, Suspense } from "react";
 import { Outlet, Link, useLocation } from "react-router-dom";
 import { useStaffAuth } from "@/staff/lib/StaffAuthContext";
-import { canAccess, ROLES, SIDEBAR_PERMISSIONS, soloLeSueLezioni } from "@/staff/lib/permissions";
+import { canAccess, SIDEBAR_PERMISSIONS } from "@/staff/lib/permissions";
 import StaffLogin from "@/staff/pages/StaffLogin";
 import {
   LayoutDashboard, Users, Calendar,
   ChevronLeft, ChevronRight, LogOut, Menu, Dumbbell,
-  ShieldCheck, ScrollText, UserPlus, KeyRound, ListChecks, Search, GraduationCap, Phone
+  ShieldCheck, ScrollText, UserPlus, KeyRound, ListChecks, Search, Phone
 } from "lucide-react";
 import RicercaGlobale from "@/staff/components/RicercaGlobale";
 import { CambioPasswordObbligatorio, DialogCambioPassword } from "@/ui/CambioPassword";
@@ -29,8 +29,6 @@ const navItems = [
   // sezione loro per non mescolarsi con chi è già iscritto.
   { label: "Lead", path: "/lead", icon: UserPlus },
   { label: "Gestione corsi", path: "/calendario", icon: Calendar },
-  // L'istruttore: le sue lezioni, chi viene e chi no.
-  { label: "Le mie lezioni", path: "/istruttore", icon: GraduationCap },
   // Le impostazioni stanno in fondo, sotto il loro titolo: prima erano mescolate al lavoro di
   // ogni giorno (Utenti accanto a Soci e Corsi). Le vede l'amministratore.
   { label: "Utenti e ruoli", path: "/admin", icon: ShieldCheck, impostazioni: true },
@@ -38,6 +36,15 @@ const navItems = [
   { label: "Contatti", path: "/admin/contatti", icon: Phone, impostazioni: true },
   { label: "Registro delle azioni", path: "/log-audit", icon: ScrollText, impostazioni: true },
 ];
+
+/** Le voci del menu che l'utente può aprire: il menu le mostra, e la pagina di benvenuto le elenca. */
+export function vociVisibili(utente) {
+  return navItems.filter((item) => {
+    const modulo = SIDEBAR_PERMISSIONS[item.path];
+    if (!modulo) return true;
+    return [modulo].flat().some((m) => canAccess(utente.ruolo, m, "view"));
+  });
+}
 
 export default function AppLayout() {
   const location = useLocation();
@@ -72,14 +79,7 @@ export default function AppLayout() {
   };
 
   // Filter nav items by permissions
-  const visibleNavItems = navItems.filter(item => {
-    if (item.roles && !item.roles.includes(staffUser.ruolo)) return false;
-    // Per chi ha solo le sue lezioni la dashboard porta a "Le mie lezioni": due voci per un posto.
-    if (item.path === "/" && soloLeSueLezioni(staffUser.ruolo)) return false;
-    const requiredModule = SIDEBAR_PERMISSIONS[item.path];
-    if (!requiredModule) return true; // no permission required
-    return [requiredModule].flat().some((m) => canAccess(staffUser.ruolo, m, "view"));
-  });
+  const visibleNavItems = vociVisibili(staffUser);
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
@@ -169,13 +169,14 @@ export default function AppLayout() {
             <div className="px-3 py-2 rounded-lg bg-sidebar-accent/50">
               <p className="text-sm font-medium text-white truncate">{staffUser.nome}</p>
               <Badge variant="outline" className="text-[10px] mt-1 border-sidebar-foreground/30 text-sidebar-foreground">
-                {ROLES[staffUser.ruolo]?.label || staffUser.ruolo}
+                {staffUser.ruolo_label || staffUser.ruolo}
               </Badge>
             </div>
           )}
           <button
             type="button"
             onClick={() => setCambioPassword(true)}
+            hidden={Boolean(staffUser.protetto)}
             title={collapsed ? "Cambia password" : undefined}
             className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm w-full text-sidebar-foreground hover:bg-sidebar-accent hover:text-white transition-colors"
           >

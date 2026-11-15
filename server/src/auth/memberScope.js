@@ -13,7 +13,7 @@ const LEGGIBILI = new Set([
 	'Member', 'Subscription',
 	'Booking',
 	// Il catalogo dei corsi, che serve a prenotare
-	'Course', 'Category', 'Instructor', 'Event', 'Session', 'Room',
+	'Course', 'Category', 'Event', 'Session', 'Room',
 	// Intestazione dell'ente, per le schermate
 	'Organization',
 ]);

@@ -111,7 +111,7 @@ export default function ElencoAvvisi({ tipo }) {
         <EmptyState
           icon={ListChecks} title="La palestra non segue questo avviso"
           description="È spento nelle Regole di Da fare: non compare per nessuno."
-          action={canEdit(staffUser?.ruolo, "admin_users") && <Link to="/da-fare/regole" className="text-sm text-primary hover:underline">Apri le Regole</Link>}
+          action={canEdit(staffUser?.ruolo, "impostazioni") && <Link to="/da-fare/regole" className="text-sm text-primary hover:underline">Apri le Regole</Link>}
         />
       )}
       {dati && !spento && dati.avvisi.length === 0 && (

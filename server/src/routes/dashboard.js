@@ -26,7 +26,7 @@ export default async function dashboardRoutes(fastify) {
 	fastify.addHook('preHandler', async (request, reply) => {
 		const utente = getUserFromRequest(request);
 		if (!utente) return reply.code(401).send({ error: 'Non autenticato.' });
-		if (utente.ruolo === 'member') return reply.code(403).send({ error: 'Non consentito.' });
+		if (utente.ruolo === 'member' || !canAccess(utente.ruolo, 'dashboard', 'view')) return reply.code(403).send({ error: 'Non consentito.' });
 		request.utente = utente;
 	});
 

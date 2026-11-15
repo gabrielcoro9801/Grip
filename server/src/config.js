@@ -68,6 +68,10 @@ export const config = {
 
 	publicBaseUrl: process.env.PUBLIC_BASE_URL,
 
+	// Il primo amministratore (lib/primoAccesso.js): si cambia qui, sul server, e non dall'applicazione.
+	adminEmail: obbligatorio('ADMIN_EMAIL', 'administrator@grip.it', "l'email del primo amministratore"),
+	adminPassword: obbligatorio('ADMIN_PASSWORD', 'administrator', 'la password del primo amministratore'),
+
 	/**
 	 * Dove finiscono i file caricati (ricevute, fatture, logo).
 	 *

@@ -3,6 +3,7 @@
 // Un solo set di route invece di 39 endpoint dedicati.
 import { eq, and, asc, desc, gte, lte } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { staffAccounts } from '../db/schema/index.js';
 import { entityRegistry } from '../entities/registry.js';
 import { getColumnMaps, translateToJs, translateToSnakeCase, translateManyToSnakeCase } from '../entities/columnMaps.js';
 import {
@@ -12,6 +13,7 @@ import {
 	CREATE_FORBIDDEN, UPDATE_FORBIDDEN, DELETE_FORBIDDEN, mutationBlockedReason,
 } from '../entities/hooks.js';
 import { getUserFromRequest } from '../auth/tokens.js';
+import { ristrettoAi, eSuaRiga, scritturaSua, filtroSuoi, MODULO_DI } from '../auth/suoi.js';
 import { canWriteEntity, canReadEntity } from '../auth/authorize.js';
 import { memberPuoLeggere, memberPuoScrivere, colonnaProprietario, colonnaProprietarioScrittura, nascondiCampiPerSocio, forzaProprietario } from '../auth/memberScope.js';
 import { socioDiAccount } from '../auth/socioCorrente.js';
@@ -55,6 +57,24 @@ export default async function entityRoutes(fastify) {
 		// certificati medici o il registro delle azioni all'API.
 		if (name && !scrittura && user.ruolo !== 'member' && !canReadEntity(user.ruolo, name)) {
 			return reply.code(403).send({ error: 'Il tuo ruolo non consente di leggere questi dati.' });
+		}
+
+		// Chi è limitato ai suoi corsi (l'opzione «Istruttore») legge e tocca solo quelli.
+		const modulo = name && MODULO_DI[name];
+		if (modulo && user.ruolo !== 'member' && ristrettoAi(user, modulo)) {
+			if (scrittura && !(await scritturaSua(user, modulo, name, request.params.id, request.body))) {
+				return reply.code(403).send({ error: 'Puoi modificare solo i corsi di cui sei istruttore.' });
+			}
+			if (!scrittura && request.params.id && !(await eSuaRiga(user, modulo, name, request.params.id))) {
+				return reply.code(404).send({ error: 'Non trovato' });
+			}
+		}
+
+		// Il primo amministratore non si elimina; un amministratore lo elimina solo un amministratore.
+		if (name === 'StaffAccount' && request.method === 'DELETE' && request.params.id) {
+			const [account] = await db.select().from(staffAccounts).where(eq(staffAccounts.id, request.params.id)).limit(1);
+			if (account?.protetto) return reply.code(400).send({ error: 'Il primo amministratore sta nel file di configurazione del server: non si elimina.' });
+			if (account?.ruolo === 'admin' && user.ruolo !== 'admin') return reply.code(403).send({ error: "Solo l'amministratore elimina un account amministratore." });
 		}
 
 		// Un socio entra in un'area che deve mostrargli i propri dati: tutto il resto —
@@ -112,6 +132,10 @@ export default async function entityRoutes(fastify) {
 			if (colonna && dbNameToColumn[colonna]) {
 				conditions.push(eq(dbNameToColumn[colonna], request.memberId));
 			}
+		}
+		// Chi è limitato ai suoi corsi vede solo le righe dei corsi che tiene.
+		if (request.memberId === undefined && request.utente.ruolo !== 'member' && MODULO_DI[entityName] && ristrettoAi(request.utente, MODULO_DI[entityName])) {
+			conditions.push(filtroSuoi(entityName, request.utente, (nome) => dbNameToColumn[nome]));
 		}
 		if (conditions.length) query = query.where(and(...conditions));
 

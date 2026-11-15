@@ -89,7 +89,7 @@ export default function Regole() {
   const [spenti, setSpenti] = useState([]);
   const [errore, setErrore] = useState(null);
   const [salvando, setSalvando] = useState(false);
-  const amministratore = canEdit(staffUser?.ruolo, "admin_users");
+  const amministratore = canEdit(staffUser?.ruolo, "impostazioni");
 
   const prendi = (d) => { setDati(d); setSoglie(d.soglie); setSpenti(d.segnali_spenti ?? []); };
   const carica = useCallback(() => {

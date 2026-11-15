@@ -28,7 +28,7 @@ import { caricaMatrice } from '../src/lib/ruoli.js';
 describe('il limite invalicabile', () => {
 	test('al socio non si concede niente, per quanto lo si configuri', () => {
 		const { permessi, capacita } = applicaLimiti({
-			permessi: { member: { audit_log: ['view', 'edit'], admin_users: ['edit'], crm_members: ['view'] } },
+			permessi: { member: { audit_log: ['view', 'edit'], utenti: ['edit'], crm_members: ['view'] } },
 			capacita: { member: ['una_capacita', 'un_altra'] },
 		});
 		assert.deepEqual(permessi.member, {});
@@ -38,13 +38,13 @@ describe('il limite invalicabile', () => {
 	test("l'amministratore non può perdere la gestione utenti", () => {
 		// Senza questa garanzia un salvataggio sbagliato chiuderebbe la porta dall'esterno:
 		// nessuno potrebbe più aprire la schermata da cui si assegnano i permessi.
-		const { permessi } = applicaLimiti({ permessi: { admin: { admin_users: [] } } });
-		assert.deepEqual(permessi.admin.admin_users, ['view', 'edit']);
+		const { permessi } = applicaLimiti({ permessi: { admin: { utenti: [] } } });
+		assert.deepEqual(permessi.admin.utenti, ['view', 'edit']);
 	});
 
 	test("l'amministratore lo riottiene anche se il ruolo non compare affatto", () => {
 		const { permessi } = applicaLimiti({ permessi: { reception: { crm_members: ['view'] } } });
-		assert.deepEqual(permessi.admin.admin_users, ['view', 'edit']);
+		assert.deepEqual(permessi.admin.utenti, ['view', 'edit']);
 	});
 
 	test('il limite non tocca gli altri ruoli', () => {
@@ -123,7 +123,7 @@ describe("nessuno concede ciò che non ha", () => {
 			organizationId: idOrg,
 			nome: nomeDelegato,
 			label: 'Segreteria',
-			permessi: { admin_users: ['view', 'edit'], crm_members: ['view', 'edit'] },
+			permessi: { utenti: ['view', 'edit'], crm_members: ['view', 'edit'] },
 			capacita: [],
 			sistema: false,
 		});
@@ -190,7 +190,7 @@ describe("nessuno concede ciò che non ha", () => {
 		// un'altra cosa: chi può farlo decide i permessi di tutti, compresi i propri.
 		const res = await salva(tokenDelegato, { permessi: { crm_members: ['view'] }, capacita: [] });
 		assert.equal(res.statusCode, 403);
-		assert.match(res.json().error, /Solo l'amministratore/);
+		assert.match(res.json().error, /configurare i ruoli/);
 	});
 
 	// Il gemello di questo caso sulle capacità — "né una capacità che non possiede" — non è
@@ -224,12 +224,13 @@ describe("nessuno concede ciò che non ha", () => {
 	});
 
 	test('un ruolo nuovo nasce con un nome tecnico ricavato dall’etichetta', async () => {
-		nomiRuoliCreati.push('tesoriere');
-		const res = await crea(tokenAdmin, { label: 'Tesoriere', permessi: { audit_log: ['view'] } });
+		// Un nome che non c'è nei dati di prova del database di sviluppo (c'è già un «Tesoriere»).
+		nomiRuoliCreati.push('tesoriere_prova');
+		const res = await crea(tokenAdmin, { label: 'Tesoriere prova', permessi: { audit_log: ['view'] } });
 		assert.equal(res.statusCode, 201, res.body);
-		assert.equal(res.json().ruolo.nome, 'tesoriere');
+		assert.equal(res.json().ruolo.nome, 'tesoriere_prova');
 		assert.equal(res.json().ruolo.sistema, false);
-		assert.equal(canAccess('tesoriere', 'audit_log', 'view'), true, 'vale subito, senza riavviare');
+		assert.equal(canAccess('tesoriere_prova', 'audit_log', 'view'), true, 'vale subito, senza riavviare');
 	});
 
 	test('gli accenti e gli spazi non finiscono nel nome tecnico', async () => {
@@ -240,7 +241,7 @@ describe("nessuno concede ciò che non ha", () => {
 	});
 
 	test('un nome che collide viene rifiutato dicendo con chi', async () => {
-		const res = await crea(tokenAdmin, { label: 'tesoriere' });
+		const res = await crea(tokenAdmin, { label: 'Tesoriere prova' });
 		assert.equal(res.statusCode, 400);
 		assert.match(res.json().error, /Esiste già un ruolo/);
 	});
@@ -255,7 +256,7 @@ describe("nessuno concede ciò che non ha", () => {
 		// si crea un ruolo con quello che si vuole e poi ci si sposta sopra.
 		const res = await crea(tokenDelegato, { label: 'Scorciatoia', permessi: { crm_members: ['view'] } });
 		assert.equal(res.statusCode, 403);
-		assert.match(res.json().error, /Solo l'amministratore/);
+		assert.match(res.json().error, /configurare i ruoli/);
 	});
 
 	test('né ne elimina', async () => {
@@ -265,7 +266,7 @@ describe("nessuno concede ciò che non ha", () => {
 			headers: { authorization: `Bearer ${tokenDelegato}` },
 		});
 		assert.equal(res.statusCode, 403);
-		assert.match(res.json().error, /Solo l'amministratore/);
+		assert.match(res.json().error, /configurare i ruoli/);
 	});
 
 	test('un ruolo senza account collegati si elimina', async () => {

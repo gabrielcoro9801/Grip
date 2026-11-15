@@ -32,17 +32,17 @@ const ENTITY_MODULES = {
 	CanaleContatto: 'crm_leads',
 
 	// Corsi, calendario e prenotazioni.
-	Course: 'calendar',
-	Category: 'calendar',
-	Instructor: 'calendar',
-	Event: 'calendar',
-	Session: 'calendar',
-	Room: 'calendar',
-	Booking: 'calendar',
+	Course: 'corsi',
+	Category: 'corsi',
+	Event: 'calendario',
+	Session: 'calendario',
+	Room: 'sale',
+	Booking: 'prenotazioni',
+	// Gli account del gestionale: chi gestisce gli utenti li crea e li modifica.
+	StaffAccount: 'utenti',
 
-	// L'intestazione dell'ente: nome, logo, recapiti. Si tocca da Admin & Utenti, che è
-	// dove sta chi amministra l'installazione.
-	Organization: 'admin_users',
+	// L'intestazione dell'ente: nome, logo, recapiti, e le regole di Da fare.
+	Organization: 'impostazioni',
 };
 
 /**
@@ -54,10 +54,6 @@ const ENTITY_MODULES = {
  * client, e chiunque poteva aggiungerne di attribuite ad altri.
  */
 const SOLO_AGGIUNTA = new Set(['AuditLog']);
-
-// Entità che solo un amministratore può modificare, a prescindere dalla matrice:
-// da qui si creano gli account e si assegnano i ruoli, cioè si decide chi può fare cosa.
-const ADMIN_ONLY_WRITE = new Set(['StaffAccount']);
 
 // Aliquote e soglie di legge: non sono configurazione dell'ente e non si modificano
 // dall'applicazione. Cambiano quando cambia una norma, e allora si aggiunge una riga con
@@ -74,7 +70,6 @@ export function canWriteEntity(role, entityName, metodo = 'POST') {
 	if (role === 'member') return false;
 	if (SOLA_LETTURA.has(entityName)) return false;
 	if (SOLO_AGGIUNTA.has(entityName)) return false;
-	if (ADMIN_ONLY_WRITE.has(entityName)) return role === 'admin';
 
 	const modulo = ENTITY_MODULES[entityName];
 	// Un'entità che nessuno ha assegnato a un modulo non è scrivibile da nessuno: fino a
@@ -96,7 +91,6 @@ export function canWriteEntity(role, entityName, metodo = 'POST') {
 export function haRegolaDiScrittura(entityName) {
 	return (
 		entityName in ENTITY_MODULES ||
-		ADMIN_ONLY_WRITE.has(entityName) ||
 		SOLA_LETTURA.has(entityName) ||
 		SOLO_AGGIUNTA.has(entityName)
 	);
@@ -124,7 +118,6 @@ const LETTURA = {
 	// Cataloghi.
 	Course: null,
 	Category: null,
-	Instructor: null,
 	Room: null,
 	Event: null,
 	Session: null,
@@ -132,12 +125,14 @@ const LETTURA = {
 	Organization: null,
 
 	// Dati delle persone.
-	Member: ['crm_members', 'calendar', 'admin_users'],
+	// Chi prenota legge l'anagrafica dei soci (rischio P6, accettato): serve a verificare gli ingressi
+	// e a prenotare, e l'istruttore prenota alle sue lezioni.
+	Member: ['crm_members', 'prenotazioni'],
 	Subscription: ['crm_members'],
 	Lead: ['crm_leads'],
 	CanaleContatto: ['crm_leads'],
-	Booking: ['calendar'],
-	StaffAccount: ['admin_users'],
+	Booking: ['prenotazioni'],
+	StaffAccount: ['utenti'],
 	AuditLog: ['audit_log'],
 };
 
