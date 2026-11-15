@@ -264,10 +264,33 @@ try {
 	await entra(pagSocio, BASE, '/member-portal', emailSocio);
 	for (const [percorso, atteso, prima] of PAGINE_SOCIO) await apri(pagSocio, percorso, atteso, BASE, prima);
 
+	// Disdire, prenotare con un tocco e «Annulla» dal messaggio (D-3): il pulsante del messaggio si
+	// cerca per ruolo, come lo trova un lettore di schermo (prima era un <div>).
+	console.log('\nPRENOTARE E ANNULLARE (non solo vedere)');
+	try {
+		await pagSocio.goto(`${BASE}/member-portal/corsi`, { waitUntil: 'networkidle' });
+		await pagSocio.getByRole('group', { name: 'Giorno' }).getByRole('button').nth(3).click();
+		await pagSocio.getByRole('button', { name: new RegExp(`${CORSO}.*già prenotata`) }).click();
+		await pagSocio.getByRole('dialog').getByRole('button', { name: 'Disdici' }).click();
+		await pagSocio.getByRole('alertdialog').getByRole('button', { name: 'Disdici' }).click();
+		await pagSocio.getByText('Lezione disdetta').first().waitFor();
+		await pagSocio.getByRole('button', { name: new RegExp(`^Prenota ${CORSO}`) }).click();
+		await pagSocio.getByRole('region', { name: 'Messaggi' }).getByText(new RegExp(`^Prenotata: ${CORSO}`)).waitFor();
+		await pagSocio.getByRole('button', { name: 'Annulla la prenotazione' }).click();
+		await pagSocio.getByText('Prenotazione annullata').first().waitFor();
+		const vive = await db.select().from(bookings).where(and(eq(bookings.sessionId, idLezione), eq(bookings.memberId, idSocio)));
+		const ok = vive.length === 2 && vive.every((b) => b.status === 'cancelled');
+		if (!ok) problemi.push({ percorso: 'prenotare e annullare', errori: [JSON.stringify(vive.map((b) => b.status))], testo: '' });
+		console.log(`  ${ok ? 'OK     ' : 'ROTTA  '} disdire, prenotare con un tocco e «Annulla» dal messaggio`);
+	} catch (errore) {
+		problemi.push({ percorso: 'prenotare e annullare', errori: [errore.message.split('\n')[0]], testo: '' });
+		console.log(`  ROTTA   prenotare e annullare: ${errore.message.split('\n')[0]}`);
+	}
+
 } finally {
 	if (browser) await browser.close();
 	if (app) await app.close();
-	if (idPrenotazioni.length) await db.delete(bookings).where(inArray(bookings.id, idPrenotazioni));
+	if (idLezione) await db.delete(bookings).where(eq(bookings.sessionId, idLezione));
 	if (idLezione) await db.delete(sessions).where(inArray(sessions.id, [idLezione]));
 	if (idEvento) await db.delete(events).where(inArray(events.id, [idEvento]));
 	if (idCorso) await db.delete(courses).where(inArray(courses.id, [idCorso]));
@@ -297,9 +320,9 @@ try {
 	await pool.end();
 }
 
-// I controlli sono le pagine, la pagina della lezione e le quattro prove d'uso: contarli tutti, o un fallimento
+// I controlli sono le pagine, la pagina della lezione e le cinque prove d'uso: contarli tutti, o un fallimento
 // nell'interazione si nasconderebbe dietro un "23/23 pagine" rassicurante.
-const totale = PAGINE_STAFF.length + 1 + PAGINE_SOCIO.length + 4;
+const totale = PAGINE_STAFF.length + 1 + PAGINE_SOCIO.length + 5;
 console.log(`\n${totale - problemi.length}/${totale} controlli superati`);
 if (problemi.length) {
 	console.log('\nDettaglio:');

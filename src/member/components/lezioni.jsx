@@ -135,7 +135,7 @@ export function usePrenota(onFatto) {
           ? `In lista d'attesa al ${prenotazione.posizione_attesa}° posto`
           : offerta ? `Posto confermato: ${nomeLezione(lezione)}` : `Prenotata: ${nomeLezione(lezione)}`,
         duration: 8000,
-        action: offerta ? undefined : <ToastAction altText="Annulla la prenotazione" onClick={annulla}>Annulla</ToastAction>,
+        action: offerta ? undefined : <ToastAction aria-label="Annulla la prenotazione" onClick={annulla}>Annulla</ToastAction>,
       });
       onFatto?.();
     } catch (err) {
