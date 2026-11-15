@@ -177,6 +177,14 @@ Una sola, generata con `npm run db:generate` alla fine di D-1 (dopo la 0061 di m
 ### Altro di D-3
 - Un token del socio su `/api/prenotazioni` riceve **403**: il socio passa solo dal portale (un contratto solo).
 
+### Fatto il 15/11, e dove è andato diversamente
+- `ics.js` non c'era (il prompt lo dava per esistente): scritto in D-3, con il link di Google Calendar per Android.
+- Le rotte della reception rispondono con `offerti` (e `offerto` alla disdetta) al posto di `promossi`/`promoted`; `bookingUtils.js`, che le usava, non lo chiamava nessuno ed è tolto.
+- Il banner della Home: prima un posto offerto (con Conferma), poi una notifica non letta su una lezione dei prossimi due giorni.
+- «Prenota ogni giovedì» nel foglio dell'orario usa ancora la regola di passaggio (fino al massimo): il foglio con le date è D-4.
+- Il margine di 10 minuti vale per il socio; la reception disdice sempre.
+- `dati:portale` crea una socia con tutto da guardare a mano (`giulia.portale@grip.local` / `portale1234`) e resta nel database; `-- --togli` la toglie.
+
 ## D-4 · Fisse con date
 
 ### Rotte del portale

@@ -391,12 +391,15 @@ describe('i contatti della palestra (D-2)', () => {
 			assert.equal((await metti(tokenAdmin, { boh: 'x' })).statusCode, 400);
 			assert.equal((await metti(tokenAdmin, { orari: 'x'.repeat(501) })).statusCode, 400);
 
-			const res = await metti(tokenAdmin, { indirizzo: 'Via Roma 1, Padova', telefono: '049 123456', whatsapp: '333 1234567', email: '', orari: ' Lun-ven 8-21 ' });
+			// Un numero sempre nuovo: il registro deve dire che è cambiato, anche se il database ha già
+			// dei contatti (dati:portale).
+			const telefono = `049 ${String(Date.now()).slice(-6)}`;
+			const res = await metti(tokenAdmin, { indirizzo: 'Via Roma 1, Padova', telefono, whatsapp: '333 1234567', email: '', orari: ' Lun-ven 8-21 ' });
 			assert.equal(res.statusCode, 200, res.body);
 			const letti = (await come(tokenSocio, '/api/member/v1/palestra')).json();
 			assert.deepEqual(
 				{ indirizzo: letti.indirizzo, telefono: letti.telefono, whatsapp: letti.whatsapp, email: letti.email, orari: letti.orari },
-				{ indirizzo: 'Via Roma 1, Padova', telefono: '049 123456', whatsapp: '333 1234567', email: null, orari: 'Lun-ven 8-21' },
+				{ indirizzo: 'Via Roma 1, Padova', telefono, whatsapp: '333 1234567', email: null, orari: 'Lun-ven 8-21' },
 			);
 			assert.equal(letti.nome, prima.nome, 'il nome non cambia se non arriva');
 			const [voce] = await db.select().from(auditLogs).where(eq(auditLogs.entitaNome, 'Contatti della palestra')).orderBy(desc(auditLogs.timestamp)).limit(1);
