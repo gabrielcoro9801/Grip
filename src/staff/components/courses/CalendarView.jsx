@@ -49,7 +49,7 @@ const spostaMese = ({ anno, mese }, di) => {
 export default function CalendarView({ data }) {
   const { courses, categories, instructors, rooms } = data;
   const { staffUser } = useStaffAuth();
-  const puoModificare = canEdit(staffUser?.ruolo, "calendar");
+  const puoModificare = canEdit(staffUser?.ruolo, "calendario");
   const [parametri, setParametri] = useSearchParams();
   const testoMese = parametri.get("mese");
   const mese = useMemo(() => leggiMese(testoMese), [testoMese]);

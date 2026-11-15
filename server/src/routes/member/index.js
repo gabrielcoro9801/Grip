@@ -2,7 +2,7 @@ import { eq, and, or, gte, lte, inArray, ne, desc, isNull, count, min, sql } fro
 import { db } from '../../db/client.js';
 import {
 	members,
-	courses, categories, instructors, rooms, events, sessions, bookings, notifiche, consensi, prenotazioniFisse,
+	courses, categories, staffAccounts, rooms, events, sessions, bookings, notifiche, consensi, prenotazioniFisse,
 } from '../../db/schema/index.js';
 import { iscrizioniDelSocio } from '../../lib/iscrizioni.js';
 import { consensiDi } from '../../lib/consensi.js';
@@ -237,7 +237,7 @@ export default async function memberRoutes(fastify) {
 				inizio: events.startTime, fine: events.endTime, capienza: events.capacity,
 				corso: { id: courses.id, nome: courses.name, descrizione: courses.description },
 				categoria: { id: categories.id, nome: categories.name, colore: categories.color },
-				istruttore: { id: instructors.id, nome: instructors.fullName },
+				istruttore: { id: staffAccounts.id, nome: staffAccounts.nome },
 				sala: { id: rooms.id, nome: rooms.name },
 				prossima: min(sessions.date),
 				lezioni: count(sessions.id),
@@ -246,9 +246,9 @@ export default async function memberRoutes(fastify) {
 				.innerJoin(sessions, and(eq(sessions.eventId, events.id), eq(sessions.status, 'active'), gte(sessions.date, oggi)))
 				.innerJoin(courses, and(eq(events.courseId, courses.id), eq(courses.attivo, true)))
 				.innerJoin(categories, eq(courses.categoryId, categories.id))
-				.leftJoin(instructors, eq(courses.instructorId, instructors.id))
+				.leftJoin(staffAccounts, eq(courses.instructorId, staffAccounts.id))
 				.leftJoin(rooms, eq(events.roomId, rooms.id))
-				.groupBy(events.id, courses.id, categories.id, instructors.id, rooms.id)
+				.groupBy(events.id, courses.id, categories.id, staffAccounts.id, rooms.id)
 				.orderBy(categories.name, courses.name, events.startTime),
 			elencoFisse({ memberId: request.idSocio }),
 			db.select({ categoria: courses.categoryId }).from(bookings)
@@ -607,14 +607,14 @@ async function lezioniPerIlSocio(idSocio, dove, { ancheDisdette = false, adesso 
 			evento: { id: events.id, ricorrenza: events.recurrenceType },
 			corso: { id: courses.id, nome: courses.name, descrizione: courses.description, disdettaEntroOre: courses.disdettaEntroOre },
 			categoria: { id: categories.id, nome: categories.name, colore: categories.color },
-			istruttore: { id: instructors.id, nome: instructors.fullName },
+			istruttore: { id: staffAccounts.id, nome: staffAccounts.nome },
 			sala: { id: rooms.id, nome: rooms.name },
 		})
 		.from(sessions)
 		.innerJoin(events, eq(sessions.eventId, events.id))
 		.innerJoin(courses, eq(events.courseId, courses.id))
 		.leftJoin(categories, eq(courses.categoryId, categories.id))
-		.leftJoin(instructors, eq(courses.instructorId, instructors.id))
+		.leftJoin(staffAccounts, eq(courses.instructorId, staffAccounts.id))
 		.leftJoin(rooms, eq(sessions.roomId, rooms.id))
 		.where(dove)
 		.orderBy(sessions.date, sessions.startTime);

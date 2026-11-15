@@ -173,8 +173,8 @@ bisognerebbe essere autenticati — la schermata degli utenti è dietro il login
 pannello Railway:
 
 ```
-SEED_ADMIN_EMAIL     = tu@gripcore.it
-SEED_ADMIN_PASSWORD  = (una password lunga, scelta lì)
+ADMIN_EMAIL          = tu@gripcore.it
+ADMIN_PASSWORD       = (una password lunga, scelta lì)
 SEED_ORGANIZZAZIONE  = Nome dell'associazione        (facoltativa)
 ```
 
@@ -191,9 +191,10 @@ Se le variabili mancano il server parte lo stesso, ma avvisa nei log che nessuno
 accedere. La password deve avere almeno 10 caratteri (la regola è in `shared/password.js`): più
 corta, l'account non viene creato e il log lo dice.
 
-**Dopo il primo accesso togli `SEED_ADMIN_PASSWORD` dalle variabili del servizio.** Al primo
-accesso l'applicazione chiede comunque di sceglierne una nuova — quella nella variabile la vede
-chiunque gestisca il deploy — ma lasciarla lì non serve a niente e resta leggibile.
+**Le credenziali dell'amministratore stanno in queste variabili, e si cambiano solo da qui.** Ad
+ogni avvio l'account si allinea a esse: se cambi la password nella variabile, al riavvio cambia
+anche quella dell'account e le sessioni aperte si chiudono. Dall'applicazione non si cambiano né
+email né password, e l'account non si disattiva né si elimina.
 
 > Esiste anche `npm run db:seed`, che fa la stessa cosa da riga di comando: serve in locale.
 > Dal proprio PC **non funziona sulla produzione**, perché `DATABASE_URL` punta alla rete

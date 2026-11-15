@@ -22,7 +22,7 @@ const VUOTO = { name: "", color: "#3b82f6" };
 export default function CategoriesTab({ data, reload }) {
   const { categories, courses } = data;
   const { staffUser } = useStaffAuth();
-  const puoModificare = canEdit(staffUser?.ruolo, "calendar");
+  const puoModificare = canEdit(staffUser?.ruolo, "corsi");
   const { toast } = useToast();
   const [conferma, dialogoConferma] = useConfirm();
   const [showForm, setShowForm] = useState(false);

@@ -51,7 +51,7 @@ export default function DettaglioLezione() {
   const { data } = useOutletContext();
   const { categories, instructors, rooms } = data;
   const { staffUser } = useStaffAuth();
-  const puoModificare = canEdit(staffUser?.ruolo, "calendar");
+  const puoModificare = canEdit(staffUser?.ruolo, "calendario");
   const vedeSoci = canAccess(staffUser?.ruolo, "crm_members", "view");
   const navigate = useNavigate();
 

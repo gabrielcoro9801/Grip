@@ -5,7 +5,6 @@
 import { sql } from 'drizzle-orm';
 import { pgTable, uuid, varchar, text, boolean, integer, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
 import { members } from './crm.js';
-import { instructors } from './courses.js';
 
 // Account di login per staff e member (ruolo="member").
 //
@@ -22,10 +21,17 @@ export const staffAccounts = pgTable('staff_accounts', {
 	// L'account del portale di un socio: uno per socio, e verso un socio che esiste. Era solo una
 	// colonna, e due account potevano puntare allo stesso socio, o a uno che non c'era più.
 	linkedMemberId: uuid('linked_member_id').references(() => members.id),
-	// L'istruttore che questo account è, per la vista "Le mie lezioni" (routes/istruttore.js): le
-	// sue lezioni sono quelle dei corsi che tiene. Senza collegamento non si sa quali siano. Lo
-	// sceglie l'amministratore in Admin & Utenti; un istruttore, un account.
-	instructorId: uuid('instructor_id').references(() => instructors.id, { onDelete: 'set null' }),
+	// Chi tiene dei corsi: compare fra gli istruttori dei corsi. Non dipende dal ruolo: un
+	// amministratore può insegnare, un istruttore può essere solo in segreteria.
+	istruttore: boolean('istruttore').notNull().default(false),
+	// Dati facoltativi di chi tiene i corsi. Il controllo di formato sta nel server, come per i soci.
+	telefono: varchar('telefono', { length: 64 }),
+	codiceFiscale: varchar('codice_fiscale', { length: 16 }),
+	partitaIva: varchar('partita_iva', { length: 11 }),
+	note: text('note'),
+	// L'account del primo amministratore: email e password vengono dal file di configurazione del
+	// server (lib/primoAccesso.js). L'applicazione non le cambia e non lo elimina.
+	protetto: boolean('protetto').notNull().default(false),
 	lastActivityDate: timestamp('last_activity_date', { withTimezone: true }),
 	// Il numero che rende revocabile una sessione.
 	//
@@ -48,5 +54,4 @@ export const staffAccounts = pgTable('staff_accounts', {
 	// esistere "Mario@x.it" e "mario@x.it", e l'accesso ne sceglieva uno a caso.
 	emailUnica: uniqueIndex('staff_accounts_email_lower_idx').on(sql`lower(${table.email})`),
 	unoPerSocio: uniqueIndex('staff_accounts_linked_member_id_idx').on(table.linkedMemberId),
-	unoPerIstruttore: uniqueIndex('staff_accounts_instructor_id_idx').on(table.instructorId),
 }));

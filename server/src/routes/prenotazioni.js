@@ -22,6 +22,7 @@ import { getUserFromRequest } from '../auth/tokens.js';
 import { canWriteEntity, canReadEntity } from '../auth/authorize.js';
 import { prenota, disdici, cambiaStato, spostaInLista, eliminaPrenotazione } from '../lib/prenotazioni.js';
 import { registra } from '../lib/registro.js';
+import { ristrettoAi, istruttoreDi } from '../auth/suoi.js';
 
 export default async function prenotazioniRoutes(fastify) {
 	fastify.addHook('preHandler', async (request, reply) => {
@@ -36,6 +37,11 @@ export default async function prenotazioniRoutes(fastify) {
 			return reply.code(403).send({ error: 'Il tuo ruolo non consente questa modifica.' });
 		}
 		request.utente = utente;
+		// Chi è limitato ai suoi corsi prenota e disdice solo alle lezioni dei corsi che tiene.
+		if (request.method !== 'GET' && ristrettoAi(utente, 'prenotazioni')) {
+			const suo = request.params.id ? await istruttoreDi('Booking', request.params.id) : await istruttoreDi('Session', request.body?.session_id);
+			if (suo !== String(utente.sub)) return reply.code(403).send({ error: 'Puoi gestire solo le prenotazioni dei corsi di cui sei istruttore.' });
+		}
 	});
 
 	/**

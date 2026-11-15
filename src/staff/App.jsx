@@ -19,7 +19,6 @@ const DaFareLayout = lazy(() => import('@/staff/pages/dafare/DaFareLayout'));
 const ElencoAvvisi = lazy(() => import('@/staff/pages/dafare/ElencoAvvisi'));
 const ArchivioAvvisi = lazy(() => import('@/staff/pages/dafare/ArchivioAvvisi'));
 const Regole = lazy(() => import('@/staff/pages/dafare/Regole'));
-const LeMieLezioni = lazy(() => import('@/staff/pages/LeMieLezioni'));
 const CrmLayout = lazy(() => import('@/staff/pages/crm/CrmLayout'));
 const MembersList = lazy(() => import('@/staff/pages/crm/MembersList'));
 const MemberDetail = lazy(() => import('@/staff/pages/crm/MemberDetail'));
@@ -36,7 +35,6 @@ const DettaglioLezione = lazy(() => import('@/staff/pages/corsi/DettaglioLezione
 const Sessioni = lazy(() => import('@/staff/pages/corsi/Sessioni'));
 const CatalogoCorsi = lazy(() => import('@/staff/pages/corsi/CatalogoCorsi'));
 const Sale = lazy(() => import('@/staff/pages/corsi/Sale'));
-const Istruttori = lazy(() => import('@/staff/pages/corsi/Istruttori'));
 const Categorie = lazy(() => import('@/staff/pages/corsi/Categorie'));
 const Admin = lazy(() => import('@/staff/pages/admin/Admin'));
 const AuditLogPage = lazy(() => import('@/staff/pages/admin/AuditLogPage'));
@@ -72,7 +70,7 @@ export default function App() {
                 </Route>
                 {/* Si chiamava Oggi: i preferiti e i link vecchi arrivano lo stesso. */}
                 <Route path="/oggi" element={<Navigate to="/da-fare" replace />} />
-                <Route path="/istruttore" element={<PermissionGate module="lezioni_istruttore"><LeMieLezioni /></PermissionGate>} />
+                <Route path="/istruttore" element={<Navigate to="/" replace />} />
                 {/* Gli slug del gestionale sono in italiano come le voci che li
                     nominano. I vecchi percorsi in inglese restano come redirect,
                     perché possono essere nei preferiti. */}
@@ -97,7 +95,7 @@ export default function App() {
                 {/* I corsi erano una pagina sola con due piani di schede interne. Ora le sei viste
                     sono rotte come nelle altre sezioni: la barra in alto è la stessa di Soci e
                     Lead, e ogni voce ha un indirizzo che si può mandare a un collega. */}
-                <Route path="/calendario" element={<PermissionGate module="calendar"><CorsiLayout /></PermissionGate>}>
+                <Route path="/calendario" element={<PermissionGate module={["calendario", "prenotazioni", "corsi"]}><CorsiLayout /></PermissionGate>}>
                   <Route index element={<Calendario />} />
                   <Route path="lezioni/:id" element={<DettaglioLezione />} />
                   <Route path="sessioni" element={<Sessioni />} />
@@ -105,14 +103,14 @@ export default function App() {
                   <Route path="prenotazioni" element={<Navigate to="/calendario/sessioni" replace />} />
                   <Route path="corsi" element={<CatalogoCorsi />} />
                   <Route path="sale" element={<Sale />} />
-                  <Route path="istruttori" element={<Istruttori />} />
+                  <Route path="istruttori" element={<Navigate to="/calendario" replace />} />
                   <Route path="categorie" element={<Categorie />} />
                 </Route>
                 <Route path="/calendar" element={<Navigate to="/calendario" replace />} />
-                <Route path="/admin" element={<PermissionGate module="admin_users"><Admin /></PermissionGate>} />
+                <Route path="/admin" element={<PermissionGate module={["utenti", "ruoli"]}><Admin /></PermissionGate>} />
                 {/* Le impostazioni di Da fare ora sono la sua scheda Regole. */}
                 <Route path="/admin/da-fare" element={<Navigate to="/da-fare/regole" replace />} />
-                <Route path="/admin/contatti" element={<PermissionGate module="admin_users"><ContattiPalestra /></PermissionGate>} />
+                <Route path="/admin/contatti" element={<PermissionGate module="impostazioni"><ContattiPalestra /></PermissionGate>} />
                 <Route path="/log-audit" element={<PermissionGate module="audit_log"><AuditLogPage /></PermissionGate>} />
                 <Route path="/audit-log" element={<Navigate to="/log-audit" replace />} />
               </Route>

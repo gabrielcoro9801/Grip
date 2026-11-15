@@ -12,7 +12,7 @@ import { eq, and, inArray } from 'drizzle-orm';
 import { buildApp } from '../src/app.js';
 import { db, pool } from '../src/db/client.js';
 import {
-	members, staffAccounts, bookings, sessions, events, courses, rooms, notifiche, auditLogs, instructors, subscriptions, prenotazioniFisse,
+	members, staffAccounts, bookings, sessions, events, courses, rooms, notifiche, auditLogs, subscriptions, prenotazioniFisse,
 } from '../src/db/schema/index.js';
 import { oggiIso, spostaGiorni } from '../../shared/giorni.js';
 import { impostaMatrice, ripristinaMatricePredefinita, PERMESSI_PREDEFINITI } from '../../shared/permissions.js';
@@ -83,7 +83,7 @@ before(async () => {
 
 	const sale = await db.insert(rooms).values([{ name: `Sala cal ${suffisso}` }, { name: `Sala cal2 ${suffisso}` }]).returning();
 	id.sale = sale.map((s) => s.id);
-	const [istruttore] = await db.insert(instructors).values({ nome: 'Ida', cognome: `Calendario ${suffisso}` }).returning();
+	const [istruttore] = await db.insert(staffAccounts).values({ nome: `Ida Calendario ${suffisso}`, email: `ida.calendario.${suffisso}@test.local`, passwordHash: 'non-si-accede', ruolo: 'istruttore', istruttore: true }).returning();
 	id.istruttore = istruttore.id;
 	const [corso] = await db.insert(courses).values({ categoryId: await categoriaDiProva(), name: `Pilates ${suffisso}`, instructorId: istruttore.id }).returning();
 	const [altro] = await db.insert(courses).values({ categoryId: await categoriaDiProva(), name: `Yoga ${suffisso}`, instructorId: istruttore.id }).returning();
@@ -101,7 +101,7 @@ after(async () => {
 	if (id.eventi.length) await db.delete(events).where(inArray(events.id, id.eventi));
 	await db.delete(courses).where(inArray(courses.id, [id.corso, id.altroCorso]));
 	await togliCategorieDiProva();
-	await db.delete(instructors).where(eq(instructors.id, id.istruttore));
+	await db.delete(staffAccounts).where(eq(staffAccounts.id, id.istruttore));
 	await db.delete(rooms).where(inArray(rooms.id, id.sale));
 	await db.delete(auditLogs).where(inArray(auditLogs.attoreId, id.account));
 	await db.delete(staffAccounts).where(inArray(staffAccounts.id, id.account));
@@ -402,7 +402,7 @@ describe('chi può', () => {
 
 	test('chi ha il calendario solo in visione lo legge, e non lo cambia', async () => {
 		const { evento, lezioni } = await serie();
-		impostaMatrice({ permessi: { ...PERMESSI_PREDEFINITI, istruttore: { calendar: ['view'] } }, capacita: {} });
+		impostaMatrice({ permessi: { ...PERMESSI_PREDEFINITI, istruttore: { calendario: ['view'] } }, capacita: {} });
 		try {
 			assert.equal((await come('istruttore', 'GET', `/api/calendario/lezioni?dal=${oggi}&al=${spostaGiorni(oggi, 7)}`)).statusCode, 200);
 			assert.equal((await come('istruttore', 'GET', `/api/calendario/lezioni/${lezioni[0].id}`)).statusCode, 200);

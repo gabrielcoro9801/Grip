@@ -357,7 +357,7 @@ export default function MembersList() {
 
       <Iscrivi aperto={showForm} onChiudi={() => setShowForm(false)} />
       <Contatta socio={daContattare} onChiudi={() => setDaContattare(null)} />
-      <LegendaStati aperta={legenda} onChiudi={() => setLegenda(false)} soglie={dati.soglie} amministratore={canEdit(staffUser?.ruolo, "admin_users")} />
+      <LegendaStati aperta={legenda} onChiudi={() => setLegenda(false)} soglie={dati.soglie} amministratore={canEdit(staffUser?.ruolo, "impostazioni")} />
     </div>
   );
 }

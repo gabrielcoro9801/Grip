@@ -47,7 +47,7 @@ const periodo = (s) => {
 export default function SessioniTab({ data }) {
   const { courses, categories } = data;
   const { staffUser } = useStaffAuth();
-  const puoModificare = canEdit(staffUser?.ruolo, "calendar");
+  const puoModificare = canEdit(staffUser?.ruolo, "calendario");
 
   const [inCorso, setInCorso] = useState(null); // { sessioni, finite } | { errore }
   const [finite, setFinite] = useState(null); // null = chiuse; [] | { errore } | "caricamento"

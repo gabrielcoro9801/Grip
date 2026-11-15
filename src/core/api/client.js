@@ -104,7 +104,7 @@ function buildEntityClient(name) {
 
 const ENTITY_NAMES = [
 	'Member', 'Subscription', 'Plan', 'MemberDocument', 'CanaleContatto',
-	'Course', 'Category', 'Instructor', 'Event', 'Session', 'Room', 'Booking',
+	'Course', 'Category', 'Event', 'Session', 'Room', 'Booking',
 	'StaffAccount',
 	'Organization', 'AuditLog',
 ];
@@ -197,19 +197,11 @@ export const api = {
 		},
 	},
 
-	/** La vista dell'istruttore (routes/istruttore.js): le sue lezioni e i soci che ci vengono. */
-	istruttore: {
-		/** { dal?, al? } → { collegato, istruttore, dal, al, lezioni, spesso } */
-		lezioni(filtri = {}) {
-			const q = new URLSearchParams(Object.entries(filtri).filter(([, v]) => v)).toString();
-			return request(`/api/istruttore/lezioni${q ? `?${q}` : ''}`);
-		},
-		/** → { socio, note } */
-		socio(memberId) {
-			return request(`/api/istruttore/soci/${encodeURIComponent(memberId)}`);
-		},
-		nota(memberId, nota) {
-			return request(`/api/istruttore/soci/${encodeURIComponent(memberId)}/note`, { method: 'POST', body: { nota } });
+	/** Gli istruttori: gli utenti con la spunta «Istruttore» (routes/istruttore.js). */
+	istruttori: {
+		/** → { elenco: [{ id, full_name, attivo }] } */
+		elenco() {
+			return request('/api/istruttori');
 		},
 	},
 

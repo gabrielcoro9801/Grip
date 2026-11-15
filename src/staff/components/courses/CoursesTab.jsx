@@ -22,7 +22,7 @@ import { NOTE_CORSO_MASSIMO, DISDETTA_MASSIMA_ORE } from "@/core/domain/corsi";
 export default function CoursesTab({ data, reload }) {
   const { courses, categories, instructors } = data;
   const { staffUser } = useStaffAuth();
-  const puoModificare = canEdit(staffUser?.ruolo, "calendar");
+  const puoModificare = canEdit(staffUser?.ruolo, "corsi");
   const { toast } = useToast();
   const [conferma, dialogoConferma] = useConfirm();
   const [showCourseForm, setShowCourseForm] = useState(false);
@@ -198,7 +198,7 @@ export default function CoursesTab({ data, reload }) {
                   {istruttoriSceglibili.map(i => <SelectItem key={i.id} value={i.id}>{i.full_name}</SelectItem>)}
                 </SelectContent>
               </Select>
-              {instructors.length === 0 && <p className="text-xs text-muted-foreground mt-1">Nessun istruttore: registralo nella pagina Istruttori.</p>}
+              {instructors.length === 0 && <p className="text-xs text-muted-foreground mt-1">Nessun istruttore: segna un utente come istruttore in Utenti e ruoli.</p>}
             </div>
 
             <div>

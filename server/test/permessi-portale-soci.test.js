@@ -197,7 +197,7 @@ describe('cosa un socio legge di sé', () => {
 	});
 
 	test('il catalogo dei corsi resta leggibile per intero', async () => {
-		for (const entita of ['Course', 'Session', 'Event', 'Room', 'Instructor', 'Organization']) {
+		for (const entita of ['Course', 'Session', 'Event', 'Room', 'Organization']) {
 			const res = await come(tokenSocio, { method: 'GET', url: `/api/entities/${entita}` });
 			assert.equal(res.statusCode, 200, `${entita} dovrebbe essere leggibile`);
 		}

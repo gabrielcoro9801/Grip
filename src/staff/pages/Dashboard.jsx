@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { api } from "@/core/api/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/ui/primitivi/card";
-import { Link, Navigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { useStaffAuth } from "@/staff/lib/StaffAuthContext";
-import { soloLeSueLezioni } from "@/staff/lib/permissions";
+import { canAccess } from "@/staff/lib/permissions";
+import Benvenuto from "@/staff/pages/Benvenuto";
 import { Users, UserCheck, Calendar, Clock, UserX, ListChecks, ChevronRight } from "lucide-react";
 import { LoadingState } from "@/ui/Spinner";
 import { ErrorState } from "@/ui/StateViews";
@@ -28,7 +29,7 @@ import { postiOccupati } from "@/core/domain/corsi";
  */
 export default function Dashboard() {
   const { staffUser } = useStaffAuth();
-  const versoLezioni = soloLeSueLezioni(staffUser?.ruolo);
+  const puoVedere = canAccess(staffUser?.ruolo, "dashboard", "view");
   const [dati, setDati] = useState(null);
   const [loading, setLoading] = useState(true);
   const [errore, setErrore] = useState(null);
@@ -41,9 +42,10 @@ export default function Dashboard() {
     api.dashboard().then(setDati).catch(setErrore).finally(() => setLoading(false));
   }, []);
 
-  useEffect(() => { if (!versoLezioni) carica(); }, [carica, versoLezioni]);
+  useEffect(() => { if (puoVedere) carica(); }, [carica, puoVedere]);
 
-  if (versoLezioni) return <Navigate to="/istruttore" replace />;
+  // Senza il permesso dashboard la pagina di arrivo è il benvenuto, con le sezioni del ruolo.
+  if (!puoVedere) return <Benvenuto />;
   if (loading) return <LoadingState minHeight="h-full" />;
   if (errore) return <ErrorState error={errore} onRetry={carica} className="h-full" />;
 

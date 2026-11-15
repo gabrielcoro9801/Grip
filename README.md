@@ -61,9 +61,10 @@ Ci sono due aree con accessi distinti:
 - **Portale soci** (`/member-portal`) — richiede un account con ruolo `member` collegato a
   un'anagrafica socio
 
-L'unico account che crea il seed è l'amministratore (`admin@grip.local` / `admin1234`, o
-quello che indichi in `SEED_ADMIN_PASSWORD`). **Cambia la password dopo il primo accesso.**
-Da **Admin & Utenti** si creano gli altri account, e si definiscono i ruoli.
+Il primo amministratore viene dal file `server/.env`: `ADMIN_EMAIL` e `ADMIN_PASSWORD`. In
+sviluppo, senza queste righe, vale `administrator@grip.it` / `administrator`. Si cambia lì, sul
+server, e non dall'applicazione. Da **Utenti e ruoli** si creano gli altri account e si definiscono
+i ruoli.
 
 ### Account nel database di sviluppo
 
@@ -72,7 +73,7 @@ dai diversi punti di vista.
 
 | Email | Password | Ruolo | A cosa serve |
 |---|---|---|---|
-| `admin@grip.local` | `admin1234` | Admin | Vede tutto |
+| `administrator@grip.it` | `administrator` | Administrator | Vede tutto (il primo amministratore) |
 | `reception@grip.local` | `reception1234` | Reception | Soci e corsi, non il registro delle azioni né gli account |
 | `giulia@grip.local` | `socio1234` | Socio | Portale soci, con abbonamento |
 
@@ -103,6 +104,24 @@ Tre punti che si sbagliano quasi sempre, spiegati lì per esteso:
   redirect, con un errore che non dice perché.
 
 ## Stato del progetto
+
+### 15 novembre 2026 (sera) — Utenti, ruoli e istruttori (ramo `utenti-ruoli-istruttori`)
+
+Il piano è in `docs/piani/` e nel deck del 15/11. Una migrazione, `0063_utenti_ruoli_istruttori`
+(scritta a mano: drizzle-kit chiede conferme interattive). Backup prima di applicarla.
+
+- **L'istruttore è un utente** con la spunta «Istruttore», indipendente dal ruolo. La tabella
+  `instructors` non c'è più; i corsi puntano all'account. Telefono, codice fiscale, partita IVA e
+  note sono facoltativi e controllati dal server.
+- **Permessi divisi**: Calendario e lezioni, Prenotazioni, Corsi e categorie, Sale, Utenti, Ruoli,
+  Impostazioni, Registro. La terza spunta «Istruttore» (`suoi`) limita a ciò che riguarda i corsi
+  di cui l'utente è istruttore: lo fa il server (`server/src/auth/suoi.js`).
+- **Il primo amministratore** sta nel file di configurazione (`ADMIN_EMAIL`, `ADMIN_PASSWORD`).
+  Ad ogni avvio l'account si allinea; dall'applicazione non si cambia, né si disattiva o si elimina.
+- **Benvenuto**: chi non ha la dashboard atterra su una pagina col suo nome e le sezioni che può aprire.
+  «Le mie lezioni» è tolta, e il suo elenco di soci e presenze con lei.
+- **Da sapere**: chi ha Prenotazioni legge l'anagrafica dei soci dall'API (rischio P6, accettato).
+  Marta Gialli non aveva un account: il suo corso Functional resta senza istruttore.
 
 ### 15 novembre 2026 — Il portale soci, rifatto (ramo `feature/portale`)
 
@@ -199,7 +218,7 @@ scorrimenti. Il piano e le decisioni stanno in [`docs/ux/`](docs/ux/).
   WhatsApp ed Email senza bordo.
 - **Dashboard**: una card per lezione con "5/12 posti" (erano una per prenotazione) e il numero
   delle lezioni, non delle prenotazioni; via il doppione "Documenti da sistemare".
-- **Istruttore**: entra in "Le mie lezioni", e "Prossime" mostra le lezioni da tenere.
+- **Istruttore**: un utente con la spunta «Istruttore»; atterra su Benvenuto e vede solo le lezioni e le prenotazioni dei corsi che tiene.
 - **Contatti** sul telefono come schede, con le azioni scritte ("Non interessato", non "✕").
   **Prenotazioni**: "Disdici" scritto, il cestino staccato.
 - **Menu**: in fondo la sezione **Impostazioni** (Utenti e ruoli, Da fare, Registro delle azioni).

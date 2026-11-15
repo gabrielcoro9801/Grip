@@ -34,7 +34,7 @@ const chiSono = (token) => come(token, { method: 'GET', url: '/api/auth/me' });
 
 // "Vede ma non modifica": fino alla fase 3 del CRM era l'istruttore predefinito, e questi test lo
 // usano così. Oggi l'istruttore ha la sua vista e non le anagrafiche: gli si ridà qui la sola lettura.
-const SOLA_LETTURA = { ...PERMESSI_PREDEFINITI, istruttore: { crm_members: ['view'], crm_leads: ['view'], calendar: ['view', 'edit'] } };
+const SOLA_LETTURA = { ...PERMESSI_PREDEFINITI, istruttore: { crm_members: ['view'], crm_leads: ['view'], calendario: ['view', 'edit'] } };
 const matriceDiProva = () => impostaMatrice({ permessi: SOLA_LETTURA, capacita: {} });
 
 before(async () => {

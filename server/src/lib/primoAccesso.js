@@ -1,84 +1,72 @@
-// Creazione del primo amministratore all'avvio, quando non esiste nessun account.
+// Il primo amministratore: l'account protetto. Email e password vengono dal file di configurazione
+// del server (ADMIN_EMAIL, ADMIN_PASSWORD), e ad ogni avvio l'account si allinea a quel file. Chi
+// le vuole cambiare lo fa lì, sul server: dall'applicazione non si cambiano, né si disattiva o si
+// elimina l'account (hooks.js, routes/entities.js).
 //
-// Il problema che risolve: un'installazione appena messa online ha un database vuoto, e per
-// creare un account bisogna essere autenticati — la schermata degli utenti è dietro il login.
-// Si esce da questo cerchio solo dall'esterno, e su una piattaforma a container le due strade
-// sono entrambe sgradevoli: esporre il database su internet, oppure aprire un accesso SSH
-// alla macchina. Per un gestionale venduto ad altre associazioni significherebbe chiedere a
-// ognuna di fare una di quelle due cose al primo avvio.
-//
-// Qui il primo account nasce dall'interno, dove il database è raggiungibile senza aprire
-// niente, leggendo le stesse variabili che il seed userebbe.
-//
-// Tre condizioni, tutte necessarie:
-//  1. non esiste **nessun** account — non è un modo per aggiungerne, solo per partire;
-//  2. `SEED_ADMIN_PASSWORD` è impostata — senza, non si inventa una password;
-//  3. si esegue una volta sola, perché dalla seconda la condizione 1 è falsa.
-//
-// Conseguenza utile: se un giorno si perdessero tutti gli account, basta riavviare per
-// rientrare. Conseguenza da conoscere: chi può impostare le variabili d'ambiente del servizio
-// può, su un archivio vuoto, creare l'amministratore. Ma chi può impostare le variabili
-// controlla già il segreto dei token, quindi non è un potere nuovo.
+// Il problema che risolve: un'installazione appena messa online ha un database vuoto, e per creare
+// un account bisogna essere autenticati. Il primo account nasce dall'interno, leggendo le variabili
+// del servizio. Un cambio di email o di password chiude le sessioni aperte.
 import bcrypt from 'bcryptjs';
-import { sql } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { config } from '../config.js';
 import { staffAccounts, organizations } from '../db/schema/index.js';
 import { bootstrapRuoli } from './ruoli.js';
 import { motivoPasswordNonValida } from '../../../shared/password.js';
 
+/** Un altro account (non quello protetto) con questa email: il primo amministratore non lo sovrascrive. */
+async function emailDiAltri(email, idProtetto) {
+	const [altro] = await db.select({ id: staffAccounts.id }).from(staffAccounts)
+		.where(sql`lower(${staffAccounts.email}) = lower(${email}) AND (${idProtetto}::uuid IS NULL OR ${staffAccounts.id} <> ${idProtetto}::uuid)`)
+		.limit(1);
+	return Boolean(altro);
+}
+
 export async function creaAmministratoreIniziale(log) {
-	const [{ quanti }] = await db
-		.select({ quanti: sql`count(*)::int`.as('quanti') })
-		.from(staffAccounts);
+	const nonValida = motivoPasswordNonValida(config.adminPassword);
+	if (nonValida) throw new Error(`ADMIN_PASSWORD non va bene: ${nonValida}`);
 
-	if (quanti > 0) return { creato: false, motivo: 'esistono già degli account' };
-
-	const email = process.env.SEED_ADMIN_EMAIL;
-	const password = process.env.SEED_ADMIN_PASSWORD;
-
-	if (!password) {
-		log?.warn(
-			"Nessun account presente e SEED_ADMIN_PASSWORD non impostata: nessuno potrà accedere. " +
-			"Imposta SEED_ADMIN_EMAIL e SEED_ADMIN_PASSWORD fra le variabili e riavvia.",
-		);
-		return { creato: false, motivo: 'password non impostata' };
-	}
-	if (!email) {
-		log?.warn('Nessun account presente e SEED_ADMIN_EMAIL non impostata: indicala e riavvia.');
-		return { creato: false, motivo: 'email non impostata' };
-	}
-	// La stessa regola di ogni altra password: questo account può tutto ed è esposto su internet.
-	const nonValida = motivoPasswordNonValida(password);
-	if (nonValida) {
-		log?.warn(`SEED_ADMIN_PASSWORD non va bene: ${nonValida} Correggila e riavvia.`);
-		return { creato: false, motivo: 'password non valida' };
-	}
-
-	// L'ente e i suoi ruoli servono comunque: senza organizzazione l'applicazione non sa a
-	// chi appartengono i dati, e senza ruoli non si decide chi può fare cosa.
+	// L'ente e i suoi ruoli servono comunque: senza non si sa a chi appartengono i dati né chi può fare cosa.
 	const [enteEsistente] = await db.select().from(organizations).limit(1);
 	const ente = enteEsistente ?? (await db
 		.insert(organizations)
 		.values({ nome: process.env.SEED_ORGANIZZAZIONE || 'La mia associazione' })
 		.returning())[0];
+	await bootstrapRuoli(ente.id);
 
-	const ruoliCreati = await bootstrapRuoli(ente.id);
+	const [protetto] = await db.select().from(staffAccounts).where(eq(staffAccounts.protetto, true)).limit(1);
 
-	await db.insert(staffAccounts).values({
-		nome: 'Amministratore',
-		email,
-		passwordHash: await bcrypt.hash(password, 10),
+	if (!protetto) {
+		if (await emailDiAltri(config.adminEmail, null)) {
+			throw new Error(`ADMIN_EMAIL «${config.adminEmail}» è già di un altro account: cambia ADMIN_EMAIL, o togli quell'account dal database.`);
+		}
+		await db.insert(staffAccounts).values({
+			nome: 'Amministratore',
+			email: config.adminEmail,
+			passwordHash: await bcrypt.hash(config.adminPassword, 10),
+			ruolo: 'admin',
+			attivo: true,
+			protetto: true,
+		});
+		log?.info(`Primo amministratore creato: ${config.adminEmail} per «${ente.nome}».`);
+		return { creato: true };
+	}
+
+	const cambiaEmail = protetto.email.toLowerCase() !== config.adminEmail.toLowerCase();
+	const cambiaPassword = !(await bcrypt.compare(config.adminPassword, protetto.passwordHash));
+	if (!cambiaEmail && !cambiaPassword) return { creato: false };
+	if (cambiaEmail && (await emailDiAltri(config.adminEmail, protetto.id))) {
+		throw new Error(`ADMIN_EMAIL «${config.adminEmail}» è già di un altro account: cambia ADMIN_EMAIL, o togli quell'account dal database.`);
+	}
+	await db.update(staffAccounts).set({
+		email: config.adminEmail,
 		ruolo: 'admin',
 		attivo: true,
-		// La password sta in una variabile del servizio, che vede chiunque gestisca il deploy:
-		// al primo accesso va sostituita con una che conosce solo l'amministratore.
-		passwordDaCambiare: true,
-	});
-
-	log?.info(
-		`Primo avvio: creato l'amministratore ${email} per "${ente.nome}" (${ruoliCreati} ruoli). ` +
-		'Al primo accesso verrà chiesto di cambiare la password; poi togli SEED_ADMIN_PASSWORD dalle variabili.',
-	);
-
-	return { creato: true, email, organizzazione: ente.nome };
+		...(cambiaPassword ? {
+			passwordHash: await bcrypt.hash(config.adminPassword, 10),
+			tokenVersion: sql`${staffAccounts.tokenVersion} + 1`,
+		} : {}),
+	}).where(eq(staffAccounts.id, protetto.id));
+	log?.info(`Primo amministratore riallineato al file di configurazione${cambiaPassword ? ' (password cambiata: sessioni chiuse)' : ''}.`);
+	return { creato: false, riallineato: true };
 }

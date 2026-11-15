@@ -20,6 +20,7 @@ import {
 import { getUserFromRequest } from '../auth/tokens.js';
 import { canWriteEntity } from '../auth/authorize.js';
 import { canAccess } from '../../../shared/permissions.js';
+import { ristrettoAi, istruttoreDi } from '../auth/suoi.js';
 import { registerPgErrorHandler } from './errorHandler.js';
 import { registra } from '../lib/registro.js';
 import { conSaleBloccate } from '../lib/sale.js';
@@ -93,13 +94,21 @@ export default async function calendarioRoutes(fastify) {
 		const utente = getUserFromRequest(request);
 		if (!utente) return reply.code(401).send({ error: 'Non autenticato.' });
 		if (request.method === 'GET') {
-			if (utente.ruolo === 'member' || !canAccess(utente.ruolo, 'calendar', 'view')) {
+			if (utente.ruolo === 'member' || !canAccess(utente.ruolo, 'calendario', 'view')) {
 				return reply.code(403).send({ error: 'Il tuo ruolo non consente di vedere il calendario.' });
 			}
 		} else if (!canWriteEntity(utente.ruolo, 'Session') || !canWriteEntity(utente.ruolo, 'Event')) {
 			return reply.code(403).send({ error: 'Il tuo ruolo non consente di modificare il calendario.' });
 		}
 		request.utente = utente;
+		// Chi è limitato ai suoi corsi modifica solo le sessioni e le lezioni dei corsi che tiene.
+		if (request.method !== 'GET' && request.routeOptions?.url !== '/api/calendario/conflitti' && ristrettoAi(utente, 'calendario')) {
+			const { lezione_id: lezione, evento_id: evento } = request.body ?? {};
+			const suo = request.routeOptions?.url === '/api/calendario/elimina'
+				? (lezione ? await istruttoreDi('Session', lezione) : await istruttoreDi('Event', evento))
+				: await istruttoreDi('Event', request.params.id);
+			if (suo !== String(utente.sub)) return reply.code(403).send({ error: 'Puoi modificare solo i corsi di cui sei istruttore.' });
+		}
 	});
 
 	const rispondi = async (reply, lavoro) => {
@@ -121,6 +130,7 @@ export default async function calendarioRoutes(fastify) {
 		const { dal, al, evento_id: idEvento } = request.query ?? {};
 		if (!eUnGiorno(dal)) throw new Rifiuto(400, 'Indica da che giorno (dal=AAAA-MM-GG).');
 		const filtri = [gte(sessions.date, dal)];
+		if (ristrettoAi(request.utente, 'calendario')) filtri.push(eq(courses.instructorId, String(request.utente.sub)));
 		if (idEvento) {
 			filtri.push(eq(sessions.eventId, idEvento));
 			if (al !== undefined && !eUnGiorno(al)) throw new Rifiuto(400, 'La data finale non è valida.');
@@ -155,7 +165,9 @@ export default async function calendarioRoutes(fastify) {
 			.leftJoin(categories, eq(courses.categoryId, categories.id))
 			.where(eq(sessions.id, request.params.id))
 			.limit(1);
-		if (!riga) throw new Rifiuto(404, 'La lezione non esiste più.');
+		if (!riga || (ristrettoAi(request.utente, 'calendario') && riga.corso.instructorId !== String(request.utente.sub))) {
+			throw new Rifiuto(404, 'La lezione non esiste più.');
+		}
 		const prenotazioni = await db.select({
 			id: bookings.id, member_id: bookings.memberId, nome: members.nome, cognome: members.cognome,
 			codice_socio: members.codiceSocio, status: bookings.status, waitlist_position: bookings.waitlistPosition,
@@ -188,6 +200,7 @@ export default async function calendarioRoutes(fastify) {
 		const oggi = oggiIso();
 		const filtri = [inArray(events.recurrenceType, ['weekly', 'custom'])];
 		if (request.query?.corso_id) filtri.push(eq(events.courseId, request.query.corso_id));
+		if (ristrettoAi(request.utente, 'calendario')) filtri.push(eq(courses.instructorId, String(request.utente.sub)));
 		const righe = await db.select({
 			sessione: events, corso: courses.name, corsoAttivo: courses.attivo, categoriaId: courses.categoryId,
 			colore: categories.color, sala: rooms.name,

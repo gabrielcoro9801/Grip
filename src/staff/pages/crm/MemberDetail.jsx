@@ -327,8 +327,8 @@ export default function MemberDetail() {
         </Card>
 
         {/* Le prenotazioni fisse: sono prenotazioni, quindi le vede chi vede il calendario. */}
-        {canAccess(staffUser?.ruolo, "calendar", "view") && (
-          <FisseSocio socio={member} puoModificare={canEdit(staffUser?.ruolo, "calendar")} />
+        {canAccess(staffUser?.ruolo, "prenotazioni", "view") && (
+          <FisseSocio socio={member} puoModificare={canEdit(staffUser?.ruolo, "prenotazioni")} />
         )}
 
         {/* Accesso: gli ingressi in palestra e la password per entrare nel portale. */}

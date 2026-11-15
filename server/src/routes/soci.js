@@ -64,7 +64,7 @@ export default async function sociRoutes(fastify) {
 		// La ricerca serve a prenotare un socio a una lezione: la chiede chi modifica il calendario,
 		// anche senza la scheda dei soci (l'istruttore).
 		const [modulo, azione] = request.routeOptions?.url === '/api/soci/cerca'
-			? ['calendar', 'edit']
+			? ['prenotazioni', 'edit']
 			: ['crm_members', request.method === 'GET' ? 'view' : 'edit'];
 		if (utente.ruolo === 'member' || !canAccess(utente.ruolo, modulo, azione)) {
 			return reply.code(403).send({ error: 'Non consentito.' });
