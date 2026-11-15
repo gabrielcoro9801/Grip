@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { caricaLezioni, caricaFisse, terminaFissa } from "@/core/api/portale";
 import { Card, CardContent } from "@/ui/primitivi/card";
 import { Button } from "@/ui/primitivi/button";
@@ -7,7 +7,7 @@ import { LoadingState } from "@/ui/Spinner";
 import { ErrorState } from "@/ui/StateViews";
 import { useToast } from "@/ui/primitivi/use-toast";
 import { ChevronDown } from "lucide-react";
-import { LeMieFisse } from "@/member/components/fisse";
+import { LeMieFisse, FoglioFissa } from "@/member/components/fisse";
 import { usePalestra } from "@/member/components/Palestra";
 import { RigaLezione, AggiungiAlCalendario, useDisdici, usePrenota, nomeLezione, viva } from "@/member/components/lezioni";
 import { giornoLezione, quandoIstante } from "@/core/domain/format";
@@ -42,6 +42,10 @@ export default function MemberLezioni() {
   const palestra = usePalestra();
   const [dati, setDati] = useState(null);
   const [errore, setErrore] = useState(null);
+  // Il foglio della fissa da cambiare: { fissa, al }. «Allunga» dalla notifica arriva con
+  // ?allunga=<id>, e il foglio si apre già con il nuovo massimo.
+  const [cambio, setCambio] = useState(null);
+  const [parametri, setParametri] = useSearchParams();
 
   const carica = useCallback(() => {
     setErrore(null);
@@ -50,6 +54,13 @@ export default function MemberLezioni() {
       .catch(setErrore);
   }, []);
   useEffect(() => { carica(); }, [carica]);
+  useEffect(() => {
+    const id = parametri.get("allunga");
+    const f = id && dati?.fisse.find((x) => x.id === id);
+    if (!f) return;
+    setCambio({ fissa: f, al: f.massimo && f.massimo > f.al ? f.massimo : null });
+    setParametri({}, { replace: true });
+  }, [parametri, dati, setParametri]);
   const [disdici, dialogoDisdici, disdicendo] = useDisdici(carica);
   const [prenota, prenotando] = usePrenota(carica);
   const inCorso = disdicendo || prenotando;
@@ -90,7 +101,13 @@ export default function MemberLezioni() {
 
       <Offerte lezioni={offerte} onConferma={prenota} onEsci={disdici} inCorso={inCorso} />
 
-      <LeMieFisse fisse={dati.fisse} prenotate={prenotate} onTermina={termina} />
+      <LeMieFisse fisse={dati.fisse} prenotate={prenotate} onTermina={termina} onCambia={(fissa, al = null) => setCambio({ fissa, al })} />
+      {cambio && (
+        <FoglioFissa
+          sessione={{ id: cambio.fissa.serie_id, corso: cambio.fissa.corso, giorno: cambio.fissa.giorni[0], inizio: cambio.fissa.inizio }}
+          fissa={cambio.fissa} alIniziale={cambio.al} onChiudi={() => setCambio(null)} onFatto={carica}
+        />
+      )}
 
       <section aria-labelledby="titolo-prossime" className="space-y-2">
         <h2 id="titolo-prossime" className="text-sm font-semibold">Prossime</h2>

@@ -204,6 +204,14 @@ Escono `POST /corsi/serie/:id/fissa` (senza fine) e `DELETE /corsi/fisse/:id`.
 - **«Allunga»**: una notifica `fissa_da_allungare` quando il massimo di una fissa attiva supera il suo `al`: al **rinnovo** (vendita di un abbonamento, `routes/entities.js`) e quando la **sessione si allunga** (`POST /api/calendario/eventi/:id/data-fine`). Una volta sola per data di fine: si ricorda in `prenotazioni_fisse.avviso_inviato_per` (la colonna che usava l'avviso tolto). La notifica apre il foglio della fissa **già compilato con il nuovo massimo** («fino al 15 mar 2027»), con l'anteprima: un tocco su «Allunga» basta, e il socio può scegliere un'altra data o un numero di lezioni. Le fisse senza fine che esistono già le chiude la 0062 alla fine dell'abbonamento in corso (dati sintetici): è la risposta ai due punti aperti di «GRIP - fisse dal portale senza data di fine».
 - **Sospensione**: le prenotazioni disdette dalla sospensione prendono `motivo_disdetta = 'sospensione'` (`routes/soci.js`). Quando la sospensione finisce prima, le lezioni dei giorni tornati liberi si **riprenotano** (lista d'attesa se piena) e il socio riceve `sospensione_riprenotata`. Si riprenotano **tutte** le disdette con quel motivo, anche quelle fatte a mano (deciso il 14/11), non solo quelle delle fisse come diceva `corsi.md` (M6). Si cambia `applicaFisse`, che oggi salta le lezioni con una prenotazione anche disdetta (corsi.md, «In sospeso» 3).
 
+### Fatto il 15/11, e dove è andato diversamente
+- `esitiFissa` è la funzione sola dell'esito: l'anteprima la chiama senza scrivere, `applicaFisse` scrivendo; il test confronta l'anteprima con la risposta della creazione. Agli esiti del piano si aggiungono `gia_in_attesa` (già in lista), `disdetta` (disdetta dal socio, non si riprenota), `piena` (piena con la lista chiusa) e `scoperta`.
+- Il massimo che il foglio nomina è l'ultima lezione dentro la copertura (`ultima_coperta`), non la fine della copertura: «fino al 10 dic, l'ultima lezione coperta dal tuo abbonamento (scade il 15 dic)».
+- «Allunga» si scrive alla vendita e alla modifica di un abbonamento e quando la sessione si allunga; `avviso_inviato_per` tiene il massimo già avvisato. `fissa_senza_abbonamento` non si scrive più.
+- Accorciare dal portale rispetta il termine di disdetta: quelle oltre restano (`rimaste`).
+- Fine anticipata di una sospensione: si riprenotano tutte le disdette con motivo `sospensione` dei giorni tornati liberi (anche a mano, in lista se piene), poi le fisse prenotano quello che manca, e il socio riceve `sospensione_riprenotata` con i conti.
+- La X dei fogli si chiamava «Close» per i lettori di schermo: ora «Chiudi».
+
 ## Codice: server
 
 | File (`server/src`) | Funzione o rotta | Azione | Pacch. |

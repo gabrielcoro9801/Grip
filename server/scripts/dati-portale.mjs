@@ -23,7 +23,7 @@ import {
 	bookings, notifiche, prenotazioniFisse, organizations,
 } from '../src/db/schema/index.js';
 import { prenota, disdici } from '../src/lib/prenotazioni.js';
-import { creaFissa } from '../src/lib/prenotazioniFisse.js';
+import { creaFissa, avvisaAllungabili } from '../src/lib/prenotazioniFisse.js';
 import { notifica, giornoEsteso } from '../src/lib/notifiche.js';
 import { oggiIso, spostaGiorni } from '../../shared/giorni.js';
 
@@ -102,7 +102,8 @@ try {
 		const [istruttrice] = await db.insert(instructors).values({ nome: 'Elisa', cognome: 'Paccagnella', notes: MARCA }).returning();
 		const base = { categoria: categoria.id, istruttore: istruttrice.id, sala: sala.id };
 
-		// Pilates, ogni settimana da domani: la fissa di Giulia per quattro settimane.
+		// Pilates, ogni settimana da domani: la fissa di Giulia fino alla quarta lezione. La sessione
+		// va oltre, e l'abbonamento anche: «Allunga» (la notifica, alla fine).
 		const pilates = await corso({ ...base, nome: 'Pilates', ora: '18:30', fine: '19:30', capienza: 8, date: [1, 8, 15, 22, 29].map(fra) });
 		errore(await creaFissa({ memberId: giulia.id, eventId: pilates.evento.id, al: fra(22), creataDa: 'Dati di prova' }), 'la fissa');
 
@@ -129,6 +130,8 @@ try {
 			});
 		});
 
+		await avvisaAllungabili({ memberId: giulia.id });
+
 		// I contatti della palestra, se non ci sono.
 		const [ente] = await db.select().from(organizations).limit(1);
 		if (ente && !ente.impostazioni?.contatti?.telefono) {
@@ -138,7 +141,7 @@ try {
 			}).where(eq(organizations.id, ente.id));
 		}
 		console.log(`Fatto. Portale: ${EMAIL} / ${PASSWORD}`);
-		console.log('Pilates fissa, Yoga in lista d\'attesa, Functional con un posto offerto, Zumba annullata, sospensione fra 10 giorni.');
+		console.log('Pilates fissa da allungare, Yoga in lista d\'attesa, Functional con un posto offerto, Zumba annullata, sospensione fra 10 giorni.');
 	}
 	await pool.end();
 } catch (err) {

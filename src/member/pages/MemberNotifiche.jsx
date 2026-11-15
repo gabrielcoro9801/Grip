@@ -25,7 +25,7 @@ function azioneDi(n) {
     if (!n.lezione || n.lezione.data < oggiIso()) return null;
     return { percorso: `/member-portal/corsi?giorno=${n.lezione.data}`, etichetta: `Altre lezioni di ${formatData(n.lezione.data, "giorno")}` };
   }
-  if (n.tipo === "fissa_da_allungare") return { percorso: "/member-portal/lezioni", etichetta: "Allunga" };
+  if (n.tipo === "fissa_da_allungare") return { percorso: `/member-portal/lezioni${n.fissa_id ? `?allunga=${n.fissa_id}` : ""}`, etichetta: "Allunga" };
   if (n.lezione_id || n.fissa_id) return { percorso: "/member-portal/lezioni", etichetta: "Vedi la lezione" };
   return null;
 }

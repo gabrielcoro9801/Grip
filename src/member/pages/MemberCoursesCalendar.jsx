@@ -1,11 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { caricaAgenda, caricaCatalogo, prenotaFisso } from "@/core/api/portale";
+import { caricaAgenda, caricaCatalogo } from "@/core/api/portale";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/ui/primitivi/tabs";
 import { Button } from "@/ui/primitivi/button";
 import { LoadingState } from "@/ui/Spinner";
 import { ErrorState } from "@/ui/StateViews";
-import { useToast } from "@/ui/primitivi/use-toast";
 import { ChevronDown, Repeat } from "lucide-react";
 import { cn } from "@/ui/utils";
 import { oggiIso, spostaGiorni } from "@/core/domain/giorni";
@@ -14,6 +13,7 @@ import { formatData } from "@/core/domain/format";
 import { usePalestra } from "@/member/components/Palestra";
 import { Foglio, viva } from "@/member/components/lezioni";
 import { CardLezione, useTocco, GIORNI } from "@/member/components/corsi";
+import { FoglioFissa } from "@/member/components/fisse";
 
 // Corsi (docs/piani/portale.md, D-3): «Calendario», la striscia dei 14 giorni con le lezioni del
 // giorno per fasce, e «Per corso», le categorie a fisarmonica con gli orari. Si prenota con un
@@ -150,10 +150,8 @@ const nomeOrario = (o) => {
 };
 
 /** Il foglio di un orario: chi, dove, quanti posti, le prossime lezioni con il +, la fissa. */
-function FoglioOrario({ orario, corso, palestra, onChiudi, onCambiato }) {
-  const { toast } = useToast();
+function FoglioOrario({ orario, corso, palestra, onChiudi, onCambiato, onFissa }) {
   const [agenda, setAgenda] = useState(null);
-  const [fissando, setFissando] = useState(false);
   const carica = useCallback(() => {
     const oggi = oggiIso();
     caricaAgenda({ dal: oggi, al: spostaGiorni(oggi, 60), sessione: orario.sessione_id }).then(setAgenda).catch(() => setAgenda({ giorni: [] }));
@@ -162,23 +160,6 @@ function FoglioOrario({ orario, corso, palestra, onChiudi, onCambiato }) {
   const { tocca, fogli, inCorso } = useTocco(() => { carica(); onCambiato(); }, palestra);
   const lezioni = (agenda?.giorni.flatMap((g) => g.lezioni) ?? []).filter((l) => !l.finita).slice(0, 8);
   const settimanale = orario.giorno && orario.ricorrenza !== "single";
-
-  // Fino al massimo che la palestra permette: in D-4 il foglio chiederà le date.
-  const fissa = async () => {
-    setFissando(true);
-    try {
-      const esito = await prenotaFisso(orario.sessione_id);
-      const parti = [`${esito.prenotate} ${esito.prenotate === 1 ? "lezione prenotata" : "lezioni prenotate"}`];
-      if (esito.in_attesa) parti.push(`${esito.in_attesa} in lista d'attesa`);
-      toast({ title: `Prenotazione fissa: ${corso.nome}`, description: parti.join(", ") });
-      carica();
-      onCambiato();
-    } catch (err) {
-      toast({ title: "Prenotazione fissa non riuscita", description: err.message, variant: "destructive" });
-    } finally {
-      setFissando(false);
-    }
-  };
 
   return (
     <Foglio
@@ -194,7 +175,7 @@ function FoglioOrario({ orario, corso, palestra, onChiudi, onCambiato }) {
       {settimanale && (orario.mia_fissa ? (
         <p className="text-sm text-primary flex items-center gap-2"><Repeat className="w-4 h-4" aria-hidden="true" /> È una tua prenotazione fissa: la trovi in Le mie lezioni.</p>
       ) : (
-        <Button variant="outline" className="min-h-11" disabled={fissando} onClick={fissa}>
+        <Button variant="outline" className="min-h-11" onClick={onFissa}>
           <Repeat className="w-4 h-4" aria-hidden="true" /> Prenota ogni {GIORNI[orario.giorno][0]}
         </Button>
       ))}
@@ -208,6 +189,8 @@ function PerCorso({ palestra }) {
   const [errore, setErrore] = useState(null);
   const [aperte, setAperte] = useState(null);
   const [orario, setOrario] = useState(null);
+  // «Prenota ogni giovedì»: il foglio dell'orario lascia il posto a quello della fissa.
+  const [fissaDa, setFissaDa] = useState(null);
 
   const carica = useCallback(() => {
     setErrore(null);
@@ -272,7 +255,18 @@ function PerCorso({ palestra }) {
           </section>
         );
       })}
-      {orario && <FoglioOrario {...orario} palestra={palestra} onChiudi={() => setOrario(null)} onCambiato={carica} />}
+      {orario && (
+        <FoglioOrario
+          {...orario} palestra={palestra} onChiudi={() => setOrario(null)} onCambiato={carica}
+          onFissa={() => { setFissaDa(orario); setOrario(null); }}
+        />
+      )}
+      {fissaDa && (
+        <FoglioFissa
+          sessione={{ id: fissaDa.orario.sessione_id, corso: fissaDa.corso.nome, giorno: fissaDa.orario.giorno, inizio: fissaDa.orario.inizio }}
+          onChiudi={() => setFissaDa(null)} onFatto={carica}
+        />
+      )}
     </div>
   );
 }

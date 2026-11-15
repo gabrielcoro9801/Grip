@@ -96,14 +96,33 @@ export async function caricaFisse() {
 	return fisse;
 }
 
-/** Prenota fisso in una serie, nei giorni scelti: { prenotate, in_attesa, senza_abbonamento }. */
-export function prenotaFisso(idSerie, giorni) {
-	return api.richiesta(`${BASE}/corsi/serie/${idSerie}/fissa`, { method: 'POST', body: { giorni } });
+/**
+ * Che cosa farebbe una fissa sulla sessione, senza farla: fino al massimo se non si dice fino a
+ * quando. `fissa` per cambiarne una. → { dal, al, massimo, copertura_fino_al, ultima_lezione,
+ * ultima_coperta, lezioni: [{ data, esito }], prenotate, in_attesa }
+ */
+export function anteprimaFissa(idSessione, { al = null, numero = null, fissa = null } = {}) {
+	const parametri = new URLSearchParams();
+	if (al) parametri.set('al', al);
+	if (numero) parametri.set('numero', numero);
+	if (fissa) parametri.set('fissa_id', fissa);
+	const coda = parametri.toString();
+	return api.richiesta(`${BASE}/corsi/sessioni/${idSessione}/fissa/anteprima${coda ? `?${coda}` : ''}`);
 }
 
-/** Termina una propria prenotazione fissa: { disdette, rimaste }. */
+/** Prenota fisso, fino a una data o per N lezioni. → come l'anteprima, con l'esito vero. */
+export function prenotaFisso(idSessione, { al = null, numero = null }) {
+	return api.richiesta(`${BASE}/corsi/sessioni/${idSessione}/fissa`, { method: 'POST', body: { al, numero } });
+}
+
+/** Allunga o accorcia una propria fissa. → { fissa, prenotate, in_attesa, disdette, rimaste } */
+export function cambiaFissa(idFissa, { al = null, numero = null }) {
+	return api.richiesta(`${BASE}/corsi/fisse/${idFissa}`, { method: 'PUT', body: { al, numero } });
+}
+
+/** Termina una propria fissa da oggi. → { disdette, rimaste } */
 export function terminaFissa(idFissa) {
-	return api.richiesta(`${BASE}/corsi/fisse/${idFissa}`, { method: 'DELETE' });
+	return api.richiesta(`${BASE}/corsi/fisse/${idFissa}/termina`, { method: 'POST', body: {} });
 }
 
 /** Gli avvisi del socio, dal più recente: { notifiche, non_lette }. */
