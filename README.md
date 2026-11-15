@@ -104,6 +104,29 @@ Tre punti che si sbagliano quasi sempre, spiegati lì per esteso:
 
 ## Stato del progetto
 
+### 15 novembre 2026 — Il portale soci, rifatto (ramo `feature/portale`)
+
+Il piano è in `docs/piani/portale.md`, con quello che è andato diversamente. Una migrazione,
+`0062_portale`. Si lavora solo sul PostgreSQL locale.
+
+- **Tolti**: il QR d'accesso (gli ingressi si registrano a mano), i documenti (portale, scheda,
+  Da fare, Iscrivi), i consensi raccolti in reception (dal portale si possono solo revocare),
+  «Segnala una modifica». Le tabelle restano; il codice dei documenti è nel branch locale
+  `archivio/documenti`. Il consenso dei genitori di un minore è una spunta in anagrafica.
+- **Il portale**: in basso Home · Corsi · Le mie lezioni · Abbonamento, in alto la campanella e
+  l'avatar che apre il Profilo. Corsi a giorni (14, con le fasce e i filtri) o per categoria;
+  si prenota con un tocco e «Annulla» per 8 secondi; le lezioni nel calendario del telefono
+  (`src/core/domain/ics.js`). I contatti della palestra li scrive l'amministratore in **Contatti**.
+- **Lista d'attesa**: un posto che si libera si offre al primo in lista per 12 ore; chi non
+  conferma torna in fondo (e lo sa) e il posto passa al successivo; al termine di disdetta del
+  corso la lista si chiude. Nel gestionale un posto offerto conta come preso. Il socio disdice
+  sempre nei primi 10 minuti, e prenota solo dal portale.
+- **Fisse con le date**, anche dal portale, con l'anteprima lezione per lezione; «Allunga» al
+  rinnovo e quando la sessione si allunga; la fine anticipata di una sospensione riprenota quello
+  che la sospensione aveva disdetto.
+- **Dati di prova**: `cd server && npm run dati:portale` crea una socia con tutto da guardare
+  (`giulia.portale@grip.local` / `portale1234`); `-- --togli` la toglie.
+
 ### 13 novembre 2026 — Soci, Da fare e Corsi, insieme
 
 Tre piani eseguiti in parallelo e uniti in fila (Soci → Da fare → Corsi). I piani, con le regole
@@ -115,7 +138,8 @@ sul PostgreSQL locale: niente Railway.
   (`shared/ricerca.js`, la usa anche il server); la riga della tabella apre la scheda. Listino
   filtrabile per stato, Abbonamenti venduti con cinque riquadri, «Note» nella scheda, «Da
   controllare» negli ingressi.
-- **Da fare**: cinque avvisi in schede (In scadenza, Scaduti, Frequenza, Documenti, Compleanni),
+- **Da fare**: cinque avvisi in schede (In scadenza, Scaduti, Frequenza, Documenti, Compleanni;
+  dal 15/11 senza Documenti),
   un Archivio di quelli chiusi e le Regole per l'amministratore. Gli avvisi stanno nella tabella
   `avvisi` (migrazione 0058) e si allineano a ogni lettura e nel giro notturno. Via le linee, il
   box «Fatto», i link di contatto e la richiesta di rinnovo dal portale. `npm run dati:da-fare`
@@ -128,7 +152,7 @@ sul PostgreSQL locale: niente Railway.
   della categoria accetta `rgb()` e `#hex`.
 - **Backup** prima delle migrazioni: `../backup/grip_dev-prima-0058.dump` e
   `grip_dev-prima-0059.dump` (`pg_restore` per tornare indietro).
-- **Aperti**: le fisse create dal portale restano senza data di fine.
+- **Aperti** (chiuso il 15/11: niente più fisse senza fine): le fisse create dal portale restano senza data di fine.
 - **Il 14/11, lezioni singole**: modificando una lezione singola dalla sua pagina anche il suo
   evento prende sala, giorno, orario e capienza (`allineaEventoSingolo` in `lib/sale.js`), così la
   sala di partenza non risulta più occupata. Migrazione `0061_eventi_singoli_allineati` per gli
