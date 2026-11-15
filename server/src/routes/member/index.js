@@ -2,7 +2,7 @@ import { eq, and, or, gte, lte, inArray, ne, desc, isNull, count, min, sql } fro
 import { db } from '../../db/client.js';
 import {
 	members,
-	courses, categories, instructors, rooms, events, sessions, bookings, notifiche, consensi,
+	courses, categories, instructors, rooms, events, sessions, bookings, notifiche, consensi, prenotazioniFisse,
 } from '../../db/schema/index.js';
 import { iscrizioniDelSocio } from '../../lib/iscrizioni.js';
 import { consensiDi } from '../../lib/consensi.js';
@@ -14,7 +14,7 @@ import { firmaUrl } from '../../lib/urlFirmati.js';
 import { statoIscrizione, motivoSenzaCopertura, sospensioneIl, fineCopertura } from '../../../../shared/abbonamenti.js';
 import { oggiIso, eUnGiorno, giorniFra, giorniDaOggi, spostaGiorni, lezioneFinita } from '../../../../shared/giorni.js';
 import { limiteDisdetta, motivoDisdettaChiusa, chiusuraLista, GIORNI_SETTIMANA } from '../../../../shared/corsi.js';
-import { creaFissa, terminaFissa, elencoFisse, massimoFissa } from '../../lib/prenotazioniFisse.js';
+import { creaFissa, modificaFissa, terminaFissa, elencoFisse, limitiFissa, anteprimaFissa } from '../../lib/prenotazioniFisse.js';
 import { avvisiSocio } from '../../../../shared/avvisi.js';
 import { soglieEnte, contattiPalestra } from '../../lib/impostazioni.js';
 
@@ -355,46 +355,100 @@ export default async function memberRoutes(fastify) {
 	});
 
 	// --- Le prenotazioni fisse ------------------------------------------------------------
+	//
+	// Con le date (D-4, docs/piani/portale.md): il socio sceglie fino a quando — una data o un
+	// numero di lezioni — dentro il massimo (la copertura del suo abbonamento e l'ultima lezione
+	// della sessione), e prima di confermare vede che cosa succederà a ogni lezione.
+
+	/** Una fissa del socio, sua: altrimenti null (e la rotta risponde 404, non 403). */
+	const suaFissa = async (request) => {
+		const [f] = await db.select().from(prenotazioniFisse).where(eq(prenotazioniFisse.id, request.params.id)).limit(1);
+		return f && String(f.memberId) === String(request.idSocio) ? f : null;
+	};
+	const anteprimaApi = (a) => ({
+		dal: a.dal, al: a.al, massimo: a.limiti.massimo,
+		// Il perché del massimo: la fine della copertura, l'ultima lezione della sessione, l'ultima
+		// lezione dentro la copertura.
+		copertura_fino_al: a.limiti.copertura, ultima_lezione: a.limiti.ultima, ultima_coperta: a.limiti.ultima_coperta,
+		lezioni: a.lezioni, prenotate: a.prenotate, in_attesa: a.in_attesa,
+	});
 
 	/**
-	 * Le prenotazioni fisse in corso del socio. `giorni` resta un elenco, come lo legge il portale
-	 * (`fisse.jsx`), ma da quando una sessione ha un giorno solo (migrazione 0059) ne ha uno.
+	 * Le prenotazioni fisse in corso del socio, con fino a quando possono arrivare (`massimo`): se
+	 * è oltre la loro fine, il portale mostra «Allunga».
 	 */
 	fastify.get('/corsi/fisse', async (request) => {
 		const fisse = await elencoFisse({ memberId: request.idSocio });
 		return {
-			fisse: fisse.map((f) => ({
-				id: f.id, serie_id: f.event_id, corso: f.corso, giorni: f.giorno ? [f.giorno] : [],
-				inizio: String(f.inizio).slice(0, 5), fine: String(f.fine).slice(0, 5), creata_il: f.creata_il,
-				// D-3: da quando a quando vale (Le mie lezioni: «fino al 15 dic 2026»).
-				dal: f.dal, al: f.al,
+			fisse: await Promise.all(fisse.map(async (f) => {
+				const limiti = await limitiFissa({ memberId: request.idSocio, eventId: f.event_id, dal: f.dal });
+				return {
+					id: f.id, serie_id: f.event_id, corso: f.corso, giorni: f.giorno ? [f.giorno] : [],
+					inizio: String(f.inizio).slice(0, 5), fine: String(f.fine).slice(0, 5), creata_il: f.creata_il,
+					dal: f.dal, al: f.al, massimo: limiti.ultima_coperta ?? limiti.massimo,
+				};
 			})),
 		};
 	});
 
 	/**
-	 * Prenota fisso in una sessione, da oggi fino al massimo (`massimoFissa`: la fine dell'abbonamento
-	 * o l'ultima lezione): la regola di passaggio finché il portale non chiede le date (D-4,
-	 * docs/piani/portale.md). Niente più fisse senza fine (migrazione 0062). `giorni`, se arriva,
-	 * non conta più. Risponde con quante lezioni ha prenotato subito e quante in lista d'attesa.
+	 * GET /corsi/sessioni/:id/fissa/anteprima?al&numero (&fissa_id per cambiarne una)
+	 * → { dal, al, massimo, copertura_fino_al, ultima_lezione, ultima_coperta, lezioni: [{ data, esito }], prenotate, in_attesa }
+	 * `esito`: confermata, in_attesa, gia_prenotata, gia_in_attesa, sospesa, disdetta, piena, scoperta. Senza `al`
+	 * né `numero`: fino al massimo. Non scrive niente.
 	 */
-	fastify.post('/corsi/serie/:id/fissa', async (request, reply) => {
-		const [socio] = await db.select({ nome: members.fullName }).from(members).where(eq(members.id, request.idSocio)).limit(1);
-		// Senza un massimo (niente abbonamento oggi, sessione finita) si chiede da oggi a oggi: il
-		// controllo del periodo risponde con il perché.
-		const al = await massimoFissa({ memberId: request.idSocio, eventId: request.params.id }) ?? oggiIso();
-		const esito = await creaFissa({ memberId: request.idSocio, eventId: request.params.id, al, creataDa: socio?.nome ?? '' });
-		if (esito.errore) return reply.code(esito.errore).send({ error: esito.messaggio });
-		reply.code(201);
-		return { fissa: { id: esito.fissa.id }, prenotate: esito.esito.prenotate, in_attesa: esito.esito.inAttesa, senza_abbonamento: esito.esito.scoperte };
+	fastify.get('/corsi/sessioni/:id/fissa/anteprima', async (request, reply) => {
+		let dal = null;
+		if (request.query.fissa_id) {
+			const [f] = await db.select().from(prenotazioniFisse).where(eq(prenotazioniFisse.id, request.query.fissa_id)).limit(1);
+			if (!f || String(f.memberId) !== String(request.idSocio) || f.eventId !== request.params.id) return reply.code(404).send({ error: 'Prenotazione fissa inesistente.' });
+			dal = f.dal;
+		}
+		const a = await anteprimaFissa({ memberId: request.idSocio, eventId: request.params.id, dal, al: request.query.al, numero: request.query.numero });
+		if (a.errore) return reply.code(a.errore).send({ error: a.messaggio });
+		return anteprimaApi(a);
 	});
 
 	/**
-	 * Termina una propria fissa da oggi (`terminaFissa` senza `dal`): le sue prenotazioni future si
-	 * disdicono, nel rispetto del termine di disdetta.
+	 * POST /corsi/sessioni/:id/fissa { al } o { numero } → 201, come l'anteprima, con l'esito vero
+	 * di ogni lezione: il test lo confronta con quello dell'anteprima.
 	 */
-	fastify.delete('/corsi/fisse/:id', async (request, reply) => {
-		const esito = await terminaFissa({ fissaId: request.params.id, soloDelSocio: request.idSocio });
+	fastify.post('/corsi/sessioni/:id/fissa', async (request, reply) => {
+		const { al = null, numero = null } = request.body ?? {};
+		const [socio] = await db.select({ nome: members.fullName }).from(members).where(eq(members.id, request.idSocio)).limit(1);
+		const esito = await creaFissa({ memberId: request.idSocio, eventId: request.params.id, al, numero, creataDa: socio?.nome ?? '' });
+		if (esito.errore) return reply.code(esito.errore).send({ error: esito.messaggio });
+		const limiti = await limitiFissa({ memberId: request.idSocio, eventId: request.params.id, dal: esito.fissa.dal });
+		reply.code(201);
+		return {
+			fissa: { id: esito.fissa.id },
+			...anteprimaApi({ dal: esito.fissa.dal, al: esito.fissa.al, limiti, lezioni: esito.esito.lezioni, prenotate: esito.esito.prenotate, in_attesa: esito.esito.inAttesa }),
+		};
+	});
+
+	/**
+	 * PUT /corsi/fisse/:id { al } o { numero } → { fissa: { id, dal, al }, prenotate, in_attesa, disdette, rimaste }
+	 * Allunga o accorcia: prenota i giorni aggiunti, disdice quelli tolti (nel rispetto del termine
+	 * di disdetta: quelle oltre restano, `rimaste`).
+	 */
+	fastify.put('/corsi/fisse/:id', async (request, reply) => {
+		if (!(await suaFissa(request))) return reply.code(404).send({ error: 'Prenotazione fissa inesistente.' });
+		const { al = null, numero = null } = request.body ?? {};
+		if (vuoto(al) && vuoto(numero)) return reply.code(400).send({ error: 'Indica fino a quando: una data o un numero di lezioni.' });
+		const esito = await modificaFissa({ fissaId: request.params.id, al, numero, soloDelSocio: request.idSocio });
+		if (esito.errore) return reply.code(esito.errore).send({ error: esito.messaggio });
+		return {
+			fissa: { id: esito.fissa.id, dal: esito.fissa.dal, al: esito.fissa.al },
+			prenotate: esito.esito.prenotate, in_attesa: esito.esito.inAttesa, disdette: esito.disdette, rimaste: esito.rimaste,
+		};
+	});
+
+	/**
+	 * POST /corsi/fisse/:id/termina { dal? } → { disdette, rimaste }: da `dal` (oggi, se manca) non
+	 * prenota più, e le sue prenotazioni da lì si disdicono, nel rispetto del termine di disdetta.
+	 */
+	fastify.post('/corsi/fisse/:id/termina', async (request, reply) => {
+		const esito = await terminaFissa({ fissaId: request.params.id, dal: request.body?.dal ?? null, soloDelSocio: request.idSocio });
 		if (esito.errore) return reply.code(esito.errore).send({ error: esito.messaggio });
 		return esito;
 	});
@@ -651,3 +705,5 @@ async function lezioniPerIlSocio(idSocio, dove, { ancheDisdette = false, adesso 
 		};
 	});
 }
+
+const vuoto = (v) => v === null || v === undefined || v === '';

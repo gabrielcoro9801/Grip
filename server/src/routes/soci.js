@@ -17,7 +17,8 @@ import { getUserFromRequest } from '../auth/tokens.js';
 import { canAccess } from '../../../shared/permissions.js';
 import { motivoPasswordNonValida } from '../../../shared/password.js';
 import { registra } from '../lib/registro.js';
-import { disdici } from '../lib/prenotazioni.js';
+import { disdici, prenota } from '../lib/prenotazioni.js';
+import { notifica } from '../lib/notifiche.js';
 import { applicaFisse, terminaFissa } from '../lib/prenotazioniFisse.js';
 import { iscrizioniDelSocio, sospensioniDelSocio } from '../lib/iscrizioni.js';
 import { registerPgErrorHandler } from './errorHandler.js';
@@ -25,6 +26,9 @@ import { abbonamentoCopre } from '../../../shared/abbonamenti.js';
 import { NOTA_DIARIO_MASSIMO, motivoAbbandonoValido, etichettaMotivoAbbandono } from '../../../shared/lead.js';
 import { oggiIso, lezioneFinita, eUnGiorno, spostaGiorni } from '../../../shared/giorni.js';
 import { corrispondeRicerca } from '../../../shared/ricerca.js';
+
+const piuTardi = (a, b) => (a > b ? a : b);
+const dataIt = (iso) => { const [a, m, g] = String(iso).slice(0, 10).split('-'); return `${g}/${m}/${a}`; };
 
 // I soci per pagina nella ricerca di chi prenotare (GET /api/soci/cerca).
 const PER_PAGINA_RICERCA = 15;
@@ -259,8 +263,9 @@ export default async function sociRoutes(fastify) {
 	 * entra e non prenota, e la scadenza slitta di altrettanto (si calcola: shared/abbonamenti.js).
 	 * La decide la reception, senza tetti di durata né di numero (scelta della palestra); il motivo
 	 * è facoltativo. Si sospende da oggi in avanti, un giorno coperto da un abbonamento, senza
-	 * accavallarsi a un'altra sospensione. Le prenotazioni di quei giorni si disdicono: il posto
-	 * passa a chi è in lista d'attesa.
+	 * accavallarsi a un'altra sospensione. Le prenotazioni di quei giorni si disdicono, con il motivo
+	 * 'sospensione': il posto si offre a chi è in lista d'attesa, e se la sospensione finisce prima
+	 * si riprenotano.
 	 */
 	fastify.post('/api/soci/:id/sospensioni', async (request, reply) => {
 		// Giorni, non istanti: "2026-10-10T08:00" passerebbe il controllo e falserebbe i confronti.
@@ -298,7 +303,7 @@ export default async function sociRoutes(fastify) {
 			.where(and(eq(bookings.memberId, esito.socio.id), ne(bookings.status, 'cancelled'), gte(sessions.date, dal), lte(sessions.date, al)));
 		let disdette = 0;
 		for (const p of ferme.filter((f) => !lezioneFinita(f))) {
-			if (!(await disdici({ bookingId: p.id })).errore) disdette += 1;
+			if (!(await disdici({ bookingId: p.id, motivo: 'sospensione' })).errore) disdette += 1;
 		}
 		await registra(request.utente, {
 			tipoAzione: 'update', entitaTipo: 'member', entitaNome: esito.socio.nome, entitaId: esito.socio.id,
@@ -332,12 +337,28 @@ export default async function sociRoutes(fastify) {
 			const [riga] = await tx.update(sospensioni).set({ al: spostaGiorni(ripresa, -1) }).where(eq(sospensioni.id, s.id)).returning();
 			return riga;
 		});
-		// Le fisse del socio prenotano i giorni tornati liberi, e solo quelli: con o senza una data
-		// di fine, perché quei giorni erano già dentro il loro periodo.
-		await applicaFisse({ memberId: s.memberId, da: ripresa, a: s.al });
+		// I giorni tornati liberi si riprenotano: tutte le prenotazioni disdette dalla sospensione,
+		// anche quelle fatte a mano (deciso il 14/11), in lista d'attesa se la lezione è piena; poi le
+		// fisse prenotano quello che manca. Il socio lo sa con una notifica.
+		const riprese = await riprenotaDopoSospensione(s.memberId, piuTardi(ripresa, s.dal), s.al);
+		const fisse = await applicaFisse({ memberId: s.memberId, da: ripresa, a: s.al });
+		const confermate = riprese.confermate + fisse.prenotate;
+		const inAttesa = riprese.inAttesa + fisse.inAttesa;
+		if (confermate + inAttesa) {
+			await notifica(db, [s.memberId], {
+				tipo: 'sospensione_riprenotata',
+				lezioneId: riprese.prima,
+				titolo: 'Sospensione finita prima: lezioni riprenotate',
+				testo: `La tua sospensione finisce prima: riprendi il ${dataIt(ripresa)}. `
+					+ `${confermate === 1 ? '1 lezione è di nuovo prenotata' : `${confermate} lezioni sono di nuovo prenotate`}`
+					+ (inAttesa ? `, ${inAttesa === 1 ? "1 è in lista d'attesa perché piena" : `${inAttesa} sono in lista d'attesa perché piene`}` : '')
+					+ '. Le trovi in Le mie lezioni.',
+			});
+		}
 		await registra(request.utente, {
 			tipoAzione: 'update', entitaTipo: 'member', entitaNome: socio.nome, entitaId: s.memberId,
-			dettagli: cancellata ? `Sospensione dal ${s.dal} annullata` : `Sospensione anticipata: riprende il ${ripresa}`,
+			dettagli: [cancellata ? `Sospensione dal ${s.dal} annullata` : `Sospensione anticipata: riprende il ${ripresa}`,
+				confermate + inAttesa ? `riprenotate: ${confermate}, in lista d'attesa: ${inAttesa}` : ''].filter(Boolean).join('; '),
 		}, request.log);
 		return { sospensione: aggiornata && { id: aggiornata.id, dal: aggiornata.dal, al: aggiornata.al, riprende_il: ripresa } };
 	});
@@ -362,6 +383,33 @@ export default async function sociRoutes(fastify) {
 		}
 		return { socio: await socioPubblico(socio.id) };
 	});
+}
+
+/**
+ * Riprenota le lezioni di un socio disdette da una sospensione fra `dal` e `al` (giorni tornati
+ * liberi): quelle ancora da tenere, attive, senza un'altra sua prenotazione viva. Con `prenota`,
+ * quindi in lista d'attesa se piene; la prenotazione nuova ricorda la fissa di quella vecchia.
+ * → { confermate, inAttesa, prima }: `prima` è la prima lezione riprenotata, per la notifica.
+ */
+async function riprenotaDopoSospensione(memberId, dal, al) {
+	const disdette = await db.select({ b: bookings, lezione: sessions }).from(bookings)
+		.innerJoin(sessions, eq(bookings.sessionId, sessions.id))
+		.where(and(
+			eq(bookings.memberId, memberId), eq(bookings.status, 'cancelled'), eq(bookings.motivoDisdetta, 'sospensione'),
+			eq(sessions.status, 'active'), gte(sessions.date, dal), lte(sessions.date, al),
+		))
+		.orderBy(sessions.date, sessions.startTime);
+	const esito = { confermate: 0, inAttesa: 0, prima: null };
+	const fatte = new Set();
+	for (const { b, lezione } of disdette) {
+		if (fatte.has(lezione.id) || lezioneFinita(lezione)) continue;
+		fatte.add(lezione.id);
+		const nuova = await prenota({ sessionId: lezione.id, memberId, prenotazioneFissaId: b.prenotazioneFissaId });
+		if (!nuova.creata) continue;
+		esito[nuova.creata.status === 'waitlisted' ? 'inAttesa' : 'confermate'] += 1;
+		esito.prima ??= lezione.id;
+	}
+	return esito;
 }
 
 async function socioPubblico(id) {

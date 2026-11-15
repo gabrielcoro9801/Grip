@@ -4,10 +4,11 @@
 import test, { before, after, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import bcrypt from 'bcryptjs';
-import { eq, inArray } from 'drizzle-orm';
+import { eq, inArray, desc } from 'drizzle-orm';
 import { buildApp } from '../src/app.js';
 import { db, pool } from '../src/db/client.js';
 import {
+	notifiche,
 	members, staffAccounts, subscriptions, sospensioni, attivita, rooms, courses, events, sessions, bookings, auditLogs, prenotazioniFisse,
 } from '../src/db/schema/index.js';
 import { oggiIso, spostaGiorni } from '../../shared/giorni.js';
@@ -186,6 +187,38 @@ describe('la fine anticipata e le prenotazioni fisse', () => {
 		} finally {
 			await db.delete(bookings).where(inArray(bookings.sessionId, lezioni.map((l) => l.id)));
 			await db.delete(prenotazioniFisse).where(eq(prenotazioniFisse.eventId, evento.id));
+			await db.delete(sessions).where(eq(sessions.eventId, evento.id));
+			await db.delete(events).where(eq(events.id, evento.id));
+		}
+	});
+	test('le prenotazioni disdette dalla sospensione si riprenotano, anche quelle fatte a mano; piena, in lista; e il socio lo sa', async () => {
+		const [evento] = await db.insert(events).values({
+			courseId: id.corso, roomId: id.sala, capacity: 1, recurrenceType: 'single', startDate: fra(6), startTime: '07:00', endTime: '08:00',
+		}).returning();
+		const [piena, libera] = await db.insert(sessions).values([[fra(6), 1], [fra(7), 5]].map(([date, capacity]) => ({
+			eventId: evento.id, date, startTime: '07:00', endTime: '08:00', roomId: id.sala, capacity,
+		}))).returning();
+		try {
+			for (const l of [piena, libera]) {
+				assert.equal((await come('reception', 'POST', '/api/prenotazioni', { session_id: l.id, member_id: id.altro })).statusCode, 201);
+			}
+			const ferma = await come('reception', 'POST', `/api/soci/${id.altro}/sospensioni`, { dal: fra(5), riprende_il: fra(10) });
+			assert.equal(ferma.statusCode, 201, ferma.body);
+			const disdette = await db.select().from(bookings).where(inArray(bookings.sessionId, [piena.id, libera.id]));
+			assert.ok(disdette.every((b) => b.status === 'cancelled' && b.motivoDisdetta === 'sospensione'), 'con il motivo');
+			// Intanto qualcuno prende l'unico posto della prima.
+			await db.insert(bookings).values({ sessionId: piena.id, memberId: id.socio, memberName: 'Fermo', status: 'confirmed' });
+
+			const res = await come('reception', 'POST', `/api/soci/${id.altro}/sospensioni/${ferma.json().sospensione.id}/termina`, { riprende_il: fra(5) });
+			assert.equal(res.statusCode, 200, res.body);
+			const vive = (await db.select().from(bookings).where(inArray(bookings.sessionId, [piena.id, libera.id])))
+				.filter((b) => b.memberId === id.altro && b.status !== 'cancelled');
+			assert.deepEqual(vive.map((b) => [b.sessionId, b.status]).sort(), [[piena.id, 'waitlisted'], [libera.id, 'confirmed']].sort());
+			const [avviso] = await db.select().from(notifiche).where(eq(notifiche.memberId, id.altro)).orderBy(desc(notifiche.createdDate));
+			assert.equal(avviso?.tipo, 'sospensione_riprenotata');
+			assert.match(avviso.testo, /1 lezione è di nuovo prenotata, 1 è in lista d'attesa/);
+		} finally {
+			await db.delete(bookings).where(inArray(bookings.sessionId, [piena.id, libera.id]));
 			await db.delete(sessions).where(eq(sessions.eventId, evento.id));
 			await db.delete(events).where(eq(events.id, evento.id));
 		}

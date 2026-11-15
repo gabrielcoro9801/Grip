@@ -8,13 +8,15 @@
 // - una fissa vale da `dal` ad `al`, e ha sempre una fine: una data, o un numero di lezioni che
 //   diventa subito una data. La fine non va oltre l'abbonamento del socio né oltre l'ultima
 //   lezione della sessione (`massimoFissa`). Dalla migrazione 0062 non ci sono più fisse senza
-//   fine: il portale crea fino al massimo, finché in D-4 non chiederà le date
-//   (docs/piani/portale.md);
-// - si prenota solo dove c'è un abbonamento valido quel giorno. Per le lezioni rimaste scoperte il
-//   socio riceve un avviso, una volta per ogni scadenza. Al rinnovo, o quando la sessione si
-//   allunga, una fissa non riparte da sola: si allunga (in D-4, con la notifica «Allunga»);
+//   fine; anche il portale chiede le date (D-4, docs/piani/portale.md);
+// - si prenota solo dove c'è un abbonamento valido quel giorno. Al rinnovo, o quando la sessione
+//   si allunga, una fissa non cresce da sola: se ora può arrivare più in là, il socio riceve
+//   «Allunga» (`avvisaAllungabili`, una volta per ogni nuovo massimo);
 // - una lezione che il socio ha disdetto non gli si riprenota: una prenotazione per quella
-//   lezione esiste già, anche se disdetta, e la fissa la rispetta;
+//   lezione esiste già, anche se disdetta, e la fissa la rispetta. Tranne quelle disdette da una
+//   sospensione (`motivo_disdetta = 'sospensione'`): finita la sospensione, si riprenotano;
+// - che cosa succederà a ogni lezione lo dice una funzione sola (`esitiFissa`): l'anteprima del
+//   portale la chiama senza scrivere, `applicaFisse` scrivendo. Così l'anteprima non mente;
 // - cancellare una fissa disdice solo le prenotazioni nate da lei, dalla data scelta in poi:
 //   quelle fatte a mano restano.
 //
@@ -29,9 +31,13 @@ import { iscrizioniDelSocio } from './iscrizioni.js';
 import { oggiIso, lezioneFinita, eUnGiorno, spostaGiorni } from '../../../shared/giorni.js';
 import { motivoDisdettaChiusa } from '../../../shared/corsi.js';
 import { prenota, disdici } from './prenotazioni.js';
-import { notifica, giornoEsteso } from './notifiche.js';
+import { notifica } from './notifiche.js';
+import { chiusuraLista } from '../../../shared/corsi.js';
 
 const dataIt = (iso) => { const [a, m, g] = String(iso).slice(0, 10).split('-'); return `${g}/${m}/${a}`; };
+const MESI = ['gen', 'feb', 'mar', 'apr', 'mag', 'giu', 'lug', 'ago', 'set', 'ott', 'nov', 'dic'];
+/** "15 mar 2027" */
+const dataBreve = (iso) => { const [a, m, g] = String(iso).slice(0, 10).split('-'); return `${Number(g)} ${MESI[Number(m) - 1]} ${a}`; };
 const piuTardi = (a, b) => (a > b ? a : b);
 const vuoto = (v) => v === null || v === undefined || v === '';
 
@@ -52,77 +58,83 @@ async function lezioniDaTenere(eventId, da, a = null) {
 	return righe.filter((l) => !lezioneFinita(l));
 }
 
-/** Le lezioni ancora da tenere della fissa: dentro il suo periodo, e dentro `[da, a]` se dati. */
-function lezioniDellaFissa(fissa, { da = null, a = null } = {}) {
-	const inizio = da ? piuTardi(fissa.dal, da) : fissa.dal;
-	const fine = [fissa.al, a].filter(Boolean).sort()[0] ?? null;
-	if (fine && fine < inizio) return [];
-	return lezioniDaTenere(fissa.eventId, inizio, fine);
-}
-
 // `fineCopertura` sta in shared/abbonamenti.js: la finestra della fissa mostra lo stesso limite
 // prima di salvare. Resta esportata anche da qui, dove la usano i test.
 export { fineCopertura };
 
 /**
- * Prenota le lezioni dovute delle fisse attive, filtrate per socio, sessione o fissa.
+ * Che cosa succede, lezione per lezione, a una fissa del socio sulla sessione fra `dal` e `al`,
+ * senza scrivere niente. È la stessa regola di `prenota`, guardata prima:
+ * - `gia_prenotata`, `gia_in_attesa`: il socio ha già una prenotazione viva, confermata o in lista;
+ * - `disdetta`: l'aveva e l'ha disdetta lui (non si riprenota);
+ * - `sospesa`: quel giorno l'abbonamento è sospeso;
+ * - `scoperta`: quel giorno non c'è un abbonamento;
+ * - `confermata` o `in_attesa`: c'è posto, o si entra in lista (i posti offerti contano come presi);
+ * - `piena`: piena e con la lista chiusa, non si prenota.
+ * Una disdetta per sospensione, in un giorno non più sospeso, si riprenota come le altre.
+ *
+ * @returns [{ lezione, esito }]
+ */
+export async function esitiFissa({ memberId, eventId, dal, al, adesso = new Date() }) {
+	const lezioni = await lezioniDaTenere(eventId, dal, al);
+	if (!lezioni.length) return [];
+	const [prenotazioni, iscrizioni, [corso]] = await Promise.all([
+		db.select().from(bookings).where(inArray(bookings.sessionId, lezioni.map((l) => l.id))),
+		iscrizioniDelSocio(memberId),
+		db.select({ ore: courses.disdettaEntroOre }).from(events).innerJoin(courses, eq(events.courseId, courses.id)).where(eq(events.id, eventId)).limit(1),
+	]);
+	return lezioni.map((lezione) => {
+		const sue = prenotazioni.filter((b) => b.sessionId === lezione.id);
+		const mie = sue.filter((b) => String(b.memberId) === String(memberId));
+		const esito = (() => {
+			const viva = mie.find((b) => b.status !== 'cancelled');
+			if (viva) return viva.status === 'waitlisted' ? 'gia_in_attesa' : 'gia_prenotata';
+			if (sospensioneIl(iscrizioni, lezione.date)) return 'sospesa';
+			if (mie.some((b) => b.motivoDisdetta !== 'sospensione')) return 'disdetta';
+			if (!abbonamentoCopre(iscrizioni, lezione.date)) return 'scoperta';
+			const occupati = sue.filter((b) => b.status === 'confirmed'
+				|| (b.status === 'waitlisted' && b.postoOffertoFinoA && new Date(b.postoOffertoFinoA) > adesso)).length;
+			if (occupati < (lezione.capacity ?? 0)) return 'confermata';
+			return adesso >= chiusuraLista(lezione, corso?.ore) ? 'piena' : 'in_attesa';
+		})();
+		return { lezione, esito };
+	});
+}
+
+const DA_PRENOTARE = new Set(['confermata', 'in_attesa']);
+
+/**
+ * Prenota le lezioni dovute delle fisse attive, filtrate per socio, sessione o fissa: quelle che
+ * `esitiFissa` dice `confermata` o `in_attesa`.
  *
  * @param da, a solo le lezioni fra queste date (la fine anticipata di una sospensione)
- * @returns {{ prenotate: number, inAttesa: number, scoperte: number }}
+ * @returns {{ prenotate, inAttesa, scoperte, lezioni: [{ data, esito }] }}: `lezioni` è l'esito
+ *   vero, lezione per lezione, della fissa (di una fissa sola, se si filtra per `fissaId`)
  */
 export async function applicaFisse({ memberId = null, eventId = null, fissaId = null, da = null, a = null } = {}) {
 	const filtri = [eq(prenotazioniFisse.attiva, true)];
 	if (memberId) filtri.push(eq(prenotazioniFisse.memberId, memberId));
 	if (eventId) filtri.push(eq(prenotazioniFisse.eventId, eventId));
 	if (fissaId) filtri.push(eq(prenotazioniFisse.id, fissaId));
-	const fisse = await db.select({ fissa: prenotazioniFisse, corso: courses.name })
-		.from(prenotazioniFisse)
-		.innerJoin(events, eq(prenotazioniFisse.eventId, events.id))
-		.innerJoin(courses, eq(events.courseId, courses.id))
-		.where(and(...filtri));
+	const fisse = await db.select().from(prenotazioniFisse).where(and(...filtri));
 
-	const totale = { prenotate: 0, inAttesa: 0, scoperte: 0 };
-	for (const { fissa, corso } of fisse) {
-		const lezioni = await lezioniDellaFissa(fissa, { da, a });
-		if (!lezioni.length) continue;
-		const [esistenti, iscrizioni] = await Promise.all([
-			db.select({ sessionId: bookings.sessionId }).from(bookings)
-				.where(and(eq(bookings.memberId, fissa.memberId), inArray(bookings.sessionId, lezioni.map((l) => l.id)))),
-			iscrizioniDelSocio(fissa.memberId),
-		]);
-		const giaPrenotate = new Set(esistenti.map((e) => e.sessionId));
-
-		let primaScoperta = null;
-		for (const lezione of lezioni) {
-			if (giaPrenotate.has(lezione.id)) continue;
-			// Un giorno sospeso non è scoperto: si salta, e alla ripresa la fissa riprende da sola.
-			if (sospensioneIl(iscrizioni, lezione.date)) continue;
-			if (!abbonamentoCopre(iscrizioni, lezione.date)) {
-				primaScoperta ??= lezione.date;
-				totale.scoperte += 1;
-				continue;
+	const totale = { prenotate: 0, inAttesa: 0, scoperte: 0, lezioni: [] };
+	for (const fissa of fisse) {
+		const inizio = da ? piuTardi(fissa.dal, da) : fissa.dal;
+		const fine = [fissa.al, a].filter(Boolean).sort()[0] ?? null;
+		if (fine && fine < inizio) continue;
+		for (const { lezione, esito } of await esitiFissa({ memberId: fissa.memberId, eventId: fissa.eventId, dal: inizio, al: fine })) {
+			let vero = esito;
+			if (DA_PRENOTARE.has(esito)) {
+				// Un rifiuto (socio archiviato, una prenotazione nata nel frattempo da un'altra
+				// richiesta) non ferma le altre lezioni: la fissa prenota quello che si può.
+				const fatto = await prenota({ sessionId: lezione.id, memberId: fissa.memberId, prenotazioneFissaId: fissa.id });
+				vero = fatto.creata ? (fatto.creata.status === 'waitlisted' ? 'in_attesa' : 'confermata') : 'rifiutata';
 			}
-			// Un rifiuto (socio archiviato, una prenotazione nata nel frattempo da un'altra
-			// richiesta) non ferma le altre lezioni: la fissa prenota quello che si può.
-			const esito = await prenota({ sessionId: lezione.id, memberId: fissa.memberId, prenotazioneFissaId: fissa.id });
-			if (esito.creata) totale[esito.creata.status === 'waitlisted' ? 'inAttesa' : 'prenotate'] += 1;
-		}
-
-		// L'avviso: una volta sola per ogni prima lezione scoperta, cioè per ogni scadenza.
-		if (primaScoperta && fissa.avvisoInviatoPer !== primaScoperta) {
-			const fineCoperta = iscrizioni
-				.map((i) => i.end_date).filter((d) => d && d < primaScoperta).sort().pop();
-			await db.transaction(async (tx) => {
-				await notifica(tx, [fissa.memberId], {
-					tipo: 'fissa_senza_abbonamento',
-					titolo: `Prenotazione fissa ferma: ${corso}`,
-					testo: (fineCoperta
-						? `La tua prenotazione fissa di ${corso} si ferma al ${dataIt(fineCoperta)}, quando finisce il tuo abbonamento.`
-						: `La tua prenotazione fissa di ${corso} non può prenotare la lezione di ${giornoEsteso(primaScoperta)}: non hai un abbonamento valido quel giorno.`)
-						+ ' Rinnovalo in reception e le lezioni si prenoteranno da sole.',
-				});
-				await tx.update(prenotazioniFisse).set({ avvisoInviatoPer: primaScoperta }).where(eq(prenotazioniFisse.id, fissa.id));
-			});
+			if (vero === 'confermata') totale.prenotate += 1;
+			if (vero === 'in_attesa') totale.inAttesa += 1;
+			if (vero === 'scoperta') totale.scoperte += 1;
+			totale.lezioni.push({ data: lezione.date, esito: vero });
 		}
 	}
 	return totale;
@@ -134,14 +146,83 @@ export async function applicaFisse({ memberId = null, eventId = null, fissaId = 
  * un abbonamento quel giorno o se la sessione non ha più lezioni.
  */
 export async function massimoFissa({ memberId, eventId, dal = null }) {
+	return (await limitiFissa({ memberId, eventId, dal })).massimo;
+}
+
+/**
+ * Il massimo di una fissa e il perché: { massimo, copertura, ultima, ultima_coperta } — la fine
+ * della copertura (sospensioni comprese), l'ultima lezione della sessione, e l'ultima lezione
+ * dentro la copertura (è quella che il foglio nomina: «fino al 10 dic, l'ultima lezione coperta
+ * dal tuo abbonamento, che scade il 15 dic»).
+ */
+export async function limitiFissa({ memberId, eventId, dal = null }) {
 	const da = piuTardi(dal ?? oggiIso(), oggiIso());
 	const [[ultima], iscrizioni] = await Promise.all([
 		db.select({ data: max(sessions.date) }).from(sessions).where(and(eq(sessions.eventId, eventId), eq(sessions.status, 'active'))),
 		iscrizioniDelSocio(memberId),
 	]);
 	const copertura = fineCopertura(iscrizioni, da);
-	if (!ultima?.data || ultima.data < da || !copertura) return null;
-	return ultima.data < copertura ? ultima.data : copertura;
+	if (!ultima?.data || ultima.data < da || !copertura) return { massimo: null, copertura, ultima: ultima?.data ?? null, ultima_coperta: null };
+	const massimo = ultima.data < copertura ? ultima.data : copertura;
+	const [coperta] = await db.select({ data: max(sessions.date) }).from(sessions)
+		.where(and(eq(sessions.eventId, eventId), eq(sessions.status, 'active'), gte(sessions.date, da), lte(sessions.date, massimo)));
+	return { massimo, copertura, ultima: ultima.data, ultima_coperta: coperta?.data ?? null };
+}
+
+/**
+ * Che cosa farebbe una fissa nuova (o cambiata) senza farlo: il periodo controllato, il massimo
+ * e l'esito di ogni lezione. Senza `al` né `numero`, fino al massimo.
+ * @returns { errore, messaggio } | { dal, al, limiti, lezioni: [{ data, esito }], prenotate, in_attesa }
+ */
+export async function anteprimaFissa({ memberId, eventId, dal = null, al = null, numero = null }) {
+	const inizio = vuoto(dal) ? oggiIso() : dal;
+	const limiti = await limitiFissa({ memberId, eventId, dal: inizio });
+	if (!limiti.massimo) {
+		return { errore: 400, messaggio: limiti.copertura ? 'La sessione non ha più lezioni.' : 'Per prenotare fisso serve un abbonamento valido da oggi.' };
+	}
+	const periodo = await periodoValido({ memberId, eventId, dal: inizio, al: vuoto(al) && vuoto(numero) ? limiti.massimo : al, numero });
+	if (periodo.errore) return periodo;
+	const lezioni = (await esitiFissa({ memberId, eventId, dal: periodo.dal, al: periodo.al }))
+		.map(({ lezione, esito }) => ({ data: lezione.date, esito }));
+	return {
+		dal: periodo.dal, al: periodo.al, limiti, lezioni,
+		prenotate: lezioni.filter((l) => l.esito === 'confermata').length,
+		in_attesa: lezioni.filter((l) => l.esito === 'in_attesa').length,
+	};
+}
+
+/**
+ * «Allunga»: per ogni fissa in corso (di un socio, o di una sessione) che ora può arrivare più in
+ * là della sua fine — un rinnovo, una sessione allungata — una notifica `fissa_da_allungare`. Una
+ * volta sola per ogni nuovo massimo: si ricorda in `avviso_inviato_per`.
+ * @returns quante notifiche ha scritto
+ */
+export async function avvisaAllungabili({ memberId = null, eventId = null } = {}) {
+	const filtri = [fissaInCorso()];
+	if (memberId) filtri.push(eq(prenotazioniFisse.memberId, memberId));
+	if (eventId) filtri.push(eq(prenotazioniFisse.eventId, eventId));
+	const fisse = await db.select({ fissa: prenotazioniFisse, corso: courses.name })
+		.from(prenotazioniFisse)
+		.innerJoin(events, eq(prenotazioniFisse.eventId, events.id))
+		.innerJoin(courses, eq(events.courseId, courses.id))
+		.where(and(...filtri));
+	let scritte = 0;
+	for (const { fissa, corso } of fisse) {
+		const { massimo, ultima_coperta: ultimaCoperta } = await limitiFissa({ memberId: fissa.memberId, eventId: fissa.eventId, dal: fissa.dal });
+		const fino = ultimaCoperta ?? massimo;
+		if (!fino || !fissa.al || fino <= fissa.al || fissa.avvisoInviatoPer === fino) continue;
+		await db.transaction(async (tx) => {
+			await notifica(tx, [fissa.memberId], {
+				tipo: 'fissa_da_allungare',
+				fissaId: fissa.id,
+				titolo: `Puoi allungare la tua fissa: ${corso}`,
+				testo: `La tua prenotazione fissa di ${corso} finisce il ${dataBreve(fissa.al)}. Ora può arrivare fino al ${dataBreve(fino)}: allungala con un tocco.`,
+			});
+			await tx.update(prenotazioniFisse).set({ avvisoInviatoPer: fino }).where(eq(prenotazioniFisse.id, fissa.id));
+		});
+		scritte += 1;
+	}
+	return scritte;
 }
 
 /**
@@ -243,9 +324,9 @@ async function prenotazioniDellaFissa(fissa, { da = oggiIso(), fuoriDa = null } 
  * quelli tolti, non tocca quelli in mezzo. Senza una fine nuova la fine resta quella di prima.
  * @returns { errore, messaggio } | { fissa, esito, disdette }
  */
-export async function modificaFissa({ fissaId, dal = null, al = null, numero = null }) {
+export async function modificaFissa({ fissaId, dal = null, al = null, numero = null, soloDelSocio = null }) {
 	const [fissa] = await db.select().from(prenotazioniFisse).where(eq(prenotazioniFisse.id, fissaId)).limit(1);
-	if (!fissa) return { errore: 404, messaggio: 'Prenotazione fissa inesistente.' };
+	if (!fissa || (soloDelSocio && String(fissa.memberId) !== String(soloDelSocio))) return { errore: 404, messaggio: 'Prenotazione fissa inesistente.' };
 	if (!fissa.attiva) return { errore: 400, messaggio: 'La prenotazione fissa è già terminata.' };
 	const inizio = vuoto(dal) ? fissa.dal : dal;
 	if (!eUnGiorno(inizio)) return { errore: 400, messaggio: 'La data di inizio non è valida.' };
@@ -258,12 +339,14 @@ export async function modificaFissa({ fissaId, dal = null, al = null, numero = n
 
 	const [aggiornata] = await db.update(prenotazioniFisse).set({ dal: periodo.dal, al: periodo.al })
 		.where(eq(prenotazioniFisse.id, fissa.id)).returning();
+	// Il socio che accorcia rispetta il termine di disdetta dei corsi: quelle oltre restano.
 	let disdette = 0;
+	let rimaste = 0;
 	for (const p of await prenotazioniDellaFissa(fissa, { fuoriDa: periodo })) {
-		if (!(await disdici({ bookingId: p.id })).errore) disdette += 1;
+		if ((await disdici({ bookingId: p.id, soloDelSocio })).errore) rimaste += 1; else disdette += 1;
 	}
 	const esito = await applicaFisse({ fissaId: fissa.id });
-	return { fissa: aggiornata, esito, disdette };
+	return { fissa: aggiornata, esito, disdette, rimaste };
 }
 
 /**

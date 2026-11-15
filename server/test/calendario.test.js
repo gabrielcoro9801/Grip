@@ -8,7 +8,7 @@
 import test, { before, after, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import bcrypt from 'bcryptjs';
-import { eq, inArray } from 'drizzle-orm';
+import { eq, and, inArray } from 'drizzle-orm';
 import { buildApp } from '../src/app.js';
 import { db, pool } from '../src/db/client.js';
 import {
@@ -271,6 +271,11 @@ describe('la data fine di una sessione', () => {
 		assert.ok(nuove.length > 0);
 		const suNuove = await db.select().from(bookings).where(inArray(bookings.sessionId, nuove.map((l) => l.id)));
 		assert.equal(suNuove.filter((b) => b.memberId === id.soci[0]).length, 0);
+		// Ma il socio lo sa: «Allunga», una volta sola anche se la sessione si riallunga uguale.
+		const allunga = () => db.select().from(notifiche).where(and(eq(notifiche.memberId, id.soci[0]), eq(notifiche.tipo, 'fissa_da_allungare')));
+		assert.equal((await allunga()).length, 1);
+		await come('reception', 'POST', `/api/calendario/eventi/${evento.id}/data-fine`, { end_date: spostaGiorni(oggi, 20) });
+		assert.equal((await allunga()).length, 1);
 	});
 
 	test('dentro una sospensione della sala le date si saltano da sole', async () => {

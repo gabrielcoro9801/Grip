@@ -18,6 +18,7 @@ import { socioDiAccount } from '../auth/socioCorrente.js';
 import { registerPgErrorHandler } from './errorHandler.js';
 import { colonneFile, cancellaFileNonPiuUsati } from '../lib/fileCaricati.js';
 import { regolaOfferte } from '../lib/prenotazioni.js';
+import { avvisaAllungabili } from '../lib/prenotazioniFisse.js';
 import { conSaleBloccate, allineaEventoSingolo } from '../lib/sale.js';
 import { registra, tipoEntita, nomeLeggibile, descriviModifica } from '../lib/registro.js';
 
@@ -177,6 +178,9 @@ export default async function entityRoutes(fastify) {
 		if (request.memberId) body = forzaProprietario(entityName, body, request.memberId);
 		const [row] = await db.insert(table).values(translateToJs(table, body)).returning();
 		const creata = translateToSnakeCase(table, row);
+		// Un abbonamento nuovo (un rinnovo) può allungare il massimo delle fisse del socio: non
+		// crescono da sole, ma il socio riceve «Allunga» (D-4 del portale).
+		if (entityName === 'Subscription') await avvisaAllungabili({ memberId: row.memberId });
 		await registra(request.utente, {
 			tipoAzione: 'create', entitaTipo: tipoEntita(entityName), entitaNome: nomeLeggibile(creata), entitaId: row.id,
 		}, request.log);
@@ -295,6 +299,7 @@ export default async function entityRoutes(fastify) {
 		}
 		// Una lezione singola si porta dietro il suo evento: l'uso delle sale legge anche quello.
 		if (entityName === 'Session') await allineaEventoSingolo(row);
+		if (entityName === 'Subscription') await avvisaAllungabili({ memberId: row.memberId });
 		const vecchia = prima ? translateToSnakeCase(table, prima) : null;
 		const nuova = translateToSnakeCase(table, row);
 		if (vecchia) {

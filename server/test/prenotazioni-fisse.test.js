@@ -2,8 +2,9 @@
 //
 // Le regole: si prenota come chiunque (piena → lista d'attesa), solo dove c'è un abbonamento; lo
 // staff dà sempre una fine (una data o un numero di lezioni), entro l'abbonamento e la sessione;
-// il portale crea fino al massimo (migrazione 0062: niente più fisse senza fine), e al rinnovo
-// nessuna riparte da sola; una disdetta del socio non si rifà; l'avviso per l'abbonamento arriva una volta sola; cambiare il periodo lavora sulla
+// il portale chiede le date anche lui, con l'anteprima che dice lezione per lezione che cosa
+// succederà (e non mente: è la stessa regola); al rinnovo nessuna fissa cresce da sola, arriva
+// «Allunga», una volta; una disdetta del socio non si rifà; cambiare il periodo lavora sulla
 // differenza; cancellare disdice solo le prenotazioni della fissa, dalla data scelta.
 import test, { before, after, describe } from 'node:test';
 import assert from 'node:assert/strict';
@@ -116,21 +117,32 @@ describe('prenotare fisso', () => {
 		assert.equal((await come('reception', 'POST', '/api/prenotazioni-fisse', { member_id: id.soci[1], event_id: id.evento, numero: 1 })).statusCode, 409);
 	});
 
-	test('il primo socio dal portale: fino alla fine del suo abbonamento, in lista dove è pieno', async () => {
-		const res = await come('socio', 'POST', `/api/member/v1/corsi/serie/${id.evento}/fissa`, {});
-		assert.equal(res.statusCode, 201, res.body);
-		const { prenotate, in_attesa: inAttesa, senza_abbonamento: scoperte } = res.json();
+	test("il socio dal portale: l'anteprima fino al massimo, e l'esito è quello dell'anteprima", async () => {
+		const url = `/api/member/v1/corsi/sessioni/${id.evento}/fissa`;
+		const anteprima = await come('socio', 'GET', `${url}/anteprima`);
+		assert.equal(anteprima.statusCode, 200, anteprima.body);
+		const a = anteprima.json();
 		const tutte = await lezioni();
-		const coperte = tutte.filter((l) => l.date <= spostaGiorni(oggi, 14));
-		assert.equal(prenotate, 0, 'il secondo socio ha già il posto');
-		assert.equal(inAttesa, coperte.length);
-		assert.equal(scoperte, 0, 'si ferma dove finisce l\'abbonamento: niente lezioni scoperte');
+		assert.equal(a.copertura_fino_al, spostaGiorni(oggi, 14));
+		assert.equal(a.massimo, [spostaGiorni(oggi, 14), tutte.at(-1).date].sort()[0], "il minore fra la fine dell'abbonamento e l'ultima lezione");
+		assert.equal(a.al, a.massimo, 'senza una data, fino al massimo');
+		const coperte = tutte.filter((l) => l.date <= a.massimo);
+		assert.deepEqual(a.lezioni.map((l) => l.esito), coperte.map(() => 'in_attesa'), 'il secondo socio ha già il posto: in lista');
+
+		// Oltre il massimo no; per numero sì; l'anteprima non ha scritto niente.
+		assert.equal((await come('socio', 'GET', `${url}/anteprima?al=${spostaGiorni(oggi, 30)}`)).statusCode, 400);
+		assert.equal((await come('socio', 'GET', `${url}/anteprima?numero=1`)).json().lezioni.length, 1);
+		assert.equal((await diSocio(0)).length, 0, "l'anteprima non prenota");
+		assert.equal((await come('socio', 'POST', url, {})).statusCode, 400, 'fino a quando va detto');
+		assert.equal((await come('socio', 'POST', `/api/member/v1/corsi/serie/${id.evento}/fissa`, {})).statusCode, 404, 'la rotta senza fine non c\'è più');
+
+		const res = await come('socio', 'POST', url, { al: a.al });
+		assert.equal(res.statusCode, 201, res.body);
+		assert.deepEqual(res.json().lezioni, a.lezioni, "l'esito è quello dell'anteprima");
+		assert.equal(res.json().in_attesa, coperte.length);
 		const [sua] = await db.select().from(prenotazioniFisse).where(and(eq(prenotazioniFisse.memberId, id.soci[0]), eq(prenotazioniFisse.eventId, id.evento)));
-		const massimo = [spostaGiorni(oggi, 14), tutte.at(-1).date].sort()[0];
-		assert.equal(sua.al, massimo, "il minore fra la fine dell'abbonamento e l'ultima lezione");
+		assert.equal(sua.al, a.massimo);
 		assert.equal(sua.dal, oggi);
-		const avvisi = await db.select().from(notifiche).where(and(eq(notifiche.memberId, id.soci[0]), eq(notifiche.tipo, 'fissa_senza_abbonamento')));
-		assert.equal(avvisi.length, 0, 'senza lezioni scoperte non c\'è niente da avvisare');
 	});
 
 	test("nell'agenda la lezione dice che è una sessione fissa del socio, e l'elenco dà il suo giorno", async () => {
@@ -151,13 +163,30 @@ describe('prenotare fisso', () => {
 		assert.equal((await vive(0)).filter((r) => r.bookings.sessionId === una.bookings.sessionId).length, 0);
 	});
 
-	test('al rinnovo la fissa non cresce da sola: si allunga (D-4)', async () => {
+	test('al rinnovo la fissa non cresce da sola: arriva «Allunga», una volta', async () => {
 		const prima = (await diSocio(0)).length;
 		const rinnovo = await come('reception', 'POST', '/api/entities/Subscription', {
 			member_id: id.soci[0], plan_id: id.piano, start_date: spostaGiorni(oggi, 15),
 		});
 		assert.equal(rinnovo.statusCode, 201, rinnovo.body);
-		assert.equal((await diSocio(0)).length, prima);
+		assert.equal((await diSocio(0)).length, prima, 'non cresce da sola');
+		const allunga = () => db.select().from(notifiche).where(and(eq(notifiche.memberId, id.soci[0]), eq(notifiche.tipo, 'fissa_da_allungare')));
+		const [avviso] = await allunga();
+		const [sua] = await db.select().from(prenotazioniFisse).where(and(eq(prenotazioniFisse.memberId, id.soci[0]), eq(prenotazioniFisse.eventId, id.evento)));
+		assert.ok(avviso, 'la notifica «Allunga»');
+		assert.equal(avviso.fissaId, sua.id);
+		const elenco = (await come('socio', 'GET', '/api/member/v1/corsi/fisse')).json().fisse;
+		assert.ok(elenco[0].massimo > elenco[0].al, 'il portale sa che può allungarla');
+
+		// Un'altra modifica dell'abbonamento, lo stesso massimo: niente seconda notifica.
+		assert.equal((await come('reception', 'PUT', `/api/entities/Subscription/${rinnovo.json().id}`, { price_paid: '81' })).statusCode, 200);
+		assert.equal((await allunga()).length, 1);
+
+		// Allungare con un tocco: fino al nuovo massimo, e le lezioni nuove si prenotano.
+		const res = await come('socio', 'PUT', `/api/member/v1/corsi/fisse/${sua.id}`, { al: elenco[0].massimo });
+		assert.equal(res.statusCode, 200, res.body);
+		assert.equal(res.json().fissa.al, elenco[0].massimo);
+		assert.ok((await diSocio(0)).length > prima);
 	});
 });
 
@@ -261,13 +290,14 @@ describe('terminare', () => {
 
 	test('il socio non termina la fissa di un altro', async () => {
 		const [fissaAltrui] = await db.select().from(prenotazioniFisse).where(and(eq(prenotazioniFisse.memberId, id.soci[1]), eq(prenotazioniFisse.eventId, id.evento)));
-		assert.equal((await come('socio', 'DELETE', `/api/member/v1/corsi/fisse/${fissaAltrui.id}`)).statusCode, 404);
+		assert.equal((await come('socio', 'POST', `/api/member/v1/corsi/fisse/${fissaAltrui.id}/termina`)).statusCode, 404);
+		assert.equal((await come('socio', 'PUT', `/api/member/v1/corsi/fisse/${fissaAltrui.id}`, { numero: 1 })).statusCode, 404);
 		assert.equal((await come('socio', 'GET', '/api/prenotazioni-fisse')).statusCode, 403);
 	});
 
 	test('dal portale, senza data: da oggi, e le future si disdicono', async () => {
 		const [mia] = await db.select().from(prenotazioniFisse).where(and(eq(prenotazioniFisse.memberId, id.soci[0]), eq(prenotazioniFisse.attiva, true)));
-		const res = await come('socio', 'DELETE', `/api/member/v1/corsi/fisse/${mia.id}`);
+		const res = await come('socio', 'POST', `/api/member/v1/corsi/fisse/${mia.id}/termina`, {});
 		assert.equal(res.statusCode, 200, res.body);
 		assert.ok(res.json().disdette > 0);
 		assert.equal((await vive(0)).length, 0);
