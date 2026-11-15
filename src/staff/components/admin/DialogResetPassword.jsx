@@ -4,9 +4,8 @@ import { Button } from "@/ui/primitivi/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/ui/primitivi/dialog";
 import { useToast } from "@/ui/primitivi/use-toast";
 
-// La password temporanea la genera qrUtils, con lo stesso generatore crittografico del
-// seme d'accesso: Math.random() e prevedibile, e questa e una credenziale.
-import { generaPasswordTemporanea as passwordTemporanea } from "@/staff/lib/qrUtils";
+// La password temporanea: un generatore crittografico, perché è una credenziale.
+import { generaPasswordTemporanea as passwordTemporanea } from "@/staff/lib/passwordTemporanea";
 
 /**
  * Reimposta la password di un account, staff o socio che sia.

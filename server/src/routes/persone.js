@@ -1,24 +1,21 @@
-// La storia di una persona vista dalla segreteria: il diario (contatti, iscrizione, note) e i
-// consensi alle comunicazioni promozionali.
+// La storia di una persona vista dalla segreteria: il diario (contatti, iscrizione, note).
 //
 // Il diario lo scrivono il lavoro sui contatti (routes/lead.js) e, qui, le note e i "Fatto" di
-// Da fare; i consensi li dà il socio dal portale (routes/member) o li
-// registra la reception da un modulo firmato. Qui sta anche la ricerca globale (Ctrl+K).
+// Da fare. Qui sta anche la ricerca globale (Ctrl+K). I consensi promozionali raccolti in
+// reception con il modulo firmato sono usciti a novembre 2026 (docs/piani/portale.md): il
+// registro resta, e il socio li revoca dal portale.
 //
 // Chi può: il diario è lavoro della segreteria, non anagrafica. Lo legge chi vede i soci o i
 // contatti — non chi apre i nomi dei soci solo per il calendario o per gli account.
 import { and, asc, eq, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { persone, attivita, consensi, staffAccounts, members, trattative, memberDocuments } from '../db/schema/index.js';
+import { persone, attivita, staffAccounts, members, trattative } from '../db/schema/index.js';
 import { getUserFromRequest } from '../auth/tokens.js';
 import { canAccess } from '../../../shared/permissions.js';
 import { translateToSnakeCase } from '../entities/columnMaps.js';
 import { registerPgErrorHandler } from './errorHandler.js';
 import { NOTA_DIARIO_MASSIMO, CANALI_CONTATTO, STATI_APERTI, esitoContattoValido } from '../../../shared/lead.js';
 import { situazioni } from '../lib/segnali.js';
-import { tipoConsensoValido, TIPI_CONSENSO } from '../../../shared/consensi.js';
-import { consensiDi, righeConsensi } from '../lib/consensi.js';
-import { registra } from '../lib/registro.js';
 import { normalizzaTelefono } from '../../../shared/anagrafica.js';
 
 const puoSu = (ruolo, azione) => canAccess(ruolo, 'crm_members', azione) || canAccess(ruolo, 'crm_leads', azione);
@@ -148,71 +145,5 @@ export default async function personeRoutes(fastify) {
 		}).returning();
 		reply.code(201);
 		return { attivita: translateToSnakeCase(attivita, riga) };
-	});
-
-	/**
-	 * GET /api/persone/:id/consensi → { consensi, storico }
-	 *
-	 * I consensi di oggi e tutto il registro, dal più recente: chi, quando, da dove, con quale
-	 * modulo — è la prova da mostrare se qualcuno chiede.
-	 */
-	fastify.get('/api/persone/:id/consensi', { preHandler: leggere }, async (request) => {
-		const righe = await righeConsensi([request.params.id]);
-		return {
-			consensi: await consensiDi(request.params.id),
-			storico: righe.reverse().map(({ persona_id: _p, ...r }) => r),
-		};
-	});
-
-	/**
-	 * POST /api/persone/:id/consensi { tipi: [tipo], valore, documento_id?, nota?, atteso: { [tipo]: il|null } } → { consensi }
-	 *
-	 * La reception registra un consenso — solo con il modulo firmato già caricato fra i documenti
-	 * del socio (tipo `consenso_marketing`): senza, non c'è la prova, e il consenso non vale — o
-	 * la sua revoca, con il motivo ("l'ha chiesto per email il 10/10"). Si aggiunge al registro: il
-	 * valore di prima resta nello storico.
-	 *
-	 * Il socio sceglie anche dal portale, nello stesso registro. `atteso` è quello che la scheda
-	 * mostrava: se nel frattempo il socio ha cambiato idea, 409, e si rilegge prima di decidere al
-	 * posto suo. Solo chi modifica i soci: chi segue i lead non tocca i consensi dei soci.
-	 */
-	fastify.post('/api/persone/:id/consensi', { preHandler: scrivere }, async (request, reply) => {
-		if (!canAccess(request.utente.ruolo, 'crm_members', 'edit')) return reply.code(403).send({ error: 'I consensi li registra chi gestisce i soci.' });
-		const { valore, atteso = {} } = request.body ?? {};
-		const tipi = [...new Set(Array.isArray(request.body?.tipi) ? request.body.tipi : [request.body?.tipo].filter(Boolean))];
-		const nota = String(request.body?.nota ?? '').trim() || null;
-		if (!tipi.length || tipi.some((t) => !tipoConsensoValido(t))) return reply.code(400).send({ error: 'Scegli per quali comunicazioni.' });
-		if (typeof valore !== 'boolean') return reply.code(400).send({ error: 'Indica se il consenso è dato o tolto.' });
-		if (nota && nota.length > NOTA_DIARIO_MASSIMO) return reply.code(400).send({ error: `La nota sta in ${NOTA_DIARIO_MASSIMO} caratteri.` });
-		if (!valore && !nota) return reply.code(400).send({ error: 'Scrivi perché si toglie: es. «l\'ha chiesto per email il 10/10».' });
-
-		let documentoId = null;
-		if (valore) {
-			const [doc] = request.body?.documento_id ? await db.select({ id: memberDocuments.id })
-				.from(memberDocuments).innerJoin(members, eq(members.id, memberDocuments.memberId))
-				.where(and(
-					eq(memberDocuments.id, request.body.documento_id), eq(memberDocuments.documentType, 'consenso_marketing'),
-					eq(members.personaId, request.params.id),
-				)).limit(1) : [];
-			if (!doc) return reply.code(400).send({ error: 'Serve il modulo firmato: caricalo fra i documenti del socio (tipo «Consenso comunicazioni promozionali»), poi sceglilo qui.' });
-			documentoId = doc.id;
-		}
-
-		const istante = (d) => (d ? new Date(d).getTime() : null);
-		const ora = await consensiDi(request.params.id);
-		if (tipi.some((t) => istante(ora[t].il) !== istante(atteso[t] ?? null))) {
-			return reply.code(409).send({ error: 'Nel frattempo il socio ha cambiato le sue scelte dal portale: rileggile prima di registrare.', consensi: ora });
-		}
-
-		const autoreNome = await nomeAutore(request);
-		await db.insert(consensi).values(tipi.map((tipo) => ({
-			personaId: request.params.id, tipo, valore, fonte: 'reception', autoreNome, documentoId, nota,
-		})));
-		const etichette = tipi.map((t) => TIPI_CONSENSO.find((x) => x.valore === t).etichetta).join(', ');
-		await registra(request.utente, {
-			tipoAzione: 'update', entitaTipo: 'consensi', entitaId: request.params.id,
-			dettagli: `${valore ? 'Consenso registrato con modulo firmato' : 'Consenso tolto'}: ${etichette}${nota ? ` (${nota})` : ''}`,
-		}, request.log);
-		return { consensi: await consensiDi(request.params.id) };
 	});
 }

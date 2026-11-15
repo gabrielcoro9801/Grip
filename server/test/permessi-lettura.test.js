@@ -55,7 +55,7 @@ describe('la matrice predefinita, in lettura', () => {
 describe('un ruolo costruito a mano', () => {
 	after(() => ripristinaMatricePredefinita());
 
-	test('senza i documenti non legge i certificati', () => {
+	test("i documenti non sono più un'entità: nessuno li legge", () => {
 		impostaMatrice({
 			permessi: { ...PERMESSI_PREDEFINITI, segreteria: { crm_members: ['view', 'edit'] } },
 			capacita: {},
@@ -72,7 +72,6 @@ describe('un ruolo costruito a mano', () => {
 		assert.equal(canReadEntity('sala', 'Member'), true);
 		assert.equal(canReadEntity('sala', 'Booking'), true);
 		assert.equal(canReadEntity('sala', 'Subscription'), false);
-		assert.equal(canReadEntity('sala', 'MemberDocument'), false);
 	});
 
 	test('con i soli Lead non ha Da fare nel menu: gli avvisi sono dei soci', () => {

@@ -18,6 +18,7 @@ import {
   spostaLeLezioni, descriviRimozione, nomeGiorno,
 } from "@/staff/lib/modificaEvento";
 import { cn } from "@/ui/utils";
+import { postiOccupati } from "@/core/domain/corsi";
 
 const hhmm = (t) => String(t ?? "").slice(0, 5);
 
@@ -181,8 +182,8 @@ function FormLezione({ open, onClose, data, modo = "lezione", lezione = null, gi
     if (motivoSala) { setError(motivoSala); return; }
     if (!orarioValido) { setError("L'orario di inizio deve precedere quello di fine."); return; }
     if (!(Number(form.capacity) > 0)) { setError("La capienza è di almeno una persona."); return; }
-    if (inModifica && Number(form.capacity) < (lezione.confermati ?? 0)) {
-      setError(`${lezione.confermati} soci sono già confermati: la capienza non può scendere a ${form.capacity}.`);
+    if (inModifica && Number(form.capacity) < postiOccupati(lezione)) {
+      setError(`${postiOccupati(lezione)} posti sono già presi (confermati o offerti a chi è in lista): la capienza non può scendere a ${form.capacity}.`);
       return;
     }
     setSaving(true);
@@ -269,9 +270,9 @@ function FormLezione({ open, onClose, data, modo = "lezione", lezione = null, gi
             <div>
               <Label htmlFor="lezione-capienza">Capienza *</Label>
               <Input id="lezione-capienza" type="number" min="1" required value={form.capacity} onChange={(e) => setForm({ ...form, capacity: e.target.value })} />
-              {inModifica && lezione.confermati > 0 && (
+              {inModifica && postiOccupati(lezione) > 0 && (
                 <p className="text-xs text-muted-foreground mt-1">
-                  {lezione.confermati === 1 ? "1 socio già confermato." : `${lezione.confermati} soci già confermati.`}
+                  {postiOccupati(lezione) === 1 ? "1 posto già preso." : `${postiOccupati(lezione)} posti già presi.`}
                 </p>
               )}
             </div>

@@ -10,13 +10,14 @@
 import test, { before, after, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import bcrypt from 'bcryptjs';
-import { inArray } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import { buildApp } from '../src/app.js';
 import { db, pool } from '../src/db/client.js';
 import {
-	members, staffAccounts, subscriptions, qrAccessi,
+	members, staffAccounts, subscriptions,
 	rooms, courses, events, sessions, bookings,
 } from '../src/db/schema/index.js';
+import { categoriaDiProva, togliCategorieDiProva } from './categoriaDiProva.js';
 
 const PASSWORD = 'prova-permessi-1234';
 
@@ -93,7 +94,7 @@ before(async () => {
 	// solo per sé, che è il punto.
 	const [sala] = await db.insert(rooms).values({ name: `Sala prova ${suffisso}` }).returning();
 	idSala = sala.id;
-	const [corso] = await db.insert(courses).values({ name: `Corso prova ${suffisso}` }).returning();
+	const [corso] = await db.insert(courses).values({ categoryId: await categoriaDiProva(), name: `Corso prova ${suffisso}` }).returning();
 	idCorso = corso.id;
 	const [evento] = await db
 		.insert(events)
@@ -128,11 +129,11 @@ before(async () => {
 after(async () => {
 	// I codici di accesso li generano i test stessi e puntano al socio: vanno via per
 	// primi, o l'anagrafica resta agganciata da una chiave esterna.
-	if (idSocio) await db.delete(qrAccessi).where(inArray(qrAccessi.clienteId, [idSocio, idEstraneo]));
 	if (idPrenotazioni.length) await db.delete(bookings).where(inArray(bookings.id, idPrenotazioni));
 	if (idSessioneCorso) await db.delete(sessions).where(inArray(sessions.id, [idSessioneCorso]));
 	if (idEvento) await db.delete(events).where(inArray(events.id, [idEvento]));
 	if (idCorso) await db.delete(courses).where(inArray(courses.id, [idCorso]));
+	await togliCategorieDiProva();
 	if (idSala) await db.delete(rooms).where(inArray(rooms.id, [idSala]));
 	if (idAbbonamenti.length) await db.delete(subscriptions).where(inArray(subscriptions.id, idAbbonamenti));
 	if (idAccount.length) await db.delete(staffAccounts).where(inArray(staffAccounts.id, idAccount));
@@ -212,29 +213,6 @@ describe('cosa un socio legge di sé', () => {
 });
 
 describe('cosa un socio può scrivere', () => {
-	test('il codice di accesso non se lo emette da sé', async () => {
-		// Prima poteva, con lo stato che voleva: bastava una richiesta per rifarsi una
-		// credenziale «attiva» dopo essere stati revocati, e la revoca durava fino alla
-		// visita successiva del socio. Ora il codice lo emette la palestra.
-		const res = await come(tokenSocio, {
-			method: 'POST',
-			url: '/api/entities/QRAccesso',
-			payload: { cliente_id: idSocio, codice: `PROVA-${Date.now()}`, stato: 'attivo' },
-		});
-		assert.equal(res.statusCode, 403);
-	});
-
-	test('e nemmeno passando da /bulk', async () => {
-		// La creazione singola imponeva l'intestatario, la creazione in blocco no: si
-		// aggirava il controllo cambiando indirizzo, non permessi.
-		const res = await come(tokenSocio, {
-			method: 'POST',
-			url: '/api/entities/QRAccesso/bulk',
-			payload: [{ cliente_id: idEstraneo, codice: `PROVA-BULK-${Date.now()}`, stato: 'attivo' }],
-		});
-		assert.equal(res.statusCode, 403);
-	});
-
 	test('non crea né modifica nulla che riguardi la gestione', async () => {
 		for (const entita of ['Member', 'Subscription', 'StaffAccount', 'Course']) {
 			const res = await come(tokenSocio, { method: 'POST', url: `/api/entities/${entita}`, payload: { nome: 'x' } });
@@ -242,19 +220,18 @@ describe('cosa un socio può scrivere', () => {
 		}
 	});
 
-	test('prenota un corso, e la prenotazione è sua', async () => {
+	test('prenota un corso dal portale, e la prenotazione è sua', async () => {
 		// Prenotare era semplicemente impossibile: il portale mostrava il pulsante e il
-		// server rispondeva 403. Ora si passa da /api/prenotazioni, che è anche il posto
-		// dove si contano i posti — vedi prenotazioni.test.js per quelle regole.
-		const res = await come(tokenSocio, {
-			method: 'POST',
-			url: '/api/prenotazioni',
-			// L'intestatario lo impone il server: qui si chiede di prenotare per un altro.
-			payload: { session_id: idSessioneCorso, member_id: idEstraneo },
-		});
-		assert.equal(res.statusCode, 201);
-		assert.equal(res.json().booking.member_id, idSocio, 'non si prenota a nome di un altro');
-		idPrenotazioni.push(res.json().booking.id);
+		// server rispondeva 403. Ora si passa dal portale, che usa la stessa funzione della
+		// reception — vedi prenotazioni.test.js per quelle regole. La rotta della reception, a
+		// un socio, dice 403 (D-3): un contratto solo.
+		const vecchia = await come(tokenSocio, { method: 'POST', url: '/api/prenotazioni', payload: { session_id: idSessioneCorso, member_id: idEstraneo } });
+		assert.equal(vecchia.statusCode, 403);
+		const res = await come(tokenSocio, { method: 'POST', url: `/api/member/v1/corsi/lezioni/${idSessioneCorso}/prenota` });
+		assert.equal(res.statusCode, 201, res.body);
+		const [riga] = await db.select().from(bookings).where(eq(bookings.id, res.json().prenotazione.id));
+		assert.equal(riga.memberId, idSocio, 'non si prenota a nome di un altro');
+		idPrenotazioni.push(riga.id);
 	});
 
 	test("l'endpoint generico non è più una scorciatoia per prenotare", async () => {

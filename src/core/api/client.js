@@ -103,7 +103,7 @@ function buildEntityClient(name) {
 }
 
 const ENTITY_NAMES = [
-	'Member', 'Subscription', 'Plan', 'MemberDocument', 'QRAccesso', 'CanaleContatto',
+	'Member', 'Subscription', 'Plan', 'MemberDocument', 'CanaleContatto',
 	'Course', 'Category', 'Instructor', 'Event', 'Session', 'Room', 'Booking',
 	'StaffAccount',
 	'Organization', 'AuditLog',
@@ -138,10 +138,7 @@ export const api = {
 				body: { session_id: sessionId, member_id: memberId },
 			});
 		},
-		disdici(bookingId) {
-			return request(`/api/prenotazioni/${bookingId}/disdici`, { method: 'POST' });
-		},
-		/** Solo staff: porta una prenotazione a confirmed / waitlisted / cancelled. → { booking, promossi } */
+		/** Solo staff: porta una prenotazione a confirmed / waitlisted / cancelled. → { booking, offerti } */
 		cambiaStato(bookingId, stato, { oltreCapienza = false } = {}) {
 			return request(`/api/prenotazioni/${bookingId}/stato`, { method: 'POST', body: { stato, oltre_capienza: oltreCapienza } });
 		},
@@ -149,7 +146,7 @@ export const api = {
 		spostaInLista(bookingId, posizione) {
 			return request(`/api/prenotazioni/${bookingId}/posizione`, { method: 'POST', body: { posizione } });
 		},
-		/** Solo staff: cancella davvero una prenotazione inserita per errore. → { eliminata, promossi } */
+		/** Solo staff: cancella davvero una prenotazione inserita per errore. → { eliminata, offerti } */
 		elimina(bookingId) {
 			return request(`/api/prenotazioni/${bookingId}`, { method: 'DELETE' });
 		},
@@ -217,8 +214,8 @@ export const api = {
 	},
 
 	/**
-	 * Iscrivi, in un passo: { lead_id?, anagrafica, abbonamento?, certificato?, informativa_privacy,
-	 * consensi?, portale? } → { member, riattivato, accesso_portale }. Tutto in una transazione.
+	 * Iscrivi, in un passo: { lead_id?, anagrafica, abbonamento?, informativa_privacy, portale? }
+	 * → { member, riattivato, accesso_portale }. Tutto in una transazione.
 	 */
 	iscrivi(corpo) {
 		return request('/api/iscrivi', { method: 'POST', body: corpo });
@@ -278,11 +275,11 @@ export const api = {
 
 	/** Gli ingressi in palestra (routes/ingressi.js). */
 	ingressi: {
-		/** { codice } | { member_id, alle? } → { valido, motivo? | socio, semaforo, avvisi, lezioni_oggi, ultimo_ingresso, metodo } */
+		/** { member_id, alle? } → { valido, motivo? | socio, semaforo, avvisi, lezioni_oggi, ultimo_ingresso, metodo } */
 		verifica(corpo) {
 			return request('/api/ingressi/verifica', { method: 'POST', body: corpo });
 		},
-		/** { member_id, metodo, deroga?, entrato_alle? } → { ingresso } */
+		/** { member_id, deroga?, entrato_alle? } → { ingresso } */
 		registra(corpo) {
 			return request('/api/ingressi', { method: 'POST', body: corpo });
 		},
@@ -374,7 +371,7 @@ export const api = {
 		},
 	},
 
-	/** La storia di una persona per la segreteria: diario e consensi. */
+	/** La storia di una persona per la segreteria: il diario. */
 	persone: {
 		/** { attivita } */
 		diario(personaId) {
@@ -382,18 +379,6 @@ export const api = {
 		},
 		nota(personaId, nota) {
 			return request(`/api/persone/${personaId}/note`, { method: 'POST', body: { nota } });
-		},
-		/** I consensi di oggi e il registro intero. → { consensi, storico } */
-		consensi(personaId) {
-			return request(`/api/persone/${personaId}/consensi`);
-		},
-		/**
-		 * Un consenso raccolto in reception (con il modulo firmato già fra i documenti) o la sua
-		 * revoca (con il motivo): { tipi, valore, documento_id?, nota?, atteso } → { consensi }.
-		 * 409 se il socio ha cambiato le sue scelte dal portale nel frattempo.
-		 */
-		registraConsensi(personaId, corpo) {
-			return request(`/api/persone/${personaId}/consensi`, { method: 'POST', body: corpo });
 		},
 		/**
 		 * Il "Fatto" su una cosa da fare: { canale, segnale, esito? } → { attivita }. Nasconde per
@@ -413,6 +398,9 @@ export const api = {
 	impostazioni: {
 		daFare() { return request('/api/impostazioni/da-fare'); },
 		salvaDaFare(corpo) { return request('/api/impostazioni/da-fare', { method: 'PUT', body: corpo }); },
+		/** Nome, indirizzo e recapiti della palestra che il socio vede nel portale. */
+		palestra() { return request('/api/impostazioni/palestra'); },
+		salvaPalestra(corpo) { return request('/api/impostazioni/palestra', { method: 'PUT', body: corpo }); },
 	},
 
 	/**
@@ -446,23 +434,6 @@ export const api = {
 	segnali(filtri = {}) {
 		const q = new URLSearchParams(Object.entries(filtri).filter(([, v]) => v)).toString();
 		return request(`/api/segnali${q ? `?${q}` : ''}`);
-	},
-
-	/**
-	 * Il codice d'accesso che cambia ogni minuto.
-	 *
-	 * Passa dal server perché è lì che vive la chiave con cui viene firmato: derivarlo nel
-	 * browser vorrebbe dire spedire quella chiave a ogni visitatore.
-	 */
-	qr: {
-		codice(clienteId) {
-			const qs = clienteId ? `?cliente_id=${encodeURIComponent(clienteId)}` : '';
-			return request(`/api/qr/codice${qs}`);
-		},
-		/** Se il codice che si ha davanti vale adesso, e di chi è. Solo per lo staff. */
-		verifica(codice) {
-			return request('/api/qr/verifica', { method: 'POST', body: { codice } });
-		},
 	},
 
 	// Configurazione dei ruoli: la matrice dei permessi non è più una costante del codice.

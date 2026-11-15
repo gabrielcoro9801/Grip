@@ -5,6 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { useToast } from "@/ui/primitivi/use-toast";
 import SceltaSocio from "@/staff/components/courses/SceltaSocio";
 import { formatData } from "@/core/domain/format";
+import { postiOccupati } from "@/core/domain/corsi";
 
 const hhmm = (t) => String(t ?? "").slice(0, 5);
 
@@ -30,7 +31,7 @@ export default function AggiungiPrenotazioneDialog({ open, onClose, lezione, pre
     () => new Set(prenotazioni.filter((p) => p.status !== "cancelled").map((p) => p.member_id)),
     [prenotazioni],
   );
-  const piena = lezione.confermati >= lezione.capacity;
+  const piena = postiOccupati(lezione) >= lezione.capacity;
 
   const prenota = async () => {
     if (!socio) return;
@@ -59,7 +60,7 @@ export default function AggiungiPrenotazioneDialog({ open, onClose, lezione, pre
           <DialogTitle>Aggiungi prenotazione</DialogTitle>
           <DialogDescription>
             {lezione.corso} · {formatData(lezione.date, "estesaBreve")}, {hhmm(lezione.start_time)}–{hhmm(lezione.end_time)}
-            {" · "}{lezione.confermati}/{lezione.capacity} posti
+            {" · "}{postiOccupati(lezione)}/{lezione.capacity} posti
           </DialogDescription>
         </DialogHeader>
         <SceltaSocio scelto={socio} onScegli={setSocio} giaPrenotati={giaPrenotati} />

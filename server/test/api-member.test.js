@@ -13,14 +13,15 @@
 import test, { before, after, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import bcrypt from 'bcryptjs';
-import { eq, inArray } from 'drizzle-orm';
+import { inArray, eq, desc } from 'drizzle-orm';
 import { buildApp } from '../src/app.js';
 import { db, pool } from '../src/db/client.js';
 import { oggiIso, spostaGiorni } from '../../shared/giorni.js';
 import {
-	members, staffAccounts, subscriptions, memberDocuments, qrAccessi,
-	rooms, courses, events, sessions, bookings,
+	members, staffAccounts, subscriptions,
+	rooms, courses, events, sessions, bookings, consensi, auditLogs,
 } from '../src/db/schema/index.js';
+import { categoriaDiProva, togliCategorieDiProva } from './categoriaDiProva.js';
 
 const PASSWORD = 'prova-api-member-1234';
 
@@ -31,8 +32,6 @@ let idSocio;
 let idEstraneo;
 const idAccount = [];
 const idAbbonamenti = [];
-const idDocumenti = [];
-const idQr = [];
 const idPrenotazioni = [];
 let idSala;
 let idCorso;
@@ -90,28 +89,11 @@ before(async () => {
 		.returning();
 	idAbbonamenti.push(...abbonamenti.map((a) => a.id));
 
-	const documenti = await db
-		.insert(memberDocuments)
-		.values([
-			{ memberId: socio.id, documentType: 'certificato_medico', fileName: 'certificato.pdf', expiryDate: fraUnaSettimana },
-			{ memberId: estraneo.id, documentType: 'altro', titolo: "Documento dell'estraneo", fileName: 'altro.pdf' },
-		])
-		.returning();
-	idDocumenti.push(...documenti.map((d) => d.id));
-
-	const qr = await db
-		.insert(qrAccessi)
-		.values([
-			{ clienteId: socio.id, clienteName: 'Socio API', codice: `GRIP-TEST-APIM-${suffisso}`.slice(0, 60), stato: 'attivo' },
-		])
-		.returning();
-	idQr.push(...qr.map((q) => q.id));
-
 	// Una lezione con due prenotazioni: la mia e quella di un altro. Serve a verificare che
 	// dei posti escano numeri e non le righe altrui.
 	const [sala] = await db.insert(rooms).values({ name: 'Sala API' }).returning();
 	idSala = sala.id;
-	const [corso] = await db.insert(courses).values({ name: 'Corso API' }).returning();
+	const [corso] = await db.insert(courses).values({ categoryId: await categoriaDiProva(), name: 'Corso API' }).returning();
 	idCorso = corso.id;
 	const [evento] = await db
 		.insert(events)
@@ -142,9 +124,8 @@ after(async () => {
 	if (idLezione) await db.delete(sessions).where(inArray(sessions.id, [idLezione]));
 	if (idEvento) await db.delete(events).where(inArray(events.id, [idEvento]));
 	if (idCorso) await db.delete(courses).where(inArray(courses.id, [idCorso]));
+	await togliCategorieDiProva();
 	if (idSala) await db.delete(rooms).where(inArray(rooms.id, [idSala]));
-	if (idQr.length) await db.delete(qrAccessi).where(inArray(qrAccessi.id, idQr));
-	if (idDocumenti.length) await db.delete(memberDocuments).where(inArray(memberDocuments.id, idDocumenti));
 	if (idAbbonamenti.length) await db.delete(subscriptions).where(inArray(subscriptions.id, idAbbonamenti));
 	if (idAccount.length) await db.delete(staffAccounts).where(inArray(staffAccounts.id, idAccount));
 	await db.delete(members).where(inArray(members.id, [idSocio, idEstraneo]));
@@ -152,7 +133,7 @@ after(async () => {
 	await pool.end();
 });
 
-const ROTTE = ['/api/member/v1/profilo', '/api/member/v1/abbonamenti', '/api/member/v1/documenti', '/api/member/v1/accesso', '/api/member/v1/corsi/agenda'];
+const ROTTE = ['/api/member/v1/profilo', '/api/member/v1/abbonamenti', '/api/member/v1/corsi/agenda', '/api/member/v1/palestra'];
 
 describe('chi può entrare', () => {
 	for (const rotta of ROTTE) {
@@ -187,8 +168,13 @@ describe('il socio vede le proprie cose, e solo quelle', () => {
 
 		assert.equal(dati.abbonamento.giorni_alla_scadenza, 7);
 		assert.equal(dati.abbonamento.in_scadenza, true, 'a sette giorni deve risultare in scadenza');
-		assert.equal(dati.documenti.in_scadenza, 1);
-		assert.equal(dati.documenti.scaduti, 0);
+	});
+
+	test("documenti e codice d'accesso non ci sono più", async () => {
+		// Usciti dal portale a novembre 2026 (docs/piani/portale.md).
+		for (const rotta of ['/api/member/v1/documenti', '/api/member/v1/accesso']) {
+			assert.equal((await come(tokenSocio, rotta)).statusCode, 404, rotta);
+		}
 	});
 
 	test("gli abbonamenti dell'estraneo non compaiono", async () => {
@@ -198,66 +184,12 @@ describe('il socio vede le proprie cose, e solo quelle', () => {
 		assert.equal(abbonamenti[0].piano, 'Open 12 mesi');
 	});
 
-	test("i documenti dell'estraneo non compaiono", async () => {
-		const { documenti } = (await come(tokenSocio, '/api/member/v1/documenti')).json();
-
-		assert.equal(documenti.length, 1);
-		assert.equal(documenti[0].tipo, 'certificato_medico');
-		assert.equal(documenti[0].nome, 'Certificato medico');
-		assert.equal(documenti[0].scaduto, false);
-		assert.equal(documenti[0].in_scadenza, true);
-		assert.equal(documenti[0].stato, 'in_scadenza');
-	});
-
-	// Il caso che fa la differenza fra "hai un problema" e "avevi un problema": il socio ha
-	// rinnovato, e il certificato vecchio non deve continuare a contare come scaduto.
-	//
-	// Il vecchio si inserisce e si cancella dentro il test, perché tutte le altre prove di
-	// questo file contano un documento solo.
-	test('un certificato scaduto e già sostituito va in archivio, e non conta come scaduto', async () => {
-		const [vecchio] = await db
-			.insert(memberDocuments)
-			.values({
-				memberId: idSocio,
-				documentType: 'certificato_medico',
-				fileName: 'certificato-2019.pdf',
-				expiryDate: '2019-06-30',
-				createdDate: new Date('2019-01-10T09:00:00Z'),
-			})
-			.returning();
-
-		try {
-			const { documenti } = (await come(tokenSocio, '/api/member/v1/documenti')).json();
-			assert.equal(documenti.length, 2, 'restano consultabili entrambi');
-			assert.equal(documenti.find((d) => d.id === vecchio.id).stato, 'archiviato');
-			assert.equal(documenti.find((d) => d.id !== vecchio.id).stato, 'in_scadenza');
-
-			const dati = (await come(tokenSocio, '/api/member/v1/profilo')).json();
-			assert.equal(dati.documenti.scaduti, 0, 'sostituito non è un avviso');
-			assert.equal(dati.documenti.in_scadenza, 1);
-		} finally {
-			await db.delete(memberDocuments).where(eq(memberDocuments.id, vecchio.id));
-		}
+	test('dice fino a quando si può prenotare (D-2)', async () => {
+		const dati = (await come(tokenSocio, '/api/member/v1/abbonamenti')).json();
+		assert.equal(dati.prenotabile_fino_al, fraUnaSettimana, 'la fine del suo abbonamento');
 	});
 
 
-	test('il codice di accesso arriva firmato dal server', async () => {
-		const dati = (await come(tokenSocio, '/api/member/v1/accesso')).json();
-
-		assert.equal(dati.attivo, true);
-		assert.ok(dati.codice, 'doveva arrivare un codice');
-
-		// Il seme **compare** nel codice, ed è voluto: è un identificativo, come un nome
-		// utente. Quello che non si può indovinare è la firma che gli viene aggiunta, che
-		// dipende da una chiave che dal server non esce e cambia ogni minuto. Quindi il
-		// controllo giusto non è "il seme non c'è", ma "al seme è stato aggiunto qualcosa".
-		const [seme] = await db.select({ codice: qrAccessi.codice }).from(qrAccessi).where(inArray(qrAccessi.id, idQr));
-		assert.ok(String(dati.codice).startsWith(seme.codice), 'il codice deve partire dal seme');
-		assert.ok(dati.codice.length > seme.codice.length + 1, 'al seme deve essere aggiunta una firma');
-		assert.notEqual(dati.codice, seme.codice, 'è uscito il seme nudo, senza firma');
-
-		assert.ok(dati.valido_per_ms > 0 && dati.valido_per_ms <= 60_000);
-	});
 });
 
 describe("l'agenda dei corsi", () => {
@@ -307,6 +239,56 @@ describe("l'agenda dei corsi", () => {
 	});
 });
 
+describe('le rotte nuove dei corsi (D-3)', () => {
+	test("`sessione_id`: le lezioni di una sessione sola; un id malformato è un 400", async () => {
+		const dati = (await come(tokenSocio, `/api/member/v1/corsi/agenda?dal=${oggi}&al=${spostaGiorni(oggi, 30)}&sessione_id=${idEvento}`)).json();
+		const tutte = dati.giorni.flatMap((g) => g.lezioni);
+		assert.deepEqual(tutte.map((l) => l.id), [idLezione]);
+		assert.equal(tutte[0].sessione_id, idEvento);
+		assert.equal((await come(tokenSocio, '/api/member/v1/corsi/agenda?sessione_id=boh')).statusCode, 400);
+	});
+
+	test('il catalogo: categoria, corso, orari, e la categoria della mia ultima prenotazione', async () => {
+		const dati = (await come(tokenSocio, '/api/member/v1/corsi/catalogo')).json();
+		const corso = dati.categorie.flatMap((c) => c.corsi).find((c) => c.id === idCorso);
+		assert.ok(corso, 'il corso con una lezione futura');
+		assert.deepEqual(corso.orari.map((o) => [o.sessione_id, o.inizio, o.lezioni, o.mia_fissa]), [[idEvento, '18:30', 1, false]]);
+		const categoria = dati.categorie.find((c) => c.corsi.some((x) => x.id === idCorso));
+		assert.equal(dati.categoria_recente, categoria.id);
+	});
+
+	test('le mie lezioni: le mie, anche disdette e annullate; i miei orari: quelli frequenti, con la prossima da prenotare', async () => {
+		const date = [spostaGiorni(oggi, -14), spostaGiorni(oggi, -7), spostaGiorni(oggi, 14), spostaGiorni(oggi, 3)];
+		const nuove = await db.insert(sessions).values(date.map((d, i) => ({
+			eventId: idEvento, date: d, startTime: '18:30', endTime: '19:30', roomId: idSala, capacity: 2, status: i === 3 ? 'cancelled' : 'active',
+		}))).returning();
+		const prenotate = await db.insert(bookings).values([
+			{ sessionId: nuove[0].id, memberId: idSocio, memberName: 'Socio API', status: 'confirmed' },
+			{ sessionId: nuove[1].id, memberId: idSocio, memberName: 'Socio API', status: 'cancelled' },
+			{ sessionId: nuove[3].id, memberId: idSocio, memberName: 'Socio API', status: 'cancelled' },
+			{ sessionId: nuove[0].id, memberId: idEstraneo, memberName: 'Estraneo API', status: 'confirmed' },
+		]).returning();
+		try {
+			const { lezioni } = (await come(tokenSocio, '/api/member/v1/lezioni')).json();
+			const perId = new Map(lezioni.map((l) => [l.id, l]));
+			assert.ok(!perId.has(nuove[2].id), 'non prenotata: non è mia');
+			assert.equal(perId.get(nuove[1].id).mia_prenotazione.stato, 'cancelled', 'la disdetta si vede');
+			assert.equal(perId.get(nuove[3].id).annullata, true, "l'annullata dalla palestra si vede come tale");
+			assert.equal(perId.get(idLezione).mia_prenotazione.stato, 'confirmed');
+			assert.ok(!JSON.stringify(lezioni).includes(idEstraneo));
+
+			// Due volte negli ultimi 60 giorni (una disdetta non conta): ancora no.
+			assert.deepEqual((await come(tokenSocio, '/api/member/v1/corsi/miei-orari')).json().lezioni, []);
+			await db.update(bookings).set({ status: 'confirmed' }).where(eq(bookings.id, prenotate[1].id));
+			const { lezioni: mieiOrari } = (await come(tokenSocio, '/api/member/v1/corsi/miei-orari')).json();
+			assert.deepEqual(mieiOrari.map((l) => l.id), [nuove[2].id], 'la prossima che non ho già prenotato');
+		} finally {
+			await db.delete(bookings).where(inArray(bookings.id, prenotate.map((p) => p.id)));
+			await db.delete(sessions).where(inArray(sessions.id, nuove.map((l) => l.id)));
+		}
+	});
+});
+
 describe('prenotare e disdire dal portale', () => {
 	const posta = (token, url, payload) =>
 		app.inject({ method: 'POST', url, payload, headers: { authorization: `Bearer ${token}` } });
@@ -343,7 +325,7 @@ describe('il contratto resta quello promesso', () => {
 	test('il profilo ha i campi dichiarati', async () => {
 		const dati = (await come(tokenSocio, '/api/member/v1/profilo')).json();
 
-		assert.deepEqual(Object.keys(dati).sort(), ['abbonamento', 'documenti', 'socio']);
+		assert.deepEqual(Object.keys(dati).sort(), ['abbonamento', 'socio']);
 		assert.deepEqual(
 			Object.keys(dati.socio).sort(),
 			['codice_socio', 'contatto_emergenza', 'data_nascita', 'email', 'id', 'indirizzo', 'nome', 'note', 'telefono']
@@ -363,11 +345,68 @@ describe('il contratto resta quello promesso', () => {
 			Object.keys(mia).sort(),
 			// `motivo_non_prenotabile` e `finita` sono aggiunte (null / false quando si può
 			// prenotare): un client che non le conosce le ignora, e il contratto non si rompe.
-			['categoria', 'corso', 'data', 'disdetta_fino_a', 'fine', 'finita', 'id', 'inizio', 'istruttore', 'mia_prenotazione', 'motivo_disdetta_chiusa', 'motivo_non_prenotabile', 'posti', 'sala', 'serie']
+			// D-3 aggiunge `sessione_id`, `annullata`, `lista_chiude_il`, `lista_chiusa`.
+			['annullata', 'categoria', 'corso', 'data', 'disdetta_fino_a', 'fine', 'finita', 'id', 'inizio', 'istruttore', 'lista_chiude_il', 'lista_chiusa', 'mia_prenotazione', 'motivo_disdetta_chiusa', 'motivo_non_prenotabile', 'posti', 'sala', 'serie', 'sessione_id']
+		);
+		assert.deepEqual(
+			Object.keys(mia.mia_prenotazione).sort(),
+			// D-3 aggiunge l'offerta, la fissa, il motivo della disdetta e quando è stata fatta.
+			['creata_il', 'fissa', 'id', 'motivo_disdetta', 'posizione_attesa', 'posto_offerto_fino_a', 'stato']
 		);
 		assert.deepEqual(
 			Object.keys(mia.posti).sort(),
 			['al_completo', 'capienza', 'confermati', 'in_attesa', 'liberi']
 		);
+	});
+});
+
+describe('i consensi promozionali dal portale (R3)', () => {
+	const metti = (payload) => app.inject({ method: 'PUT', url: '/api/member/v1/consensi', payload, headers: { authorization: `Bearer ${tokenSocio}` } });
+
+	test('si revocano soltanto: darli dal portale non si può più', async () => {
+		const [socio] = await db.select({ personaId: members.personaId }).from(members).where(inArray(members.id, [idSocio]));
+		await db.insert(consensi).values({ personaId: socio.personaId, tipo: 'marketing_email', valore: true, fonte: 'portale', autoreNome: 'Socio API' });
+		try {
+			assert.equal((await come(tokenSocio, '/api/member/v1/consensi')).json().consensi.marketing_email.valore, true);
+			assert.equal((await metti({ tipo: 'marketing_sms', valore: true })).statusCode, 400);
+			const tolto = await metti({ tipo: 'marketing_email', valore: false });
+			assert.equal(tolto.statusCode, 200, tolto.body);
+			assert.equal(tolto.json().consensi.marketing_email.valore, false);
+		} finally {
+			await db.delete(consensi).where(inArray(consensi.personaId, [socio.personaId]));
+		}
+	});
+});
+
+describe('i contatti della palestra (D-2)', () => {
+	const metti = (token, payload) => app.inject({ method: 'PUT', url: '/api/impostazioni/palestra', payload, headers: { authorization: `Bearer ${token}` } });
+
+	test("li scrive l'amministratore, il socio li legge, il registro lo dice", async () => {
+		const prima = (await app.inject({ method: 'GET', url: '/api/impostazioni/palestra', headers: { authorization: `Bearer ${tokenAdmin}` } })).json();
+		try {
+			assert.equal((await metti(tokenSocio, { telefono: '333 1234567' })).statusCode, 403, 'il socio no');
+			assert.equal((await metti(tokenAdmin, { telefono: 'non è un numero' })).statusCode, 400);
+			assert.equal((await metti(tokenAdmin, { email: 'senza-chiocciola' })).statusCode, 400);
+			assert.equal((await metti(tokenAdmin, { nome: '  ' })).statusCode, 400, 'il nome non si svuota');
+			assert.equal((await metti(tokenAdmin, { boh: 'x' })).statusCode, 400);
+			assert.equal((await metti(tokenAdmin, { orari: 'x'.repeat(501) })).statusCode, 400);
+
+			// Un numero sempre nuovo: il registro deve dire che è cambiato, anche se il database ha già
+			// dei contatti (dati:portale).
+			const telefono = `049 ${String(Date.now()).slice(-6)}`;
+			const res = await metti(tokenAdmin, { indirizzo: 'Via Roma 1, Padova', telefono, whatsapp: '333 1234567', email: '', orari: ' Lun-ven 8-21 ' });
+			assert.equal(res.statusCode, 200, res.body);
+			const letti = (await come(tokenSocio, '/api/member/v1/palestra')).json();
+			assert.deepEqual(
+				{ indirizzo: letti.indirizzo, telefono: letti.telefono, whatsapp: letti.whatsapp, email: letti.email, orari: letti.orari },
+				{ indirizzo: 'Via Roma 1, Padova', telefono, whatsapp: '333 1234567', email: null, orari: 'Lun-ven 8-21' },
+			);
+			assert.equal(letti.nome, prima.nome, 'il nome non cambia se non arriva');
+			const [voce] = await db.select().from(auditLogs).where(eq(auditLogs.entitaNome, 'Contatti della palestra')).orderBy(desc(auditLogs.timestamp)).limit(1);
+			assert.match(voce?.dettagli ?? '', /telefono/);
+		} finally {
+			const { nome, indirizzo, telefono, whatsapp, email, orari } = prima;
+			await metti(tokenAdmin, { nome, indirizzo, telefono, whatsapp, email, orari });
+		}
 	});
 });

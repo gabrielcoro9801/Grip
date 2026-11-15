@@ -8,7 +8,7 @@ import { eq, inArray } from 'drizzle-orm';
 import { buildApp } from '../src/app.js';
 import { db, pool } from '../src/db/client.js';
 import {
-	members, persone, staffAccounts, subscriptions, ingressi, attivita, memberDocuments,
+	members, persone, staffAccounts, subscriptions, ingressi, attivita,
 } from '../src/db/schema/index.js';
 import { impostaMatrice, ripristinaMatricePredefinita, PERMESSI_PREDEFINITI } from '../../shared/permissions.js';
 import { oggiIso, spostaGiorni } from '../../shared/giorni.js';
@@ -35,7 +35,7 @@ const riga = (dati, chiave) => dati.persone.find((p) => p.socio_id === id.soci[c
 
 // "Vede ma non modifica": fino alla fase 3 del CRM era l'istruttore predefinito, e questi test lo
 // usano così. Oggi l'istruttore ha la sua vista e non le anagrafiche: gli si ridà qui la sola lettura.
-const SOLA_LETTURA = { ...PERMESSI_PREDEFINITI, istruttore: { crm_members: ['view'], crm_documents: ['view'], crm_leads: ['view'], calendar: ['view', 'edit'] } };
+const SOLA_LETTURA = { ...PERMESSI_PREDEFINITI, istruttore: { crm_members: ['view'], crm_leads: ['view'], calendar: ['view', 'edit'] } };
 const matriceDiProva = () => impostaMatrice({ permessi: SOLA_LETTURA, capacita: {} });
 
 before(async () => {
@@ -51,11 +51,6 @@ before(async () => {
 	await db.insert(subscriptions).values(soci.map((s, i) => ({
 		memberId: s.id, planName: 'Mensile', startDate: '2025-01-01', endDate: i < 3 ? fra(3) : fra(200),
 	})));
-	// Documenti in regola per tutti: altrimenti ognuno avrebbe "documento mancante".
-	await db.insert(memberDocuments).values(soci.flatMap((s) => [
-		{ memberId: s.id, documentType: 'certificato_medico', expiryDate: fra(300) },
-		{ memberId: s.id, documentType: 'documento_identita', expiryDate: fra(3000) },
-	]));
 	// Tutti entrano spesso: nessuno è assente o in calo, i segnali sono solo quelli voluti.
 	await db.insert(ingressi).values(soci.flatMap((s) => [1, 3, 5, 8].map((g) => ({
 		memberId: s.id, entratoAlle: new Date(`${fra(-g)}T08:00:00Z`), esito: 'ammesso', metodo: 'manuale', registratoDaNome: 'Test',
@@ -77,7 +72,6 @@ after(async () => {
 	ripristinaMatricePredefinita();
 	const tutti = Object.values(id.soci);
 	await db.delete(ingressi).where(inArray(ingressi.memberId, tutti));
-	await db.delete(memberDocuments).where(inArray(memberDocuments.memberId, tutti));
 	await db.delete(subscriptions).where(inArray(subscriptions.memberId, tutti));
 	await db.delete(staffAccounts).where(inArray(staffAccounts.id, id.account));
 	await db.delete(members).where(inArray(members.id, tutti));

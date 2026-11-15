@@ -1,4 +1,5 @@
-// Le impostazioni di Da fare: quali segnali la palestra segue, e con quali soglie.
+// Le impostazioni della palestra: quelle di Da fare (quali segnali segue, e con quali soglie) e i
+// contatti che il socio vede nel portale (Amministrazione › Contatti).
 //
 // Le soglie vivevano nella sezione Comunicazioni, ma decidono molto di più dei messaggi: gli stati
 // dei soci, la lista di Da fare, il bancone, la dashboard. Qui stanno accanto agli interruttori
@@ -6,6 +7,10 @@
 //
 // Le legge chi vede soci o contatti (servono a spiegare perché uno è in lista); le cambia solo
 // l'amministratore (`admin_users`). Ogni cambio passa dal registro delle azioni.
+//
+// I contatti: nome e indirizzo sono colonne di `organizations`, telefono, WhatsApp, email e orari
+// della reception una chiave di `impostazioni` (nessuna migrazione). Per ora una pagina piccola:
+// come farla bene si vedrà (docs/piani/portale.md, D-2).
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { organizations } from '../db/schema/index.js';
@@ -13,6 +18,8 @@ import { getUserFromRequest } from '../auth/tokens.js';
 import { canAccess } from '../../../shared/permissions.js';
 import { registerPgErrorHandler } from './errorHandler.js';
 import { registra } from '../lib/registro.js';
+import { contattiPalestra, CAMPI_CONTATTI } from '../lib/impostazioni.js';
+import { normalizzaTelefono } from '../../../shared/anagrafica.js';
 import { SOGLIE, soglieDi, sogliaValida } from '../../../shared/soglie.js';
 import { CODICI_SEGNALE, etichettaSegnale } from '../../../shared/segnali.js';
 
@@ -44,6 +51,24 @@ function fondiScelte(predefinite, attuali = {}, nuove = {}) {
 	}));
 }
 
+/** Quanto può essere lungo ogni campo dei contatti: gli orari sono qualche riga. */
+const LUNGHEZZA_CONTATTI = { nome: 255, indirizzo: 255, telefono: 40, whatsapp: 40, email: 255, orari: 500 };
+
+/** Perché i contatti arrivati non vanno bene, o null. Vuoto o null vuol dire «non c'è». */
+function motivoContattiNonValidi(dati) {
+	for (const [k, v] of Object.entries(dati)) {
+		if (!(k in LUNGHEZZA_CONTATTI)) return `Campo sconosciuto: ${k}.`;
+		if (v !== null && typeof v !== 'string') return `Il campo ${k} dev'essere un testo.`;
+		if ((v ?? '').length > LUNGHEZZA_CONTATTI[k]) return `Il campo ${k} è troppo lungo (al massimo ${LUNGHEZZA_CONTATTI[k]} caratteri).`;
+	}
+	if ('nome' in dati && !dati.nome?.trim()) return 'La palestra deve avere un nome.';
+	for (const k of ['telefono', 'whatsapp']) {
+		if (dati[k]?.trim() && !normalizzaTelefono(dati[k])) return `Il numero ${k === 'whatsapp' ? 'WhatsApp' : 'di telefono'} non sembra valido.`;
+	}
+	if (dati.email?.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(dati.email.trim())) return "L'email non sembra valida.";
+	return null;
+}
+
 export default async function impostazioniRoutes(fastify) {
 	registerPgErrorHandler(fastify);
 
@@ -55,7 +80,7 @@ export default async function impostazioniRoutes(fastify) {
 			? ['crm_members', 'crm_leads', 'admin_users'].some((m) => canAccess(utente.ruolo, m, 'view'))
 			: canAccess(utente.ruolo, 'admin_users', 'edit');
 		if (utente.ruolo === 'member' || !puo) {
-			return reply.code(403).send({ error: legge ? 'Non consentito.' : 'Solo l\'amministratore cambia le impostazioni di Da fare.' });
+			return reply.code(403).send({ error: legge ? 'Non consentito.' : 'Solo l\'amministratore cambia le impostazioni.' });
 		}
 		request.utente = utente;
 	});
@@ -102,6 +127,40 @@ export default async function impostazioniRoutes(fastify) {
 				tipoAzione: 'update', entitaTipo: 'impostazioni', entitaNome: 'Da fare', dettagli,
 				valorePrecedente: JSON.stringify({ soglie: prima.soglie, segnali_spenti: prima.segnali_spenti }),
 				valoreNuovo: JSON.stringify({ soglie: dopo.soglie, segnali_spenti: dopo.segnali_spenti }),
+			}, request.log);
+		}
+		return dopo;
+	});
+
+	/** GET /api/impostazioni/palestra → { nome, indirizzo, telefono, whatsapp, email, orari } (null se vuoti) */
+	fastify.get('/api/impostazioni/palestra', async () => contattiPalestra());
+
+	/** PUT /api/impostazioni/palestra { nome?, indirizzo?, telefono?, whatsapp?, email?, orari? } → come la GET */
+	fastify.put('/api/impostazioni/palestra', async (request, reply) => {
+		const dati = request.body ?? {};
+		if (typeof dati !== 'object' || Array.isArray(dati)) return reply.code(400).send({ error: 'Corpo della richiesta non valido.' });
+		const motivo = motivoContattiNonValidi(dati);
+		if (motivo) return reply.code(400).send({ error: motivo });
+
+		const prima = await contattiPalestra();
+		const testo = (v) => (v?.trim() ? v.trim() : null);
+		await db.transaction(async (tx) => {
+			const [p] = await tx.select().from(organizations).limit(1).for('update');
+			const contatti = { ...(p.impostazioni?.contatti ?? {}) };
+			for (const k of CAMPI_CONTATTI) if (k in dati) contatti[k] = testo(dati[k]);
+			const cambi = { impostazioni: { ...(p.impostazioni ?? {}), contatti }, updatedDate: new Date() };
+			if ('nome' in dati) cambi.nome = testo(dati.nome);
+			if ('indirizzo' in dati) cambi.indirizzo = testo(dati.indirizzo);
+			await tx.update(organizations).set(cambi).where(eq(organizations.id, p.id));
+		});
+		const dopo = await contattiPalestra();
+
+		const cambiati = Object.keys(dopo).filter((k) => prima[k] !== dopo[k]);
+		if (cambiati.length) {
+			await registra(request.utente, {
+				tipoAzione: 'update', entitaTipo: 'impostazioni', entitaNome: 'Contatti della palestra',
+				dettagli: `Cambiati: ${cambiati.join(', ')}`,
+				valorePrecedente: JSON.stringify(prima), valoreNuovo: JSON.stringify(dopo),
 			}, request.log);
 		}
 		return dopo;

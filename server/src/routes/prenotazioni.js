@@ -15,9 +15,11 @@
 // posto nello stesso istante leggono entrambi "un posto libero" e si confermano entrambi:
 // nessuno dei due ha barato, ma la lezione ha un iscritto di troppo. Contare dentro una
 // transazione, con la lezione bloccata, è l'unico modo di non far succedere.
+//
+// Sono rotte dello **staff**. Il socio prenota e disdice dal portale (`/api/member/v1`), che usa
+// le stesse funzioni: un contratto solo per lui (docs/piani/portale.md, D-3), e qui riceve 403.
 import { getUserFromRequest } from '../auth/tokens.js';
 import { canWriteEntity, canReadEntity } from '../auth/authorize.js';
-import { socioDiAccount } from '../auth/socioCorrente.js';
 import { prenota, disdici, cambiaStato, spostaInLista, eliminaPrenotazione } from '../lib/prenotazioni.js';
 import { registra } from '../lib/registro.js';
 
@@ -26,18 +28,10 @@ export default async function prenotazioniRoutes(fastify) {
 		const utente = getUserFromRequest(request);
 		if (!utente) return reply.code(401).send({ error: 'Non autenticato.' });
 
-		// La lettura è dello staff, con il permesso di lettura delle prenotazioni: il socio le
-		// sue le chiede al portale (routes/member).
+		// Il socio passa dal portale: qui niente, né lettura né scrittura.
+		if (utente.ruolo === 'member') return reply.code(403).send({ error: 'Il socio prenota dal portale.' });
 		if (request.method === 'GET') {
-			if (utente.ruolo === 'member' || !canReadEntity(utente.ruolo, 'Booking')) {
-				return reply.code(403).send({ error: 'Non consentito.' });
-			}
-		} else if (utente.ruolo === 'member') {
-			// Il socio collegato si rilegge dal database e non dal token, così togliere il
-			// collegamento ha effetto subito.
-			const memberId = await socioDiAccount(utente.sub);
-			if (!memberId) return reply.code(403).send({ error: 'Account non collegato a un socio.' });
-			request.memberId = memberId;
+			if (!canReadEntity(utente.ruolo, 'Booking')) return reply.code(403).send({ error: 'Non consentito.' });
 		} else if (!canWriteEntity(utente.ruolo, 'Booking')) {
 			return reply.code(403).send({ error: 'Il tuo ruolo non consente questa modifica.' });
 		}
@@ -45,7 +39,7 @@ export default async function prenotazioniRoutes(fastify) {
 	});
 
 	/**
-	 * Prenota una lezione.
+	 * Prenota una lezione per un socio.
 	 *
 	 * Lo stato non si accetta da chi chiede: lo decide il conto dei posti. Un client che
 	 * manda `confirmed` su una lezione piena si ritrova in lista d'attesa, che è la
@@ -55,16 +49,15 @@ export default async function prenotazioniRoutes(fastify) {
 		const sessionId = request.body?.session_id;
 		if (!sessionId) return reply.code(400).send({ error: 'Manca la lezione da prenotare.' });
 
-		// Un socio prenota per sé e basta; lo staff può prenotare per qualcuno.
-		const memberId = request.memberId ?? request.body?.member_id;
+		const memberId = request.body?.member_id;
 		if (!memberId) return reply.code(400).send({ error: 'Manca il socio.' });
 
 		try {
 			const esito = await prenota({ sessionId, memberId });
 
-			if (esito.errore) return reply.code(esito.errore).send({ error: esito.messaggio });
+			if (esito.errore) return reply.code(esito.errore).send({ error: esito.messaggio, code: esito.codice });
 			await registra(request.utente, {
-				tipoAzione: 'create', entitaTipo: 'booking', entitaNome: esito.creata.memberName, entitaId: esito.creata.id,
+				tipoAzione: esito.daListaAttesa ? 'update' : 'create', entitaTipo: 'booking', entitaNome: esito.creata.memberName, entitaId: esito.creata.id,
 				dettagli: esito.creata.status === 'waitlisted' ? "In lista d'attesa" : 'Confermata',
 			}, request.log);
 			reply.code(201);
@@ -85,25 +78,20 @@ export default async function prenotazioniRoutes(fastify) {
 	});
 
 	/**
-	 * Disdice una prenotazione, e sistema la lista d'attesa.
-	 *
-	 * Promuovere e rinumerare erano tre chiamate separate dal browser: se la seconda
-	 * falliva — ed è successo, perché chiamava un metodo che non esiste — restava una
-	 * disdetta fatta a metà, con le posizioni sfalsate per sempre. Qui è una transazione:
-	 * o succede tutto, o non succede niente.
+	 * Disdice una prenotazione, e sistema la lista d'attesa: il posto liberato si offre al primo
+	 * in lista (lib/prenotazioni.js, `regolaOfferte`). → { offerto: { id, member_id, member_name } | null }
 	 */
 	fastify.post('/api/prenotazioni/:id/disdici', async (request, reply) => {
 		try {
-			const esito = await disdici({ bookingId: request.params.id, soloDelSocio: request.memberId ?? null });
+			const esito = await disdici({ bookingId: request.params.id });
 
 			if (esito.errore) return reply.code(esito.errore).send({ error: esito.messaggio });
 			await registra(request.utente, {
 				tipoAzione: 'delete', entitaTipo: 'booking', entitaId: request.params.id, dettagli: 'Prenotazione disdetta',
 			}, request.log);
 			return {
-				promoted: Boolean(esito.promossa),
-				promosso: esito.promossa
-					? { id: esito.promossa.id, member_id: esito.promossa.memberId, member_name: esito.promossa.memberName }
+				offerto: esito.offerta
+					? { id: esito.offerta.id, member_id: esito.offerta.memberId, member_name: esito.offerta.memberName }
 					: null,
 			};
 		} catch (errore) {
@@ -112,17 +100,10 @@ export default async function prenotazioniRoutes(fastify) {
 		}
 	});
 
-	// --- Solo per lo staff ------------------------------------------------------------------
+	// --- Il resto del lavoro della reception ------------------------------------------------
 	//
-	// Confermare, rimettere in lista, riattivare, riordinare la lista, cancellare un errore: il
-	// lavoro della reception dal gestionale. Il socio passa da prenota e disdici, e basta.
-	const soloStaff = (request, reply) => {
-		if (request.memberId) {
-			reply.code(403).send({ error: 'Non consentito.' });
-			return false;
-		}
-		return true;
-	};
+	// Confermare, rimettere in lista, riattivare, riordinare la lista, cancellare un errore.
+	// `offerti`: a chi è andato, come offerta di 12 ore, un posto liberato dal cambio.
 
 	const ETICHETTE_STATO = { confirmed: 'Confermata', waitlisted: "In lista d'attesa", cancelled: 'Annullata' };
 	const versoApi = (b) => b && ({
@@ -130,9 +111,8 @@ export default async function prenotazioniRoutes(fastify) {
 		status: b.status, waitlist_position: b.waitlistPosition,
 	});
 
-	/** POST /api/prenotazioni/:id/stato { stato, oltre_capienza } → { booking, promossi } */
+	/** POST /api/prenotazioni/:id/stato { stato, oltre_capienza } → { booking, offerti } */
 	fastify.post('/api/prenotazioni/:id/stato', async (request, reply) => {
-		if (!soloStaff(request, reply)) return;
 		const stato = request.body?.stato;
 		const esito = await cambiaStato({ bookingId: request.params.id, stato, oltreCapienza: request.body?.oltre_capienza === true });
 		if (esito.errore) return reply.code(esito.errore).send({ error: esito.messaggio, code: esito.codice });
@@ -142,13 +122,12 @@ export default async function prenotazioniRoutes(fastify) {
 		}, request.log);
 		return {
 			booking: versoApi(esito.aggiornata) ?? null,
-			promossi: (esito.promosse ?? (esito.promossa ? [esito.promossa] : [])).map((b) => ({ id: b.id, member_name: b.memberName })),
+			offerti: (esito.offerte ?? (esito.offerta ? [esito.offerta] : [])).map((b) => ({ id: b.id, member_name: b.memberName })),
 		};
 	});
 
 	/** POST /api/prenotazioni/:id/posizione { posizione } → { posizione } */
 	fastify.post('/api/prenotazioni/:id/posizione', async (request, reply) => {
-		if (!soloStaff(request, reply)) return;
 		const esito = await spostaInLista({ bookingId: request.params.id, posizione: request.body?.posizione });
 		if (esito.errore) return reply.code(esito.errore).send({ error: esito.messaggio });
 		await registra(request.utente, {
@@ -157,15 +136,14 @@ export default async function prenotazioniRoutes(fastify) {
 		return esito;
 	});
 
-	/** DELETE /api/prenotazioni/:id → { eliminata: true, promossi } — per le prenotazioni inserite per errore. */
+	/** DELETE /api/prenotazioni/:id → { eliminata: true, offerti } — per le prenotazioni inserite per errore. */
 	fastify.delete('/api/prenotazioni/:id', async (request, reply) => {
-		if (!soloStaff(request, reply)) return;
 		const esito = await eliminaPrenotazione({ bookingId: request.params.id });
 		if (esito.errore) return reply.code(esito.errore).send({ error: esito.messaggio });
 		await registra(request.utente, {
 			tipoAzione: 'delete', entitaTipo: 'booking', entitaId: request.params.id,
 			entitaNome: esito.eliminata.memberName ?? '', dettagli: 'Prenotazione eliminata',
 		}, request.log);
-		return { eliminata: true, promossi: esito.promosse.map((b) => ({ id: b.id, member_name: b.memberName })) };
+		return { eliminata: true, offerti: esito.offerte.map((b) => ({ id: b.id, member_name: b.memberName })) };
 	});
 }

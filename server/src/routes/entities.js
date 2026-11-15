@@ -17,9 +17,9 @@ import { memberPuoLeggere, memberPuoScrivere, colonnaProprietario, colonnaPropri
 import { socioDiAccount } from '../auth/socioCorrente.js';
 import { registerPgErrorHandler } from './errorHandler.js';
 import { colonneFile, cancellaFileNonPiuUsati } from '../lib/fileCaricati.js';
-import { promuoviFinoACapienza } from '../lib/prenotazioni.js';
+import { regolaOfferte } from '../lib/prenotazioni.js';
+import { avvisaAllungabili } from '../lib/prenotazioniFisse.js';
 import { conSaleBloccate, allineaEventoSingolo } from '../lib/sale.js';
-import { applicaFisse } from '../lib/prenotazioniFisse.js';
 import { registra, tipoEntita, nomeLeggibile, descriviModifica } from '../lib/registro.js';
 
 const WRITE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
@@ -178,13 +178,12 @@ export default async function entityRoutes(fastify) {
 		if (request.memberId) body = forzaProprietario(entityName, body, request.memberId);
 		const [row] = await db.insert(table).values(translateToJs(table, body)).returning();
 		const creata = translateToSnakeCase(table, row);
+		// Un abbonamento nuovo (un rinnovo) può allungare il massimo delle fisse del socio: non
+		// crescono da sole, ma il socio riceve «Allunga» (D-4 del portale).
+		if (entityName === 'Subscription') await avvisaAllungabili({ memberId: row.memberId });
 		await registra(request.utente, {
 			tipoAzione: 'create', entitaTipo: tipoEntita(entityName), entitaNome: nomeLeggibile(creata), entitaId: row.id,
 		}, request.log);
-		// Un abbonamento nuovo (un rinnovo) fa ripartire le prenotazioni fisse senza fine del socio
-		// (quelle del portale): le lezioni rimaste scoperte ora hanno un abbonamento, e si prenotano
-		// da sole. Una fissa con una data di fine resta com'è: si allunga a mano.
-		if (entityName === 'Subscription') await applicaFisse({ memberId: row.memberId, soloSenzaFine: true });
 		reply.code(201);
 		return await conCampiCalcolati(entityName, firmaFileInLettura(stripHiddenFields(entityName, creata)));
 	}));
@@ -294,12 +293,13 @@ export default async function entityRoutes(fastify) {
 		const [prima] = await db.select().from(table).where(eq(dbNameToColumn.id, request.params.id)).limit(1);
 		const [row] = await db.update(table).set(data).where(eq(dbNameToColumn.id, request.params.id)).returning();
 		if (!row) return reply.code(404).send({ error: 'Non trovato' });
-		// Una capienza cresciuta libera posti: chi è in lista d'attesa entra, in ordine.
+		// Una capienza cresciuta libera posti: si offrono a chi è in lista d'attesa, in ordine.
 		if (entityName === 'Session' && 'capacity' in body) {
-			await db.transaction((tx) => promuoviFinoACapienza(tx, row.id));
+			await db.transaction((tx) => regolaOfferte(tx, row.id));
 		}
 		// Una lezione singola si porta dietro il suo evento: l'uso delle sale legge anche quello.
 		if (entityName === 'Session') await allineaEventoSingolo(row);
+		if (entityName === 'Subscription') await avvisaAllungabili({ memberId: row.memberId });
 		const vecchia = prima ? translateToSnakeCase(table, prima) : null;
 		const nuova = translateToSnakeCase(table, row);
 		if (vecchia) {
@@ -330,8 +330,8 @@ export default async function entityRoutes(fastify) {
 		const { dbNameToColumn } = getColumnMaps(table);
 		const [row] = await db.delete(table).where(eq(dbNameToColumn.id, request.params.id)).returning();
 		if (!row) return reply.code(404).send({ error: 'Non trovato' });
-		// Eliminare un documento vuol dire eliminare anche il file: un certificato medico che
-		// resta sul disco dopo un "non si può recuperare" non è stato eliminato.
+		// Eliminare una riga vuol dire eliminare anche i suoi file (lib/fileCaricati.js): una foto
+		// che resta sul disco dopo un "non si può recuperare" non è stata eliminata.
 		const eliminata = translateToSnakeCase(table, row);
 		await cancellaFileNonPiuUsati(table, eliminata);
 		await registra(request.utente, {

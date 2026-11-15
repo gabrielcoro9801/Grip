@@ -137,6 +137,12 @@ describe('le lezioni che non si possono cambiare', () => {
 		assert.equal(daScrivere.length, 1);
 	});
 
+	test('anche un posto offerto a chi è in lista è preso', () => {
+		const lezioni = [lezione('l1', '2026-10-06', { confermati: 2, offerti: 1 })];
+		const { problemi } = pianificaModifica(lezioni, { capacity: 2 }, { ...modello, capacity: 2 }, contesto());
+		assert.match(problemi[0]?.messaggio ?? '', /3 posti già presi/);
+	});
+
 	test('spostato solo l\'inizio, una lezione che finiva prima avrebbe l\'inizio dopo la fine', () => {
 		const corta = lezione('l5', '2026-11-03', { end_time: '18:30:00', modified_manually: true });
 		const { problemi } = pianificaModifica([corta], { start_time: '18:45' }, { ...modello, start_time: '18:45' }, contesto());

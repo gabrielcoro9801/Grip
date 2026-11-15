@@ -9,7 +9,6 @@ import SchedaAvviso from "@/staff/components/dafare/SchedaAvviso";
 import Contatta from "@/staff/components/soci/Contatta";
 import DialogoVendita from "@/staff/components/soci/DialogoVendita";
 import DialogoAbbandono from "@/staff/components/soci/DialogoAbbandono";
-import DialogoCaricaDocumento from "@/staff/components/soci/DialogoCaricaDocumento";
 import { SCHEDE, regolaAvviso, tipoSpento } from "@/staff/components/dafare/avvisi";
 import { useStaffAuth } from "@/staff/lib/StaffAuthContext";
 import { canEdit } from "@/staff/lib/permissions";
@@ -28,12 +27,12 @@ const DETTO = {
  * server, shared/daFare.js `ordina`). Da 1280 px su due colonne (P2).
  *
  * Ogni azione si fa qui, senza uscire: Rinnova apre la vendita già compilata (lo stesso tipo,
- * dal giorno dopo la fine; per uno scaduto, da oggi), Non rinnova «Perché se ne va?», Carica
- * documento il caricamento con il tipo già scelto. Quelle tre non chiudono l'avviso a mano: lo
+ * dal giorno dopo la fine; per uno scaduto, da oggi), e Non rinnova «Perché se ne va?». Quelle
+ * due non chiudono l'avviso a mano: lo
  * chiude il server alla lettura dopo, con l'esito giusto. Contattato, Auguri fatti e Nascondi
  * avviso lo chiudono subito. Dopo ogni azione si rileggono la lista e i numeri della barra.
  *
- * @param tipo uno dei cinque tipi (shared/daFare.js, TIPI_AVVISO)
+ * @param tipo uno dei quattro tipi (shared/daFare.js, TIPI_AVVISO)
  */
 export default function ElencoAvvisi({ tipo }) {
   const { aggiornaConteggi } = useOutletContext() ?? {};
@@ -42,12 +41,11 @@ export default function ElencoAvvisi({ tipo }) {
   const [dati, setDati] = useState(null);
   const [errore, setErrore] = useState(null);
   const [occupato, setOccupato] = useState(null); // l'id dell'avviso con un'azione in corso
-  // La finestra aperta: { quale: 'recapiti'|'vendita'|'abbandono'|'documento', avviso, proposta? }
+  // La finestra aperta: { quale: 'recapiti'|'vendita'|'abbandono', avviso, proposta? }
   const [finestra, setFinestra] = useState(null);
 
   const scheda = SCHEDE.find((s) => s.tipo === tipo);
   const puoModificare = canEdit(staffUser?.ruolo, "crm_members");
-  const puoCaricare = puoModificare && canEdit(staffUser?.ruolo, "crm_documents");
 
   const carica = useCallback(() => {
     setErrore(null);
@@ -91,7 +89,6 @@ export default function ElencoAvvisi({ tipo }) {
       case "recapiti": return setFinestra({ quale: "recapiti", avviso });
       case "rinnova": return rinnova(avviso);
       case "non_rinnova": return setFinestra({ quale: "abbandono", avviso });
-      case "carica": return setFinestra({ quale: "documento", avviso });
       case "contattato": return chiudi(avviso, "contattato");
       case "auguri_fatti": return chiudi(avviso, "auguri_fatti");
       case "nascondi": return chiudi(avviso, "nascosto");
@@ -125,7 +122,7 @@ export default function ElencoAvvisi({ tipo }) {
           {dati.avvisi.map((a) => (
             <li key={a.id}>
               <SchedaAvviso
-                avviso={a} oggi={dati.oggi} puoModificare={puoModificare} puoCaricare={puoCaricare}
+                avviso={a} oggi={dati.oggi} puoModificare={puoModificare}
                 occupato={occupato === a.id} onAzione={(nome) => azione(a, nome)}
               />
             </li>
@@ -141,10 +138,6 @@ export default function ElencoAvvisi({ tipo }) {
       {aperta("abbandono") && (
         <DialogoAbbandono socio={{ id: aperta("abbandono").socio_id, nome: aperta("abbandono").nome }} aperto onChiudi={chiudiFinestra} onFatto={carica} />
       )}
-      <DialogoCaricaDocumento
-        socioId={aperta("documento")?.socio_id} tipo={aperta("documento")?.dati?.tipo_documento ?? null}
-        caricatoDa={staffUser?.nome || ""} onChiudi={chiudiFinestra} onFatto={carica}
-      />
     </div>
   );
 }

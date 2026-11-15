@@ -10,6 +10,7 @@
 // quello che era vero quando è stata mandata.
 import { pgTable, uuid, varchar, text, timestamp, index } from 'drizzle-orm/pg-core';
 import { members } from './crm.js';
+import { sessions, prenotazioniFisse } from './courses.js';
 
 export const notifiche = pgTable('notifiche', {
 	id: uuid('id').defaultRandom().primaryKey(),
@@ -18,10 +19,16 @@ export const notifiche = pgTable('notifiche', {
 	tipo: varchar('tipo', { length: 32 }).notNull(), // lezione_annullata
 	titolo: varchar('titolo', { length: 160 }).notNull(),
 	testo: text('testo').notNull(),
+	// Di che lezione o di che fissa parla, per l'azione della notifica («Vedi la lezione»,
+	// «Allunga») e per il banner in Home. Se la lezione o la fissa spariscono, la notifica resta.
+	lezioneId: uuid('lezione_id').references(() => sessions.id, { onDelete: 'set null' }),
+	fissaId: uuid('fissa_id').references(() => prenotazioniFisse.id, { onDelete: 'set null' }),
 	// Vuota finché il socio non apre le notifiche.
 	lettaIl: timestamp('letta_il', { withTimezone: true }),
 	createdDate: timestamp('created_date', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({
 	// Il portale chiede le ultime del socio, e quante sono da leggere.
 	socio: index('notifiche_member_id_created_date_idx').on(table.memberId, table.createdDate),
+	lezione: index('notifiche_lezione_id_idx').on(table.lezioneId),
+	fissa: index('notifiche_fissa_id_idx').on(table.fissaId),
 }));

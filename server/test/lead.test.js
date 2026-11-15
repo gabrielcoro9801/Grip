@@ -12,7 +12,7 @@ import { buildApp } from '../src/app.js';
 import { db, pool } from '../src/db/client.js';
 import { enteDellaNumerazione } from '../src/lib/codiceSocio.js';
 import {
-	members, staffAccounts, canaliContatto, numberingCounters, ruoli, persone, trattative, attivita, consensi, memberDocuments,
+	members, staffAccounts, canaliContatto, numberingCounters, ruoli, persone, trattative, attivita, consensi,
 } from '../src/db/schema/index.js';
 import { caricaMatrice } from '../src/lib/ruoli.js';
 import { impostaMatrice, ripristinaMatricePredefinita, PERMESSI_PREDEFINITI } from '../../shared/permissions.js';
@@ -66,7 +66,7 @@ async function leadSuPersona(personaId) {
 
 // "Vede ma non modifica": fino alla fase 3 del CRM era l'istruttore predefinito, e questi test lo
 // usano così. Oggi l'istruttore ha la sua vista e non le anagrafiche: gli si ridà qui la sola lettura.
-const SOLA_LETTURA = { ...PERMESSI_PREDEFINITI, istruttore: { crm_members: ['view'], crm_documents: ['view'], crm_leads: ['view'], calendar: ['view', 'edit'] } };
+const SOLA_LETTURA = { ...PERMESSI_PREDEFINITI, istruttore: { crm_members: ['view'], crm_leads: ['view'], calendar: ['view', 'edit'] } };
 const matriceDiProva = () => impostaMatrice({ permessi: SOLA_LETTURA, capacita: {} });
 
 before(async () => {
@@ -483,8 +483,8 @@ describe('gli stati di un lead', () => {
 	});
 });
 
-describe('il diario e i consensi di una persona', () => {
-	test('la segreteria scrive note nel diario e registra i consensi del modulo firmato', async () => {
+describe('il diario di una persona', () => {
+	test('la segreteria scrive note nel diario; i consensi non li registra più', async () => {
 		const socio = await nuovoSocio();
 		const url = `/api/persone/${socio.personaId}`;
 		assert.equal((await post('reception', `${url}/note`, { nota: '  ' })).statusCode, 400);
@@ -492,31 +492,9 @@ describe('il diario e i consensi di una persona', () => {
 		assert.equal((await post('reception', `${url}/note`, { nota: 'Si è trasferito in centro' })).statusCode, 201);
 		assert.equal((await post('istruttore', `${url}/note`, { nota: 'No' })).statusCode, 403);
 
-		assert.equal((await post('reception', `${url}/consensi`, { tipi: ['marketing_fax'], valore: true })).statusCode, 400);
-		// Dalla reception un consenso si registra solo con il modulo firmato fra i documenti del socio.
-		const senzaModulo = await post('reception', `${url}/consensi`, { tipi: ['marketing_sms'], valore: true, atteso: { marketing_sms: null } });
-		assert.equal(senzaModulo.statusCode, 400);
-		assert.match(senzaModulo.json().error, /modulo firmato/);
-		const [modulo] = await db.insert(memberDocuments).values({ memberId: socio.id, documentType: 'consenso_marketing', fileName: 'modulo.pdf' }).returning();
-		const dato = await post('reception', `${url}/consensi`, { tipi: ['marketing_sms'], valore: true, documento_id: modulo.id, atteso: { marketing_sms: null } });
-		assert.equal(dato.statusCode, 200, dato.body);
-		assert.equal(dato.json().consensi.marketing_sms.valore, true);
-		assert.equal(dato.json().consensi.marketing_sms.fonte, 'reception');
-		assert.equal(dato.json().consensi.marketing_email.valore, false, 'senza una scelta, il consenso non c\'è');
-
-		// Chi aveva davanti una scelta vecchia non scrive sopra quella nuova: 409.
-		const vecchio = await post('reception', `${url}/consensi`, { tipi: ['marketing_sms'], valore: false, nota: 'per email', atteso: { marketing_sms: null } });
-		assert.equal(vecchio.statusCode, 409);
-		const il = dato.json().consensi.marketing_sms.il;
-		assert.equal((await post('reception', `${url}/consensi`, { tipi: ['marketing_sms'], valore: false, atteso: { marketing_sms: il } })).statusCode, 400, 'la revoca vuole il perché');
-
-		// Il modulo eliminato: il consenso decade, e lo storico lo dice.
-		await db.delete(memberDocuments).where(eq(memberDocuments.id, modulo.id));
-		const dopo = (await come('reception', { method: 'GET', url: `${url}/consensi` })).json();
-		assert.equal(dopo.consensi.marketing_sms.valore, false);
-		assert.equal(dopo.consensi.marketing_sms.senza_prova, true);
-		assert.equal(dopo.storico[0].documento_presente, false);
-		assert.equal((await post('istruttore', `${url}/consensi`, { tipi: ['marketing_sms'], valore: false, nota: 'x' })).statusCode, 403);
+		// I consensi con il modulo firmato sono usciti a novembre 2026 (docs/piani/portale.md).
+		assert.equal((await post('reception', `${url}/consensi`, { tipi: ['marketing_sms'], valore: true })).statusCode, 404);
+		assert.equal((await come('reception', { method: 'GET', url: `${url}/consensi` })).statusCode, 404);
 
 		const letto = await come('reception', { method: 'GET', url: `${url}/diario` });
 		assert.equal(letto.statusCode, 200, letto.body);
@@ -524,15 +502,17 @@ describe('il diario e i consensi di una persona', () => {
 		assert.equal((await come('reception', { method: 'GET', url: '/api/persone/00000000-0000-0000-0000-000000000000/diario' })).statusCode, 404);
 	});
 
-	test('il socio dà e toglie i suoi consensi dal portale, e restano nel registro', async () => {
+	test('il socio revoca i suoi consensi dal portale, e la revoca resta nel registro', async () => {
 		const portale = (opzioni) => come('socio', { ...opzioni, url: '/api/member/v1/consensi' });
 		assert.equal((await portale({ method: 'GET' })).json().consensi.marketing_email.valore, false);
 		assert.equal((await portale({ method: 'PUT', payload: { tipo: 'marketing_email', valore: 'si' } })).statusCode, 400);
-		let res = await portale({ method: 'PUT', payload: { tipo: 'marketing_email', valore: true } });
+		// Darlo dal portale non si può più (R3, docs/piani/portale.md): solo toglierlo.
+		assert.equal((await portale({ method: 'PUT', payload: { tipo: 'marketing_email', valore: true } })).statusCode, 400);
+		await db.insert(consensi).values({ personaId: socioPortale.personaId, tipo: 'marketing_email', valore: true, fonte: 'portale', autoreNome: 'Socio Lead' });
+		const res = await portale({ method: 'PUT', payload: { tipo: 'marketing_email', valore: false } });
 		assert.equal(res.statusCode, 200, res.body);
-		assert.equal(res.json().consensi.marketing_email.fonte, 'portale');
-		res = await portale({ method: 'PUT', payload: { tipo: 'marketing_email', valore: false } });
 		assert.equal(res.json().consensi.marketing_email.valore, false);
+		assert.equal(res.json().consensi.marketing_email.fonte, 'portale');
 		const registro = await db.select().from(consensi).where(eq(consensi.personaId, socioPortale.personaId));
 		assert.equal(registro.length, 2, 'ogni scelta è una riga');
 		assert.ok(registro.every((r) => r.autoreNome === 'Socio Lead'));

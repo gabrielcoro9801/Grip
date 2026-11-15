@@ -12,7 +12,7 @@
 // trasportabile.
 import test, { describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { formatEuro, formatData, formatDataOra, toIsoDate, FORMATI_DATA } from './format.js';
+import { formatEuro, formatData, formatDataOra, toIsoDate, FORMATI_DATA, giornoLezione, quandoIstante, tempoFa } from './format.js';
 
 // Gli spazi che Intl mette fra numero e valuta non sono spazi normali: confrontarli
 // letteralmente renderebbe i test fragili senza dire niente di utile.
@@ -103,5 +103,31 @@ describe('le date', () => {
     }
     assert.equal(toIsoDate(null), '');
     assert.equal(formatData(null, 'breve', { vuoto: 'mai' }), 'mai');
+  });
+});
+
+describe('il giorno di una lezione nel portale', () => {
+  test('oggi e domani si dicono, gli altri giorni no', () => {
+    assert.match(giornoLezione('2026-11-12', '2026-11-12'), /^Oggi, gio 12 nov$/i);
+    assert.match(giornoLezione('2026-11-13', '2026-11-12'), /^Domani, ven 13 nov$/i);
+    assert.match(giornoLezione('2026-11-14', '2026-11-12'), /^sab 14 nov$/i);
+    assert.match(giornoLezione('2027-01-01', '2026-12-31'), /^Domani, /, 'anche a cavallo dell\'anno');
+  });
+});
+
+describe('scadenze e tempi relativi nel portale', () => {
+  const adesso = new Date('2026-11-15T10:00:00Z'); // le 11 a Roma
+  test("una scadenza all'ora di Roma", () => {
+    assert.equal(quandoIstante('2026-11-15T17:30:00Z', adesso), 'oggi alle 18:30');
+    assert.equal(quandoIstante('2026-11-16T08:00:00Z', adesso), 'domani alle 09:00');
+    assert.match(quandoIstante('2026-11-17T17:00:00Z', adesso), /^mar 17 nov alle 18:00$/i);
+  });
+  test('da quanto è successo', () => {
+    assert.equal(tempoFa('2026-11-15T09:59:40Z', adesso), 'adesso');
+    assert.equal(tempoFa('2026-11-15T09:55:00Z', adesso), '5 minuti fa');
+    assert.equal(tempoFa('2026-11-15T08:00:00Z', adesso), '2 ore fa');
+    assert.equal(tempoFa('2026-11-14T20:00:00Z', adesso), 'ieri');
+    assert.equal(tempoFa('2026-11-12T10:00:00Z', adesso), '3 giorni fa');
+    assert.match(tempoFa('2026-11-01T10:00:00Z', adesso), /^dom 1 nov$/i);
   });
 });

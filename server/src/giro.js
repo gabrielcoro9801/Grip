@@ -13,12 +13,15 @@
 // archivia chi è senza abbonamento da troppo tempo; e scrive nel diario dei soci le cose da fare
 // che sono comparse e quelle che non ci sono più, così la scheda le racconta senza mostrarle;
 // infine allinea gli avvisi di Da fare (lib/avvisi.js), così quelli che si chiudono da soli
-// finiscono in Archivio anche se nessuno apre Da fare.
+// finiscono in Archivio anche se nessuno apre Da fare. E mette in regola le liste d'attesa delle
+// lezioni future (lib/prenotazioni.js, `regolaOfferte`): un'offerta scaduta passa al successivo
+// anche se nessuno apre il portale.
 import 'dotenv/config';
 import { pathToFileURL } from 'node:url';
 import { and, eq, gte, inArray, isNull, lte, sql } from 'drizzle-orm';
 import { db, pool } from './db/client.js';
-import { organizations, trattative, attivita, members } from './db/schema/index.js';
+import { organizations, trattative, attivita, members, bookings, sessions } from './db/schema/index.js';
+import { regolaOfferte } from './lib/prenotazioni.js';
 import { soglieDi } from '../../shared/soglie.js';
 import { situazioni } from './lib/segnali.js';
 import { allinea } from './lib/avvisi.js';
@@ -110,12 +113,12 @@ async function archiviaSenzaAbbonamento(conn, oggi, soglie, persone) {
 
 /**
  * Il diario delle cose da fare dei soci: una riga quando un segnale compare ("Da fare: Abbonamento
- * in scadenza — scade tra 14 giorni"), una quando non c'è più (rinnovato, documento caricato,
+ * in scadenza — scade tra 14 giorni"), una quando non c'è più (rinnovato,
  * tornato in palestra). Un segnale "fatto" e nascosto per qualche giorno c'è ancora: non si
  * chiude. Quelli spenti dalla palestra non si scrivono né si chiudono.
  *
  * ponytail: un giro al giorno, quindi l'ora della riga è quella del giro; se servirà l'istante,
- * lo stesso confronto per una persona dopo un'iscrizione o un documento.
+ * lo stesso confronto per una persona dopo un'iscrizione.
  */
 async function scriviDaFare(conn, soglie, persone) {
 	const soci = persone.filter((p) => p.socio_id);
@@ -157,6 +160,15 @@ async function scriviDaFare(conn, soglie, persone) {
 	});
 }
 
+/** Le liste d'attesa delle lezioni da oggi in poi, messe in regola. → quante lezioni ha guardato */
+async function regolaListeAttesa(conn, oggi, adesso) {
+	const lezioni = await conn.selectDistinct({ id: bookings.sessionId }).from(bookings)
+		.innerJoin(sessions, eq(bookings.sessionId, sessions.id))
+		.where(and(eq(bookings.status, 'waitlisted'), gte(sessions.date, oggi), eq(sessions.status, 'active')));
+	for (const l of lezioni) await conn.transaction((tx) => regolaOfferte(tx, l.id, adesso));
+	return lezioni.length;
+}
+
 /**
  * Un giro su tutte le palestre. → [{ palestra, non_raggiungibili, rientri, archiviati, da_fare, avvisi }]
  *
@@ -178,6 +190,7 @@ export async function giro({ oggi = oggiIso(), conn = db, adesso = new Date() } 
 			palestra: palestra.nome, non_raggiungibili, rientri, archiviati,
 			da_fare: await scriviDaFare(conn, soglie, persone),
 			avvisi: await allinea(conn, persone, oggi, soglie),
+			liste_attesa: await regolaListeAttesa(conn, oggi, adesso),
 		});
 	}
 	return esiti;
@@ -190,6 +203,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
 			console.log(`${e.palestra}: ${e.non_raggiungibili} lead chiusi come non raggiungibili, ${e.rientri} soci rientrati dopo un contatto, ${e.archiviati} archiviati senza abbonamento.`);
 			console.log(`  Da fare nel diario: ${e.da_fare.aperti} comparsi, ${e.da_fare.chiusi} non più da fare.`);
 			console.log(`  Avvisi: ${e.avvisi.aperti} aperti, ${e.avvisi.riaperti} riaperti, ${e.avvisi.chiusi} chiusi da soli.`);
+			console.log(`  Liste d'attesa guardate: ${e.liste_attesa}.`);
 		}
 		await pool.end();
 		process.exit(0);

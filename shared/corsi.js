@@ -1,5 +1,5 @@
 // Le regole dei corsi che servono sia al server sia alle schermate.
-import { oggiIso, oraIso } from './giorni.js';
+import { oggiIso, oraIso, istanteRoma } from './giorni.js';
 
 /** Le note di un corso stanno in tre righe della sua tile nel catalogo. */
 export const NOTE_CORSO_MASSIMO = 140;
@@ -43,3 +43,36 @@ export function motivoDisdettaChiusa(lezione, ore, adesso = new Date()) {
   const quanto = Number(ore) === 0 ? "fino all'inizio della lezione" : `fino a ${ore} ${Number(ore) === 1 ? 'ora' : 'ore'} prima dell'inizio`;
   return `Questa lezione si disdice ${quanto}: per disdire adesso rivolgiti alla reception.`;
 }
+
+// --- La lista d'attesa e il ripensamento (docs/piani/portale.md, D-3) ----------------------
+
+/** Per quanto un posto liberato resta offerto al primo in lista, prima di passare al successivo. */
+export const ORE_OFFERTA_POSTO = 12;
+
+/**
+ * Il socio disdice sempre una prenotazione fatta da meno di tanti minuti, anche oltre il termine:
+ * è il tempo dell'«Annulla» dopo un tocco sbagliato.
+ */
+export const MARGINE_RIPENSAMENTO_MINUTI = 10;
+
+/**
+ * Quando si chiude la lista d'attesa di una lezione, come istante: al termine di disdetta del
+ * corso (deciso corso per corso, 14/11) o, se il corso non ne ha, all'inizio della lezione. Da lì
+ * nessuna offerta nuova e nessun nuovo in attesa: il posto che si libera è di chi lo prende.
+ */
+export function chiusuraLista(lezione, ore) {
+  const limite = limiteDisdetta(lezione, ore);
+  if (limite) return istanteRoma(limite.data, limite.ora);
+  return istanteRoma(String(lezione?.date ?? '').slice(0, 10), String(lezione?.start_time ?? lezione?.startTime ?? '').slice(0, 5));
+}
+
+/** La fascia della giornata di un orario «HH:MM»: prima delle 13 mattino, dalle 18 sera. */
+export function fasciaDelGiorno(ora) {
+  const hh = String(ora ?? '').slice(0, 5);
+  if (hh < '13:00') return 'mattino';
+  if (hh < '18:00') return 'pomeriggio';
+  return 'sera';
+}
+
+/** I posti presi di una lezione del gestionale: i confermati e quelli offerti a chi è in lista. */
+export const postiOccupati = (lezione) => Number(lezione?.confermati ?? 0) + Number(lezione?.offerti ?? 0);

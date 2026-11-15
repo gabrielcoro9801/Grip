@@ -1,5 +1,7 @@
 # Da fare: piano di sviluppo completo
 
+> **Dopo il piano del portale (`docs/piani/portale.md`, 14/11/2026)**: i documenti escono dall'applicazione. La scheda **Documenti** di Da fare, «Carica documento», il tipo d'avviso `documento` con l'esito «Documento caricato», la soglia `documentoInScadenzaGiorni` e il suo riquadro nelle Regole si tolgono (rottura R1, scelta A). Restano **quattro avvisi**: In scadenza, Scaduti, Frequenza, Compleanni. Le righe `documento` già nella tabella `avvisi` le chiude `allinea()` da sola; non si cancellano.
+
 > **Nel piano unico (11/11/2026)** questo è il ramo **D**, `feature/da-fare-avvisi`, sul database **`grip_dafare`** (vedi `server/.env` del worktree). Si unisce **dopo Soci** e **prima di Corsi**.
 > Il piano unico aggiunge queste righe K:
 > - **K1**: la migrazione di D è **`0058_avvisi`**. Corsi userà la 0059 e la 0060.

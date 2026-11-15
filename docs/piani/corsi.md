@@ -25,7 +25,7 @@
 - Per decisione dell'utente: la scheda del socio crea le fisse con la stessa finestra (`FisseSocio.jsx`).
 
 **Fuori**
-- Portale soci: non si ridisegna. Continua a funzionare con una regola di passaggio (vedi «In sospeso»).
+- Portale soci: non si ridisegna. Continua a funzionare con una regola di passaggio (vedi «In sospeso»). Il rifacimento è in `docs/piani/portale.md`.
 - Dashboard, Le mie lezioni, Catalogo corsi, Sale, Istruttori: solo gli adattamenti della cascata.
 - Permessi: il modulo `calendar` resta com'è.
 - I nomi delle tabelle: `events` e `sessions` non si rinominano.
@@ -284,6 +284,12 @@ Si tolgono `RiepilogoLezione.jsx`, `BookingsTab.jsx` e `pages/corsi/Prenotazioni
 | Una chiamata a ogni cambio di mese | `CalendarView.jsx` | mesi già visti in memoria |
 
 ## In sospeso (alla revisione del portale)
+
+> **Chiusi dal piano del portale (`docs/piani/portale.md`, 14/11/2026).**
+> 1. Il portale chiede le date: «fino al» o «per N lezioni» (D-4). La migrazione 0062 dà una fine alle fisse che non l'hanno e un CHECK vieta le fisse attive senza fine: spariscono `senzaFine` e `soloSenzaFine`.
+> 2. «Allunga»: notifica `fissa_da_allungare` al rinnovo e quando la sessione si allunga (D-4).
+> 3. Le disdette per sospensione prendono `bookings.motivo_disdetta = 'sospensione'` e alla fine anticipata si riprenotano (D-4).
+
 1. Fisse senza fine dal portale: nascono con `al` vuoto, come oggi. Da decidere se il portale chiede le date o smette di crearle.
 2. «Vuoi allungare la tua fissa?»: una notifica al socio quando una sessione si allunga. Nessun codice in questo piano.
 3. Sospensione finita prima: le prenotazioni disdette dalla sospensione (`soci.js:248-253`) non tornano, perché `applicaFisse` salta le lezioni che hanno già una prenotazione, anche disdetta (`prenotazioniFisse.js:58-64`). Succede già oggi.

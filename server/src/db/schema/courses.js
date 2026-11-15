@@ -63,7 +63,8 @@ export const rooms = pgTable('rooms', {
 export const courses = pgTable('courses', {
 	id: uuid('id').defaultRandom().primaryKey(),
 	name: varchar('name', { length: 255 }).notNull(),
-	categoryId: uuid('category_id').references(() => categories.id),
+	// Obbligatoria dalla migrazione 0062: il portale apre i corsi per categoria.
+	categoryId: uuid('category_id').notNull().references(() => categories.id),
 	instructorId: uuid('instructor_id').references(() => instructors.id),
 	description: text('description'),
 	// Un corso andato in calendario non si elimina; disattivato non si programma più, e le
@@ -137,8 +138,17 @@ export const bookings = pgTable('bookings', {
 	// La prenotazione fissa che l'ha fatta, se c'è: cancellando la fissa si disdicono solo queste,
 	// e quelle fatte a mano restano. Una fissa eliminata lascia le sue prenotazioni.
 	prenotazioneFissaId: uuid('prenotazione_fissa_id').references(() => prenotazioniFisse.id, { onDelete: 'set null' }),
+	// Perché è stata disdetta, quando non l'ha deciso il socio: 'sospensione' (routes/soci.js). Alla
+	// fine anticipata della sospensione queste si riprenotano. Null: disdetta a mano.
+	motivoDisdetta: varchar('motivo_disdetta', { length: 16 }),
+	// Una prenotazione in lista d'attesa a cui si è offerto un posto liberato: il socio ha fino a
+	// quest'ora per confermarlo, poi torna in fondo alla lista e l'offerta passa al successivo
+	// (lib/prenotazioni.js). Null: nessuna offerta aperta.
+	postoOffertoFinoA: timestamp('posto_offerto_fino_a', { withTimezone: true }),
 	createdDate: timestamp('created_date', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({
+	motivoDisdettaValido: check('bookings_motivo_disdetta_valido', sql`${table.motivoDisdetta} IS NULL OR ${table.motivoDisdetta} IN ('sospensione')`),
+	offertaSoloInAttesa: check('bookings_offerta_solo_in_attesa', sql`${table.postoOffertoFinoA} IS NULL OR ${table.status} = 'waitlisted'`),
 	// Ogni prenotazione conta i posti della sua lezione; il portale cerca quelle del socio.
 	lezione: index('bookings_session_id_idx').on(table.sessionId),
 	socio: index('bookings_member_id_idx').on(table.memberId),
@@ -153,10 +163,9 @@ export const bookings = pgTable('bookings', {
 // prenotano con le regole di sempre (capienza, lista d'attesa, abbonamento valido quel giorno) da
 // lib/prenotazioniFisse.js.
 //
-// `dal`, `al`: il periodo, estremi compresi. `al` vuoto: senza fine, come quelle nate dal portale
-// e quelle di prima della migrazione 0060; solo queste ripartono da sole a un rinnovo o a una
-// sessione allungata. `avviso_inviato_per`: la prima lezione rimasta senza abbonamento già
-// segnalata al socio, perché l'avviso arrivi una volta sola per ogni scadenza.
+// `dal`, `al`: il periodo, estremi compresi. Una fissa attiva ha sempre una fine (dalla migrazione
+// 0062: prima quelle del portale nascevano senza). `avviso_inviato_per`: la fine per cui il socio
+// ha già ricevuto «Allunga la fissa», perché l'avviso arrivi una volta sola per ogni fine.
 export const prenotazioniFisse = pgTable('prenotazioni_fisse', {
 	id: uuid('id').defaultRandom().primaryKey(),
 	memberId: uuid('member_id').notNull().references(() => members.id, { onDelete: 'cascade' }),
@@ -174,4 +183,5 @@ export const prenotazioniFisse = pgTable('prenotazioni_fisse', {
 	// Una sola fissa attiva per socio e serie.
 	unaAttiva: uniqueIndex('prenotazioni_fisse_attiva_unica_idx').on(table.memberId, table.eventId).where(sql`${table.attiva}`),
 	periodoValido: check('prenotazioni_fisse_periodo_valido', sql`${table.al} IS NULL OR ${table.al} >= ${table.dal}`),
+	attivaConFine: check('prenotazioni_fisse_attiva_con_fine', sql`${table.attiva} = false OR ${table.al} IS NOT NULL`),
 }));

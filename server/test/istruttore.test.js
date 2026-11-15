@@ -10,6 +10,7 @@ import {
 	members, staffAccounts, instructors, courses, events, sessions, rooms, bookings, ingressi, attivita,
 } from '../src/db/schema/index.js';
 import { oggiIso, spostaGiorni } from '../../shared/giorni.js';
+import { categoriaDiProva, togliCategorieDiProva } from './categoriaDiProva.js';
 
 const PASSWORD = 'prova-istruttore-1234';
 const t = Date.now();
@@ -44,7 +45,7 @@ before(async () => {
 
 	const [sala] = await db.insert(rooms).values({ name: `Sala istr ${t}` }).returning();
 	id.sala = sala.id;
-	const corsi = await db.insert(courses).values([{ name: `Pilates ${t}`, instructorId: mio.id }, { name: `Boxe ${t}`, instructorId: altro.id }]).returning();
+	const corsi = await db.insert(courses).values([{ categoryId: await categoriaDiProva(), name: `Pilates ${t}`, instructorId: mio.id }, { categoryId: await categoriaDiProva(), name: `Boxe ${t}`, instructorId: altro.id }]).returning();
 	id.corsi = corsi.map((c) => c.id);
 	const eventi = await db.insert(events).values(corsi.map((c) => ({
 		courseId: c.id, roomId: sala.id, capacity: 10, recurrenceType: 'single', startDate: fra(-3), startTime: '18:00', endTime: '19:00',
@@ -73,6 +74,7 @@ after(async () => {
 	await db.delete(sessions).where(inArray(sessions.eventId, id.eventi));
 	await db.delete(events).where(inArray(events.id, id.eventi));
 	await db.delete(courses).where(inArray(courses.id, id.corsi));
+	await togliCategorieDiProva();
 	await db.delete(rooms).where(eq(rooms.id, id.sala));
 	await db.delete(staffAccounts).where(inArray(staffAccounts.id, id.account));
 	await db.delete(instructors).where(inArray(instructors.id, id.istruttori));
@@ -116,8 +118,8 @@ describe('le mie lezioni', () => {
 		assert.ok(riga, 'la nota è nel diario del socio, la legge anche la reception');
 	});
 
-	test('con i permessi predefiniti l\'istruttore non apre più soci, documenti, contatti e diario', async () => {
-		for (const url of ['/api/segnali', `/api/persone/${id.persone[0]}/diario`, '/api/entities/MemberDocument', '/api/lead/lavoro']) {
+	test('con i permessi predefiniti l\'istruttore non apre più soci, contatti e diario', async () => {
+		for (const url of ['/api/segnali', `/api/persone/${id.persone[0]}/diario`, '/api/lead/lavoro']) {
 			assert.equal((await come('mia', 'GET', url)).statusCode, 403, url);
 		}
 	});

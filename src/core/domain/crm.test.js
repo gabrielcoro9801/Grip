@@ -48,7 +48,7 @@ describe('le soglie della palestra', () => {
 		assert.equal(s.lead.sollecitoGiorni, 2);
 		assert.equal(s.lead.fermaGiorni, SOGLIE.lead.fermaGiorni, 'un numero negativo si ignora');
 		assert.equal(s.lead.recuperoGiorni, SOGLIE.lead.recuperoGiorni, 'un testo si ignora');
-		assert.equal(s.documentoInScadenzaGiorni, SOGLIE.documentoInScadenzaGiorni);
+		assert.equal(s.scadutoGiorni, SOGLIE.scadutoGiorni);
 	});
 });
 

@@ -47,13 +47,10 @@ export const config = {
 	jwtScadenzaSocio: process.env.MEMBER_JWT_EXPIRES_IN || '30d',
 
 	/**
-	 * La chiave con cui si firma il codice d'accesso che cambia ogni minuto.
-	 *
-	 * Deve restare sul server: è ciò che impedisce di ricavare i codici futuri da uno
-	 * screenshot. Se non è impostata si usa quella dei token — non è l'ideale tenerne una
-	 * sola per due usi, ma è infinitamente meglio di una derivazione senza chiave, ed
-	 * evita che un'installazione già in piedi smetta di far entrare i soci al primo
-	 * aggiornamento.
+	 * La chiave con cui si firmano gli indirizzi dei file (lib/urlFirmati.js). Il nome viene dal
+	 * codice d'accesso a QR, uscito dall'applicazione a novembre 2026 (docs/piani/portale.md):
+	 * resta lo stesso perché cambiarlo invaliderebbe gli indirizzi già firmati. Se non è
+	 * impostata si usa quella dei token.
 	 */
 	qrSecret: process.env.QR_SECRET || undefined,
 

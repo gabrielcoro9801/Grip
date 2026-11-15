@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react';
-import { BrowserRouter as Router, Route, Routes } from 'react-router-dom';
+import { BrowserRouter as Router, Navigate, Route, Routes } from 'react-router-dom';
 import { Toaster } from '@/ui/primitivi/toaster';
 import PageNotFound from '@/ui/PageNotFound';
 import ScrollToTop from '@/ui/ScrollToTop';
@@ -19,12 +19,11 @@ import { MemberAuthProvider } from '@/member/session/MemberAuthContext';
 // il portale sa già dove sta, e tutti i collegamenti dentro le pagine sono scritti così.
 const MemberLayout = lazy(() => import('@/member/pages/MemberLayout'));
 const MemberDashboard = lazy(() => import('@/member/pages/MemberDashboard'));
-const MemberDocuments = lazy(() => import('@/member/pages/MemberDocuments'));
 const MemberSubscription = lazy(() => import('@/member/pages/MemberSubscription'));
 const MemberProfile = lazy(() => import('@/member/pages/MemberProfile'));
-const MemberQR = lazy(() => import('@/member/pages/MemberQR'));
 const MemberCoursesCalendar = lazy(() => import('@/member/pages/MemberCoursesCalendar'));
 const MemberNotifiche = lazy(() => import('@/member/pages/MemberNotifiche'));
+const MemberLezioni = lazy(() => import('@/member/pages/MemberLezioni'));
 
 export default function App() {
   return (
@@ -40,10 +39,13 @@ export default function App() {
             <Routes>
               <Route path="/member-portal" element={<MemberAuthProvider><MemberLayout /></MemberAuthProvider>}>
                 <Route index element={<MemberDashboard />} />
-                <Route path="documenti" element={<MemberDocuments />} />
+                <Route path="documenti" element={<Navigate to="/member-portal" replace />} />
                 <Route path="abbonamento" element={<MemberSubscription />} />
-                <Route path="anagrafica" element={<MemberProfile />} />
-                <Route path="qr" element={<MemberQR />} />
+                <Route path="profilo" element={<MemberProfile />} />
+                {/* Il Profilo si chiamava Anagrafica: un vecchio segnalibro arriva lo stesso. */}
+                <Route path="anagrafica" element={<Navigate to="/member-portal/profilo" replace />} />
+                <Route path="lezioni" element={<MemberLezioni />} />
+                <Route path="qr" element={<Navigate to="/member-portal" replace />} />
                 <Route path="corsi" element={<MemberCoursesCalendar />} />
                 <Route path="notifiche" element={<MemberNotifiche />} />
               </Route>

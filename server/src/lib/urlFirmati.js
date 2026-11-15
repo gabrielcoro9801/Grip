@@ -31,8 +31,8 @@ const DURATA_MS = 12 * 60 * 60 * 1000; // dodici ore: una giornata di lavoro, no
 const ARROTONDAMENTO_MS = 60 * 60 * 1000; // all'ora, per non rompere la cache del browser
 
 function chiave() {
-	// Stessa scelta fatta per il codice d'accesso: se manca una chiave dedicata si usa
-	// quella dei token, perché un aggiornamento non deve rendere illeggibili i file.
+	// Se manca una chiave dedicata si usa quella dei token, perché un aggiornamento non deve
+	// rendere illeggibili i file.
 	return config.qrSecret || config.jwtSecret;
 }
 

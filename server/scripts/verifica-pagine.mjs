@@ -12,8 +12,8 @@
  *    migrazione verso una nuova API, e l'unico modo di prenderlo è pretendere di **rivedere
  *    dei dati che si sono appena scritti**.
  *
- * Per questo lo script si semina i propri dati — un abbonamento, un documento, un codice
- * d'accesso, un corso prenotato — e poi pretende di ritrovarli sullo schermo.
+ * Per questo lo script si semina i propri dati — un abbonamento, un corso prenotato — e poi
+ * pretende di ritrovarli sullo schermo.
  *
  * Come si usa:
  *   npm run build            (nella radice)
@@ -26,7 +26,7 @@ import { buildApp } from '../src/app.js';
 import { db, pool } from '../src/db/client.js';
 import { enteDellaNumerazione } from '../src/lib/codiceSocio.js';
 import {
-	members, staffAccounts, subscriptions, memberDocuments, qrAccessi,
+	members, staffAccounts, subscriptions,
 	rooms, courses, categories, events, sessions, bookings,
 	persone, trattative, attivita, consensi, canaliContatto, numberingCounters, auditLogs,
 } from '../src/db/schema/index.js';
@@ -39,11 +39,10 @@ const emailSocio = `verifica.pagine.socio.${suffisso}@test.local`;
 
 // Quello che il socio deve rivedere: sono i dati seminati qui sotto.
 const PIANO = `Piano Verifica ${suffisso}`;
-const DOCUMENTO = 'Certificato medico';
 const CORSO = `Corso Verifica ${suffisso}`;
 // Corsi si apre sui giorni, da oggi; la lezione seminata è fra tre giorni. Nella vista "Per
 // corso" ci sono le categorie: si pretende che i dati dell'agenda siano arrivati e disegnati.
-// La lezione, prenotata, la mostra la home fra "Le tue prossime lezioni".
+// La lezione, prenotata, la mostrano la Home (la prossima lezione) e Le mie lezioni.
 const CATEGORIA = `Categoria Verifica ${suffisso}`;
 const NOME_SOCIO = 'Socio Giro Pagine';
 // Senza cifre: il contatore dei codici veri prende il massimo delle cifre, e un codice di prova
@@ -60,7 +59,7 @@ const PAGINE_STAFF = [
 	['/lead', COGNOME_LEAD], ['/lead/andamento', CANALE], ['/lead/canali', CANALE],
 	['/calendario', null], ['/calendario/sessioni', CORSO], ['/calendario/corsi', null],
 	['/calendario/sale', null], ['/calendario/istruttori', null], ['/calendario/categorie', null],
-	['/admin', null], ['/log-audit', null],
+	['/admin', null], ['/admin/contatti', 'Orari della reception'], ['/log-audit', null],
 ];
 
 // Per il portale il controllo è più severo: ogni pagina deve mostrare un dato preciso.
@@ -68,9 +67,10 @@ const PAGINE_SOCIO = [
 	['/member-portal', PIANO],
 	['/member-portal', CORSO],
 	['/member-portal/corsi', CATEGORIA, (p) => p.getByRole('tab', { name: 'Per corso' }).click()],
-	['/member-portal/documenti', DOCUMENTO],
 	['/member-portal/abbonamento', PIANO],
-	['/member-portal/qr', NOME_SOCIO],
+	['/member-portal/lezioni', CORSO],
+	['/member-portal/profilo', CODICE_SOCIO],
+	// Il vecchio indirizzo del Profilo rimanda.
 	['/member-portal/anagrafica', CODICE_SOCIO],
 	['/member-portal/notifiche', 'Notifiche e avvisi'],
 ];
@@ -115,8 +115,6 @@ let app;
 let browser;
 const idAccount = [];
 const idAbbonamenti = [];
-const idDocumenti = [];
-const idQr = [];
 const idPrenotazioni = [];
 let idSocio;
 let idSala;
@@ -156,18 +154,6 @@ try {
 		.values({ memberId: socio.id, planName: PIANO, startDate: oggi, endDate: fraUnAnno, status: 'active' })
 		.returning();
 	idAbbonamenti.push(...abbonamenti.map((a) => a.id));
-
-	const documenti = await db
-		.insert(memberDocuments)
-		.values({ memberId: socio.id, documentType: 'certificato_medico', fileName: 'certificato.pdf', expiryDate: fraUnAnno })
-		.returning();
-	idDocumenti.push(...documenti.map((d) => d.id));
-
-	const qr = await db
-		.insert(qrAccessi)
-		.values({ clienteId: socio.id, clienteName: NOME_SOCIO, codice: `GRIP-VERI-PAGI-${suffisso}`.slice(0, 60), stato: 'attivo' })
-		.returning();
-	idQr.push(...qr.map((q) => q.id));
 
 	const [sala] = await db.insert(rooms).values({ name: 'Sala Verifica' }).returning();
 	idSala = sala.id;
@@ -230,7 +216,7 @@ try {
 	await pagStaff.waitForTimeout(1000);
 	const riga = pagStaff.locator('tr', { hasText: COGNOME_LEAD });
 	// "Trasforma in socio" è diventato Iscrivi, una finestra a passi (anagrafica, abbonamento,
-	// certificato, privacy, portale): qui si fa il giro minimo, saltando i facoltativi.
+	// privacy, portale): qui si fa il giro minimo, saltando i facoltativi.
 	const trasforma = riga.getByRole('button', { name: `Iscrivi Lucia ${COGNOME_LEAD}` });
 	let socioCreato = null;
 	if (await trasforma.count()) {
@@ -240,7 +226,6 @@ try {
 		// Il lead aveva solo l'anno: per il socio la data intera è obbligatoria.
 		await finestra.locator('#anag-nascita').fill('1994-03-02');
 		await finestra.getByRole('button', { name: 'Avanti' }).click();
-		await finestra.getByRole('button', { name: 'Salta' }).click();
 		await finestra.getByRole('button', { name: 'Salta' }).click();
 		await finestra.getByRole('checkbox', { name: 'Informativa privacy firmata' }).click();
 		await finestra.getByRole('button', { name: 'Avanti' }).click();
@@ -279,17 +264,38 @@ try {
 	await entra(pagSocio, BASE, '/member-portal', emailSocio);
 	for (const [percorso, atteso, prima] of PAGINE_SOCIO) await apri(pagSocio, percorso, atteso, BASE, prima);
 
+	// Disdire, prenotare con un tocco e «Annulla» dal messaggio (D-3): il pulsante del messaggio si
+	// cerca per ruolo, come lo trova un lettore di schermo (prima era un <div>).
+	console.log('\nPRENOTARE E ANNULLARE (non solo vedere)');
+	try {
+		await pagSocio.goto(`${BASE}/member-portal/corsi`, { waitUntil: 'networkidle' });
+		await pagSocio.getByRole('group', { name: 'Giorno' }).getByRole('button').nth(3).click();
+		await pagSocio.getByRole('button', { name: new RegExp(`${CORSO}.*già prenotata`) }).click();
+		await pagSocio.getByRole('dialog').getByRole('button', { name: 'Disdici' }).click();
+		await pagSocio.getByRole('alertdialog').getByRole('button', { name: 'Disdici' }).click();
+		await pagSocio.getByText('Lezione disdetta').first().waitFor();
+		await pagSocio.getByRole('button', { name: new RegExp(`^Prenota ${CORSO}`) }).click();
+		await pagSocio.getByRole('region', { name: 'Messaggi' }).getByText(new RegExp(`^Prenotata: ${CORSO}`)).waitFor();
+		await pagSocio.getByRole('button', { name: 'Annulla la prenotazione' }).click();
+		await pagSocio.getByText('Prenotazione annullata').first().waitFor();
+		const vive = await db.select().from(bookings).where(and(eq(bookings.sessionId, idLezione), eq(bookings.memberId, idSocio)));
+		const ok = vive.length === 2 && vive.every((b) => b.status === 'cancelled');
+		if (!ok) problemi.push({ percorso: 'prenotare e annullare', errori: [JSON.stringify(vive.map((b) => b.status))], testo: '' });
+		console.log(`  ${ok ? 'OK     ' : 'ROTTA  '} disdire, prenotare con un tocco e «Annulla» dal messaggio`);
+	} catch (errore) {
+		problemi.push({ percorso: 'prenotare e annullare', errori: [errore.message.split('\n')[0]], testo: '' });
+		console.log(`  ROTTA   prenotare e annullare: ${errore.message.split('\n')[0]}`);
+	}
+
 } finally {
 	if (browser) await browser.close();
 	if (app) await app.close();
-	if (idPrenotazioni.length) await db.delete(bookings).where(inArray(bookings.id, idPrenotazioni));
+	if (idLezione) await db.delete(bookings).where(eq(bookings.sessionId, idLezione));
 	if (idLezione) await db.delete(sessions).where(inArray(sessions.id, [idLezione]));
 	if (idEvento) await db.delete(events).where(inArray(events.id, [idEvento]));
 	if (idCorso) await db.delete(courses).where(inArray(courses.id, [idCorso]));
 	if (idCategoria) await db.delete(categories).where(inArray(categories.id, [idCategoria]));
 	if (idSala) await db.delete(rooms).where(inArray(rooms.id, [idSala]));
-	if (idQr.length) await db.delete(qrAccessi).where(inArray(qrAccessi.id, idQr));
-	if (idDocumenti.length) await db.delete(memberDocuments).where(inArray(memberDocuments.id, idDocumenti));
 	if (idAbbonamenti.length) await db.delete(subscriptions).where(inArray(subscriptions.id, idAbbonamenti));
 	if (idAccount.length) await db.delete(staffAccounts).where(inArray(staffAccounts.id, idAccount));
 	if (idSocio) await db.delete(members).where(inArray(members.id, [idSocio]));
@@ -314,9 +320,9 @@ try {
 	await pool.end();
 }
 
-// I controlli sono le pagine, la pagina della lezione e le quattro prove d'uso: contarli tutti, o un fallimento
+// I controlli sono le pagine, la pagina della lezione e le cinque prove d'uso: contarli tutti, o un fallimento
 // nell'interazione si nasconderebbe dietro un "23/23 pagine" rassicurante.
-const totale = PAGINE_STAFF.length + 1 + PAGINE_SOCIO.length + 4;
+const totale = PAGINE_STAFF.length + 1 + PAGINE_SOCIO.length + 5;
 console.log(`\n${totale - problemi.length}/${totale} controlli superati`);
 if (problemi.length) {
 	console.log('\nDettaglio:');

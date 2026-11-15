@@ -6,7 +6,7 @@ import StaffLogin from "@/staff/pages/StaffLogin";
 import {
   LayoutDashboard, Users, Calendar,
   ChevronLeft, ChevronRight, LogOut, Menu, Dumbbell,
-  ShieldCheck, ScrollText, UserPlus, KeyRound, ListChecks, Search, GraduationCap
+  ShieldCheck, ScrollText, UserPlus, KeyRound, ListChecks, Search, GraduationCap, Phone
 } from "lucide-react";
 import RicercaGlobale from "@/staff/components/RicercaGlobale";
 import { CambioPasswordObbligatorio, DialogCambioPassword } from "@/ui/CambioPassword";
@@ -34,6 +34,8 @@ const navItems = [
   // Le impostazioni stanno in fondo, sotto il loro titolo: prima erano mescolate al lavoro di
   // ogni giorno (Utenti accanto a Soci e Corsi). Le vede l'amministratore.
   { label: "Utenti e ruoli", path: "/admin", icon: ShieldCheck, impostazioni: true },
+  // I recapiti della palestra che il socio vede nel portale.
+  { label: "Contatti", path: "/admin/contatti", icon: Phone, impostazioni: true },
   { label: "Registro delle azioni", path: "/log-audit", icon: ScrollText, impostazioni: true },
 ];
 

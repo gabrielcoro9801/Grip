@@ -34,10 +34,6 @@ const CAMPI = {
     ],
     nota: "Le stesse soglie decidono lo stato «In calo» dei soci.",
   },
-  documento: {
-    campi: [["documentoInScadenzaGiorni", "Avvisa quanti giorni prima della scadenza"]],
-    nota: "Vale anche per il portale del socio.",
-  },
   compleanno: {
     campi: [["compleannoPrimaGiorni", "Avvisa quanti giorni prima"], ["compleannoDopoGiorni", "Chiudi quanti giorni dopo"]],
     nota: "0 vuol dire il giorno stesso.",
@@ -72,7 +68,7 @@ function CampoSoglia({ percorso, etichetta, valori, onCambia }) {
 }
 
 /**
- * Le Regole di Da fare: per ognuno dei cinque avvisi se la palestra lo segue, quando compare e
+ * Le Regole di Da fare: per ognuno dei quattro avvisi se la palestra lo segue, quando compare e
  * quando se ne va. La regola in parole si riscrive mentre si cambiano i numeri. Le cambia solo
  * l'amministratore (P7); ogni cambio finisce nel registro delle azioni.
  *

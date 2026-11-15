@@ -55,10 +55,6 @@ describe('conSospensioni', () => {
 describe('la sospensione nel motore e nel semaforo', () => {
 	const socio = { created_date: '2025-01-01', archiviato_il: null, date_of_birth: '1990-05-20' };
 	const iscrizioni = conSospensioni([{ ...mensile, start_date: '2025-10-01' }], [quattordici]);
-	const documenti = [
-		{ document_type: 'certificato_medico', created_date: '2026-01-01', expiry_date: '2027-06-01' },
-		{ document_type: 'documento_identita', created_date: '2026-01-01', expiry_date: '2030-01-01' },
-	];
 
 	test('durante: stato sospeso, niente assenza né calo, e la scadenza è quella allungata', () => {
 		const r = segnaliPersona({ socio, iscrizioni, ingressi: { ultimo: '2026-10-04', quattro: 1, dodici: 30, totale: 200 }, oggi: OGGI });
@@ -70,7 +66,7 @@ describe('la sospensione nel motore e nel semaforo', () => {
 
 	test('dopo la ripresa l\'assenza si conta dalla ripresa, e il calo non scatta', () => {
 		const dopo = '2026-10-25';
-		const r = segnaliPersona({ socio, iscrizioni, documenti, ingressi: { ultimo: '2026-10-04', quattro: 1, dodici: 30, totale: 200 }, oggi: dopo });
+		const r = segnaliPersona({ socio, iscrizioni, ingressi: { ultimo: '2026-10-04', quattro: 1, dodici: 30, totale: 200 }, oggi: dopo });
 		assert.equal(coperturaAbbonamento(iscrizioni, dopo).ripresa, '2026-10-19');
 		assert.equal(r.fase, 'attivo');
 		assert.deepEqual(daFare(r.segnali, 'staff'), []);
@@ -80,7 +76,7 @@ describe('la sospensione nel motore e nel semaforo', () => {
 	});
 
 	test('il semaforo dice sospeso, non scaduto', () => {
-		const avvisi = avvisiSocio({ socio, iscrizioni, documenti: [], oggi: OGGI });
+		const avvisi = avvisiSocio({ socio, iscrizioni, oggi: OGGI });
 		assert.equal(semaforo(avvisi), 'rosso');
 		assert.equal(avvisi[0].codice, 'abbonamento_sospeso');
 		assert.match(avvisi[0].testo, /riprende il 19\/10\/2026/);

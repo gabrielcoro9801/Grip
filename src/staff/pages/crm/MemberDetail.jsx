@@ -4,18 +4,15 @@ import { useStaffAuth } from "@/staff/lib/StaffAuthContext";
 import { useParams, Link, useLocation } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/ui/primitivi/card";
 import { Button } from "@/ui/primitivi/button";
-import { Badge } from "@/ui/primitivi/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/ui/primitivi/dialog";
 import { Label } from "@/ui/primitivi/label";
 import { Input } from "@/ui/primitivi/input";
 import StatusBadge, { StatoSocio } from "@/ui/StatusBadge";
-import { ArrowLeft, Plus, CreditCard, QrCode, KeyRound, RefreshCw, Pencil, UserRound, Archive, ArchiveRestore } from "lucide-react";
+import { ArrowLeft, Plus, CreditCard, KeyRound, Pencil, UserRound, Archive, ArchiveRestore } from "lucide-react";
 import CampiAnagrafica, { anagraficaDi, motivoAnagraficaIncompleta } from "@/staff/components/soci/CampiAnagrafica";
 import FisseSocio from "@/staff/components/soci/FisseSocio";
 import IngressiSocio from "@/staff/components/soci/IngressiSocio";
 import DiarioSocio from "@/staff/components/soci/DiarioSocio";
-import DocumentiSocio from "@/staff/components/soci/DocumentiSocio";
-import ConsensiSocio from "@/staff/components/soci/ConsensiSocio";
 import SospensioniSocio from "@/staff/components/soci/SospensioniSocio";
 import DialogoAbbandono from "@/staff/components/soci/DialogoAbbandono";
 import DialogoVendita from "@/staff/components/soci/DialogoVendita";
@@ -23,11 +20,9 @@ import { AvatarSocio, SceltaFoto } from "@/staff/components/soci/FotoSocio";
 import { caricaFile } from "@/staff/lib/uploads";
 import { canAccess, canEdit } from "@/staff/lib/permissions";
 import { motivoPasswordNonValida, LUNGHEZZA_MINIMA_PASSWORD } from "@/core/domain/password";
-import { etichettaSesso, etaA } from "@/core/domain/anagrafica";
+import { etichettaSesso, etaA, consensoGenitoriDaFirmare } from "@/core/domain/anagrafica";
 import { fase as faseDi } from "@/core/domain/segnali";
-import { generateQRCode, generaPasswordTemporanea } from "@/staff/lib/qrUtils";
-import { qrDataUrl } from "@/ui/qr/qrImmagine";
-import { useQrDinamico } from "@/ui/hooks/useQrDinamico";
+import { generaPasswordTemporanea } from "@/staff/lib/passwordTemporanea";
 import { useToast } from "@/ui/primitivi/use-toast";
 import { LoadingState } from "@/ui/Spinner";
 import { ErrorState } from "@/ui/StateViews";
@@ -56,7 +51,6 @@ export default function MemberDetail() {
   const [conferma, dialogoConferma] = useConfirm();
   const [member, setMember] = useState(null);
   const [subscriptions, setSubscriptions] = useState([]);
-  const [documents, setDocuments] = useState([]);
   const [plans, setPlans] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -66,15 +60,6 @@ export default function MemberDetail() {
   const [anagrafica, setAnagrafica] = useState(null);
   const [foto, setFoto] = useState({ file: null, rimossa: false });
   const puoModificare = canEdit(staffUser?.ruolo, "crm_members");
-  // I documenti stanno sotto il loro modulo, non sotto le anagrafiche: è quello che il server
-  // controlla (auth/authorize.js). Nei ruoli di base i due permessi coincidono, ma un ruolo
-  // costruito a mano può avere l'uno e non l'altro — e allora carica ed elimina sarebbero
-  // pulsanti che chiamano l'API solo per prendersi un 403.
-  const puoModificareDocumenti = canEdit(staffUser?.ruolo, "crm_documents");
-  // Senza la visione il server rifiuta anche la lettura: la sezione non si mostra, invece di
-  // mostrarla vuota come se il socio non avesse documenti.
-  const puoVedereDocumenti = canAccess(staffUser?.ruolo, "crm_documents", "view");
-  const [qrAccess, setQrAccess] = useState(null);
   const [portalAccount, setPortalAccount] = useState(null);
   const [showPasswordDialog, setShowPasswordDialog] = useState(false);
   const [passwordForm, setPasswordForm] = useState({ password: "", confirm: "" });
@@ -98,23 +83,17 @@ export default function MemberDetail() {
       // sezioni dedicate, come Gestione corsi. Con loro se ne vanno le letture di tutte le
       // lezioni, gli eventi e i corsi dell'ente, che servivano solo a dare un nome a una
       // prenotazione.
-      // I documenti hanno un permesso loro: un ruolo che vede le anagrafiche ma non i
-      // certificati apre la scheda lo stesso, senza la sezione documenti.
-      const [m, p, s, d, qr, sa] = await Promise.all([
+      const [m, p, s, sa] = await Promise.all([
         api.entities.Member.get(id),
         api.entities.Plan.list(),
         api.entities.Subscription.filter({ member_id: id }),
-        puoVedereDocumenti ? api.entities.MemberDocument.filter({ member_id: id }) : [],
-        api.entities.QRAccesso.filter({ cliente_id: id }),
         api.soci.accessoPortale(id),
       ]);
 
       setMember(m);
       setSubscriptions(s);
-      setDocuments(d);
       // Si propongono solo i tipi che si possono vendere oggi; il server lo ricontrolla.
       setPlans(p.filter(pl => !motivoNonVendibile(pl)));
-      setQrAccess(qr[0] || null);
       setPortalAccount(sa);
       setLoading(false);
     } catch (err) {
@@ -130,17 +109,6 @@ export default function MemberDetail() {
     api.segnali({ persona: member.persona_id }).then((d) => setStato(d.persone[0]?.fase ?? null)).catch(() => setStato(null));
   }, [member?.persona_id, member?.archiviato_il, subscriptions, staffUser?.ruolo]);
 
-  // Lo stesso codice che il socio vede sul telefono, negli stessi secondi: lo firma il
-  // server e lo consegna a entrambi, quindi alla reception basta confrontarli a vista.
-  const { codice: codiceDinamico, secondiResidui } = useQrDinamico(id, qrAccess?.stato === "attivo");
-  const [immagineQr, setImmagineQr] = useState(null);
-
-  useEffect(() => {
-    let vivo = true;
-    if (!codiceDinamico) { setImmagineQr(null); return undefined; }
-    qrDataUrl(codiceDinamico, 120).then((url) => { if (vivo) setImmagineQr(url); }).catch(() => {});
-    return () => { vivo = false; };
-  }, [codiceDinamico]);
 
   // Un rinnovo, quasi sempre: lo stesso tipo di prima, dal giorno dopo la fine. Si apriva vuoto e
   // da oggi, e a chi scadeva fra cinque giorni si vendevano cinque giorni già pagati.
@@ -180,71 +148,16 @@ export default function MemberDetail() {
     setFoto({ file: null, rimossa: false });
   };
 
-  // Revocare e rigenerare cambiano la credenziale con cui il socio entra: si chiede conferma,
-  // e un errore si dice invece di lasciare il pulsante senza risposta.
-  const handleRevokeQR = async () => {
-    if (!qrAccess) return;
-    const ok = await conferma({
-      title: "Revocare il QR?",
-      description: `${member.full_name} non potrà più entrare con il codice attuale finché non ne generi uno nuovo.`,
-      confirmLabel: "Revoca",
-      destructive: true,
-    });
-    if (!ok) return;
-    setSaving(true);
-    try {
-      await api.entities.QRAccesso.update(qrAccess.id, { stato: "revocato" });
-      toast({ title: "QR revocato" });
-      loadData();
-    } catch (err) {
-      toast({ title: "QR non revocato", description: err.message, variant: "destructive" });
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleRegenerateQR = async () => {
-    if (qrAccess) {
-      const ok = await conferma({
-        title: "Rigenerare il QR?",
-        description: "Il codice attuale smette di funzionare subito: il socio vedrà quello nuovo alla prossima apertura del portale.",
-        confirmLabel: "Rigenera",
-      });
-      if (!ok) return;
-    }
-    const newCode = generateQRCode();
-    setSaving(true);
-    try {
-      if (qrAccess) {
-        await api.entities.QRAccesso.update(qrAccess.id, { codice: newCode, stato: "attivo", data_generazione: new Date().toISOString() });
-      } else {
-        await api.entities.QRAccesso.create({
-          cliente_id: id,
-          cliente_name: member?.full_name || "",
-          codice: newCode,
-          data_generazione: new Date().toISOString(),
-          stato: "attivo",
-        });
-      }
-      toast({ title: qrAccess ? "QR rigenerato" : "QR generato" });
-      loadData();
-    } catch (err) {
-      toast({ title: "QR non generato", description: err.message, variant: "destructive" });
-    } finally {
-      setSaving(false);
-    }
-  };
-
   // Un socio che lascia la palestra si archivia, con il suo motivo (DialogoAbbandono): niente si
   // cancella, e lo si riattiva quando torna. Il server disdice le prenotazioni future e spegne
-  // portale e QR.
+  // il portale.
   const [abbandono, setAbbandono] = useState(false);
 
   const riattiva = async () => {
     setSaving(true);
     try {
       await api.soci.riattiva(id);
-      toast({ title: "Socio riattivato", description: "Portale e QR tornano a funzionare con le credenziali di prima." });
+      toast({ title: "Socio riattivato", description: "Il portale torna a funzionare con le credenziali di prima." });
       loadData();
     } catch (err) {
       toast({ title: "Socio non riattivato", description: err.message, variant: "destructive" });
@@ -330,7 +243,7 @@ export default function MemberDetail() {
       </div>
 
       {/* La scheda com'era prima del CRM: l'anagrafica a tutta larghezza, poi abbonamenti,
-          documenti, fisse, accesso e comunicazioni su due colonne, e il diario in fondo. */}
+          fisse e accesso su due colonne, e il diario in fondo. */}
       <div className="grid lg:grid-cols-2 gap-6">
         {/* Anagrafica: la tile principale, a tutta larghezza. Stesso ordine del modulo, così
             chi corregge un dato lo ritrova dove l'ha visto. */}
@@ -347,6 +260,9 @@ export default function MemberDetail() {
                 <DatoAnagrafico etichetta="Codice fiscale">{member.codice_fiscale}</DatoAnagrafico>
                 <DatoAnagrafico etichetta="Data di nascita">
                   {member.date_of_birth && `${formatData(member.date_of_birth, "breve")} (${etaA(member.date_of_birth)} anni)`}
+                  {consensoGenitoriDaFirmare(member) && (
+                    <span className="block text-warning font-normal">Consenso dei genitori da firmare</span>
+                  )}
                 </DatoAnagrafico>
                 <DatoAnagrafico etichetta="Sesso">{etichettaSesso(member.sesso)}</DatoAnagrafico>
                 <DatoAnagrafico etichetta="Residenza">{member.address}</DatoAnagrafico>
@@ -410,68 +326,18 @@ export default function MemberDetail() {
           </CardContent>
         </Card>
 
-        {puoVedereDocumenti && (
-          <div id="documenti" className="scroll-mt-4">
-            <DocumentiSocio socio={member} documenti={documents} puoModificare={puoModificareDocumenti} staffUser={staffUser} onCambio={loadData} />
-          </div>
-        )}
-
         {/* Le prenotazioni fisse: sono prenotazioni, quindi le vede chi vede il calendario. */}
         {canAccess(staffUser?.ruolo, "calendar", "view") && (
           <FisseSocio socio={member} puoModificare={canEdit(staffUser?.ruolo, "calendar")} />
         )}
 
-        {/* Accesso: il QR per entrare in palestra e la password per entrare nel portale.
-            Sono le due credenziali del socio, e si gestiscono insieme. */}
+        {/* Accesso: gli ingressi in palestra e la password per entrare nel portale. */}
         <Card className="border-0 shadow-sm">
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-heading flex items-center gap-2"><QrCode className="w-4 h-4" /> Accesso e portale</CardTitle>
+            <CardTitle className="text-sm font-heading flex items-center gap-2"><KeyRound className="w-4 h-4" /> Accesso e portale</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <IngressiSocio socioId={member.id} />
-            <section aria-label="QR accesso">
-              {qrAccess ? (
-                <div className="flex items-center gap-4">
-                  {immagineQr ? (
-                    <img src={immagineQr} alt="QR accesso" className="w-24 h-24 rounded-lg" />
-                  ) : (
-                    <div className="w-24 h-24 rounded-lg bg-muted/40" />
-                  )}
-                  <div className="flex-1 min-w-0">
-                    {/* Il codice del minuto è quello da confrontare con il telefono del socio;
-                        la credenziale sotto è ciò che si revoca, e non cambia mai da sé. */}
-                    <p className="font-mono text-sm font-medium break-all">{codiceDinamico || "—"}</p>
-                    {qrAccess.stato === "attivo" && (
-                      <p className="text-xs text-muted-foreground">Cambia tra {secondiResidui}s</p>
-                    )}
-                    <p className="text-[11px] text-muted-foreground font-mono break-all mt-1">
-                      Credenziale: {qrAccess.codice}
-                    </p>
-                    <p className="text-xs text-muted-foreground">Generata il {formatData(qrAccess.data_generazione, "lungo")}</p>
-                    <Badge variant="outline" className={`mt-1 text-xs ${qrAccess.stato === "attivo" ? "bg-success/10 text-success border-success/30" : "bg-destructive/10 text-destructive border-destructive/30"}`}>
-                      {qrAccess.stato === "attivo" ? "Valido" : "Revocato"}
-                    </Badge>
-                  </div>
-                </div>
-              ) : (
-                <p className="text-sm text-muted-foreground py-2 text-center">Nessun QR generato</p>
-              )}
-              {/* Il QR è una scrittura sulla scheda: chi la vede soltanto non lo tocca, e il
-                  server rifiuterebbe comunque. */}
-              {puoModificare && (
-                <div className="flex gap-2 mt-3">
-                  {qrAccess?.stato === "attivo" && (
-                    <Button size="sm" variant="outline" onClick={handleRevokeQR} disabled={saving}>
-                      Revoca
-                    </Button>
-                  )}
-                  <Button size="sm" variant="outline" onClick={handleRegenerateQR} disabled={saving}>
-                    <RefreshCw className="w-3 h-3 mr-1" /> {qrAccess ? "Rigenera" : "Genera"}
-                  </Button>
-                </div>
-              )}
-            </section>
-
             <section aria-labelledby="portale-socio" className="border-t border-border pt-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <h3 id="portale-socio" className="text-xs font-medium uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
@@ -503,12 +369,6 @@ export default function MemberDetail() {
             </section>
           </CardContent>
         </Card>
-
-        {/* Le comunicazioni promozionali: un dato del socio, non lavoro da fare. Si leggono qui e
-            si cambiano solo con il modulo firmato o con il motivo (ConsensiSocio). */}
-        {vedeDiario && (
-          <ConsensiSocio socio={member} documenti={documents} puoModificare={puoModificare} />
-        )}
 
         {/* Il diario: le note e la storia del socio, in sola lettura. Il lavoro da fare sta in
             Da fare, non qui: la scheda racconta, non chiede. */}

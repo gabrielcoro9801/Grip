@@ -1,6 +1,6 @@
 // Da fare: gli avvisi aperti, l'Archivio di quelli chiusi, e le chiusure a mano.
 //
-// Rinnova, Non rinnova e Carica documento non passano di qui: usano la vendita, l'archiviazione
+// Rinnova e Non rinnova non passano di qui: usano la vendita, l'archiviazione
 // del socio e il caricamento di sempre, e l'allineamento successivo chiude l'avviso con l'esito
 // giusto (lib/avvisi.js).
 //
@@ -38,7 +38,7 @@ export default async function avvisiRoutes(fastify) {
 
 	/**
 	 * GET /api/avvisi?vista=aperti|archivio&tipo=<tipo>
-	 * → { oggi, soglie, conteggi: { in_scadenza, scaduto, frequenza, documento, compleanno }, avvisi, archiviati? }
+	 * → { oggi, soglie, conteggi: { in_scadenza, scaduto, frequenza, compleanno }, avvisi, archiviati? }
 	 *
 	 * Prima di leggere allinea la tabella al motore. `conteggi`: gli aperti per tipo, i numeri
 	 * della barra. In archivio le ultime 200 chiusure, e `archiviati`: i chiusi per tipo.

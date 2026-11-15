@@ -8,7 +8,7 @@
 import test, { before, after, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import bcrypt from 'bcryptjs';
-import { eq, inArray } from 'drizzle-orm';
+import { eq, and, inArray } from 'drizzle-orm';
 import { buildApp } from '../src/app.js';
 import { db, pool } from '../src/db/client.js';
 import {
@@ -18,6 +18,7 @@ import { oggiIso, spostaGiorni } from '../../shared/giorni.js';
 import { impostaMatrice, ripristinaMatricePredefinita, PERMESSI_PREDEFINITI } from '../../shared/permissions.js';
 import { dateGiuste } from '../src/lib/dateSettimanali.js';
 import { giornoDellaSettimana } from '../src/lib/calendario.js';
+import { categoriaDiProva, togliCategorieDiProva } from './categoriaDiProva.js';
 
 const PASSWORD = 'prova-calendario-1234';
 const suffisso = Date.now();
@@ -51,7 +52,8 @@ async function serie({ giorno = GIORNO_A, dal = spostaGiorni(oggi, -14), al = sp
 
 const prenota = (lezione, socio, status = 'confirmed', waitlistPosition = null, prenotazioneFissaId = null) =>
 	db.insert(bookings).values({ sessionId: lezione.id, memberId: socio, status, waitlistPosition, prenotazioneFissaId }).returning().then(([b]) => b);
-const fissa = (evento, socio, al = null) =>
+// Una fissa ha sempre una fine (migrazione 0062): se il test non la dà, fra sessanta giorni.
+const fissa = (evento, socio, al = spostaGiorni(oggi, 60)) =>
 	db.insert(prenotazioniFisse).values({ memberId: socio, eventId: evento.id, dal: oggi, al }).returning().then(([f]) => f);
 
 before(async () => {
@@ -83,8 +85,8 @@ before(async () => {
 	id.sale = sale.map((s) => s.id);
 	const [istruttore] = await db.insert(instructors).values({ nome: 'Ida', cognome: `Calendario ${suffisso}` }).returning();
 	id.istruttore = istruttore.id;
-	const [corso] = await db.insert(courses).values({ name: `Pilates ${suffisso}`, instructorId: istruttore.id }).returning();
-	const [altro] = await db.insert(courses).values({ name: `Yoga ${suffisso}`, instructorId: istruttore.id }).returning();
+	const [corso] = await db.insert(courses).values({ categoryId: await categoriaDiProva(), name: `Pilates ${suffisso}`, instructorId: istruttore.id }).returning();
+	const [altro] = await db.insert(courses).values({ categoryId: await categoriaDiProva(), name: `Yoga ${suffisso}`, instructorId: istruttore.id }).returning();
 	id.corso = corso.id;
 	id.altroCorso = altro.id;
 });
@@ -98,6 +100,7 @@ after(async () => {
 	}
 	if (id.eventi.length) await db.delete(events).where(inArray(events.id, id.eventi));
 	await db.delete(courses).where(inArray(courses.id, [id.corso, id.altroCorso]));
+	await togliCategorieDiProva();
 	await db.delete(instructors).where(eq(instructors.id, id.istruttore));
 	await db.delete(rooms).where(inArray(rooms.id, id.sale));
 	await db.delete(auditLogs).where(inArray(auditLogs.attoreId, id.account));
@@ -259,17 +262,20 @@ describe('la data fine di una sessione', () => {
 		assert.ok(dopo.every((l) => giornoDellaSettimana(l.date) === GIORNO_A), 'tutte nel giorno della sessione');
 	});
 
-	test('allungata: le fisse senza fine prenotano le lezioni nuove, quelle con una data no', async () => {
+	test('allungata: le fisse non crescono da sole (si allungano, D-4 del portale)', async () => {
 		const { evento, lezioni } = await serie({ al: spostaGiorni(oggi, 6) });
-		await fissa(evento, id.soci[0]);
-		await fissa(evento, id.soci[1], lezioni.at(-1).date);
+		await fissa(evento, id.soci[0], lezioni.at(-1).date);
 		const res = await come('reception', 'POST', `/api/calendario/eventi/${evento.id}/data-fine`, { end_date: spostaGiorni(oggi, 20) });
 		assert.equal(res.statusCode, 200, res.body);
 		const nuove = (await lezioniDi(evento.id)).filter((l) => l.date > lezioni.at(-1).date);
 		assert.ok(nuove.length > 0);
 		const suNuove = await db.select().from(bookings).where(inArray(bookings.sessionId, nuove.map((l) => l.id)));
-		assert.equal(suNuove.filter((b) => b.memberId === id.soci[0] && b.prenotazioneFissaId).length, nuove.length);
-		assert.equal(suNuove.filter((b) => b.memberId === id.soci[1]).length, 0);
+		assert.equal(suNuove.filter((b) => b.memberId === id.soci[0]).length, 0);
+		// Ma il socio lo sa: «Allunga», una volta sola anche se la sessione si riallunga uguale.
+		const allunga = () => db.select().from(notifiche).where(and(eq(notifiche.memberId, id.soci[0]), eq(notifiche.tipo, 'fissa_da_allungare')));
+		assert.equal((await allunga()).length, 1);
+		await come('reception', 'POST', `/api/calendario/eventi/${evento.id}/data-fine`, { end_date: spostaGiorni(oggi, 20) });
+		assert.equal((await allunga()).length, 1);
 	});
 
 	test('dentro una sospensione della sala le date si saltano da sole', async () => {
@@ -453,7 +459,8 @@ describe('le notifiche nel portale', () => {
 		assert.equal(elenco.statusCode, 200, elenco.body);
 		const { notifiche: mie, non_lette: nonLette } = elenco.json();
 		assert.ok(mie.length > 0 && nonLette > 0);
-		assert.deepEqual(Object.keys(mie[0]).sort(), ['creata_il', 'id', 'letta', 'testo', 'tipo', 'titolo']);
+		// `lezione_id`, `fissa_id` e `lezione` sono aggiunte di D-3: l'azione della notifica.
+		assert.deepEqual(Object.keys(mie[0]).sort(), ['creata_il', 'fissa_id', 'id', 'letta', 'lezione', 'lezione_id', 'testo', 'tipo', 'titolo']);
 		assert.equal((await come('socio', 'GET', '/api/member/v1/notifiche?solo_conteggio=1')).json().non_lette, nonLette);
 
 		const lette = await come('socio', 'POST', '/api/member/v1/notifiche/lette');

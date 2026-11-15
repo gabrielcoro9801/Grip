@@ -1,5 +1,5 @@
-// L'iscrizione di un socio in un passo: anagrafica, abbonamento, certificato, privacy e accesso al
-// portale insieme, in una transazione. O si salva tutto, o niente: prima erano tre schermate e
+// L'iscrizione di un socio in un passo: anagrafica, abbonamento, privacy e accesso al portale
+// insieme, in una transazione. O si salva tutto, o niente: prima erano tre schermate e
 // tre salvataggi, e un errore al terzo lasciava un socio a metà (senza abbonamento, o senza accesso).
 //
 // Si iscrive un contatto (`lead_id`: la trattativa si chiude come *iscritto*, il diario resta alla
@@ -8,12 +8,15 @@
 // direttamente dal codice fiscale.
 //
 // Le regole di ogni pezzo sono quelle di sempre — l'anagrafica (`anagraficaSocio`), la vendita di
-// un abbonamento e il documento (le trasformazioni dell'endpoint generico, entities/hooks.js), la
-// password (shared/password.js) — chiamate dentro la stessa transazione.
+// un abbonamento (le trasformazioni dell'endpoint generico, entities/hooks.js), la password
+// (shared/password.js) — chiamate dentro la stessa transazione.
+//
+// Il certificato medico e i consensi promozionali con il modulo firmato non si raccolgono più qui:
+// i documenti sono usciti dall'applicazione a novembre 2026 (docs/piani/portale.md).
 import bcrypt from 'bcryptjs';
 import { eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { members, trattative, attivita, subscriptions, memberDocuments, staffAccounts, consensi } from '../db/schema/index.js';
+import { members, trattative, attivita, subscriptions, staffAccounts } from '../db/schema/index.js';
 import { getUserFromRequest } from '../auth/tokens.js';
 import { canWriteEntity } from '../auth/authorize.js';
 import { translateToJs, translateToSnakeCase } from '../entities/columnMaps.js';
@@ -22,7 +25,6 @@ import { assegnaCodiceSocio } from '../lib/codiceSocio.js';
 import { registra } from '../lib/registro.js';
 import { registerPgErrorHandler } from './errorHandler.js';
 import { motivoPasswordNonValida } from '../../../shared/password.js';
-import { tipoConsensoValido } from '../../../shared/consensi.js';
 import { oggiIso } from '../../../shared/giorni.js';
 
 // Quello che l'iscrizione può scrivere sul socio. Il codice socio e le date di sistema restano
@@ -30,7 +32,7 @@ import { oggiIso } from '../../../shared/giorni.js';
 // suo passo, `informativa_privacy`.
 const CAMPI_SOCIO = [
 	'nome', 'cognome', 'sesso', 'codice_fiscale', 'email', 'phone', 'date_of_birth', 'address',
-	'emergency_contact_name', 'emergency_contact_phone', 'notes', 'foto_url',
+	'emergency_contact_name', 'emergency_contact_phone', 'notes', 'foto_url', 'consenso_genitori_firmato',
 ];
 
 const scegli = (corpo, campi) => Object.fromEntries(campi.filter((c) => c in (corpo ?? {})).map((c) => [c, corpo[c]]));
@@ -51,42 +53,32 @@ export default async function iscrizioniRoutes(fastify) {
 	 *     lead_id?,                                   — il contatto che si iscrive
 	 *     anagrafica: { nome, cognome, sesso, codice_fiscale, date_of_birth, … },
 	 *     abbonamento?: { plan_id, start_date?, price_paid? },
-	 *     certificato?: { file_url, file_name?, expiry_date },
 	 *     informativa_privacy: true,                  — l'informativa firmata in reception
-	 *     consensi?: { marketing_email?: bool, marketing_sms?: bool, marketing_push?: bool },
-	 *     modulo_consensi?: { file_url, file_name? }  — il modulo firmato: senza, nessun consenso "sì"
 	 *     portale?: { password }                      — l'accesso, con l'email dell'anagrafica
 	 *   }
 	 *
-	 * Serve poter scrivere i soci; i contatti se si iscrive un contatto, i documenti se c'è il
-	 * certificato. Il socio non ha nessuno di questi permessi, per costruzione.
+	 * Serve poter scrivere i soci, e i contatti se si iscrive un contatto. Il socio non ha nessuno
+	 * di questi permessi, per costruzione. `certificato`, `consensi` e `modulo_consensi` (i passi
+	 * di prima) si rifiutano: un client vecchio non deve credere di averli salvati.
 	 */
 	fastify.post('/api/iscrivi', async (request, reply) => {
 		const corpo = request.body ?? {};
 		const ruolo = request.utente.ruolo;
 		const puo = (entita) => canWriteEntity(ruolo, entita);
-		if (!puo('Member') || (corpo.lead_id && !puo('Lead')) || (corpo.certificato && !puo('MemberDocument'))) {
+		if (!puo('Member') || (corpo.lead_id && !puo('Lead'))) {
 			return reply.code(403).send({ error: 'Il tuo ruolo non consente questa operazione.' });
 		}
 
 		// Prima di aprire la transazione, quello che si controlla senza il database.
 		const anagrafica = anagraficaSocio(scegli(corpo.anagrafica, CAMPI_SOCIO), { creazione: true });
-		verificaCampiFile({ foto_url: anagrafica.foto_url, file_url: corpo.certificato?.file_url });
+		if (corpo.certificato || corpo.consensi || corpo.modulo_consensi) {
+			return reply.code(400).send({ error: "Certificato e consensi promozionali non si raccolgono più all'iscrizione." });
+		}
+		verificaCampiFile({ foto_url: anagrafica.foto_url });
 		if (corpo.informativa_privacy !== true) return reply.code(400).send({ error: "Serve l'informativa privacy firmata." });
 		const oggi = oggiIso();
 		anagrafica.gdpr_consent = true;
 		anagrafica.gdpr_consent_date = oggi;
-		const sceltiConsensi = Object.entries(corpo.consensi ?? {});
-		if (sceltiConsensi.some(([tipo, valore]) => !tipoConsensoValido(tipo) || typeof valore !== 'boolean')) {
-			return reply.code(400).send({ error: 'Consensi non validi.' });
-		}
-		// Un consenso dato in reception vale solo con il modulo firmato caricato (shared/consensi.js).
-		const datiConsensi = sceltiConsensi.some(([, valore]) => valore);
-		if (datiConsensi && !corpo.modulo_consensi?.file_url) {
-			return reply.code(400).send({ error: 'Per le comunicazioni promozionali serve il modulo firmato: caricalo, o togli le caselle.' });
-		}
-		if (datiConsensi && !puo('MemberDocument')) return reply.code(403).send({ error: 'Il tuo ruolo non consente di caricare documenti.' });
-		verificaCampiFile({ file_url: corpo.modulo_consensi?.file_url });
 		const password = corpo.portale?.password;
 		if (corpo.portale) {
 			const nonValida = motivoPasswordNonValida(password);
@@ -133,34 +125,12 @@ export default async function iscrizioniRoutes(fastify) {
 				esito: gia ? 'riattivato' : 'nuovo', autoreId: request.utente.sub, autoreNome,
 			});
 
-			// L'abbonamento e il certificato, con le regole dell'endpoint generico (un tipo vendibile,
-			// la scadenza dal tipo; il tipo di documento e la sua scadenza). Un rifiuto annulla tutto.
+			// L'abbonamento, con le regole dell'endpoint generico (un tipo vendibile, la scadenza dal
+			// tipo). Un rifiuto annulla tutto.
 			let abbonamento = null;
 			if (corpo.abbonamento) {
 				const vendita = await applyWriteTransform('Subscription', { ...scegli(corpo.abbonamento, ['plan_id', 'start_date', 'price_paid']), member_id: socio.id }, { conn: tx });
 				[abbonamento] = await tx.insert(subscriptions).values(translateToJs(subscriptions, vendita)).returning();
-			}
-			if (corpo.certificato) {
-				const documento = await applyWriteTransform('MemberDocument', {
-					...scegli(corpo.certificato, ['file_url', 'file_name', 'expiry_date']),
-					document_type: 'certificato_medico', member_id: socio.id, caricato_da: autoreNome,
-				}, { conn: tx });
-				if (!documento.file_url) throw rifiuta('Carica il certificato, o salta il passo.');
-				await tx.insert(memberDocuments).values(translateToJs(memberDocuments, documento));
-			}
-
-			if (sceltiConsensi.length) {
-				let documentoId = null;
-				if (datiConsensi) {
-					const modulo = await applyWriteTransform('MemberDocument', {
-						...scegli(corpo.modulo_consensi, ['file_url', 'file_name']),
-						document_type: 'consenso_marketing', member_id: socio.id, caricato_da: autoreNome,
-					}, { conn: tx });
-					[{ id: documentoId }] = await tx.insert(memberDocuments).values(translateToJs(memberDocuments, modulo)).returning({ id: memberDocuments.id });
-				}
-				await tx.insert(consensi).values(sceltiConsensi.map(([tipo, valore]) => ({
-					personaId: socio.personaId, tipo, valore, fonte: 'reception', autoreNome, documentoId: valore ? documentoId : null,
-				})));
 			}
 
 			// L'accesso al portale: un account `member` collegato al socio, con la password scelta qui,
@@ -189,7 +159,7 @@ export default async function iscrizioniRoutes(fastify) {
 		if (esito.errore) return reply.code(esito.errore).send({ error: esito.messaggio, ...(esito.socio_id ? { socio_id: esito.socio_id } : {}) });
 
 		const { socio, riattivato, abbonamento, accesso } = esito;
-		const pezzi = [abbonamento && `abbonamento ${abbonamento.planName}`, corpo.certificato && 'certificato', accesso && 'accesso al portale'].filter(Boolean);
+		const pezzi = [abbonamento && `abbonamento ${abbonamento.planName}`, accesso && 'accesso al portale'].filter(Boolean);
 		await registra(request.utente, {
 			tipoAzione: riattivato ? 'activate' : 'create', entitaTipo: 'member', entitaNome: socio.fullName, entitaId: socio.id,
 			dettagli: `${riattivato ? 'Tornato socio' : 'Iscritto'}${corpo.lead_id ? ' da un contatto (lead)' : ''}${pezzi.length ? `, con ${pezzi.join(', ')}` : ''}`,

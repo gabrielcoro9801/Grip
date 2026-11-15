@@ -13,7 +13,6 @@ import authRoutes from './routes/auth.js';
 import uploadRoutes from './routes/uploads.js';
 import organizationRoutes from './routes/organizations.js';
 import ruoliRoutes from './routes/ruoli.js';
-import qrRoutes from './routes/qr.js';
 import prenotazioniRoutes from './routes/prenotazioni.js';
 import leadRoutes from './routes/lead.js';
 import iscrizioniRoutes from './routes/iscrizioni.js';
@@ -170,7 +169,6 @@ export function buildApp({ publicBaseUrl = 'http://localhost:3001', logger = tru
 	app.register(authRoutes);
 	app.register(organizationRoutes);
 	app.register(ruoliRoutes);
-	app.register(qrRoutes);
 	app.register(prenotazioniRoutes);
 	app.register(leadRoutes);
 	app.register(iscrizioniRoutes);

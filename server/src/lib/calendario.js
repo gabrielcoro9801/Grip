@@ -65,13 +65,14 @@ export async function applicaRimozione(tx, { daEliminare, daAnnullare, prenotazi
 	if (daAnnullare.length) await tx.update(sessions).set({ status: 'cancelled' }).where(inArray(sessions.id, daAnnullare.map((l) => l.id)));
 	if (prenotazioniVive.length) {
 		await tx.update(bookings)
-			.set({ status: 'cancelled', waitlistPosition: null })
+			.set({ status: 'cancelled', waitlistPosition: null, postoOffertoFinoA: null })
 			.where(inArray(bookings.id, prenotazioniVive.map((p) => p.id)));
 	}
 	for (const lezione of daAnnullare) {
 		const chi = prenotazioniVive.filter((p) => p.sessionId === lezione.id).map((p) => p.memberId);
 		await notifica(tx, chi, {
 			tipo: 'lezione_annullata',
+			lezioneId: lezione.id,
 			titolo: `Lezione annullata: ${nomeCorso}`,
 			testo: `La lezione di ${nomeCorso} di ${giornoEsteso(lezione.date)} alle ${hhmm(lezione.startTime)} è stata annullata, `
 				+ 'e la tua prenotazione è stata cancellata. Ci scusiamo per il disagio.',

@@ -8,7 +8,7 @@ import { useStaffAuth } from "@/staff/lib/StaffAuthContext";
 import { canEdit } from "@/staff/lib/permissions";
 
 /**
- * Da fare: la barra delle cinque schede, l'Archivio e, per l'amministratore, le Regole. Come in
+ * Da fare: la barra delle quattro schede, l'Archivio e, per l'amministratore, le Regole. Come in
  * Soci e Lead, una voce per scheda e un indirizzo per voce.
  *
  * Accanto a ogni scheda il numero degli avvisi aperti. Lo porta ogni lettura degli avvisi

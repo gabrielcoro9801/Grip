@@ -10,7 +10,7 @@
 // Le uniche entità che il portale soci ha ragione di leggere.
 const LEGGIBILI = new Set([
 	// I propri dati
-	'Member', 'Subscription', 'MemberDocument', 'QRAccesso',
+	'Member', 'Subscription',
 	'Booking',
 	// Il catalogo dei corsi, che serve a prenotare
 	'Course', 'Category', 'Instructor', 'Event', 'Session', 'Room',
@@ -23,9 +23,6 @@ const LEGGIBILI = new Set([
 const COLONNA_PROPRIETARIO = {
 	Member: 'id',
 	Subscription: 'member_id',
-	MemberDocument: 'member_id',
-	// Nonostante il nome storico, punta al socio.
-	QRAccesso: 'cliente_id',
 };
 
 /**
@@ -74,11 +71,6 @@ const CAMPI_NASCOSTI = {
 // usciti dall'applicazione a ottobre 2026; tutto il resto lo registra la palestra, e quello
 // che il socio fa da sé (prenotare, disdire) passa da rotte dedicate. L'insieme resta per la
 // prossima entità che dovesse servire, insieme ai controlli sull'intestatario.
-//
-// **QRAccesso non è qui.** Il codice d'accesso se lo creava il socio, con lo stato che
-// voleva: bastava una richiesta per rifarsi una credenziale attiva dopo essere stato
-// revocato, e la revoca diventava una formalità. Ora il codice lo emette la palestra, e il
-// socio lo chiede soltanto a /api/qr/codice.
 //
 // **Nemmeno Booking è qui.** Prenotare non è scrivere una riga: è decidere se c'è posto, e
 // quel conto dipende da tutte le altre prenotazioni della stessa lezione. Da questo

@@ -6,6 +6,7 @@ import StatusBadge from "@/ui/StatusBadge";
 import { useConfirm } from "@/ui/ConfirmDialog";
 import { useToast } from "@/ui/primitivi/use-toast";
 import { Repeat, Trash2, X } from "lucide-react";
+import { formatData } from "@/core/domain/format";
 
 const nomeDi = (p) => `${p.nome} ${p.cognome}`.trim();
 
@@ -30,10 +31,10 @@ export default function PrenotazioniLezione({ prenotazioni, modificabile, linkAl
     setInCorso(true);
     try {
       const esito = await azione();
-      const promossi = esito?.promossi ?? [];
+      const offerti = esito?.offerti ?? [];
       toast({
         title: riuscita,
-        description: promossi.length ? `Dalla lista d'attesa: ${promossi.map((p) => p.member_name).join(", ")}.` : undefined,
+        description: offerti.length ? `Posto offerto a ${offerti.map((p) => p.member_name).join(", ")}: ha 12 ore per confermarlo dal portale.` : undefined,
       });
       onCambiato();
     } catch (err) {
@@ -46,7 +47,7 @@ export default function PrenotazioniLezione({ prenotazioni, modificabile, linkAl
   const disdici = async (p) => {
     const ok = await conferma({
       title: `Disdire la prenotazione di ${nomeDi(p)}?`,
-      description: p.status === "confirmed" ? "Il posto si libera, e il primo in lista d'attesa viene confermato." : undefined,
+      description: p.status === "confirmed" ? "Il posto si libera e si offre al primo in lista d'attesa, che ha 12 ore per confermarlo." : undefined,
       confirmLabel: "Disdici",
       cancelLabel: "Lascia com'è",
       destructive: true,
@@ -85,6 +86,9 @@ export default function PrenotazioniLezione({ prenotazioni, modificabile, linkAl
                 status={p.status}
                 label={p.status === "waitlisted" ? `In lista · ${p.waitlist_position ?? "?"}°` : undefined}
               />
+              {p.status === "waitlisted" && p.posto_offerto_fino_a && new Date(p.posto_offerto_fino_a) > new Date() && (
+                <span className="text-xs text-warning">Posto offerto fino a {formatData(p.posto_offerto_fino_a, "giorno", { ora: true })}</span>
+              )}
               {p.prenotazione_fissa_id && (
                 <StatusBadge status="fissa" tone="info" label={<><Repeat className="w-3 h-3 mr-1" aria-hidden="true" />Fissa</>} />
               )}

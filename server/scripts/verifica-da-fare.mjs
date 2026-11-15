@@ -1,17 +1,17 @@
 /**
- * Da fare, gli stati, l'elenco dei soci, i consensi: provati in un browser vero, con le schermate
+ * Da fare, gli stati, l'elenco dei soci, la revoca dei consensi: provati in un browser vero, con le schermate
  * nella cartella temporanea.
  *
  * - Da fare: la barra con i numeri, una scheda per avviso con le sue azioni, i recapiti senza link,
  *   Nascondi e poi Ripristina dall'Archivio.
- * - La scheda socio: lo stato in testa, niente blocco "Da seguire", i consensi in sola lettura.
+ * - La scheda socio: lo stato in testa, niente blocco "Da seguire", niente consensi né documenti.
  * - Elenco soci: le colonne nuove, "Contatta" da tabella e tile (senza aprire la scheda).
- * - La dashboard: cinque tessere, una per avviso, con i numeri di Da fare.
+ * - La dashboard: quattro tessere, una per avviso, con i numeri di Da fare.
  * - Le Regole: /admin/da-fare porta lì, un numero cambia la regola mentre si scrive, un avviso si
  *   spegne e sparisce; solo per l'amministratore, come il link della legenda degli stati.
  * - Da telefono, 390 px: nessuna scheda scorre di lato.
- * - Il portale: la domanda sui consensi al primo accesso; togliere un consenso, con "Annulla";
- *   niente più richiesta di rinnovo.
+ * - Il portale: niente domanda sui consensi; la riga «Revoca» per chi ne ha uno attivo, che li
+ *   toglie tutti; niente più richiesta di rinnovo.
  *
  * Come si usa:
  *   1. npx vite build        (nella radice: questo script serve il build corrente)
@@ -26,7 +26,7 @@ import { chromium } from 'playwright';
 import { buildApp } from '../src/app.js';
 import { db, pool } from '../src/db/client.js';
 import {
-	members, persone, staffAccounts, subscriptions, attivita, consensi, organizations, memberDocuments, ingressi, auditLogs, avvisi,
+	members, persone, staffAccounts, subscriptions, attivita, consensi, organizations, ingressi, auditLogs, avvisi,
 } from '../src/db/schema/index.js';
 import { oggiIso, spostaGiorni } from '../../shared/giorni.js';
 import os from 'node:os';
@@ -47,7 +47,6 @@ const SCHEDE = [
 	['In scadenza', '/da-fare', 'in_scadenza'],
 	['Scaduti', '/da-fare/scaduti', 'scaduto'],
 	['Frequenza', '/da-fare/frequenza', 'frequenza'],
-	['Documenti', '/da-fare/documenti', 'documento'],
 	['Compleanni', '/da-fare/compleanni', 'compleanno'],
 ];
 
@@ -70,11 +69,11 @@ try {
 	const persone = [
 		// Scade fra 3 giorni: In scadenza.
 		{ nome: 'Marco', cognome: `Rinnovi${lettere}`, fine: fra(3), ingresso: 2 },
-		// Certificato scaduto: Documenti.
-		{ nome: 'Sara', cognome: `Documenti${lettere}`, fine: fra(200), ingresso: 2, certificato: fra(-5) },
+		// In regola: nessun avviso (prima aveva il certificato scaduto; i documenti non ci sono più).
+		{ nome: 'Sara', cognome: `Documenti${lettere}`, fine: fra(200), ingresso: 2 },
 		// Non entra da 20 giorni: Frequenza, e stato "In calo".
 		{ nome: 'Luca', cognome: `Assente${lettere}`, fine: fra(200), ingresso: 20 },
-		// Per il portale: tutto in regola, mai scelto i consensi.
+		// Per il portale: tutto in regola, con un consenso promozionale da revocare.
 		{ nome: 'Elena', cognome: `Portale${lettere}`, fine: fra(200), ingresso: 1 },
 		// Scaduto da 5 giorni: Scaduti.
 		{ nome: 'Paolo', cognome: `Scaduto${lettere}`, fine: fra(-5), ingresso: 6 },
@@ -87,10 +86,7 @@ try {
 	}))).returning();
 	soci.forEach((s) => { id.soci.push(s.id); id.persone.push(s.personaId); });
 	await db.insert(subscriptions).values(soci.map((s, i) => ({ memberId: s.id, planName: 'Annuale', startDate: '2025-01-01', endDate: persone[i].fine })));
-	await db.insert(memberDocuments).values(soci.flatMap((s, i) => [
-		{ memberId: s.id, documentType: 'certificato_medico', expiryDate: persone[i].certificato ?? fra(300), fileName: 'certificato.pdf' },
-		{ memberId: s.id, documentType: 'documento_identita', expiryDate: fra(3000), fileName: 'ci.pdf' },
-	]));
+
 	await db.insert(ingressi).values(soci.flatMap((s, i) => [persone[i].ingresso, persone[i].ingresso + 3, persone[i].ingresso + 7].map((g) => ({
 		memberId: s.id, entratoAlle: new Date(`${fra(-g)}T08:00:00Z`), esito: 'ammesso', metodo: 'manuale', registratoDaNome: 'Verifica',
 	}))));
@@ -102,6 +98,7 @@ try {
 		{ nome: 'Elena Portale', email: `vd.elena.${t}@test.local`, passwordHash, ruolo: 'member', linkedMemberId: elena.id },
 	]).returning();
 	id.account = account.map((a) => a.id);
+	await db.insert(consensi).values({ personaId: elena.personaId, tipo: 'marketing_email', valore: true, fonte: 'portale', autoreNome: nome(elena) });
 	const [admin, reception, socioPortale] = account;
 
 	app = buildApp({ logger: false, publicBaseUrl: BASE });
@@ -137,7 +134,7 @@ try {
 	};
 	const rigaDb = async (s, tipo) => (await db.select().from(avvisi).where(and(eq(avvisi.personaId, s.personaId), eq(avvisi.tipo, tipo))))[0];
 
-	// --- 1. Da fare: la barra e le cinque schede ---------------------------------------------------
+	// --- 1. Da fare: la barra e le quattro schede ---------------------------------------------------
 	console.log('\nDA FARE');
 	const pg = await nuovaPagina();
 	await entra(pg, '/da-fare', reception.email);
@@ -147,8 +144,8 @@ try {
 	const rigaMarco = riga(pg, marco);
 	await rigaMarco.waitFor();
 	const voci = await barra(pg);
-	controlla('La barra: le cinque schede e l\'Archivio, senza Regole per la reception',
-		voci.map((v) => v.etichetta).join('|') === 'In scadenza|Scaduti|Frequenza|Documenti|Compleanni|Archivio', JSON.stringify(voci));
+	controlla('La barra: le quattro schede e l\'Archivio, senza Regole per la reception',
+		voci.map((v) => v.etichetta).join('|') === 'In scadenza|Scaduti|Frequenza|Compleanni|Archivio', JSON.stringify(voci));
 	const { conteggi } = await api(pg, '/api/avvisi?tipo=compleanno');
 	controlla('La barra: accanto a ogni scheda il numero degli avvisi aperti',
 		SCHEDE.every(([etichetta, , tipo]) => voci.find((v) => v.etichetta === etichetta)?.numero === conteggi[tipo]), JSON.stringify({ voci, conteggi }));
@@ -202,13 +199,6 @@ try {
 	controlla('Contattato: Luca esce, e nel diario un contatto per "assente"',
 		(await rigaDb(luca, 'frequenza'))?.esito === 'contattato' && contatto?.riferimento?.segnali?.includes('assente'), JSON.stringify(contatto?.riferimento));
 
-	// Documenti: Carica documento, con il tipo già scelto.
-	await vai(pg, '/da-fare/documenti');
-	const rigaSara = riga(pg, sara);
-	await rigaSara.waitFor();
-	controlla('Documenti: Sara, certificato scaduto', (await rigaSara.innerText()).includes(`Certificato medico scaduto il ${dataIt(fra(-5))}`), await rigaSara.innerText());
-	controlla('Carica documento: il caricamento del certificato, senza uscire', await apriEChiudi(rigaSara.getByRole('button', { name: 'Carica documento' }), /^Carica — Certificato medico/));
-
 	// Compleanni: Auguri fatti.
 	await vai(pg, '/da-fare/compleanni');
 	const rigaGiulia = riga(pg, giulia);
@@ -221,7 +211,7 @@ try {
 	// L'Archivio: Paolo nascosto, e Ripristina.
 	await vai(pg, '/da-fare/archivio?tipo=scaduto');
 	await pg.getByRole('heading', { name: 'Archivio' }).waitFor();
-	controlla('L\'Archivio ha la seconda fila delle cinque schede', (await pg.getByRole('tab').allInnerTexts()).map((x) => x.replace(/\s*\d+$/, '').trim()).join('|') === 'In scadenza|Scaduti|Frequenza|Documenti|Compleanni');
+	controlla('L\'Archivio ha la seconda fila delle quattro schede', (await pg.getByRole('tab').allInnerTexts()).map((x) => x.replace(/\s*\d+$/, '').trim()).join('|') === 'In scadenza|Scaduti|Frequenza|Compleanni');
 	const archiviato = riga(pg, paolo);
 	await archiviato.waitFor();
 	controlla('Archivio › Scaduti: Paolo, «Nascosto», da Rocco', /Nascosto · Rocco Reception/.test(await archiviato.innerText()), await archiviato.innerText());
@@ -243,12 +233,10 @@ try {
 	controlla('In testa lo stato: In calo', await pg.getByText('In calo', { exact: true }).first().isVisible());
 	controlla('Niente blocco "Da seguire"', await pg.getByText('Da seguire', { exact: true }).count() === 0);
 	controlla('Niente "Registra contatto" né "Rimanda"', await pg.getByRole('button', { name: /Registra contatto|Rimanda/ }).count() === 0);
-	controlla('Il diario racconta il Contattato', await pg.getByText(/Fatto:.*Non viene da un po'/).first().isVisible());
-	const consensiCard = pg.locator('div').filter({ has: pg.getByText('Comunicazioni promozionali', { exact: true }) }).last();
-	controlla('Consensi in sola lettura: niente caselle', await consensiCard.getByRole('checkbox').count() === 0);
-	await pg.getByRole('button', { name: 'Registra consenso firmato' }).click();
-	controlla('Senza modulo caricato, il consenso non si registra', await pg.getByText(/Prima carica il modulo firmato/).isVisible());
-	controlla('…e "Registra" resta spento', await pg.getByRole('button', { name: 'Registra', exact: true }).isDisabled());
+	// Dal 14/11 un «Fatto» di Da fare nel diario dice solo «Fatto», senza il mezzo (shared/lead.js).
+	controlla('Il diario racconta il Contattato', await pg.getByText(/^Fatto · .*Non viene da un po'/).first().isVisible());
+	controlla('Niente consensi né documenti nella scheda', await pg.getByText('Comunicazioni promozionali', { exact: true }).count() === 0
+		&& await pg.getByRole('heading', { name: /Documenti/ }).count() === 0);
 	await pg.screenshot({ path: schermata('5-scheda'), fullPage: true });
 	await pg.keyboard.press('Escape');
 
@@ -282,8 +270,8 @@ try {
 	await tessere.first().waitFor();
 	const testi = (await tessere.allInnerTexts()).map((x) => x.replace(/\s+/g, ' ').trim());
 	const { da_fare: daFare } = await api(pg, '/api/dashboard');
-	controlla('Cinque tessere, una per avviso, con i numeri di Da fare',
-		testi.length === 5 && SCHEDE.every(([etichetta, , tipo], i) => testi[i] === `${etichetta} ${daFare[tipo]}`), JSON.stringify({ testi, daFare }));
+	controlla('Quattro tessere, una per avviso, con i numeri di Da fare',
+		testi.length === 4 && SCHEDE.every(([etichetta, , tipo], i) => testi[i] === `${etichetta} ${daFare[tipo]}`), JSON.stringify({ testi, daFare }));
 	controlla('Niente più liste doppie', await pg.getByText('Avvisi certificati').count() === 0 && await pg.getByText('Rinnovi abbonamenti').count() === 0);
 	await pg.screenshot({ path: schermata('7-dashboard'), fullPage: true });
 	await tessere.filter({ hasText: 'Scaduti' }).click();
@@ -304,23 +292,23 @@ try {
 	const riapri = am.getByLabel('Ricompare dopo quanti giorni');
 	await riapri.fill('31');
 	controlla('La regola si riscrive mentre si cambia il numero', await am.getByText(/torna dopo 31 giorni, se è ancora in calo/).isVisible());
-	await am.getByRole('checkbox', { name: 'Segui «Documenti in scadenza»' }).click();
+	await am.getByRole('checkbox', { name: 'Segui «Compleanni»' }).click();
 	await am.getByRole('button', { name: 'Salva' }).click();
 	await am.getByText('Regole salvate').first().waitFor();
 	const [salvata] = await db.select().from(organizations).where(eq(organizations.id, palestra.id));
 	controlla('Salvate: il numero e l\'avviso spento', salvata.impostazioni?.soglie?.frequenzaRiapriGiorni === 31
-		&& ['documento_scaduto', 'documento_in_scadenza'].every((c) => salvata.impostazioni?.segnali_spenti?.includes(c)), JSON.stringify(salvata.impostazioni?.segnali_spenti));
+		&& salvata.impostazioni?.segnali_spenti?.includes('compleanno'), JSON.stringify(salvata.impostazioni?.segnali_spenti));
 	const registro = await db.select().from(auditLogs).where(and(eq(auditLogs.entitaTipo, 'impostazioni'), gte(auditLogs.timestamp, inizio)));
 	controlla('Nel registro delle azioni', registro.length >= 1);
 	await am.screenshot({ path: schermata('8-regole'), fullPage: true });
 	await am.reload({ waitUntil: 'networkidle' });
 	await riapri.waitFor();
 	controlla('Ricaricando restano', await riapri.inputValue() === '31'
-		&& await am.getByRole('checkbox', { name: 'Segui «Documenti in scadenza»' }).getAttribute('data-state') === 'unchecked');
-	await vai(pg, '/da-fare/documenti');
+		&& await am.getByRole('checkbox', { name: 'Segui «Compleanni»' }).getAttribute('data-state') === 'unchecked');
+	await vai(pg, '/da-fare/compleanni');
 	await pg.getByText('La palestra non segue questo avviso').waitFor();
-	controlla('L\'avviso spento sparisce da Da fare', await riga(pg, sara).count() === 0
-		&& (await barra(pg)).find((v) => v.etichetta === 'Documenti')?.numero === 0);
+	controlla('L\'avviso spento sparisce da Da fare', await riga(pg, giulia).count() === 0
+		&& (await barra(pg)).find((v) => v.etichetta === 'Compleanni')?.numero === 0);
 	await vai(pg, '/da-fare/regole');
 	controlla('La reception non apre le Regole', pg.url().endsWith('/da-fare'), pg.url());
 	// La legenda degli stati: il link alle Regole solo per l'amministratore.
@@ -371,23 +359,19 @@ try {
 		await portale.locator('button[type=submit]').click();
 		await portale.waitForLoadState('networkidle');
 	}
-	await portale.getByText('Vuoi ricevere anche promozioni e novità?').waitFor();
-	controlla('La domanda al primo accesso', true);
-	await portale.getByRole('button', { name: 'Salva le mie scelte' }).click();
-	await portale.getByText('Vuoi ricevere anche promozioni e novità?').waitFor({ state: 'detached' });
-	controlla('Scelto anche il "no": la domanda non torna', (await db.select().from(consensi).where(eq(consensi.personaId, elena.personaId))).length === 3);
-	await portale.goto(`${BASE}/member-portal/anagrafica`, { waitUntil: 'networkidle' });
-	const email = portale.getByRole('checkbox').first();
-	await email.click();
-	await portale.waitForLoadState('networkidle');
-	await email.click();
-	await portale.getByText(/^Tolto:/).waitFor();
-	controlla('Togliere è un tocco, con "Annulla"', await portale.getByRole('button', { name: 'Annulla' }).isVisible());
+	await portale.getByRole('heading', { name: /^Ciao/ }).waitFor();
+	controlla('Home: niente domanda sui consensi né QR', await portale.getByText('Vuoi ricevere anche promozioni e novità?').count() === 0
+		&& await portale.getByText(/Mostra il QR/).count() === 0);
+	await portale.goto(`${BASE}/member-portal/profilo`, { waitUntil: 'networkidle' });
+	await portale.getByText('Le ricevi per email.').waitFor();
+	controlla('Profilo: la riga «Revoca», senza caselle', await portale.getByRole('checkbox').count() === 0);
+	await portale.getByRole('button', { name: 'Revoca', exact: true }).click();
+	await portale.getByRole('alertdialog').getByRole('button', { name: 'Revoca' }).click();
+	await portale.getByText('Consensi revocati').first().waitFor();
 	await portale.screenshot({ path: schermata('10-portale'), fullPage: true });
-	await portale.getByRole('button', { name: 'Annulla' }).click();
-	await portale.getByText(/^Tolto:/).waitFor({ state: 'detached' });
-	const ridato = await portale.waitForFunction(() => document.querySelector('[role=checkbox]')?.getAttribute('data-state') === 'checked', null, { timeout: 5000 }).then(() => true, () => false);
-	controlla('"Annulla" lo ridà', ridato);
+	const revoche = await db.select().from(consensi).where(eq(consensi.personaId, elena.personaId));
+	controlla('Revocato: una riga in più nel registro, e la riga sparisce', revoche.length === 2 && revoche.some((c) => c.valore === false && c.fonte === 'portale')
+		&& await portale.getByRole('button', { name: 'Revoca', exact: true }).count() === 0, JSON.stringify(revoche.map((c) => [c.valore, c.fonte])));
 	await portale.goto(`${BASE}/member-portal/abbonamento`, { waitUntil: 'networkidle' });
 	await portale.getByRole('heading', { name: 'Abbonamento' }).waitFor();
 	controlla('Abbonamento: niente richiesta di rinnovo', await portale.getByText(/Richiedi il rinnovo|Vuoi rinnovare/).count() === 0);
@@ -406,7 +390,6 @@ try {
 	if (id.account.length) await db.delete(staffAccounts).where(inArray(staffAccounts.id, id.account));
 	if (id.soci.length) {
 		await db.delete(ingressi).where(inArray(ingressi.memberId, id.soci));
-		await db.delete(memberDocuments).where(inArray(memberDocuments.memberId, id.soci));
 		await db.delete(subscriptions).where(inArray(subscriptions.memberId, id.soci));
 		await db.delete(members).where(inArray(members.id, id.soci));
 		await db.delete(persone).where(inArray(persone.id, id.persone));

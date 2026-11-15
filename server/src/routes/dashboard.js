@@ -51,8 +51,6 @@ export default async function dashboardRoutes(fastify) {
 			kpi: {
 				soci_attivi: puo('Subscription') ? soci.filter((p) => !p.archiviato_il && p.valido).length : null,
 				soci_iscritti: iscritti,
-				// I documenti da sistemare hanno la loro tessera fra gli avvisi di Da fare: un numero
-				// solo, in un posto solo.
 				prossime_lezioni: prossime?.length ?? null,
 			},
 			da_fare: motore ? await avvisiAperti(motore) : null,
@@ -62,16 +60,15 @@ export default async function dashboardRoutes(fastify) {
 	});
 }
 
-// Gli archiviati hanno lasciato la palestra: non si contano, e non si richiamano per rinnovi o
-// certificati.
+// Gli archiviati hanno lasciato la palestra: non si contano, e non si richiamano per i rinnovi.
 async function contaSoci() {
 	const [{ quanti }] = await db.select({ quanti: count() }).from(members).where(isNull(members.archiviatoIl));
 	return Number(quanti);
 }
 
 /**
- * Gli avvisi aperti in ogni scheda di Da fare, adesso: le cinque tessere della dashboard
- * ({ in_scadenza, scaduto, frequenza, documento, compleanno }). Si allinea prima di contare, come
+ * Gli avvisi aperti in ogni scheda di Da fare, adesso: le quattro tessere della dashboard
+ * ({ in_scadenza, scaduto, frequenza, compleanno }). Si allinea prima di contare, come
  * fa Da fare: i numeri sono quelli della sua barra.
  */
 async function avvisiAperti({ oggi, soglie, persone }) {
@@ -92,8 +89,8 @@ async function motiviAbbandono(oggi) {
 }
 
 /**
- * Le lezioni da adesso a fra sette giorni, una riga per lezione con i posti: confermati, capienza
- * e lista d'attesa. Erano le prenotazioni, una per riga: cinque card "Cross Training" uguali per
+ * Le lezioni da adesso a fra sette giorni, una riga per lezione con i posti: confermati, offerti a
+ * chi è in lista (occupati anche loro), capienza e lista d'attesa. Erano le prenotazioni, una per riga: cinque card "Cross Training" uguali per
  * una lezione sola, e un "Prossime lezioni: 131" che contava prenotazioni.
  */
 async function prossimeLezioni(oggi) {
@@ -103,6 +100,7 @@ async function prossimeLezioni(oggi) {
 			capacity: sessions.capacity, course_name: courses.name, room_name: rooms.name,
 			confermati: sql`count(${bookings.id}) filter (where ${bookings.status} = 'confirmed')`.mapWith(Number),
 			in_attesa: sql`count(${bookings.id}) filter (where ${bookings.status} = 'waitlisted')`.mapWith(Number),
+			offerti: sql`count(${bookings.id}) filter (where ${bookings.status} = 'waitlisted' and ${bookings.postoOffertoFinoA} > now())`.mapWith(Number),
 		})
 		.from(sessions)
 		.innerJoin(events, eq(sessions.eventId, events.id))

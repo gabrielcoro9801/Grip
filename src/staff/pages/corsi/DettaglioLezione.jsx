@@ -140,6 +140,7 @@ export default function DettaglioLezione() {
             <Dato etichetta="Categoria">{categoria?.name ?? "—"}</Dato>
             <Dato etichetta="Posti">
               {lezione.confermati}/{lezione.capacity} confermati
+              {lezione.offerti > 0 && <span> · {lezione.offerti === 1 ? "1 posto offerto" : `${lezione.offerti} posti offerti`}</span>}
               {lezione.in_attesa > 0 && <span className="text-warning"> · {lezione.in_attesa} in lista d'attesa</span>}
             </Dato>
             {!singola && <Dato etichetta="Sessione">{descriviSessione(sessione)}</Dato>}

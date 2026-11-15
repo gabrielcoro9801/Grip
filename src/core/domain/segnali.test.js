@@ -10,16 +10,11 @@ import { soglieDi } from './soglie.js';
 
 const OGGI = '2026-10-10';
 const g = (n) => spostaGiorni(OGGI, n);
-// Un socio "normale": iscritto da un anno, abbonamento valido per mesi, entra due volte a settimana,
-// documenti in regola.
+// Un socio "normale": iscritto da un anno, abbonamento valido per mesi, entra due volte a settimana.
 const socio = { created_date: '2025-01-01', archiviato_il: null, date_of_birth: '1990-05-20' };
 const annuale = [{ id: 'a1', plan_name: 'Annuale', start_date: '2026-01-01', end_date: '2026-12-31' }];
 const regolare = { ultimo: g(-2), quattro: 8, dodici: 24, totale: 120 };
-const documentiInRegola = [
-	{ id: 'c1', document_type: 'certificato_medico', created_date: '2026-01-01', expiry_date: '2027-06-01' },
-	{ id: 'i1', document_type: 'documento_identita', created_date: '2026-01-01', expiry_date: '2030-01-01' },
-];
-const calcola = (extra = {}) => segnaliPersona({ socio, iscrizioni: annuale, documenti: documentiInRegola, ingressi: regolare, oggi: OGGI, ...extra });
+const calcola = (extra = {}) => segnaliPersona({ socio, iscrizioni: annuale, ingressi: regolare, oggi: OGGI, ...extra });
 const staff = (r) => daFare(r.segnali, 'staff').map((s) => s.codice);
 
 describe('gli stati', () => {
@@ -103,12 +98,6 @@ describe('gli stati', () => {
 		assert.equal(calcola({ ingressi: { ...regolare, quattro: 0, dodici: 6 } }).fase, 'attivo');
 	});
 
-	test('un documento scaduto non cambia lo stato: è un segnale', () => {
-		const r = calcola({ documenti: [{ id: 'c1', document_type: 'certificato_medico', created_date: '2025-01-01', expiry_date: g(-1) }, documentiInRegola[1]] });
-		assert.equal(r.fase, 'attivo');
-		assert.deepEqual(staff(r), ['documento_scaduto']);
-	});
-
 	test('se la palestra non registra gli ingressi nessuno risulta assente', () => {
 		const r = calcola({ ingressi: null });
 		assert.equal(r.fase, 'attivo');
@@ -135,10 +124,10 @@ describe('i segnali', () => {
 	});
 
 	test('i segnali tolti non esistono più', () => {
-		for (const c of ['rinnovo_richiesto', 'scaduto_recuperabile', 'no_show_ripetuti', 'ambientamento_giorno_7', 'ambientamento_pochi_ingressi', 'documento_mancante', 'da_contattare']) {
+		for (const c of ['rinnovo_richiesto', 'scaduto_recuperabile', 'no_show_ripetuti', 'ambientamento_giorno_7', 'ambientamento_pochi_ingressi', 'documento_mancante', 'documento_scaduto', 'documento_in_scadenza', 'da_contattare']) {
 			assert.ok(!CODICI_SEGNALE.includes(c), c);
 		}
-		assert.deepEqual(SEGNALI.map((s) => s.valore), ['scaduto', 'in_scadenza', 'assente', 'in_calo', 'documento_scaduto', 'documento_in_scadenza', 'compleanno']);
+		assert.deepEqual(SEGNALI.map((s) => s.valore), ['scaduto', 'in_scadenza', 'assente', 'in_calo', 'compleanno']);
 	});
 
 	test('un segnale spento dalla palestra non si calcola, ma lo stato non cambia', () => {
@@ -159,22 +148,6 @@ describe('i segnali', () => {
 	test('i nuovi soci non hanno più segnali loro', () => {
 		const sette = calcola({ iscrizioni: [{ start_date: g(-7), end_date: g(23) }], ingressi: { ultimo: g(-1), quattro: 2, dodici: 2, totale: 2 } });
 		assert.deepEqual(staff(sette), []);
-	});
-
-	test('i documenti: scaduti o in scadenza; quello che manca non è un segnale; un archiviato non si richiama', () => {
-		const scaduto = calcola({ documenti: [{ id: 'd1', file_name: 'c.pdf', document_type: 'certificato_medico', created_date: '2025-01-01', expiry_date: g(-1) }, documentiInRegola[1]] });
-		const s = scaduto.segnali.find((x) => x.codice === 'documento_scaduto');
-		assert.equal(s.motivo, 'certificato medico scaduto il 09/10/2026');
-		assert.equal(s.dati.documenti[0].documento_id, 'd1');
-		assert.equal(s.dati.documenti[0].giorni, -1);
-		const manca = calcola({ documenti: [documentiInRegola[0]] });
-		assert.deepEqual(staff(manca), []);
-		// …ma il portale lo dice ancora.
-		assert.ok(manca.segnali.some((x) => x.pubblico === 'socio' && x.codice === 'documento_identita_mancante'));
-		const inScadenza = calcola({ documenti: [{ document_type: 'certificato_medico', created_date: '2025-01-01', expiry_date: g(20) }, documentiInRegola[1]] });
-		assert.ok(staff(inScadenza).includes('documento_in_scadenza'));
-		const ex = calcola({ socio: { ...socio, archiviato_il: g(-1) }, documenti: [{ document_type: 'certificato_medico', expiry_date: g(-1) }] });
-		assert.deepEqual(staff(ex), []);
 	});
 
 	test('compleanno, anche per chi è nato il 29 febbraio', () => {

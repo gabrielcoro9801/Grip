@@ -1,7 +1,8 @@
 // Il termine di disdetta di un corso: fino a quando il socio disdice da sé.
 import test, { describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { limiteDisdetta, motivoDisdettaChiusa } from './corsi.js';
+import { limiteDisdetta, motivoDisdettaChiusa, chiusuraLista, fasciaDelGiorno } from './corsi.js';
+import { istanteRoma } from './giorni.js';
 
 const lezione = { date: '2026-10-12', start_time: '18:00:00', end_time: '19:00:00' };
 // Ottobre è ora legale: le 14:30 UTC sono le 16:30 a Roma.
@@ -21,5 +22,27 @@ describe('il termine di disdetta', () => {
 		assert.match(motivoDisdettaChiusa(lezione, 1, alle('17:30')), /fino a 1 ora prima/);
 		assert.match(motivoDisdettaChiusa(lezione, 0, alle('18:05')), /fino all'inizio/);
 		assert.equal(motivoDisdettaChiusa(lezione, null, alle('18:30')), null);
+	});
+});
+
+describe("la chiusura della lista d'attesa", () => {
+	test("un'ora di Roma diventa l'istante giusto, d'estate e d'inverno", () => {
+		assert.equal(istanteRoma('2026-11-15', '18:00').toISOString(), '2026-11-15T17:00:00.000Z');
+		assert.equal(istanteRoma('2026-07-01', '18:00').toISOString(), '2026-07-01T16:00:00.000Z');
+		assert.equal(istanteRoma('2026-03-29', '03:30').toISOString(), '2026-03-29T01:30:00.000Z', 'il giorno del cambio');
+	});
+
+	test("al termine di disdetta del corso, o senza termine all'inizio della lezione", () => {
+		const l = { date: '2026-11-20', start_time: '18:30:00' };
+		assert.equal(chiusuraLista(l, 2).toISOString(), '2026-11-20T15:30:00.000Z');
+		assert.equal(chiusuraLista(l, 24).toISOString(), '2026-11-19T17:30:00.000Z');
+		assert.equal(chiusuraLista(l, null).toISOString(), '2026-11-20T17:30:00.000Z');
+	});
+});
+
+describe('le fasce del giorno', () => {
+	test('mattino prima delle 13, pomeriggio fino alle 18, poi sera', () => {
+		assert.deepEqual(['07:00', '12:59', '13:00', '17:59', '18:00', '21:30'].map(fasciaDelGiorno),
+			['mattino', 'mattino', 'pomeriggio', 'pomeriggio', 'sera', 'sera']);
 	});
 });

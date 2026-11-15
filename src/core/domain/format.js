@@ -23,6 +23,8 @@
 // che fa `pezziData` qui sotto, ed è anche il motivo per cui i formati ammessi restano un
 // elenco chiuso invece di stringhe libere.
 
+import { oggiIso, oraIso, spostaGiorni, giorniFra } from './giorni.js';
+
 export const LOCALE = "it-IT";
 export const TIMEZONE = "Europe/Rome";
 export const VALUTA = "EUR";
@@ -216,3 +218,34 @@ export function toIsoDate(value) {
 // Il conto dei giorni (quanti ne mancano, spostarsi di N) non sta qui: sta in
 // `shared/giorni.js`, perché lo fa anche il server, e "oggi" dev'essere lo stesso giorno per
 // tutti e due. Ce n'erano quattro copie.
+
+/** Il giorno di una lezione come lo dice il portale: «Oggi, gio 12 nov», «Domani, ven 13 nov», «sab 14 nov». */
+export function giornoLezione(iso, oggi = oggiIso()) {
+  const giorno = formatData(iso, "giorno");
+  if (iso === oggi) return `Oggi, ${giorno}`;
+  if (iso === spostaGiorni(oggi, 1)) return `Domani, ${giorno}`;
+  return giorno;
+}
+
+/** Un istante come scadenza, all'ora di Roma: «oggi alle 18:30», «domani alle 9:00», «mar 17 nov alle 18:00». */
+export function quandoIstante(valore, adesso = new Date()) {
+  const d = aData(valore);
+  if (!d) return "";
+  const giorno = giornoLezione(oggiIso(d), oggiIso(adesso));
+  const [primo] = giorno.split(",");
+  return `${/^(Oggi|Domani)$/.test(primo) ? primo.toLowerCase() : giorno} alle ${oraIso(d)}`;
+}
+
+/** Da quanto è successo: «adesso», «5 minuti fa», «2 ore fa», «ieri», «3 giorni fa», poi la data. */
+export function tempoFa(valore, adesso = new Date()) {
+  const d = aData(valore);
+  if (!d) return "";
+  const minuti = Math.floor((adesso - d) / 60_000);
+  const giorni = giorniFra(oggiIso(d), oggiIso(adesso));
+  if (minuti < 1) return "adesso";
+  if (minuti < 60) return minuti === 1 ? "1 minuto fa" : `${minuti} minuti fa`;
+  if (giorni === 0) return Math.floor(minuti / 60) === 1 ? "1 ora fa" : `${Math.floor(minuti / 60)} ore fa`;
+  if (giorni === 1) return "ieri";
+  if (giorni < 7) return `${giorni} giorni fa`;
+  return formatData(d, "giorno");
+}

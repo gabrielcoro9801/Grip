@@ -1,4 +1,4 @@
-// Il flusso "Iscrivi": anagrafica, abbonamento, certificato, privacy e accesso al portale in una
+// Il flusso "Iscrivi": anagrafica, abbonamento, privacy e accesso al portale in una
 // transazione. O si salva tutto, o niente; un ex socio che entra direttamente ritrova la sua scheda.
 import test, { before, after, describe } from 'node:test';
 import assert from 'node:assert/strict';
@@ -10,7 +10,7 @@ import {
 	members, staffAccounts, subscriptions, memberDocuments, consensi, attivita, plans, auditLogs,
 } from '../src/db/schema/index.js';
 import { carattereDiControllo } from '../../shared/anagrafica.js';
-import { oggiIso, spostaGiorni } from '../../shared/giorni.js';
+import { oggiIso } from '../../shared/giorni.js';
 import { dataFineAbbonamento } from '../../shared/abbonamenti.js';
 
 const PASSWORD = 'prova-iscrivi-1234';
@@ -74,24 +74,25 @@ describe('iscrivi in un passo', () => {
 		assert.equal(res.statusCode, 400, res.body);
 		const senzaEmail = await iscrivi({ anagrafica: anagrafica(CF_FALLITO), informativa_privacy: true, portale: { password: PASSWORD } });
 		assert.equal(senzaEmail.statusCode, 400);
-		const certificatoSenzaScadenza = await iscrivi({ anagrafica: anagrafica(CF_FALLITO), informativa_privacy: true, certificato: { file_url: '/uploads/cert.pdf' } });
-		assert.equal(certificatoSenzaScadenza.statusCode, 400);
-		// Un consenso promozionale dato in reception vale solo con il modulo firmato.
-		const consensoSenzaModulo = await iscrivi({ anagrafica: anagrafica(CF_FALLITO), informativa_privacy: true, consensi: { marketing_email: true } });
-		assert.equal(consensoSenzaModulo.statusCode, 400);
-		assert.match(consensoSenzaModulo.json().error, /modulo firmato/);
+		// Certificato e consensi promozionali non si raccolgono più (docs/piani/portale.md, R2): un
+		// client vecchio che li manda riceve un no, non un socio senza.
+		for (const vecchio of [
+			{ certificato: { file_url: '/uploads/cert.pdf', expiry_date: '2030-01-01' } },
+			{ consensi: { marketing_email: true }, modulo_consensi: { file_url: '/uploads/modulo.pdf' } },
+		]) {
+			const res2 = await iscrivi({ anagrafica: anagrafica(CF_FALLITO), informativa_privacy: true, ...vecchio });
+			assert.equal(res2.statusCode, 400, res2.body);
+			assert.match(res2.json().error, /non si raccolgono più/);
+		}
 		assert.deepEqual((await sociDiProva()).filter((s) => s.codiceFiscale === CF_FALLITO), []);
 	});
 
-	test('tutto insieme: socio, abbonamento, certificato, privacy, consensi e accesso al portale', async () => {
+	test('tutto insieme: socio, abbonamento, privacy e accesso al portale', async () => {
 		const inizio = oggiIso();
 		const res = await iscrivi({
 			anagrafica: anagrafica(CF_NUOVO, { email: emailNuovo, phone: '347 555 1234' }),
 			abbonamento: { plan_id: id.tipo, start_date: inizio },
-			certificato: { file_url: '/uploads/certificato-prova.pdf', file_name: 'certificato.pdf', expiry_date: spostaGiorni(inizio, 365) },
 			informativa_privacy: true,
-			consensi: { marketing_email: true, marketing_sms: false },
-			modulo_consensi: { file_url: '/uploads/modulo-consensi.pdf', file_name: 'modulo.pdf' },
 			portale: { password: PASSWORD },
 		});
 		assert.equal(res.statusCode, 201, res.body);
@@ -104,14 +105,8 @@ describe('iscrivi in un passo', () => {
 		const [abbonamento] = await db.select().from(subscriptions).where(eq(subscriptions.memberId, member.id));
 		assert.equal(abbonamento.endDate, dataFineAbbonamento(inizio, 1, 'mesi'));
 		assert.equal(Number(abbonamento.pricePaid), 45);
-		const documenti = await db.select().from(memberDocuments).where(eq(memberDocuments.memberId, member.id));
-		const documento = documenti.find((d) => d.documentType === 'certificato_medico');
-		assert.equal(documento.caricatoDa, 'Reception Iscrivi');
-		// Il modulo dei consensi finisce fra i documenti, ed è la prova del "sì".
-		const modulo = documenti.find((d) => d.documentType === 'consenso_marketing');
-		assert.ok(modulo);
-		const scelte = await db.select().from(consensi).where(eq(consensi.personaId, member.persona_id));
-		assert.deepEqual(scelte.map((c) => [c.tipo, c.valore, c.fonte, c.documentoId]).sort(), [['marketing_email', true, 'reception', modulo.id], ['marketing_sms', false, 'reception', null]]);
+		assert.deepEqual(await db.select().from(memberDocuments).where(eq(memberDocuments.memberId, member.id)), []);
+		assert.deepEqual(await db.select().from(consensi).where(eq(consensi.personaId, member.persona_id)), []);
 		const diario = await db.select().from(attivita).where(eq(attivita.personaId, member.persona_id));
 		// Le righe "Da fare" del giro (se un altro file lo lancia intanto) non sono dell'iscrizione.
 		assert.deepEqual(diario.filter((a) => a.autoreNome !== 'Sistema').map((a) => [a.tipo, a.esito]), [['iscrizione', 'nuovo']]);

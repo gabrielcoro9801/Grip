@@ -1,25 +1,22 @@
-import { eq, and, gte, lte, inArray, ne, desc, isNull, count } from 'drizzle-orm';
+import { eq, and, or, gte, lte, inArray, ne, desc, isNull, count, min, sql } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import {
-	members, memberDocuments, qrAccessi,
-	courses, categories, instructors, rooms, events, sessions, bookings, notifiche, consensi,
+	members,
+	courses, categories, instructors, rooms, events, sessions, bookings, notifiche, consensi, prenotazioniFisse,
 } from '../../db/schema/index.js';
 import { iscrizioniDelSocio } from '../../lib/iscrizioni.js';
 import { consensiDi } from '../../lib/consensi.js';
 import { tipoConsensoValido } from '../../../../shared/consensi.js';
 import { getUserFromRequest } from '../../auth/tokens.js';
 import { socioDiAccount } from '../../auth/socioCorrente.js';
-import { codiceDinamico } from '../../lib/qrDinamico.js';
-import { prenota, disdici } from '../../lib/prenotazioni.js';
+import { prenota, disdici, regolaOfferte } from '../../lib/prenotazioni.js';
 import { firmaUrl } from '../../lib/urlFirmati.js';
-import { msResiduiFinestra } from '../../../../shared/qrDinamico.js';
-import { nomeDocumento, conStatoDocumenti } from '../../../../shared/anagrafica.js';
-import { statoIscrizione, motivoSenzaCopertura, sospensioneIl } from '../../../../shared/abbonamenti.js';
+import { statoIscrizione, motivoSenzaCopertura, sospensioneIl, fineCopertura } from '../../../../shared/abbonamenti.js';
 import { oggiIso, eUnGiorno, giorniFra, giorniDaOggi, spostaGiorni, lezioneFinita } from '../../../../shared/giorni.js';
-import { limiteDisdetta, motivoDisdettaChiusa } from '../../../../shared/corsi.js';
-import { applicaFisse, creaFissa, terminaFissa, elencoFisse } from '../../lib/prenotazioniFisse.js';
+import { limiteDisdetta, motivoDisdettaChiusa, chiusuraLista, GIORNI_SETTIMANA } from '../../../../shared/corsi.js';
+import { creaFissa, modificaFissa, terminaFissa, elencoFisse, limitiFissa, anteprimaFissa } from '../../lib/prenotazioniFisse.js';
 import { avvisiSocio } from '../../../../shared/avvisi.js';
-import { soglieEnte } from '../../lib/impostazioni.js';
+import { soglieEnte, contattiPalestra } from '../../lib/impostazioni.js';
 
 /**
  * L'API del portale soci.
@@ -56,9 +53,10 @@ import { soglieEnte } from '../../lib/impostazioni.js';
  * ## La versione nel percorso
  *
  * `v1` sta nell'indirizzo perché è l'unica forma che si legge in un log e si prova con
- * `curl`. Dentro `v1` si **aggiunge**: non si toglie un campo e non se ne rinomina uno. Un
- * campo che non serve più resta e si documenta come ignorato. Rompere significa `v2`, con
- * `v1` vivo finché esistono installazioni che lo usano.
+ * `curl`. Finché il portale è solo una pagina web, rilasciata insieme al server, `v1` cambia
+ * con lui: a novembre 2026 ne sono usciti il codice d'accesso, i documenti e i consensi dati dal
+ * portale (docs/piani/portale.md). Il giorno in cui ci sarà un'app installata, dentro `v1` si
+ * aggiungerà soltanto, e rompere vorrà dire `v2`.
  */
 export default async function memberRoutes(fastify) {
 	fastify.addHook('preHandler', async (request, reply) => {
@@ -83,38 +81,17 @@ export default async function memberRoutes(fastify) {
 	/**
 	 * Quello che serve alla schermata iniziale e all'anagrafica, in una richiesta sola.
 	 *
-	 * `giorni_alla_scadenza` e `in_scadenza` li calcola il server. Oggi quelle soglie vivono
-	 * nel browser in due punti diversi — sette giorni in `MemberDashboard`, trenta in
-	 * `MemberDocuments` — cioè la stessa politica scritta due volte, in un posto dove nessuno
-	 * la cerca. Stando qui è una sola, ed è anche ciò che libera un client mobile dal doversi
-	 * portare dietro una libreria di date per rispondere a "scade presto?".
+	 * `giorni_alla_scadenza` e `in_scadenza` li calcola il server, con le soglie della palestra:
+	 * la politica sta in un posto solo, e il client non deve portarsi dietro una libreria di date
+	 * per rispondere a "scade presto?".
 	 */
 	fastify.get('/profilo', async (request) => {
 		const [socio] = await db.select().from(members).where(eq(members.id, request.idSocio)).limit(1);
-		if (!socio) return { socio: null, abbonamento: null, documenti: null };
+		if (!socio) return { socio: null, abbonamento: null };
 
 		// Con le date dopo le sospensioni, dalla più recente.
 		const [iscrizioni, soglie] = await Promise.all([iscrizioniDelSocio(request.idSocio), soglieEnte()]);
 		const abbonamenti = iscrizioni.reverse();
-
-		// Servono anche tipo e data di caricamento, non solo la scadenza: un certificato
-		// scaduto e già sostituito è archiviato, e non va contato fra quelli scaduti —
-		// altrimenti il socio che ha rinnovato si vede un avviso rosso che non sa come
-		// togliere. La regola sta in shared/anagrafica.js, la stessa della segreteria.
-		// Le soglie della palestra, per lo stato come per "in scadenza": il badge e il riquadro
-		// sotto devono dire la stessa cosa.
-		const documenti = conStatoDocumenti(
-			await db
-				.select({
-					document_type: memberDocuments.documentType,
-					created_date: memberDocuments.createdDate,
-					expiry_date: memberDocuments.expiryDate,
-				})
-				.from(memberDocuments)
-				.where(eq(memberDocuments.memberId, request.idSocio)),
-			giorniDaOggi,
-			soglie.documentoInScadenzaGiorni
-		);
 
 		// La corrente è la più recente ancora valida oggi; se non ce n'è, l'ultima scaduta. La
 		// colonna `status` non si guarda: nessuno la aggiorna, e sceglieva come "corrente" anche
@@ -153,11 +130,6 @@ export default async function memberRoutes(fastify) {
 				// Fermo oggi: fino a quando, e il giorno in cui riprende.
 				sospeso: sospensione ? { fino_al: sospensione.al, riprende_il: spostaGiorni(sospensione.al, 1) } : null,
 			},
-			documenti: {
-				totale: documenti.length,
-				in_scadenza: documenti.filter((d) => d.stato === 'in_scadenza').length,
-				scaduti: documenti.filter((d) => d.stato === 'scaduto').length,
-			},
 		};
 	});
 
@@ -166,6 +138,9 @@ export default async function memberRoutes(fastify) {
 		const oggi = oggiIso();
 
 		return {
+			// L'ultimo giorno in cui si può prenotare senza interruzioni, rinnovi compresi; null se
+			// oggi nessun abbonamento copre. Aggiunto in D-2 (docs/piani/portale.md).
+			prenotabile_fino_al: fineCopertura(righe, oggi),
 			abbonamenti: righe.reverse().map((a) => ({
 				id: a.id,
 				piano: a.plan_name,
@@ -183,84 +158,11 @@ export default async function memberRoutes(fastify) {
 		};
 	});
 
-	fastify.get('/documenti', async (request) => {
-		const soglie = await soglieEnte();
-		const righe = await db
-			.select()
-			.from(memberDocuments)
-			.where(eq(memberDocuments.memberId, request.idSocio))
-			.orderBy(desc(memberDocuments.createdDate));
-
-		// Lo stato dipende da tutti i documenti del socio, non dal singolo: un certificato
-		// scaduto è "archiviato" se ne è arrivato uno nuovo, "scaduto" se è ancora l'ultimo.
-		// I nomi delle colonne qui sono in camelCase, quelli della regola condivisa no.
-		const stati = new Map(
-			conStatoDocumenti(
-				righe.map((d) => ({
-					id: d.id,
-					document_type: d.documentType,
-					created_date: d.createdDate,
-					expiry_date: d.expiryDate,
-				})),
-				giorniDaOggi,
-				soglie.documentoInScadenzaGiorni
-			).map((d) => [d.id, d.stato])
-		);
-
-		return {
-			documenti: righe.map((d) => ({
-				id: d.id,
-				tipo: d.documentType,
-				// Come lo si chiama: "Certificato medico", o il titolo di un documento "altro".
-				nome: nomeDocumento({ document_type: d.documentType, titolo: d.titolo }),
-				titolo: d.titolo,
-				nome_file: d.fileName,
-				// Firmato: senza firma /uploads/ non apre piu niente (lib/urlFirmati.js).
-				url: firmaUrl(d.fileUrl),
-				scadenza: d.expiryDate,
-				giorni_alla_scadenza: giorniDaOggi(d.expiryDate),
-				// `scaduto` e `in_scadenza` restano quello che dicono: fatti sulla data, e
-				// c'erano prima. `stato` è la lettura completa — valido, in_scadenza,
-				// scaduto, archiviato — ed è quella che le schermate usano per il bollino.
-				scaduto: scaduto(d.expiryDate),
-				in_scadenza: entroGiorni(d.expiryDate, soglie.documentoInScadenzaGiorni) && !scaduto(d.expiryDate),
-				stato: stati.get(d.id),
-				caricato_il: d.createdDate,
-				caricato_da: d.caricatoDa,
-				note: d.notes,
-			})),
-		};
-	});
-
 	/**
-	 * Il codice d'accesso da mostrare alla reception.
-	 *
-	 * Il codice cambia ogni minuto e lo firma il server con una chiave che non esce da qui.
-	 * Il portale prima faceva due richieste — il QR del socio e poi il codice — e questa ne
-	 * fa una: davanti al tornello, con la rete della palestra, la differenza si sente.
+	 * La palestra: nome, indirizzo e i recapiti che scrive l'amministratore (Amministrazione ›
+	 * Contatti). Un campo vuoto è null, e il portale non ne mostra la riga.
 	 */
-	fastify.get('/accesso', async (request) => {
-		// Tutti i codici del socio, non solo quelli attivi: "non ne hai uno" e "il tuo è
-		// stato revocato" sono due cose diverse da dire a chi sta davanti al tornello, e
-		// distinguerle serve a mandarlo alla reception con la domanda giusta.
-		const suoi = await db
-			.select()
-			.from(qrAccessi)
-			.where(eq(qrAccessi.clienteId, request.idSocio));
-
-		const attivo = suoi.find((q) => q.stato === 'attivo');
-		if (!attivo) {
-			const stato = suoi.some((q) => q.stato === 'revocato') ? 'revocato' : 'assente';
-			return { stato, attivo: false, codice: null, valido_per_ms: null };
-		}
-
-		return {
-			stato: 'attivo',
-			attivo: true,
-			codice: codiceDinamico(attivo.codice),
-			valido_per_ms: msResiduiFinestra(),
-		};
-	});
+	fastify.get('/palestra', async () => contattiPalestra());
 
 	// --- I corsi -----------------------------------------------------------------------
 
@@ -270,127 +172,148 @@ export default async function memberRoutes(fastify) {
 	 * Sostituisce sette richieste e il lavoro di incrocio che il browser faceva a mano. Dei
 	 * posti escono **numeri**, non le prenotazioni altrui: chi frequenta cosa non è un dato
 	 * che il portale di un socio abbia ragione di ricevere.
+	 *
+	 * `?dal&al` (il portale chiede blocchi di 14 giorni), oppure `?sessione_id`: le lezioni di una
+	 * sessione sola, per il foglio dell'orario. Le prenotazioni fisse non si applicano qui: una GET
+	 * non prenota.
 	 */
 	fastify.get('/corsi/agenda', async (request, reply) => {
 		const oggi = oggiIso();
 		const dal = request.query.dal ?? oggi;
 		const al = request.query.al ?? spostaGiorni(eUnGiorno(dal) ? dal : oggi, 30);
+		const sessione = request.query.sessione_id;
 
 		// Le date arrivano dalla query così come sono: una malformata finiva al database e
 		// tornava come errore 500, e `?dal=2000-01-01&al=2100-01-01` faceva leggere al server
 		// tutte le lezioni e tutte le prenotazioni della palestra.
 		const motivo = motivoIntervalloNonValido(dal, al);
 		if (motivo) return reply.code(400).send({ error: motivo });
+		if (sessione !== undefined && !E_UN_ID.test(String(sessione))) return reply.code(400).send({ error: 'Sessione non valida.' });
 
-		// Prima di mostrare l'agenda, le fisse del socio prenotano quello che devono: è il
-		// momento in cui lui guarda, e l'operazione è idempotente. Solo quelle senza fine: una
-		// fissa con una data l'ha decisa la reception, e non cresce da sola.
-		await applicaFisse({ memberId: request.idSocio, soloSenzaFine: true });
-		const mieFisse = new Set((await elencoFisse({ memberId: request.idSocio })).map((f) => f.event_id));
+		const lezioni = await lezioniPerIlSocio(request.idSocio, and(
+			gte(sessions.date, dal),
+			lte(sessions.date, al),
+			eq(sessions.status, 'active'),
+			...(sessione ? [eq(sessions.eventId, sessione)] : []),
+		));
+		const giorni = new Map();
+		for (const l of lezioni) {
+			if (!giorni.has(l.data)) giorni.set(l.data, []);
+			giorni.get(l.data).push(l);
+		}
+		return { dal, al, giorni: [...giorni.entries()].map(([data, ls]) => ({ data, lezioni: ls })) };
+	});
 
-		const righe = await db
-			.select({
-				sessione: sessions,
-				evento: { id: events.id, ricorrenza: events.recurrenceType },
-				corso: { id: courses.id, nome: courses.name, descrizione: courses.description, disdettaEntroOre: courses.disdettaEntroOre },
+	/**
+	 * Le mie lezioni: quelle che ho prenotato (anche disdette, anche annullate dalla palestra) fra
+	 * `dal` e `al`, come le lezioni dell'agenda. Di base dagli ultimi 30 giorni ai prossimi 60.
+	 * → { dal, al, lezioni: [lezione] }, in ordine di data e ora.
+	 */
+	fastify.get('/lezioni', async (request, reply) => {
+		const oggi = oggiIso();
+		const dal = request.query.dal ?? spostaGiorni(oggi, -30);
+		const al = request.query.al ?? spostaGiorni(oggi, 60);
+		const motivo = motivoIntervalloNonValido(dal, al);
+		if (motivo) return reply.code(400).send({ error: motivo });
+		const mie = db.select({ id: bookings.sessionId }).from(bookings).where(eq(bookings.memberId, request.idSocio));
+		const lezioni = await lezioniPerIlSocio(request.idSocio, and(
+			gte(sessions.date, dal),
+			lte(sessions.date, al),
+			inArray(sessions.id, mie),
+		), { ancheDisdette: true });
+		return { dal, al, lezioni };
+	});
+
+	/**
+	 * Il catalogo per «Per corso»: le categorie, i loro corsi attivi e gli orari (le sessioni) con
+	 * almeno una lezione da oggi in avanti. `categoria_recente` è quella della mia ultima
+	 * prenotazione: è la fisarmonica che si apre all'ingresso.
+	 */
+	fastify.get('/corsi/catalogo', async (request) => {
+		const oggi = oggiIso();
+		const [righe, mieFisse, [recente]] = await Promise.all([
+			db.select({
+				sessione_id: events.id, ricorrenza: events.recurrenceType, giorno: events.giorno,
+				inizio: events.startTime, fine: events.endTime, capienza: events.capacity,
+				corso: { id: courses.id, nome: courses.name, descrizione: courses.description },
 				categoria: { id: categories.id, nome: categories.name, colore: categories.color },
 				istruttore: { id: instructors.id, nome: instructors.fullName },
 				sala: { id: rooms.id, nome: rooms.name },
+				prossima: min(sessions.date),
+				lezioni: count(sessions.id),
 			})
-			.from(sessions)
-			.innerJoin(events, eq(sessions.eventId, events.id))
-			.innerJoin(courses, eq(events.courseId, courses.id))
-			.leftJoin(categories, eq(courses.categoryId, categories.id))
-			.leftJoin(instructors, eq(courses.instructorId, instructors.id))
-			.leftJoin(rooms, eq(sessions.roomId, rooms.id))
-			.where(and(
-				gte(sessions.date, dal),
-				lte(sessions.date, al),
-				eq(sessions.status, 'active'),
-			))
-			.orderBy(sessions.date, sessions.startTime);
-
-		const idLezioni = righe.map((r) => r.sessione.id);
-		const prenotazioni = idLezioni.length
-			? await db
-				.select()
-				.from(bookings)
-				.where(and(inArray(bookings.sessionId, idLezioni), ne(bookings.status, 'cancelled')))
-			: [];
-
-		// I conteggi si fanno qui e escono come numeri. Le righe delle prenotazioni non
-		// lasciano il server, tranne quella del socio che sta chiedendo.
-		const conta = new Map();
-		const mie = new Map();
-		for (const p of prenotazioni) {
-			const c = conta.get(p.sessionId) ?? { confermati: 0, in_attesa: 0 };
-			if (p.status === 'confirmed') c.confermati += 1;
-			else if (p.status === 'waitlisted') c.in_attesa += 1;
-			conta.set(p.sessionId, c);
-			if (String(p.memberId) === String(request.idSocio)) mie.set(p.sessionId, p);
-		}
-
-		// Se il socio può prenotare quella lezione lo dice il server, con la stessa regola che
-		// applica quando la prenotazione arriva: così il portale lo mostra prima del pulsante.
-		const mieIscrizioni = await iscrizioniDelSocio(request.idSocio);
-
-		const giorni = new Map();
+				.from(events)
+				.innerJoin(sessions, and(eq(sessions.eventId, events.id), eq(sessions.status, 'active'), gte(sessions.date, oggi)))
+				.innerJoin(courses, and(eq(events.courseId, courses.id), eq(courses.attivo, true)))
+				.innerJoin(categories, eq(courses.categoryId, categories.id))
+				.leftJoin(instructors, eq(courses.instructorId, instructors.id))
+				.leftJoin(rooms, eq(events.roomId, rooms.id))
+				.groupBy(events.id, courses.id, categories.id, instructors.id, rooms.id)
+				.orderBy(categories.name, courses.name, events.startTime),
+			elencoFisse({ memberId: request.idSocio }),
+			db.select({ categoria: courses.categoryId }).from(bookings)
+				.innerJoin(sessions, eq(bookings.sessionId, sessions.id))
+				.innerJoin(events, eq(sessions.eventId, events.id))
+				.innerJoin(courses, eq(events.courseId, courses.id))
+				.where(eq(bookings.memberId, request.idSocio))
+				.orderBy(desc(bookings.createdDate))
+				.limit(1),
+		]);
+		const fisse = new Set(mieFisse.map((f) => f.event_id));
+		const categorie = new Map();
 		for (const r of righe) {
-			const s = r.sessione;
-			const c = conta.get(s.id) ?? { confermati: 0, in_attesa: 0 };
-			const miaPrenotazione = mie.get(s.id);
-			const capienza = s.capacity ?? 0;
-			const senzaCopertura = motivoSenzaCopertura(mieIscrizioni, s.date);
-
-			const lezione = {
-				id: s.id,
-				data: s.date,
-				inizio: s.startTime,
-				fine: s.endTime,
-				corso: { id: r.corso.id, nome: r.corso.nome, descrizione: r.corso.descrizione },
-				categoria: r.categoria?.id ? r.categoria : null,
-				istruttore: r.istruttore?.id ? r.istruttore : null,
-				sala: r.sala?.id ? r.sala : null,
-				posti: {
-					capienza,
-					confermati: c.confermati,
-					liberi: Math.max(0, capienza - c.confermati),
-					in_attesa: c.in_attesa,
-					al_completo: c.confermati >= capienza,
-				},
-				// null se si può prenotare; altrimenti il perché, da mostrare al posto del pulsante.
-				// Una lezione di oggi già finita resta in agenda, ma non si prenota né si disdice.
-				motivo_non_prenotabile: lezioneFinita(s) ? 'La lezione è già finita.' : senzaCopertura,
-				finita: lezioneFinita(s),
-				// Fino a quando il socio può disdire da sé ("AAAA-MM-GGTHH:MM", ora di Roma), null se
-				// fino alla fine; e, se il termine è passato, il perché.
-				disdetta_fino_a: (() => {
-					const limite = limiteDisdetta(s, r.corso.disdettaEntroOre);
-					return limite ? `${limite.data}T${limite.ora}` : null;
-				})(),
-				motivo_disdetta_chiusa: motivoDisdettaChiusa(s, r.corso.disdettaEntroOre),
-				// La serie della lezione, se è una serie: è ciò su cui si prenota fisso.
-				serie: r.evento.ricorrenza === 'weekly' || r.evento.ricorrenza === 'custom'
-					? { id: r.evento.id, mia_fissa: mieFisse.has(r.evento.id) }
-					: null,
-				mia_prenotazione: miaPrenotazione
-					? {
-						id: miaPrenotazione.id,
-						stato: miaPrenotazione.status,
-						posizione_attesa: miaPrenotazione.waitlistPosition,
-					}
-					: null,
-			};
-
-			if (!giorni.has(s.date)) giorni.set(s.date, []);
-			giorni.get(s.date).push(lezione);
+			if (!categorie.has(r.categoria.id)) categorie.set(r.categoria.id, { ...r.categoria, corsi: new Map() });
+			const corsi = categorie.get(r.categoria.id).corsi;
+			if (!corsi.has(r.corso.id)) corsi.set(r.corso.id, { ...r.corso, istruttore: r.istruttore?.id ? r.istruttore : null, orari: [] });
+			corsi.get(r.corso.id).orari.push({
+				sessione_id: r.sessione_id, ricorrenza: r.ricorrenza, giorno: r.giorno,
+				inizio: String(r.inizio).slice(0, 5), fine: String(r.fine).slice(0, 5), capienza: r.capienza,
+				sala: r.sala?.id ? r.sala : null, prossima: r.prossima, lezioni: Number(r.lezioni), mia_fissa: fisse.has(r.sessione_id),
+			});
 		}
-
+		// Gli orari di un corso in ordine di settimana: lunedì prima, poi l'ora.
+		const ordine = (o) => `${o.giorno ? GIORNI_SETTIMANA.indexOf(o.giorno) : 9}${o.inizio}${o.prossima}`;
 		return {
-			dal,
-			al,
-			giorni: [...giorni.entries()].map(([data, lezioni]) => ({ data, lezioni })),
+			categoria_recente: recente?.categoria ?? null,
+			categorie: [...categorie.values()].map((c) => ({
+				...c,
+				corsi: [...c.corsi.values()].map((corso) => ({ ...corso, orari: corso.orari.sort((a, b) => ordine(a).localeCompare(ordine(b))) })),
+			})),
 		};
+	});
+
+	/**
+	 * «I tuoi corsi» della Home: gli orari che ho prenotato almeno due volte negli ultimi 60 giorni
+	 * e che non sono già una mia fissa, ognuno con la sua prossima lezione che non ho ancora
+	 * prenotato. Al massimo tre. → { lezioni: [lezione] }
+	 */
+	fastify.get('/corsi/miei-orari', async (request) => {
+		const oggi = oggiIso();
+		const [frequenti, mieFisse] = await Promise.all([
+			db.select({ evento: sessions.eventId, volte: count(bookings.id) })
+				.from(bookings)
+				.innerJoin(sessions, eq(bookings.sessionId, sessions.id))
+				.where(and(eq(bookings.memberId, request.idSocio), ne(bookings.status, 'cancelled'), gte(sessions.date, spostaGiorni(oggi, -60)), lte(sessions.date, oggi)))
+				.groupBy(sessions.eventId)
+				.having(sql`count(${bookings.id}) >= 2`)
+				.orderBy(desc(count(bookings.id))),
+			elencoFisse({ memberId: request.idSocio }),
+		]);
+		const fisse = new Set(mieFisse.map((f) => f.event_id));
+		const eventi = frequenti.map((f) => f.evento).filter((e) => !fisse.has(e)).slice(0, 3);
+		if (!eventi.length) return { lezioni: [] };
+		const prossime = await lezioniPerIlSocio(request.idSocio, and(
+			inArray(sessions.eventId, eventi),
+			eq(sessions.status, 'active'),
+			gte(sessions.date, oggi),
+			lte(sessions.date, spostaGiorni(oggi, 30)),
+		));
+		const prima = new Map();
+		for (const l of prossime) {
+			if (l.finita || l.mia_prenotazione || prima.has(l.sessione_id)) continue;
+			prima.set(l.sessione_id, l);
+		}
+		return { lezioni: eventi.map((e) => prima.get(e)).filter(Boolean) };
 	});
 
 	/**
@@ -403,7 +326,7 @@ export default async function memberRoutes(fastify) {
 	 */
 	fastify.post('/corsi/lezioni/:id/prenota', async (request, reply) => {
 		const esito = await prenota({ sessionId: request.params.id, memberId: request.idSocio });
-		if (esito.errore) return reply.code(esito.errore).send({ error: esito.messaggio });
+		if (esito.errore) return reply.code(esito.errore).send({ error: esito.messaggio, code: esito.codice });
 
 		reply.code(201);
 		return {
@@ -432,41 +355,100 @@ export default async function memberRoutes(fastify) {
 	});
 
 	// --- Le prenotazioni fisse ------------------------------------------------------------
+	//
+	// Con le date (D-4, docs/piani/portale.md): il socio sceglie fino a quando — una data o un
+	// numero di lezioni — dentro il massimo (la copertura del suo abbonamento e l'ultima lezione
+	// della sessione), e prima di confermare vede che cosa succederà a ogni lezione.
+
+	/** Una fissa del socio, sua: altrimenti null (e la rotta risponde 404, non 403). */
+	const suaFissa = async (request) => {
+		const [f] = await db.select().from(prenotazioniFisse).where(eq(prenotazioniFisse.id, request.params.id)).limit(1);
+		return f && String(f.memberId) === String(request.idSocio) ? f : null;
+	};
+	const anteprimaApi = (a) => ({
+		dal: a.dal, al: a.al, massimo: a.limiti.massimo,
+		// Il perché del massimo: la fine della copertura, l'ultima lezione della sessione, l'ultima
+		// lezione dentro la copertura.
+		copertura_fino_al: a.limiti.copertura, ultima_lezione: a.limiti.ultima, ultima_coperta: a.limiti.ultima_coperta,
+		lezioni: a.lezioni, prenotate: a.prenotate, in_attesa: a.in_attesa,
+	});
 
 	/**
-	 * Le prenotazioni fisse in corso del socio. `giorni` resta un elenco, come lo legge il portale
-	 * (`fisse.jsx`), ma da quando una sessione ha un giorno solo (migrazione 0059) ne ha uno.
+	 * Le prenotazioni fisse in corso del socio, con fino a quando possono arrivare (`massimo`): se
+	 * è oltre la loro fine, il portale mostra «Allunga».
 	 */
 	fastify.get('/corsi/fisse', async (request) => {
 		const fisse = await elencoFisse({ memberId: request.idSocio });
 		return {
-			fisse: fisse.map((f) => ({
-				id: f.id, serie_id: f.event_id, corso: f.corso, giorni: f.giorno ? [f.giorno] : [],
-				inizio: String(f.inizio).slice(0, 5), fine: String(f.fine).slice(0, 5), creata_il: f.creata_il,
+			fisse: await Promise.all(fisse.map(async (f) => {
+				const limiti = await limitiFissa({ memberId: request.idSocio, eventId: f.event_id, dal: f.dal });
+				return {
+					id: f.id, serie_id: f.event_id, corso: f.corso, giorni: f.giorno ? [f.giorno] : [],
+					inizio: String(f.inizio).slice(0, 5), fine: String(f.fine).slice(0, 5), creata_il: f.creata_il,
+					dal: f.dal, al: f.al, massimo: limiti.ultima_coperta ?? limiti.massimo,
+				};
 			})),
 		};
 	});
 
 	/**
-	 * Prenota fisso in una sessione, da oggi e senza fine: la regola di passaggio finché il portale
-	 * non chiede le date (docs/piani/corsi.md, «In sospeso»). `giorni`, se arriva, non conta più:
-	 * la sessione ha un giorno solo. Risponde con quante lezioni ha prenotato subito, quante in
-	 * lista d'attesa e quante sono rimaste senza abbonamento.
+	 * GET /corsi/sessioni/:id/fissa/anteprima?al&numero (&fissa_id per cambiarne una)
+	 * → { dal, al, massimo, copertura_fino_al, ultima_lezione, ultima_coperta, lezioni: [{ data, esito }], prenotate, in_attesa }
+	 * `esito`: confermata, in_attesa, gia_prenotata, gia_in_attesa, sospesa, disdetta, piena, scoperta. Senza `al`
+	 * né `numero`: fino al massimo. Non scrive niente.
 	 */
-	fastify.post('/corsi/serie/:id/fissa', async (request, reply) => {
-		const [socio] = await db.select({ nome: members.fullName }).from(members).where(eq(members.id, request.idSocio)).limit(1);
-		const esito = await creaFissa({ memberId: request.idSocio, eventId: request.params.id, senzaFine: true, creataDa: socio?.nome ?? '' });
-		if (esito.errore) return reply.code(esito.errore).send({ error: esito.messaggio });
-		reply.code(201);
-		return { fissa: { id: esito.fissa.id }, prenotate: esito.esito.prenotate, in_attesa: esito.esito.inAttesa, senza_abbonamento: esito.esito.scoperte };
+	fastify.get('/corsi/sessioni/:id/fissa/anteprima', async (request, reply) => {
+		let dal = null;
+		if (request.query.fissa_id) {
+			const [f] = await db.select().from(prenotazioniFisse).where(eq(prenotazioniFisse.id, request.query.fissa_id)).limit(1);
+			if (!f || String(f.memberId) !== String(request.idSocio) || f.eventId !== request.params.id) return reply.code(404).send({ error: 'Prenotazione fissa inesistente.' });
+			dal = f.dal;
+		}
+		const a = await anteprimaFissa({ memberId: request.idSocio, eventId: request.params.id, dal, al: request.query.al, numero: request.query.numero });
+		if (a.errore) return reply.code(a.errore).send({ error: a.messaggio });
+		return anteprimaApi(a);
 	});
 
 	/**
-	 * Termina una propria fissa da oggi (`terminaFissa` senza `dal`): le sue prenotazioni future si
-	 * disdicono, nel rispetto del termine di disdetta.
+	 * POST /corsi/sessioni/:id/fissa { al } o { numero } → 201, come l'anteprima, con l'esito vero
+	 * di ogni lezione: il test lo confronta con quello dell'anteprima.
 	 */
-	fastify.delete('/corsi/fisse/:id', async (request, reply) => {
-		const esito = await terminaFissa({ fissaId: request.params.id, soloDelSocio: request.idSocio });
+	fastify.post('/corsi/sessioni/:id/fissa', async (request, reply) => {
+		const { al = null, numero = null } = request.body ?? {};
+		const [socio] = await db.select({ nome: members.fullName }).from(members).where(eq(members.id, request.idSocio)).limit(1);
+		const esito = await creaFissa({ memberId: request.idSocio, eventId: request.params.id, al, numero, creataDa: socio?.nome ?? '' });
+		if (esito.errore) return reply.code(esito.errore).send({ error: esito.messaggio });
+		const limiti = await limitiFissa({ memberId: request.idSocio, eventId: request.params.id, dal: esito.fissa.dal });
+		reply.code(201);
+		return {
+			fissa: { id: esito.fissa.id },
+			...anteprimaApi({ dal: esito.fissa.dal, al: esito.fissa.al, limiti, lezioni: esito.esito.lezioni, prenotate: esito.esito.prenotate, in_attesa: esito.esito.inAttesa }),
+		};
+	});
+
+	/**
+	 * PUT /corsi/fisse/:id { al } o { numero } → { fissa: { id, dal, al }, prenotate, in_attesa, disdette, rimaste }
+	 * Allunga o accorcia: prenota i giorni aggiunti, disdice quelli tolti (nel rispetto del termine
+	 * di disdetta: quelle oltre restano, `rimaste`).
+	 */
+	fastify.put('/corsi/fisse/:id', async (request, reply) => {
+		if (!(await suaFissa(request))) return reply.code(404).send({ error: 'Prenotazione fissa inesistente.' });
+		const { al = null, numero = null } = request.body ?? {};
+		if (vuoto(al) && vuoto(numero)) return reply.code(400).send({ error: 'Indica fino a quando: una data o un numero di lezioni.' });
+		const esito = await modificaFissa({ fissaId: request.params.id, al, numero, soloDelSocio: request.idSocio });
+		if (esito.errore) return reply.code(esito.errore).send({ error: esito.messaggio });
+		return {
+			fissa: { id: esito.fissa.id, dal: esito.fissa.dal, al: esito.fissa.al },
+			prenotate: esito.esito.prenotate, in_attesa: esito.esito.inAttesa, disdette: esito.disdette, rimaste: esito.rimaste,
+		};
+	});
+
+	/**
+	 * POST /corsi/fisse/:id/termina { dal? } → { disdette, rimaste }: da `dal` (oggi, se manca) non
+	 * prenota più, e le sue prenotazioni da lì si disdicono, nel rispetto del termine di disdetta.
+	 */
+	fastify.post('/corsi/fisse/:id/termina', async (request, reply) => {
+		const esito = await terminaFissa({ fissaId: request.params.id, dal: request.body?.dal ?? null, soloDelSocio: request.idSocio });
 		if (esito.errore) return reply.code(esito.errore).send({ error: esito.messaggio });
 		return esito;
 	});
@@ -489,16 +471,28 @@ export default async function memberRoutes(fastify) {
 		// campanella dice quante cose aspettano il socio, e se ce n'è una grave.
 		const conteggio = { non_lette: Number(n), avvisi: avvisi.length, avvisi_gravi: avvisi.some((a) => a.gravita === 'rosso') };
 		if (request.query?.solo_conteggio) return conteggio;
-		const righe = await db.select().from(notifiche)
+		const righe = await db.select({
+			n: notifiche,
+			lezione: { id: sessions.id, data: sessions.date, inizio: sessions.startTime, stato: sessions.status },
+			corso: courses.name,
+		})
+			.from(notifiche)
+			.leftJoin(sessions, eq(notifiche.lezioneId, sessions.id))
+			.leftJoin(events, eq(sessions.eventId, events.id))
+			.leftJoin(courses, eq(events.courseId, courses.id))
 			.where(eq(notifiche.memberId, request.idSocio))
 			.orderBy(desc(notifiche.createdDate))
 			.limit(50);
 		return {
 			...conteggio,
 			avvisi_elenco: avvisi,
-			notifiche: righe.map((r) => ({
+			notifiche: righe.map(({ n: r, lezione, corso }) => ({
 				id: r.id, tipo: r.tipo, titolo: r.titolo, testo: r.testo,
 				letta: Boolean(r.lettaIl), creata_il: r.createdDate,
+				// Di che lezione o di che fissa parla (D-3): per l'azione della notifica. La lezione
+				// arriva con quello che serve a nominarla e ad aprirne il giorno.
+				lezione_id: r.lezioneId, fissa_id: r.fissaId,
+				lezione: lezione?.id ? { id: lezione.id, data: lezione.data, inizio: String(lezione.inizio).slice(0, 5), corso, annullata: lezione.stato !== 'active' } : null,
 			})),
 		};
 	});
@@ -511,8 +505,10 @@ export default async function memberRoutes(fastify) {
 		return { lette: lette.length };
 	});
 
-	// I consensi alle comunicazioni promozionali (shared/consensi.js): li dà e li toglie il socio,
-	// canale per canale. Ogni scelta si aggiunge al registro, con il nome del socio e "portale".
+	// I consensi alle comunicazioni promozionali (shared/consensi.js). Dal portale si **revocano**
+	// soltanto (decisione R3, docs/piani/portale.md): la revoca non si blocca mai (GDPR art. 7.3),
+	// mentre darli non serve più, perché le comunicazioni automatiche sono uscite
+	// dall'applicazione. Ogni revoca si aggiunge al registro, con il nome del socio e "portale".
 	const personaDelSocio = async (idSocio) => {
 		const [socio] = await db.select({ personaId: members.personaId, nome: members.fullName }).from(members).where(eq(members.id, idSocio)).limit(1);
 		return socio;
@@ -524,11 +520,11 @@ export default async function memberRoutes(fastify) {
 		return { consensi: await consensiDi(socio.personaId) };
 	});
 
-	/** PUT /consensi { tipo, valore } → { consensi } */
+	/** PUT /consensi { tipo, valore: false } → { consensi }. Solo per togliere. */
 	fastify.put('/consensi', async (request, reply) => {
 		const { tipo, valore } = request.body ?? {};
 		if (!tipoConsensoValido(tipo)) return reply.code(400).send({ error: 'Tipo di consenso non valido.' });
-		if (typeof valore !== 'boolean') return reply.code(400).send({ error: 'Indica se dai o togli il consenso.' });
+		if (valore !== false) return reply.code(400).send({ error: 'Dal portale un consenso si può solo revocare.' });
 		const socio = await personaDelSocio(request.idSocio);
 		await db.insert(consensi).values({ personaId: socio.personaId, tipo, valore, fonte: 'portale', autoreNome: socio.nome });
 		return { consensi: await consensiDi(socio.personaId) };
@@ -536,18 +532,16 @@ export default async function memberRoutes(fastify) {
 }
 
 /**
- * Che cosa c'è da sistemare per il socio adesso: abbonamento e documenti, con la stessa regola
- * del controllo degli ingressi (shared/avvisi.js). Si calcola a ogni lettura e non si salva: un
- * avviso sparisce da solo quando il socio rinnova o porta il documento.
+ * Che cosa c'è da sistemare per il socio adesso: l'abbonamento, con la stessa regola del controllo
+ * degli ingressi (shared/avvisi.js). Si calcola a ogni lettura e non si salva: un avviso sparisce
+ * da solo quando il socio rinnova.
  */
 async function avvisiDelSocio(memberId) {
-	const [[socio], iscrizioni, documenti] = await Promise.all([
+	const [[socio], iscrizioni] = await Promise.all([
 		db.select({ dateOfBirth: members.dateOfBirth, archiviatoIl: members.archiviatoIl }).from(members).where(eq(members.id, memberId)).limit(1),
 		iscrizioniDelSocio(memberId),
-		db.select({ document_type: memberDocuments.documentType, created_date: memberDocuments.createdDate, expiry_date: memberDocuments.expiryDate })
-			.from(memberDocuments).where(eq(memberDocuments.memberId, memberId)),
 	]);
-	return avvisiSocio({ socio: { date_of_birth: socio?.dateOfBirth, archiviato_il: socio?.archiviatoIl }, iscrizioni, documenti })
+	return avvisiSocio({ socio: { date_of_birth: socio?.dateOfBirth, archiviato_il: socio?.archiviatoIl }, iscrizioni })
 		.map(({ codice, gravita, titolo, testo, azione }) => ({ codice, gravita, titolo, testo, azione }));
 }
 
@@ -557,11 +551,6 @@ async function avvisiDelSocio(memberId) {
 // istante, e confrontare istanti farebbe dire "scade fra 0 giorni" a un abbonamento che
 // scade stasera e "fra 1" a uno che scade domani mattina presto. Il conto sta in
 // `shared/giorni.js`, e "oggi" è quello di Roma.
-
-function scaduto(data) {
-	const giorni = giorniDaOggi(data);
-	return giorni !== null && giorni < 0;
-}
 
 function entroGiorni(data, soglia) {
 	const giorni = giorniDaOggi(data);
@@ -582,3 +571,139 @@ function motivoIntervalloNonValido(dal, al) {
 	}
 	return null;
 }
+
+// --- Le lezioni come le vede il socio -----------------------------------------------------
+
+const E_UN_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Vera se la prenotazione ha un posto offerto ancora aperto. */
+const offertaAperta = (b, adesso) => b.status === 'waitlisted' && b.postoOffertoFinoA && new Date(b.postoOffertoFinoA) > adesso;
+
+/**
+ * Vera se la lista d'attesa di una lezione va rimessa in regola prima di leggerla: un'offerta
+ * scaduta, o un posto libero non ancora offerto mentre la lista è aperta (`regolaOfferte`).
+ */
+function daRegolare(lezione, ore, vive, adesso) {
+	const coda = vive.filter((b) => b.status === 'waitlisted');
+	if (!coda.length || lezione.status !== 'active' || lezioneFinita(lezione, adesso)) return false;
+	if (coda.some((b) => b.postoOffertoFinoA && new Date(b.postoOffertoFinoA) <= adesso)) return true;
+	const occupati = vive.filter((b) => b.status === 'confirmed' || offertaAperta(b, adesso)).length;
+	return occupati < (lezione.capacity ?? 0) && adesso < chiusuraLista(lezione, ore) && coda.some((b) => !offertaAperta(b, adesso));
+}
+
+/**
+ * Le lezioni scelte da `dove` (una condizione su `sessions`), descritte per il socio: posti
+ * contati, la sua prenotazione, se e perché non può prenotare o disdire, quando chiude la lista
+ * d'attesa. Prima di contare, le liste d'attesa che ne hanno bisogno si mettono in regola (le
+ * offerte scadute si leggono dalle date: non c'è un processo che le guardi).
+ *
+ * @param ancheDisdette se il socio non ha una prenotazione viva, la sua ultima disdetta (Le mie
+ *   lezioni la mostra come tale)
+ */
+async function lezioniPerIlSocio(idSocio, dove, { ancheDisdette = false, adesso = new Date() } = {}) {
+	const righe = await db
+		.select({
+			sessione: sessions,
+			evento: { id: events.id, ricorrenza: events.recurrenceType },
+			corso: { id: courses.id, nome: courses.name, descrizione: courses.description, disdettaEntroOre: courses.disdettaEntroOre },
+			categoria: { id: categories.id, nome: categories.name, colore: categories.color },
+			istruttore: { id: instructors.id, nome: instructors.fullName },
+			sala: { id: rooms.id, nome: rooms.name },
+		})
+		.from(sessions)
+		.innerJoin(events, eq(sessions.eventId, events.id))
+		.innerJoin(courses, eq(events.courseId, courses.id))
+		.leftJoin(categories, eq(courses.categoryId, categories.id))
+		.leftJoin(instructors, eq(courses.instructorId, instructors.id))
+		.leftJoin(rooms, eq(sessions.roomId, rooms.id))
+		.where(dove)
+		.orderBy(sessions.date, sessions.startTime);
+	if (!righe.length) return [];
+
+	const idLezioni = righe.map((r) => r.sessione.id);
+	const leggi = () => db.select().from(bookings).where(and(
+		inArray(bookings.sessionId, idLezioni),
+		ancheDisdette ? or(ne(bookings.status, 'cancelled'), eq(bookings.memberId, idSocio)) : ne(bookings.status, 'cancelled'),
+	)).orderBy(desc(bookings.createdDate));
+	let prenotazioni = await leggi();
+	const viveDi = (id) => prenotazioni.filter((p) => p.sessionId === id && p.status !== 'cancelled');
+	const storte = righe.filter((r) => daRegolare(r.sessione, r.corso.disdettaEntroOre, viveDi(r.sessione.id), adesso));
+	if (storte.length) {
+		for (const r of storte) await db.transaction((tx) => regolaOfferte(tx, r.sessione.id, adesso));
+		prenotazioni = await leggi();
+	}
+
+	// Se il socio può prenotare quella lezione lo dice il server, con la stessa regola che
+	// applica quando la prenotazione arriva: così il portale lo mostra prima del pulsante.
+	const [mieIscrizioni, mieFisse] = await Promise.all([iscrizioniDelSocio(idSocio), elencoFisse({ memberId: idSocio })]);
+	const fisse = new Set(mieFisse.map((f) => f.event_id));
+
+	return righe.map((r) => {
+		const s = r.sessione;
+		const vive = viveDi(s.id);
+		const mie = prenotazioni.filter((p) => p.sessionId === s.id && String(p.memberId) === String(idSocio));
+		const mia = mie.find((p) => p.status !== 'cancelled') ?? (ancheDisdette ? mie[0] : null);
+		const confermati = vive.filter((p) => p.status === 'confirmed').length;
+		const offerti = vive.filter((p) => offertaAperta(p, adesso)).length;
+		const capienza = s.capacity ?? 0;
+		const finita = lezioneFinita(s, adesso);
+		const chiusura = chiusuraLista(s, r.corso.disdettaEntroOre);
+		const limite = limiteDisdetta(s, r.corso.disdettaEntroOre);
+		const liberi = Math.max(0, capienza - confermati - offerti);
+		const listaChiusa = adesso >= chiusura;
+		const annullata = s.status !== 'active';
+		return {
+			id: s.id,
+			sessione_id: r.evento.id,
+			data: s.date,
+			inizio: s.startTime,
+			fine: s.endTime,
+			corso: { id: r.corso.id, nome: r.corso.nome, descrizione: r.corso.descrizione },
+			categoria: r.categoria?.id ? r.categoria : null,
+			istruttore: r.istruttore?.id ? r.istruttore : null,
+			sala: r.sala?.id ? r.sala : null,
+			// I posti offerti a chi è in lista contano come occupati: sono suoi finché non scade.
+			posti: {
+				capienza,
+				confermati,
+				liberi,
+				in_attesa: vive.filter((p) => p.status === 'waitlisted').length,
+				al_completo: liberi === 0,
+			},
+			// null se si può prenotare; altrimenti il perché, da mostrare al posto del pulsante.
+			// Una lezione di oggi già finita resta in agenda, ma non si prenota né si disdice.
+			motivo_non_prenotabile: annullata ? 'La lezione è stata annullata.'
+				: finita ? 'La lezione è già finita.'
+					: liberi === 0 && listaChiusa && !mia ? "La lezione è piena e la lista d'attesa è chiusa."
+						: motivoSenzaCopertura(mieIscrizioni, s.date),
+			finita,
+			annullata,
+			// Fino a quando il socio può disdire da sé ("AAAA-MM-GGTHH:MM", ora di Roma), null se
+			// fino alla fine; e, se il termine è passato, il perché.
+			disdetta_fino_a: limite ? `${limite.data}T${limite.ora}` : null,
+			motivo_disdetta_chiusa: motivoDisdettaChiusa(s, r.corso.disdettaEntroOre, adesso),
+			// Fino a quando si entra in lista d'attesa e si ricevono offerte: poi il posto che si
+			// libera è di chi lo prende.
+			lista_chiude_il: chiusura?.toISOString() ?? null,
+			lista_chiusa: listaChiusa,
+			// La serie della lezione, se è una serie: è ciò su cui si prenota fisso.
+			serie: r.evento.ricorrenza === 'weekly' || r.evento.ricorrenza === 'custom'
+				? { id: r.evento.id, mia_fissa: fisse.has(r.evento.id) }
+				: null,
+			mia_prenotazione: mia
+				? {
+					id: mia.id,
+					stato: mia.status,
+					posizione_attesa: mia.waitlistPosition,
+					// Un posto offerto, aperto: si conferma con «prenota».
+					posto_offerto_fino_a: offertaAperta(mia, adesso) ? new Date(mia.postoOffertoFinoA).toISOString() : null,
+					fissa: Boolean(mia.prenotazioneFissaId),
+					motivo_disdetta: mia.motivoDisdetta ?? null,
+					creata_il: mia.createdDate,
+				}
+				: null,
+		};
+	});
+}
+
+const vuoto = (v) => v === null || v === undefined || v === '';

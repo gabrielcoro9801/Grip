@@ -16,7 +16,7 @@
 // ponytail: regole esplicite; un modello statistico solo quando ci saranno i dati di molte palestre.
 import { oggiIso, oraIso, giorniFra, spostaGiorni, lezioneFinita } from './giorni.js';
 import { abbonamentoCopre, sospensioneIl } from './abbonamenti.js';
-import { avvisiSocio, documentiDaSistemare } from './avvisi.js';
+import { avvisiSocio } from './avvisi.js';
 import { SOGLIE } from './soglie.js';
 
 /**
@@ -73,8 +73,6 @@ export const SEGNALI = [
 	{ valore: 'in_scadenza', etichetta: 'Abbonamento in scadenza', priorita: 80, regola: (s) => `l'abbonamento finisce entro ${s.abbonamentoInScadenzaGiorni} giorni e non ha ancora rinnovato` },
 	{ valore: 'assente', etichetta: 'Non viene da un po\'', priorita: 70, regola: (s) => `nessun ingresso da ${s.segnali.assenzaGiorni} giorni` },
 	{ valore: 'in_calo', etichetta: 'Viene meno di prima', priorita: 60, regola: (s) => `nelle ultime 4 settimane meno del ${s.segnali.caloPercentuale}% della sua media (se viene almeno ${s.segnali.mediaMinimaCalo} volte ogni 4 settimane)` },
-	{ valore: 'documento_scaduto', etichetta: 'Documento scaduto', priorita: 26, regola: () => 'un documento obbligatorio è scaduto e non è stato sostituito' },
-	{ valore: 'documento_in_scadenza', etichetta: 'Documento in scadenza', priorita: 20, regola: (s) => `un documento obbligatorio scade entro ${s.documentoInScadenzaGiorni} giorni` },
 	{ valore: 'compleanno', etichetta: 'Compie gli anni', priorita: 10, regola: finestraCompleanno },
 ];
 // Quelli che servono solo al bancone, nel momento in cui la persona entra.
@@ -204,7 +202,6 @@ const descriviCompleanno = (giorni) => (giorni === 0 ? 'oggi compie gli anni'
  *                       contatto, che si segue nella sezione Lead)
  * @param p.iscrizioni   [{ id?, plan_name?, start_date, end_date }], passate da `conSospensioni`
  *                       (shared/abbonamenti.js), con `created_date`
- * @param p.documenti    [{ id?, file_name?, document_type, created_date, expiry_date }]
  * @param p.ingressi     { ultimo: 'AAAA-MM-GG'|null, quattro, dodici, totale, prima?, oggi? } — ingressi
  *                       nelle ultime 4 e 12 settimane e in tutto; `prima` l'ultimo giorno di ingresso
  *                       prima di oggi, `oggi` quanti oggi (per i segnali del bancone di chi è già
@@ -218,7 +215,7 @@ const descriviCompleanno = (giorni) => (giorni === 0 ? 'oggi compie gli anni'
  *   entra adesso). `nascostoFino`: il segnale c'è ma non va riproposto prima di quel giorno.
  */
 export function segnaliPersona({
-	socio = null, iscrizioni = [], documenti = [], ingressi = null, contatti = {}, oggi = oggiIso(), soglie: tutte = SOGLIE,
+	socio = null, iscrizioni = [], ingressi = null, contatti = {}, oggi = oggiIso(), soglie: tutte = SOGLIE,
 }) {
 	// Chi non è socio è un contatto: il suo lavoro sta nella sezione Lead (shared/lead.js).
 	if (!socio) return { fase: 'lead', segnali: [], copertura: null };
@@ -291,20 +288,6 @@ export function segnaliPersona({
 	}
 
 	if (frequenta) {
-		// I documenti obbligatori scaduti o in scadenza: la stessa regola del portale e degli
-		// ingressi (documentiDaSistemare). Un segnale per genere, con tutti i documenti dentro: Da
-		// fare ne fa un avviso per documento (shared/daFare.js). Il documento che manca lo dicono
-		// la sua sezione della scheda e il portale, non Da fare.
-		const fuori = documentiDaSistemare({ socio, documenti, oggi, giorniInScadenza: tutte.documentoInScadenzaGiorni });
-		const descrivi = {
-			scaduto: (d) => `${d.nome.toLowerCase()} scaduto${d.scadenza ? ` il ${dataIt(d.scadenza)}` : ''}`,
-			in_scadenza: (d) => `${d.nome.toLowerCase()} scade ${fra(d.giorni)}`,
-		};
-		for (const stato of ['scaduto', 'in_scadenza']) {
-			const questi = fuori.filter((d) => d.stato === stato);
-			if (questi.length) aggiungi(`documento_${stato}`, questi.map(descrivi[stato]).join(', '), { dati: { documenti: questi } });
-		}
-
 		// Per lo staff, da qualche giorno prima a qualche giorno dopo; al bancone, il giorno stesso.
 		const vicino = compleannoVicino(socio.date_of_birth, oggi,
 			tutte.compleannoPrimaGiorni ?? SOGLIE.compleannoPrimaGiorni, tutte.compleannoDopoGiorni ?? SOGLIE.compleannoDopoGiorni);
@@ -328,7 +311,7 @@ export function segnaliPersona({
 	}
 
 	// Quello che vede il socio nel portale: gli avvisi di sempre (shared/avvisi.js).
-	for (const a of avvisiSocio({ socio, iscrizioni, documenti, oggi, soglie: tutte })) {
+	for (const a of avvisiSocio({ socio, iscrizioni, oggi, soglie: tutte })) {
 		segnali.push({
 			codice: a.codice, titolo: a.titolo, priorita: a.gravita === 'rosso' ? 90 : 50, motivo: a.testo,
 			azioni: a.azione ? [a.azione] : [], pubblico: 'socio', nascostoFino: null, dati: null,

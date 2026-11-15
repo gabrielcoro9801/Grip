@@ -5,7 +5,6 @@
 // controllo va fatto mentre lo si digita (schermate) e di nuovo quando arriva (server): con
 // due copie della regola, prima o poi una delle due accetterebbe un codice che l'altra rifiuta.
 import { oggiIso, eUnGiorno } from "./giorni.js";
-import { SOGLIE } from "./soglie.js";
 
 export const SESSI = [
   { valore: "M", etichetta: "Maschio" },
@@ -66,6 +65,16 @@ export function etaA(dataNascita, oggi = oggiIso()) {
 export function eMinorenne(dataNascita, oggi = oggiIso()) {
   const anni = etaA(dataNascita, oggi);
   return anni !== null && anni < MAGGIORE_ETA;
+}
+
+/**
+ * Se a un socio manca il consenso dei genitori firmato: è minorenne e la spunta «firmato» non c'è.
+ * Era un documento caricato; da novembre 2026 è una spunta in anagrafica (decisione R4,
+ * docs/piani/portale.md). Non blocca niente: la scheda lo segnala.
+ * @param socio { date_of_birth, consenso_genitori_firmato }
+ */
+export function consensoGenitoriDaFirmare(socio, oggi = oggiIso()) {
+  return eMinorenne(socio?.date_of_birth, oggi) && !socio?.consenso_genitori_firmato;
 }
 
 // ---------------------------------------------------------------------------------------
@@ -177,155 +186,4 @@ export function partitaIvaValida(valoreGrezzo) {
     else somma += cifra * 2 > 9 ? cifra * 2 - 9 : cifra * 2;
   }
   return (10 - (somma % 10)) % 10 === Number(piva[10]);
-}
-
-// ---------------------------------------------------------------------------------------
-// Documenti del socio
-// ---------------------------------------------------------------------------------------
-
-/**
- * I tipi di documento.
- *
- * `atteso` dice che la scheda del socio segnala quando manca: il certificato medico serve per
- * allenarsi, il documento di identità per il tesseramento, il consenso dei genitori — solo per
- * i minorenni (`"minorenni"`) — perché un minore si iscrive con la firma di chi ne è
- * responsabile. Gli altri si caricano se servono.
- * `scadenza` dice se la data di scadenza è obbligatoria: certificato e documento di identità
- * scadono entrambi, e senza la data la scheda non sa dire quando il socio va richiamato. Il
- * consenso non scade: vale finché il socio è minorenne, e poi resta nello storico.
- */
-export const TIPI_DOCUMENTO = [
-  { valore: "certificato_medico", etichetta: "Certificato medico", atteso: true, scadenza: true },
-  { valore: "documento_identita", etichetta: "Documento di identità", atteso: true, scadenza: true },
-  { valore: "consenso_genitori", etichetta: "Consenso dei genitori", atteso: "minorenni", scadenza: false },
-  // Il modulo firmato con cui un socio dà in reception il consenso alle promozioni: è la prova
-  // (shared/consensi.js). Non è atteso: le promozioni sono una scelta.
-  { valore: "consenso_marketing", etichetta: "Consenso comunicazioni promozionali", atteso: false, scadenza: false },
-  { valore: "altro", etichetta: "Altri documenti", atteso: false, scadenza: false },
-];
-
-const PER_TIPO = Object.fromEntries(TIPI_DOCUMENTO.map((t) => [t.valore, t]));
-
-export const tipoDocumentoValido = (v) => v in PER_TIPO;
-export const infoTipoDocumento = (v) => PER_TIPO[v] ?? null;
-
-/**
- * Se per questo socio un tipo di documento va segnalato quando manca.
- * @param tipo  una voce di TIPI_DOCUMENTO, o il suo valore
- * @param socio { date_of_birth }
- */
-export function tipoAtteso(tipo, socio, oggi = oggiIso()) {
-  const voce = typeof tipo === "string" ? PER_TIPO[tipo] : tipo;
-  if (voce?.atteso === "minorenni") return eMinorenne(socio?.date_of_birth, oggi);
-  return Boolean(voce?.atteso);
-}
-
-/** Come chiamare un documento: il titolo per gli "altri", altrimenti il tipo. */
-export function nomeDocumento(doc) {
-  if (doc?.document_type === "altro") return doc.titolo || "Documento";
-  return PER_TIPO[doc?.document_type]?.etichetta ?? doc?.document_type ?? "";
-}
-
-/** Perché un documento non si può salvare, o null. */
-export function motivoDocumentoNonValido(doc) {
-  const tipo = PER_TIPO[doc?.document_type];
-  if (!tipo) return "Tipo di documento non valido.";
-  if (doc.document_type === "altro" && !String(doc.titolo ?? "").trim()) return "Indica di che documento si tratta.";
-  if (tipo.scadenza && !doc.expiry_date) return `${tipo.etichetta}: indica la data di scadenza.`;
-  return null;
-}
-
-// ---------------------------------------------------------------------------------------
-// Lo stato di un documento, e quando finisce in archivio
-// ---------------------------------------------------------------------------------------
-
-/** Quanti giorni prima della scadenza un documento si dice "in scadenza". */
-export const GIORNI_IN_SCADENZA = SOGLIE.documentoInScadenzaGiorni;
-
-const ETICHETTE_STATO = {
-  valido: "Valido",
-  in_scadenza: "In scadenza",
-  scaduto: "Scaduto",
-  archiviato: "Archiviato",
-};
-
-export const etichettaStatoDocumento = (stato) => ETICHETTE_STATO[stato] ?? "";
-
-/**
- * Quando un documento è stato caricato, come numero da confrontare.
- *
- * Si passa da `Date` e non dal confronto fra stringhe perché le due parti non ricevono la
- * stessa cosa: al browser `created_date` arriva come testo ISO dal JSON, al server come
- * oggetto `Date` letto da PostgreSQL. `String(new Date(...))` produce "Sat Jan 10 2019…",
- * che in ordine alfabetico mette agosto prima di gennaio — l'archivio avrebbe tenuto in
- * vista il documento sbagliato, e solo sul server.
- */
-function quandoCaricato(doc) {
-  const istante = new Date(doc?.created_date ?? 0).getTime();
-  return Number.isNaN(istante) ? 0 : istante;
-}
-
-/**
- * Lo stato di ogni documento di un socio: `valido`, `in_scadenza`, `scaduto`, `archiviato`.
- *
- * L'archivio non è una colonna nel database: è una conseguenza delle date, e si ricalcola a
- * ogni lettura. Salvarlo vorrebbe dire avere un campo che diventa falso da solo alla
- * mezzanotte di una scadenza, e qualcosa che lo aggiorni — un lavoro periodico che prima o
- * poi non gira, lasciando documenti nello stato sbagliato senza che nessuno se ne accorga.
- *
- * **Perché certificato medico e documento di identità non si archiviano da soli.** Sono i
- * due tipi che la scheda segnala quando mancano (`atteso`), e la sezione non deve mai
- * restare vuota mentre un documento esiste: direbbe "Mancante", che è un'altra cosa e più
- * rassicurante del vero — "manca" si risolve chiedendolo al socio, "scaduto" vuol dire che
- * quella persona si sta allenando senza copertura. Per questi due tipi, quindi, uno scaduto
- * va in archivio **solo quando c'è qualcos'altro che lo rimpiazza**, e cioè:
- *
- *   - esiste un documento dello stesso tipo ancora buono, caricato prima o dopo non importa.
- *     Capita di registrare la copia di un certificato vecchio dopo aver già inserito quello
- *     nuovo: è storia che nasce archiviata, e non deve tornare a occupare la sezione;
- *   - oppure, se sono scaduti tutti, quello caricato per ultimo resta in vista e gli altri
- *     vanno via: è l'unico che dica ancora qualcosa di utile.
- *
- * Gli "altri" documenti non segnalano niente quando mancano, quindi appena scadono possono
- * andare in archivio senza tante condizioni.
- *
- * `giorniAllaScadenza(data)` torna i giorni interi che mancano (negativi se è passata) e
- * `null` se la data non c'è. La passa chi chiama: il browser ce l'ha in `core/domain/format`,
- * il server nelle sue funzioni di rotta, e sono calcoli sul calendario che non vale la pena
- * riscrivere qui una terza volta.
- */
-export function conStatoDocumenti(documenti, giorniAllaScadenza, giorniInScadenza = GIORNI_IN_SCADENZA) {
-  // Se un documento sia scaduto si decide una volta sola: serve sia per il suo stato, sia
-  // per sapere se i suoi fratelli dello stesso tipo hanno qualcosa di meglio da mostrare.
-  const valutati = documenti.map((doc) => {
-    const giorni = giorniAllaScadenza(doc.expiry_date);
-    // Senza data di scadenza non scade: è il caso degli "altri" documenti, che restano
-    // validi finché qualcuno non li elimina a mano.
-    return { doc, giorni, scaduto: giorni !== null && giorni < 0 };
-  });
-
-  // Per ogni tipo: quando è stato caricato il più recente, e se ne esiste uno ancora buono.
-  const ultimoPerTipo = new Map();
-  const tipiConDocumentoBuono = new Set();
-  for (const { doc, scaduto } of valutati) {
-    const quando = quandoCaricato(doc);
-    const attuale = ultimoPerTipo.get(doc.document_type);
-    if (attuale === undefined || quando > attuale) ultimoPerTipo.set(doc.document_type, quando);
-    if (!scaduto) tipiConDocumentoBuono.add(doc.document_type);
-  }
-
-  return valutati.map(({ doc, giorni, scaduto }) => {
-    const rimpiazzato =
-      tipiConDocumentoBuono.has(doc.document_type) ||
-      quandoCaricato(doc) < (ultimoPerTipo.get(doc.document_type) ?? 0);
-    const atteso = Boolean(PER_TIPO[doc.document_type]?.atteso);
-    const archiviato = scaduto && (atteso ? rimpiazzato : true);
-
-    let stato = "valido";
-    if (archiviato) stato = "archiviato";
-    else if (scaduto) stato = "scaduto";
-    else if (giorni !== null && giorni <= giorniInScadenza) stato = "in_scadenza";
-
-    return { ...doc, stato, giorni_alla_scadenza: giorni };
-  });
 }

@@ -10,17 +10,16 @@ import { eq, inArray } from 'drizzle-orm';
 import { buildApp } from '../src/app.js';
 import { db, pool } from '../src/db/client.js';
 import {
-	members, staffAccounts, qrAccessi, bookings, sessions, events, courses, rooms, instructors, subscriptions, plans, auditLogs, attivita,
+	members, staffAccounts, bookings, sessions, events, courses, rooms, instructors, subscriptions, plans, auditLogs, attivita,
 	prenotazioniFisse,
 } from '../src/db/schema/index.js';
-import { codiceDinamico } from '../src/lib/qrDinamico.js';
 import { oggiIso, spostaGiorni } from '../../shared/giorni.js';
+import { categoriaDiProva, togliCategorieDiProva } from './categoriaDiProva.js';
 
 const PASSWORD = 'prova-archivio-1234';
 const suffisso = Date.now();
 const lettere = String(suffisso).replace(/\d/g, (c) => 'ABCDEFGHIJ'[c]);
 const emailSocio = `archivio.socio.${suffisso}@test.local`;
-const SEME = `GRIP-ARCH-${lettere}`;
 
 let app;
 let tokenAdmin;
@@ -50,7 +49,6 @@ before(async () => {
 	tokenAdmin = (await login(account[0].email)).json().token;
 	tokenSocio = (await login(emailSocio)).json().token;
 
-	await db.insert(qrAccessi).values({ clienteId: id.soci[0], codice: SEME, stato: 'attivo' });
 	await db.insert(subscriptions).values(id.soci.map((s) => ({ memberId: s, planName: 'Prova', startDate: '2026-01-01', endDate: '2099-12-31' })));
 	const [tipo] = await db.insert(plans).values({ name: `Archivio ${suffisso}`, price: 30, durataValore: 1, durataUnita: 'mesi' }).returning();
 	id.tipo = tipo.id;
@@ -59,7 +57,7 @@ before(async () => {
 	id.sala = sala.id;
 	const [istruttore] = await db.insert(instructors).values({ nome: 'Istruttore', cognome: `Archivio ${suffisso}` }).returning();
 	id.istruttore = istruttore.id;
-	const [corso] = await db.insert(courses).values({ name: `Corso archivio ${suffisso}`, instructorId: istruttore.id }).returning();
+	const [corso] = await db.insert(courses).values({ categoryId: await categoriaDiProva(), name: `Corso archivio ${suffisso}`, instructorId: istruttore.id }).returning();
 	id.corso = corso.id;
 	const domani = spostaGiorni(oggiIso(), 1);
 	const [evento] = await db.insert(events).values({
@@ -76,7 +74,7 @@ before(async () => {
 		courseId: corso.id, roomId: sala.id, capacity: 5, recurrenceType: 'weekly', giorno: 'Monday',
 		startDate: domani, endCondition: 'by_date', endDate: spostaGiorni(domani, 60), startTime: '19:00', endTime: '20:00',
 	}).returning();
-	const [fissa] = await db.insert(prenotazioniFisse).values({ memberId: id.soci[0], eventId: sessione.id, dal: oggiIso() }).returning();
+	const [fissa] = await db.insert(prenotazioniFisse).values({ memberId: id.soci[0], eventId: sessione.id, dal: oggiIso(), al: spostaGiorni(oggiIso(), 60) }).returning();
 	id.fissa = fissa.id;
 
 	// Un posto solo: il socio che se ne andrà lo occupa, l'altro è in lista d'attesa.
@@ -91,9 +89,9 @@ after(async () => {
 	await db.delete(sessions).where(eq(sessions.eventId, id.evento));
 	await db.delete(events).where(eq(events.courseId, id.corso));
 	await db.delete(courses).where(inArray(courses.instructorId, [id.istruttore]));
+	await togliCategorieDiProva();
 	await db.delete(instructors).where(eq(instructors.id, id.istruttore));
 	await db.delete(rooms).where(eq(rooms.id, id.sala));
-	await db.delete(qrAccessi).where(inArray(qrAccessi.clienteId, id.soci));
 	await db.delete(subscriptions).where(inArray(subscriptions.memberId, id.soci));
 	await db.delete(plans).where(eq(plans.id, id.tipo));
 	await db.delete(auditLogs).where(inArray(auditLogs.entitaId, id.soci));
@@ -118,7 +116,7 @@ describe('archiviare un socio', () => {
 		assert.equal((await admin({ method: 'POST', url: `/api/soci/${id.soci[0]}/archivia`, payload: { motivo: 'altro' } })).statusCode, 400);
 	});
 
-	test('si archivia, e la sua prenotazione futura passa a chi aspettava', async () => {
+	test('si archivia, e la sua prenotazione futura si offre a chi aspettava', async () => {
 		const res = await admin({ method: 'POST', url: `/api/soci/${id.soci[0]}/archivia`, payload: { motivo: 'trasferimento', nota: 'Va a Milano' } });
 		assert.equal(res.statusCode, 200, res.body);
 		assert.equal(res.json().socio.archiviato_il, oggiIso());
@@ -126,7 +124,9 @@ describe('archiviare un socio', () => {
 
 		const righe = await db.select().from(bookings).where(eq(bookings.sessionId, id.lezione));
 		assert.equal(righe.find((b) => b.memberId === id.soci[0]).status, 'cancelled');
-		assert.equal(righe.find((b) => b.memberId === id.soci[1]).status, 'confirmed', 'chi era in lista è promosso');
+		const chiAspettava = righe.find((b) => b.memberId === id.soci[1]);
+		assert.equal(chiAspettava.status, 'waitlisted');
+		assert.ok(chiAspettava.postoOffertoFinoA, 'a chi era in lista si offre il posto');
 	});
 
 	test('le sue prenotazioni fisse si chiudono da oggi, e il registro lo dice (K11)', async () => {
@@ -150,13 +150,6 @@ describe('archiviare un socio', () => {
 		assert.equal((await login(emailSocio)).statusCode, 401);
 	});
 
-	test('QR: alla porta non passa, e il codice del minuto non si calcola', async () => {
-		const verifica = await admin({ method: 'POST', url: '/api/qr/verifica', payload: { codice: codiceDinamico(SEME) } });
-		assert.equal(verifica.json().valido, false);
-		const codice = await admin({ method: 'GET', url: `/api/qr/codice?cliente_id=${id.soci[0]}` });
-		assert.equal(codice.json().codice, null);
-		assert.equal(codice.json().stato, 'archiviato');
-	});
 
 	test('non compra abbonamenti e non prenota', async () => {
 		const vendita = await admin({ method: 'POST', url: '/api/entities/Subscription', payload: { member_id: id.soci[0], plan_id: id.tipo } });
@@ -172,8 +165,6 @@ describe('archiviare un socio', () => {
 		assert.equal(res.statusCode, 200, res.body);
 		assert.equal(res.json().socio.archiviato_il, null);
 		assert.equal((await login(emailSocio)).statusCode, 200);
-		const verifica = await admin({ method: 'POST', url: '/api/qr/verifica', payload: { codice: codiceDinamico(SEME) } });
-		assert.equal(verifica.json().valido, true);
 		const [fissa] = await db.select().from(prenotazioniFisse).where(eq(prenotazioniFisse.id, id.fissa));
 		assert.equal(fissa.attiva, false, 'riattivato, le fisse non ripartono');
 	});

@@ -13,7 +13,7 @@ import { usoDellaSala } from '../lib/sale.js';
 import { iscrizioniPerSocio } from '../lib/iscrizioni.js';
 import { translateToSnakeCase } from './columnMaps.js';
 import {
-	sessoValido, normalizzaCodiceFiscale, codiceFiscaleValido, motivoDocumentoNonValido, tipoDocumentoValido,
+	sessoValido, normalizzaCodiceFiscale, codiceFiscaleValido,
 	normalizzaPartitaIva, partitaIvaValida, NOTE_ISTRUTTORE_MASSIMO, NOTE_SOCIO_MASSIMO, motivoDataNascitaNonValida,
 	normalizzaTelefono,
 } from '../../../shared/anagrafica.js';
@@ -268,6 +268,8 @@ export function anagraficaSocio(corpo, { creazione }) {
 		if (presente(rest, campo)) rest[campo] = telefonoNormalizzato(rest[campo]);
 	}
 	if (presente(rest, 'email')) rest.email = vuoto(rest.email) ? null : String(rest.email).trim();
+	// La spunta del consenso dei genitori (R4): sì o no, niente altro.
+	if (presente(rest, 'consenso_genitori_firmato')) rest.consenso_genitori_firmato = rest.consenso_genitori_firmato === true;
 	if (!creazione) rest.updated_date = new Date().toISOString();
 	return rest;
 }
@@ -426,19 +428,6 @@ const WRITE_TRANSFORMS = {
 		return rest;
 	},
 
-	// Tipo fra i tre ammessi, titolo per gli "altri", scadenza per quelli che scadono. In modifica
-	// si controlla solo il tipo, se cambia: oggi i documenti si caricano e non si correggono.
-	async MemberDocument(body, { creazione }) {
-		const rest = { ...(body ?? {}) };
-		if (creazione) {
-			const motivo = motivoDocumentoNonValido(rest);
-			if (motivo) throw rifiuta(motivo);
-		} else if (presente(rest, 'document_type') && !tipoDocumentoValido(rest.document_type)) {
-			throw rifiuta('Tipo di documento non valido.');
-		}
-		return rest;
-	},
-
 	// Una sala: un nome, delle note corte, e uno stato fra attiva, sospesa e annullata. Sospesa è
 	// sempre un periodo, da data a data — senza una fine nessuno saprebbe quando la stanza torna
 	// libera. Negli altri due stati il periodo si cancella: restava scritto un pezzo di storia che
@@ -584,6 +573,8 @@ const WRITE_TRANSFORMS = {
 				.limit(1);
 			if (istruttore && !istruttore.attivo) throw rifiuta(`«${istruttore.nome}» è disattivato: scegli un altro istruttore, o riattivalo.`);
 		}
+		// La categoria è obbligatoria (migrazione 0062): il portale apre i corsi per categoria.
+		if ((creazione || presente(rest, 'category_id')) && vuoto(rest.category_id)) throw rifiuta('Scegli la categoria del corso.');
 		return rest;
 	},
 

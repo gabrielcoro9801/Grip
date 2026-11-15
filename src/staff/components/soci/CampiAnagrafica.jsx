@@ -3,7 +3,8 @@ import { Input } from "@/ui/primitivi/input";
 import { Label } from "@/ui/primitivi/label";
 import { Textarea } from "@/ui/primitivi/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/ui/primitivi/select";
-import { SESSI, codiceFiscaleValido, normalizzaCodiceFiscale, NOTE_SOCIO_MASSIMO, motivoDataNascitaNonValida, normalizzaTelefono } from "@/core/domain/anagrafica";
+import { Checkbox } from "@/ui/primitivi/checkbox";
+import { SESSI, codiceFiscaleValido, normalizzaCodiceFiscale, NOTE_SOCIO_MASSIMO, motivoDataNascitaNonValida, normalizzaTelefono, eMinorenne } from "@/core/domain/anagrafica";
 import { oggiIso } from "@/core/domain/giorni";
 
 // Il consenso GDPR non è più fra i campi: non lo dà la segreteria, lo darà il socio dal portale.
@@ -20,6 +21,8 @@ export const ANAGRAFICA_VUOTA = {
   emergency_contact_name: "",
   emergency_contact_phone: "",
   notes: "",
+  // Il consenso dei genitori firmato in reception (R4): la casella c'è solo per i minorenni.
+  consenso_genitori_firmato: false,
 };
 
 /** Solo i campi dell'anagrafica, a partire da un socio letto dall'API. */
@@ -115,6 +118,13 @@ export default function CampiAnagrafica({ valori, onChange, suggerimentoNascita 
         <Label htmlFor="anag-nascita">Data di nascita *</Label>
         <Input id="anag-nascita" type="date" required max={oggiIso()} value={valori.date_of_birth ?? ""} onChange={imposta("date_of_birth")} />
         {suggerimentoNascita && <p className="text-xs text-muted-foreground mt-1">{suggerimentoNascita}</p>}
+        {eMinorenne(valori.date_of_birth) && (
+          <label className="flex items-center gap-2 text-sm mt-2 min-h-11">
+            <Checkbox checked={valori.consenso_genitori_firmato === true}
+              onCheckedChange={(v) => aggiorna("consenso_genitori_firmato", v === true)} />
+            Consenso dei genitori firmato
+          </label>
+        )}
       </div>
       <div>
         <Label>Sesso *</Label>
