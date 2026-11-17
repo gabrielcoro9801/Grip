@@ -11,6 +11,7 @@ import { motivoPasswordNonValida } from '../../../shared/password.js';
 import { secondiDiAttesa, registraFallimento, registraSuccesso } from '../lib/tentativiAccesso.js';
 import { config } from '../config.js';
 import { registra } from '../lib/registro.js';
+import { contattiPalestra } from '../lib/impostazioni.js';
 
 // Un hash vero di una password che nessuno ha: serve a far durare un login su un'email
 // inesistente quanto uno su un'email che esiste. Stesso costo (10) degli hash degli account.
@@ -49,6 +50,13 @@ async function toPublicUser(account) {
 }
 
 export default async function authRoutes(fastify) {
+	// GET /api/auth/palestra → { nome, logo_url }: il marchio delle pagine di login, prima di entrare.
+	// Solo nome e logo, niente recapiti.
+	fastify.get('/api/auth/palestra', async () => {
+		const { nome, logo_url } = await contattiPalestra();
+		return { nome, logo_url };
+	});
+
 	// POST /api/auth/login  { email, password }
 	fastify.post('/api/auth/login', async (request, reply) => {
 		const { email, password } = request.body ?? {};

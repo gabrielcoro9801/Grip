@@ -24,7 +24,7 @@ const PDF = Buffer.from('%PDF-1.4\n%\xe2\xe3\xcf\xd3\n', 'latin1');
 const HTML = Buffer.from('<html><script>alert(1)</script></html>');
 
 /** Un corpo multipart con un solo file, come lo manda il browser. */
-function carica(contenuto, tipo, nome = 'file') {
+function carica(contenuto, tipo, nome = 'file', uso) {
 	const confine = '----grip-prova';
 	const corpo = Buffer.concat([
 		Buffer.from(`--${confine}\r\nContent-Disposition: form-data; name="file"; filename="${nome}"\r\nContent-Type: ${tipo}\r\n\r\n`),
@@ -33,7 +33,7 @@ function carica(contenuto, tipo, nome = 'file') {
 	]);
 	return app.inject({
 		method: 'POST',
-		url: '/api/uploads',
+		url: uso ? `/api/uploads?uso=${uso}` : '/api/uploads',
 		headers: { authorization: `Bearer ${token}`, 'content-type': `multipart/form-data; boundary=${confine}` },
 		payload: corpo,
 	});
@@ -83,5 +83,35 @@ describe('il contenuto deve corrispondere al tipo dichiarato', () => {
 	test('un file vuoto è rifiutato', async () => {
 		const res = await carica(Buffer.alloc(0), 'image/png', 'vuoto.png');
 		assert.equal(res.statusCode, 400, res.body);
+	});
+});
+
+describe('SVG: solo per il logo, e senza parti attive', () => {
+	const SVG = Buffer.from('<?xml version="1.0"?>\n<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><circle cx="5" cy="5" r="4"/></svg>');
+
+	test('un SVG pulito si carica come logo, salvato .svg', async () => {
+		const res = await carica(SVG, 'image/svg+xml', 'logo.svg', 'logo');
+		assert.equal(res.statusCode, 200, res.body);
+		assert.match(res.json().file_url, /\.svg$/);
+		await cancellaFile(percorsoDi(res.json().file_url));
+	});
+
+	test('fuori dal logo un SVG è rifiutato', async () => {
+		assert.equal((await carica(SVG, 'image/svg+xml', 'foto.svg')).statusCode, 400);
+	});
+
+	test('un SVG con script, eventi o link esterni è rifiutato, e non resta sul disco', async () => {
+		const prima = await fileSulDisco();
+		for (const cattivo of [
+			'<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>',
+			'<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"/>',
+			'<svg xmlns="http://www.w3.org/2000/svg"><a href="javascript:alert(1)"><text>x</text></a></svg>',
+			'<svg xmlns="http://www.w3.org/2000/svg"><foreignObject><div>x</div></foreignObject></svg>',
+			'<html><svg/></html>',
+		]) {
+			const res = await carica(Buffer.from(cattivo), 'image/svg+xml', 'logo.svg', 'logo');
+			assert.equal(res.statusCode, 400, `${cattivo} → ${res.body}`);
+		}
+		assert.equal(await fileSulDisco(), prima);
 	});
 });

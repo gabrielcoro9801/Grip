@@ -11,11 +11,11 @@ import { indirizzoApi, intestazioniAutenticazione } from "@/core/api/client";
  *
  * Stessa firma e stessa forma di risposta ({ file_url }) di prima.
  */
-export async function caricaFile({ file }) {
+export async function caricaFile({ file, uso }) {
   const form = new FormData();
   form.append("file", file);
 
-  const res = await fetch(`${indirizzoApi()}/api/uploads`, {
+  const res = await fetch(`${indirizzoApi()}/api/uploads${uso ? `?uso=${encodeURIComponent(uso)}` : ""}`, {
     method: "POST",
     // niente Content-Type: lo imposta il browser, col suo separatore
     headers: intestazioniAutenticazione(),

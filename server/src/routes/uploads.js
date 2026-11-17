@@ -6,10 +6,11 @@
 // cambia solo l'implementazione di questo handler, non i chiamanti.
 import { randomUUID } from 'node:crypto';
 import { createWriteStream } from 'node:fs';
-import { mkdir, open } from 'node:fs/promises';
+import { mkdir, open, readFile } from 'node:fs/promises';
 import { pipeline } from 'node:stream/promises';
 import path from 'node:path';
 import { getUserFromRequest } from '../auth/tokens.js';
+import { canAccess } from '../../../shared/permissions.js';
 import { cancellaFile } from '../lib/fileCaricati.js';
 
 // Tipi ammessi, ognuno con l'estensione con cui viene salvato.
@@ -21,9 +22,10 @@ import { cancellaFile } from '../lib/fileCaricati.js';
 // dentro quella pagina poteva leggere il token di sessione dal localStorage e mandarlo
 // altrove. L'estensione la decide questa tabella, e nient'altro.
 //
-// **SVG non è più ammesso.** È un documento XML che esegue script quando lo si apre
-// direttamente, quindi come vettore vale quanto un file HTML; per un logo o la foto di un
-// esercizio, PNG e WebP bastano.
+// **SVG non è ammesso qui.** È un documento XML che esegue script quando lo si apre
+// direttamente, quindi come vettore vale quanto un file HTML; per la foto di un socio o di un
+// esercizio PNG e WebP bastano. L'unica eccezione è il logo della palestra (`?uso=logo`, vedi
+// sotto): lo carica solo l'amministratore, e un SVG con dentro script o eventi è rifiutato.
 const ESTENSIONE_PER_TIPO = {
 	'application/pdf': '.pdf',
 	'image/png': '.png',
@@ -45,8 +47,23 @@ const FIRME = {
 	'image/webp': (b) => b.subarray(0, 4).toString('latin1') === 'RIFF' && b.subarray(8, 12).toString('latin1') === 'WEBP',
 };
 
+// Il logo in SVG: un'immagine, non un documento attivo. Niente script, gestori di eventi,
+// indirizzi javascript:, HTML incorporato o riferimenti esterni. I file sono comunque serviti con
+// `CSP: sandbox` (app.js), che blocca gli script anche aprendo il file da solo.
+// shortcut: lista di divieti su testo, non un sanitizzatore XML; se gli SVG si allargano oltre il logo, usarne uno vero.
+const SVG_PERICOLOSO = /<script|<foreignobject|<iframe|<embed|<object|\son[a-z]+\s*=|javascript:|<!entity|xlink:href\s*=\s*["']?(?!#)|\shref\s*=\s*["']?(?!#)/i;
+const SVG_MASSIMO = 512 * 1024;
+
+/** Vera se il file è un SVG piccolo e senza parti attive. */
+async function svgInnocuo(percorso) {
+	const testo = await readFile(percorso, 'utf8');
+	if (testo.length > SVG_MASSIMO) return false;
+	return /^\s*(<\?xml[^>]*>\s*)?(<!--[\s\S]*?-->\s*)*<svg[\s>]/i.test(testo) && !SVG_PERICOLOSO.test(testo);
+}
+
 /** Vera se i primi byte del file sul disco corrispondono al tipo dichiarato. */
 async function contenutoDelTipo(percorso, tipo) {
+	if (tipo === 'image/svg+xml') return svgInnocuo(percorso);
 	const file = await open(percorso, 'r');
 	try {
 		const inizio = Buffer.alloc(12);
@@ -76,7 +93,9 @@ export default async function uploadRoutes(fastify, options) {
 		const data = await request.file();
 		if (!data) return reply.code(400).send({ error: 'Nessun file ricevuto.' });
 
-		const ext = ESTENSIONE_PER_TIPO[data.mimetype];
+		const logoSvg = data.mimetype === 'image/svg+xml' && request.query?.uso === 'logo'
+			&& canAccess(getUserFromRequest(request).ruolo, 'impostazioni', 'edit');
+		const ext = logoSvg ? '.svg' : ESTENSIONE_PER_TIPO[data.mimetype];
 		if (!ext) {
 			return reply.code(400).send({ error: `Tipo di file non consentito: ${data.mimetype}` });
 		}
@@ -107,7 +126,7 @@ export default async function uploadRoutes(fastify, options) {
 
 		if (!(await contenutoDelTipo(destination, data.mimetype))) {
 			await cancellaFile(destination);
-			return reply.code(400).send({ error: 'Il contenuto del file non corrisponde al suo tipo (PDF, PNG, JPEG, GIF o WebP).' });
+			return reply.code(400).send({ error: data.mimetype === 'image/svg+xml' ? 'SVG non valido: niente script, eventi o collegamenti esterni (al massimo 512 KB).' : 'Il contenuto del file non corrisponde al suo tipo (PDF, PNG, JPEG, GIF o WebP).' });
 		}
 
 		return { file_url: `${publicBaseUrl}/uploads/${storedName}`, file_name: data.filename };

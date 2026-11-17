@@ -1,4 +1,4 @@
-import React, { useState, Suspense } from "react";
+import React, { useState, useEffect, Suspense } from "react";
 import { Outlet, Link, useLocation } from "react-router-dom";
 import { useStaffAuth } from "@/staff/lib/StaffAuthContext";
 import { canAccess, SIDEBAR_PERMISSIONS } from "@/staff/lib/permissions";
@@ -6,9 +6,10 @@ import StaffLogin from "@/staff/pages/StaffLogin";
 import {
   LayoutDashboard, Users, Calendar,
   ChevronLeft, ChevronRight, LogOut, Menu, Dumbbell,
-  ShieldCheck, ScrollText, KeyRound, ListChecks, Search, Phone
+  ShieldCheck, ScrollText, KeyRound, ListChecks, Search, Building2
 } from "lucide-react";
 import RicercaGlobale from "@/staff/components/RicercaGlobale";
+import { api } from "@/core/api/client";
 import { CambioPasswordObbligatorio, DialogCambioPassword } from "@/ui/CambioPassword";
 import { Button } from "@/ui/primitivi/button";
 import { Badge } from "@/ui/primitivi/badge";
@@ -29,10 +30,17 @@ const navItems = [
   // Le impostazioni stanno in fondo, sotto il loro titolo: prima erano mescolate al lavoro di
   // ogni giorno (Utenti accanto a Soci e Corsi). Le vede l'amministratore.
   { label: "Utenti e ruoli", path: "/admin", icon: ShieldCheck, impostazioni: true },
-  // I recapiti della palestra che il socio vede nel portale.
-  { label: "Contatti", path: "/admin/contatti", icon: Phone, impostazioni: true },
-  { label: "Registro delle azioni", path: "/log-audit", icon: ScrollText, impostazioni: true },
+  // Nome e logo della palestra (in cima al menu) e i recapiti che il socio vede nel portale.
+  { label: "Dettagli Societari", path: "/admin/contatti", icon: Building2, impostazioni: true },
+  { label: "Log", path: "/log-audit", icon: ScrollText, impostazioni: true },
 ];
+
+/** Il logo della palestra, o il manubrio se non ne ha uno. */
+function Logo({ url, className }) {
+  return url
+    ? <img src={url} alt="" className="w-full h-full object-contain" />
+    : <Dumbbell className={className} aria-hidden="true" />;
+}
 
 /** Le voci del menu che l'utente può aprire: il menu le mostra, e la pagina di benvenuto le elenca. */
 export function vociVisibili(utente) {
@@ -50,6 +58,17 @@ export default function AppLayout() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [cambioPassword, setCambioPassword] = useState(false);
   const [ricerca, setRicerca] = useState(false);
+  const [palestra, setPalestra] = useState(null);
+
+  // Nome e logo li sceglie l'amministratore in Dettagli Societari, che avvisa quando li salva.
+  useEffect(() => {
+    if (!staffUser) return undefined;
+    const carica = () => api.impostazioni.palestra().then(setPalestra).catch(() => {});
+    carica();
+    window.addEventListener("palestra-aggiornata", carica);
+    return () => window.removeEventListener("palestra-aggiornata", carica);
+  }, [staffUser]);
+  const nome = palestra?.nome || "Grip";
 
   // Staff auth gate: if no staff profile selected, show staff login
   if (staffLoading) {
@@ -95,12 +114,12 @@ export default function AppLayout() {
       `}>
         {/* Logo */}
         <div className="flex items-center gap-3 px-4 h-16 border-b border-sidebar-border">
-          <div className="w-8 h-8 rounded-lg bg-sidebar-primary flex items-center justify-center flex-shrink-0">
-            <Dumbbell className="w-4 h-4 text-sidebar-primary-foreground" />
+          <div className="w-8 h-8 rounded-lg bg-sidebar-primary flex items-center justify-center flex-shrink-0 overflow-hidden">
+            <Logo url={palestra?.logo_url} className="w-4 h-4 text-sidebar-primary-foreground" />
           </div>
           {!collapsed && (
             <>
-              <span className="font-heading font-bold text-lg text-white tracking-tight">Grip</span>
+              <span className="font-heading font-bold text-lg text-white tracking-tight truncate">{nome}</span>
               <SelettoreTema className="ml-auto bg-sidebar-accent text-sidebar-foreground" />
             </>
           )}
@@ -116,11 +135,11 @@ export default function AppLayout() {
         <div className="px-2 pt-3">
           <button
             type="button" onClick={() => { setMobileOpen(false); setRicerca(true); }}
-            title={collapsed ? "Cerca (Ctrl+K)" : undefined}
+            title={collapsed ? "Cerca socio (Ctrl+K)" : undefined}
             className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm w-full text-sidebar-foreground bg-sidebar-accent/50 hover:bg-sidebar-accent hover:text-white transition-colors"
           >
             <Search className="w-5 h-5 flex-shrink-0" aria-hidden="true" />
-            <span className={collapsed ? "sr-only" : "flex-1 text-left"}>Cerca</span>
+            <span className={collapsed ? "sr-only" : "flex-1 text-left"}>Cerca socio</span>
             {!collapsed && <kbd className="text-[10px] opacity-70">Ctrl K</kbd>}
           </button>
         </div>
@@ -209,11 +228,15 @@ export default function AppLayout() {
           <Button variant="ghost" size="icon" onClick={() => setMobileOpen(true)} aria-label="Apri il menu di navigazione">
             <Menu className="w-5 h-5" aria-hidden="true" />
           </Button>
-          <div className="flex items-center gap-2">
-            <Dumbbell className="w-5 h-5 text-primary" aria-hidden="true" />
-            <span className="font-heading font-bold">Grip</span>
+          <div className="flex items-center gap-2 min-w-0">
+            {palestra?.logo_url
+              ? <span className="w-7 h-7 rounded-md bg-sidebar-primary flex items-center justify-center shrink-0 overflow-hidden">
+                  <Logo url={palestra.logo_url} />
+                </span>
+              : <Dumbbell className="w-5 h-5 text-primary" aria-hidden="true" />}
+            <span className="font-heading font-bold truncate">{nome}</span>
           </div>
-          <Button variant="ghost" size="icon" onClick={() => setRicerca(true)} aria-label="Cerca una persona">
+          <Button variant="ghost" size="icon" onClick={() => setRicerca(true)} aria-label="Cerca socio">
             <Search className="w-5 h-5" aria-hidden="true" />
           </Button>
         </header>

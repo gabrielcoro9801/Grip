@@ -134,6 +134,10 @@ export function buildApp({ publicBaseUrl = 'http://localhost:3001', logger = tru
 			setHeaders(reply) {
 				reply.header('X-Content-Type-Options', 'nosniff');
 				reply.header('Content-Security-Policy', "default-src 'none'; sandbox");
+				// helmet mette `same-origin`: il gestionale in sviluppo (porta 5173) è un'altra origine
+				// rispetto all'API (3001) e il browser non mostrava le immagini (`same-site` non basta con
+				// un indirizzo IP). Chi può leggere un file lo decide la firma nell'indirizzo, non questa.
+				reply.header('Cross-Origin-Resource-Policy', 'cross-origin');
 			},
 		});
 	});

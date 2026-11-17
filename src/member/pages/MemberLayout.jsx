@@ -5,6 +5,7 @@ import MemberLogin from "./MemberLogin";
 import { LoadingState } from "@/ui/Spinner";
 import { CambioPasswordObbligatorio } from "@/ui/CambioPassword";
 import { contaNotificheEAvvisi } from "@/core/api/portale";
+import { api } from "@/core/api/client";
 import { Dumbbell, Home, CreditCard, LayoutGrid, Bell, CalendarCheck } from "lucide-react";
 
 // Una sola lista di destinazioni (docs/piani/portale.md, D-2): le quattro voci della barra del
@@ -63,6 +64,10 @@ export default function MemberLayout() {
     return () => document.removeEventListener("visibilitychange", torna);
   }, [puoChiedere, conta]);
   const nonLette = conteggio.non_lette + conteggio.avvisi;
+  // Nome e logo della palestra (Dettagli Societari nel gestionale), come nel menu dello staff.
+  const [palestra, setPalestra] = useState(null);
+  useEffect(() => { api.auth.palestra().then(setPalestra).catch(() => {}); }, []);
+  const nome = palestra?.nome || "Grip";
 
   if (loading) {
     return <LoadingState minHeight="min-h-screen" label="Caricamento del portale in corso" />;
@@ -88,10 +93,12 @@ export default function MemberLayout() {
       {/* Desktop sidebar */}
       <aside className="hidden lg:flex flex-col w-60 bg-sidebar text-sidebar-foreground fixed inset-y-0 left-0">
         <div className="flex items-center gap-3 px-4 h-16 border-b border-sidebar-border">
-          <div className="w-8 h-8 rounded-lg bg-sidebar-primary flex items-center justify-center">
-            <Dumbbell className="w-4 h-4 text-sidebar-primary-foreground" aria-hidden="true" />
+          <div className="w-8 h-8 rounded-lg bg-sidebar-primary flex items-center justify-center flex-shrink-0 overflow-hidden">
+            {palestra?.logo_url
+              ? <img src={palestra.logo_url} alt="" className="w-full h-full object-contain" />
+              : <Dumbbell className="w-4 h-4 text-sidebar-primary-foreground" aria-hidden="true" />}
           </div>
-          <span className="font-heading font-bold text-lg text-white">Grip</span>
+          <span className="font-heading font-bold text-lg text-white truncate">{nome}</span>
         </div>
         <nav aria-label="Navigazione del portale soci" className="flex-1 py-4 px-2 space-y-1 overflow-y-auto">
           {navItems.map(item => (
@@ -131,9 +138,13 @@ export default function MemberLayout() {
       <div className="flex-1 lg:ml-60 flex flex-col min-w-0">
         {/* Mobile header: il logo, la campanella e l'avatar che apre il Profilo. */}
         <header className="lg:hidden flex items-center gap-1 px-4 h-14 border-b border-border bg-card">
-          <Link to="/member-portal" className="flex items-center gap-2 mr-auto min-h-11">
-            <Dumbbell className="w-5 h-5 text-primary" aria-hidden="true" />
-            <span className="font-heading font-bold">Grip</span>
+          <Link to="/member-portal" className="flex items-center gap-2 mr-auto min-h-11 min-w-0">
+            {palestra?.logo_url
+              ? <span className="w-7 h-7 rounded-md bg-sidebar-primary flex items-center justify-center shrink-0 overflow-hidden">
+                  <img src={palestra.logo_url} alt="" className="w-full h-full object-contain" />
+                </span>
+              : <Dumbbell className="w-5 h-5 text-primary" aria-hidden="true" />}
+            <span className="font-heading font-bold truncate">{nome}</span>
           </Link>
           <Link
             to={PERCORSO_NOTIFICHE}

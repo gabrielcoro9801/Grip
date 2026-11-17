@@ -19,6 +19,7 @@ import { canAccess } from '../../../shared/permissions.js';
 import { registerPgErrorHandler } from './errorHandler.js';
 import { registra } from '../lib/registro.js';
 import { contattiPalestra, CAMPI_CONTATTI } from '../lib/impostazioni.js';
+import { nomeFileDa, togliFirma } from '../lib/urlFirmati.js';
 import { normalizzaTelefono } from '../../../shared/anagrafica.js';
 import { SOGLIE, soglieDi, sogliaValida } from '../../../shared/soglie.js';
 import { CODICI_SEGNALE, etichettaSegnale } from '../../../shared/segnali.js';
@@ -52,7 +53,7 @@ function fondiScelte(predefinite, attuali = {}, nuove = {}) {
 }
 
 /** Quanto può essere lungo ogni campo dei contatti: gli orari sono qualche riga. */
-const LUNGHEZZA_CONTATTI = { nome: 255, indirizzo: 255, telefono: 40, whatsapp: 40, email: 255, orari: 500 };
+const LUNGHEZZA_CONTATTI = { nome: 255, indirizzo: 255, telefono: 40, whatsapp: 40, email: 255, orari: 500, logo_url: 500 };
 
 /** Perché i contatti arrivati non vanno bene, o null. Vuoto o null vuol dire «non c'è». */
 function motivoContattiNonValidi(dati) {
@@ -65,6 +66,8 @@ function motivoContattiNonValidi(dati) {
 	for (const k of ['telefono', 'whatsapp']) {
 		if (dati[k]?.trim() && !normalizzaTelefono(dati[k])) return `Il numero ${k === 'whatsapp' ? 'WhatsApp' : 'di telefono'} non sembra valido.`;
 	}
+	// Il logo è un file caricato da noi (/api/uploads), mai un indirizzo esterno.
+	if (dati.logo_url?.trim() && !nomeFileDa(dati.logo_url)) return "Il logo dev'essere un'immagine caricata.";
 	if (dati.email?.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(dati.email.trim())) return "L'email non sembra valida.";
 	return null;
 }
@@ -76,8 +79,10 @@ export default async function impostazioniRoutes(fastify) {
 		const utente = getUserFromRequest(request);
 		if (!utente) return reply.code(401).send({ error: 'Non autenticato.' });
 		const legge = request.method === 'GET';
+		// Nome e logo della palestra stanno nella barra laterale di ogni ruolo dello staff.
+		const palestra = request.routeOptions?.url === '/api/impostazioni/palestra';
 		const puo = legge
-			? ['crm_members', 'impostazioni'].some((m) => canAccess(utente.ruolo, m, 'view'))
+			? palestra || ['crm_members', 'impostazioni'].some((m) => canAccess(utente.ruolo, m, 'view'))
 			: canAccess(utente.ruolo, 'impostazioni', 'edit');
 		if (utente.ruolo === 'member' || !puo) {
 			return reply.code(403).send({ error: legge ? 'Non consentito.' : 'Solo l\'amministratore cambia le impostazioni.' });
@@ -132,10 +137,10 @@ export default async function impostazioniRoutes(fastify) {
 		return dopo;
 	});
 
-	/** GET /api/impostazioni/palestra → { nome, indirizzo, telefono, whatsapp, email, orari } (null se vuoti) */
+	/** GET /api/impostazioni/palestra → { nome, indirizzo, telefono, whatsapp, email, orari, logo_url } (null se vuoti) */
 	fastify.get('/api/impostazioni/palestra', async () => contattiPalestra());
 
-	/** PUT /api/impostazioni/palestra { nome?, indirizzo?, telefono?, whatsapp?, email?, orari? } → come la GET */
+	/** PUT /api/impostazioni/palestra { nome?, indirizzo?, telefono?, whatsapp?, email?, orari?, logo_url? } → come la GET */
 	fastify.put('/api/impostazioni/palestra', async (request, reply) => {
 		const dati = request.body ?? {};
 		if (typeof dati !== 'object' || Array.isArray(dati)) return reply.code(400).send({ error: 'Corpo della richiesta non valido.' });
@@ -148,6 +153,8 @@ export default async function impostazioniRoutes(fastify) {
 			const [p] = await tx.select().from(organizations).limit(1).for('update');
 			const contatti = { ...(p.impostazioni?.contatti ?? {}) };
 			for (const k of CAMPI_CONTATTI) if (k in dati) contatti[k] = testo(dati[k]);
+		// Senza firma: una firma scade, il file no.
+		if ('logo_url' in dati) contatti.logo_url = togliFirma(testo(dati.logo_url));
 			const cambi = { impostazioni: { ...(p.impostazioni ?? {}), contatti }, updatedDate: new Date() };
 			if ('nome' in dati) cambi.nome = testo(dati.nome);
 			if ('indirizzo' in dati) cambi.indirizzo = testo(dati.indirizzo);
@@ -155,7 +162,8 @@ export default async function impostazioniRoutes(fastify) {
 		});
 		const dopo = await contattiPalestra();
 
-		const cambiati = Object.keys(dopo).filter((k) => prima[k] !== dopo[k]);
+		// Il logo si confronta senza firma: la firma cambia ogni ora anche se il file è lo stesso.
+		const cambiati = Object.keys(dopo).filter((k) => togliFirma(prima[k]) !== togliFirma(dopo[k]));
 		if (cambiati.length) {
 			await registra(request.utente, {
 				tipoAzione: 'update', entitaTipo: 'impostazioni', entitaNome: 'Contatti della palestra',

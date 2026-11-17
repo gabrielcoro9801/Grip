@@ -402,6 +402,8 @@ export const api = {
 	},
 
 	auth: {
+		/** Nome e logo della palestra, senza login: le pagine di accesso. → { nome, logo_url } */
+		palestra() { return request('/api/auth/palestra'); },
 		async login(email, password) {
 			const { token, user } = await request('/api/auth/login', {
 				method: 'POST',
