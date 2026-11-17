@@ -11,9 +11,11 @@ import { ErrorState } from "@/ui/StateViews";
 import { useToast } from "@/ui/primitivi/use-toast";
 import { useStaffAuth } from "@/staff/lib/StaffAuthContext";
 import { canEdit } from "@/staff/lib/permissions";
+import { caricaFile } from "@/staff/lib/uploads";
+import { Dumbbell } from "lucide-react";
 
-// I recapiti della palestra che il socio vede nel portale (Profilo, Abbonamento). Una pagina
-// piccola apposta: come farla bene si decide poi (docs/piani/portale.md, D-2).
+// Dettagli societari: nome e logo (il menu laterale del gestionale) e i recapiti che il socio vede
+// nel portale (Profilo, Abbonamento). Come farla bene si decide poi (docs/piani/portale.md, D-2).
 const CAMPI = [
   { chiave: "nome", etichetta: "Nome della palestra" },
   { chiave: "indirizzo", etichetta: "Indirizzo", aiuto: "Nel portale apre Google Maps." },
@@ -23,7 +25,7 @@ const CAMPI = [
   { chiave: "orari", etichetta: "Orari della reception", righe: true },
 ];
 
-const VUOTI = Object.fromEntries(CAMPI.map((c) => [c.chiave, ""]));
+const VUOTI = { ...Object.fromEntries(CAMPI.map((c) => [c.chiave, ""])), logo_url: "" };
 
 export default function ContattiPalestra() {
   const { staffUser } = useStaffAuth();
@@ -32,6 +34,7 @@ export default function ContattiPalestra() {
   const [valori, setValori] = useState(null);
   const [errore, setErrore] = useState(null);
   const [salvo, setSalvo] = useState(false);
+  const [carico, setCarico] = useState(false);
 
   const prendi = (dati) => setValori({ ...VUOTI, ...Object.fromEntries(Object.entries(dati).map(([k, v]) => [k, v ?? ""])) });
   const carica = useCallback(() => {
@@ -45,11 +48,28 @@ export default function ContattiPalestra() {
     setSalvo(true);
     try {
       prendi(await api.impostazioni.salvaPalestra(valori));
-      toast({ title: "Contatti salvati" });
+      // Il menu laterale rilegge nome e logo.
+      window.dispatchEvent(new Event("palestra-aggiornata"));
+      toast({ title: "Dettagli salvati" });
     } catch (err) {
       toast({ title: "Non salvati", description: err.message, variant: "destructive" });
     } finally {
       setSalvo(false);
+    }
+  };
+
+  const scegliLogo = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setCarico(true);
+    try {
+      const { file_url } = await caricaFile({ file, uso: "logo" });
+      setValori((v) => ({ ...v, logo_url: file_url }));
+    } catch (err) {
+      toast({ title: "Logo non caricato", description: err.message, variant: "destructive" });
+    } finally {
+      setCarico(false);
     }
   };
 
@@ -58,10 +78,29 @@ export default function ContattiPalestra() {
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-2xl mx-auto">
-      <PageHeader title="Contatti" description="I recapiti della palestra che i soci vedono nel portale. Un campo vuoto non si mostra." />
+      <PageHeader title="Dettagli Societari" description="Nome e logo compaiono nel menu laterale; i recapiti i soci li vedono nel portale. Un campo vuoto non si mostra." />
       <Card>
         <CardContent className="p-4 sm:p-6">
           <form onSubmit={salva} className="space-y-4">
+            <div className="space-y-1">
+              <Label htmlFor="contatti-logo">Logo</Label>
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-lg bg-sidebar-primary flex items-center justify-center overflow-hidden shrink-0">
+                  {valori.logo_url
+                    ? <img src={valori.logo_url} alt="Logo attuale" className="w-full h-full object-contain" />
+                    : <Dumbbell className="w-5 h-5 text-sidebar-primary-foreground" aria-hidden="true" />}
+                </div>
+                {puoCambiare && (
+                  <>
+                    <Input id="contatti-logo" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" onChange={scegliLogo} disabled={carico} className="max-w-xs" />
+                    {valori.logo_url && (
+                      <Button type="button" variant="outline" onClick={() => setValori((v) => ({ ...v, logo_url: "" }))}>Togli</Button>
+                    )}
+                  </>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground">{carico ? "Caricamento…" : "PNG, JPEG, WebP o SVG. Senza logo resta il manubrio."}</p>
+            </div>
             {CAMPI.map((c) => {
               const id = `contatti-${c.chiave}`;
               const Campo = c.righe ? Textarea : Input;
@@ -81,7 +120,7 @@ export default function ContattiPalestra() {
               );
             })}
             {puoCambiare && (
-              <Button type="submit" disabled={salvo} className="min-h-11">{salvo ? "Salvataggio…" : "Salva"}</Button>
+              <Button type="submit" disabled={salvo || carico} className="min-h-11">{salvo ? "Salvataggio…" : "Salva"}</Button>
             )}
           </form>
         </CardContent>

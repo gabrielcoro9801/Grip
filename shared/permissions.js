@@ -19,7 +19,7 @@ export const MODULES = {
   utenti: { label: "Utenti", azioni: ["view", "edit"] },
   ruoli: { label: "Ruoli", azioni: ["view", "edit"] },
   impostazioni: { label: "Impostazioni", azioni: ["view", "edit"] },
-  audit_log: { label: "Registro delle azioni", azioni: ["view"] },
+  audit_log: { label: "Log", azioni: ["view"] },
 };
 
 /**

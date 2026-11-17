@@ -19,7 +19,7 @@ import { db, pool } from '../src/db/client.js';
 import { oggiIso, spostaGiorni } from '../../shared/giorni.js';
 import {
 	members, staffAccounts, subscriptions,
-	rooms, courses, events, sessions, bookings, consensi, auditLogs,
+	rooms, courses, events, sessions, bookings, consensi, auditLogs, organizations,
 } from '../src/db/schema/index.js';
 import { categoriaDiProva, togliCategorieDiProva } from './categoriaDiProva.js';
 
@@ -407,6 +407,27 @@ describe('i contatti della palestra (D-2)', () => {
 		} finally {
 			const { nome, indirizzo, telefono, whatsapp, email, orari } = prima;
 			await metti(tokenAdmin, { nome, indirizzo, telefono, whatsapp, email, orari });
+		}
+	});
+
+	test('la pagina di login legge nome e logo senza token, e nient\'altro', async () => {
+		const res = await app.inject({ method: 'GET', url: '/api/auth/palestra' });
+		assert.equal(res.statusCode, 200, res.body);
+		assert.deepEqual(Object.keys(res.json()).sort(), ['logo_url', 'nome'], 'niente recapiti prima del login');
+	});
+
+	test('il logo: solo un file caricato, salvato senza firma, letto firmato', async () => {
+		const prima = (await app.inject({ method: 'GET', url: '/api/impostazioni/palestra', headers: { authorization: `Bearer ${tokenAdmin}` } })).json();
+		try {
+			assert.equal((await metti(tokenAdmin, { logo_url: 'https://altrove.example/logo.png' })).statusCode, 400, 'niente indirizzi esterni');
+			const res = await metti(tokenAdmin, { logo_url: '/uploads/logo-di-prova.png?scade=1&firma=vecchia' });
+			assert.equal(res.statusCode, 200, res.body);
+			assert.match(res.json().logo_url, /^\/uploads\/logo-di-prova\.png\?scade=\d+&firma=\w+$/);
+			assert.doesNotMatch(res.json().logo_url, /firma=vecchia/);
+			const [ente] = await db.select().from(organizations).limit(1);
+			assert.equal(ente.impostazioni.contatti.logo_url, '/uploads/logo-di-prova.png', 'nel database senza firma');
+		} finally {
+			await metti(tokenAdmin, { logo_url: prima.logo_url });
 		}
 	});
 });

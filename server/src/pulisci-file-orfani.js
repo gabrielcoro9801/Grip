@@ -22,6 +22,7 @@ import { entityRegistry } from './entities/registry.js';
 import { annunciaDatabase } from './lib/descriviDatabase.js';
 import { UPLOAD_DIR, colonneFile, cancellaFile } from './lib/fileCaricati.js';
 import { nomeFileDa } from './lib/urlFirmati.js';
+import { organizations } from './db/schema/index.js';
 
 const APPLICA = process.argv.includes('--applica');
 const ETA_MINIMA_MS = 24 * 60 * 60 * 1000;
@@ -38,6 +39,11 @@ for (const table of Object.values(entityRegistry)) {
 			if (nome) citati.add(nome);
 		}
 	}
+}
+// Il logo della palestra non è in una colonna `*_url`: sta in impostazioni.contatti (Dettagli Societari).
+for (const { impostazioni } of await db.select({ impostazioni: organizations.impostazioni }).from(organizations)) {
+	const nome = nomeFileDa(impostazioni?.contatti?.logo_url);
+	if (nome) citati.add(nome);
 }
 
 let nomi = [];

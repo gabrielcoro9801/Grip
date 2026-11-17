@@ -2,6 +2,7 @@
 import { db } from '../db/client.js';
 import { organizations } from '../db/schema/index.js';
 import { soglieDi } from '../../../shared/soglie.js';
+import { firmaUrl } from './urlFirmati.js';
 
 /** Le soglie in giorni della palestra, fuse con le predefinite (shared/soglie.js). */
 export async function soglieEnte(conn = db) {
@@ -13,8 +14,9 @@ export async function soglieEnte(conn = db) {
 export const CAMPI_CONTATTI = ['telefono', 'whatsapp', 'email', 'orari'];
 
 /**
- * Nome, indirizzo e recapiti della palestra, come li legge il socio nel portale: nome e
- * indirizzo dalle colonne, il resto da `impostazioni.contatti`. Un campo vuoto è null.
+ * Nome, indirizzo, logo e recapiti della palestra (il portale del socio, la barra del gestionale):
+ * nome e indirizzo dalle colonne, il resto da `impostazioni.contatti`. Un campo vuoto è null; il
+ * logo esce firmato, come ogni file caricato.
  */
 export async function contattiPalestra(conn = db) {
 	const [ente] = await conn.select().from(organizations).limit(1);
@@ -24,5 +26,6 @@ export async function contattiPalestra(conn = db) {
 		nome: pieno(ente?.nome),
 		indirizzo: pieno(ente?.indirizzo),
 		...Object.fromEntries(CAMPI_CONTATTI.map((k) => [k, pieno(contatti[k])])),
+		logo_url: pieno(contatti.logo_url) && firmaUrl(contatti.logo_url),
 	};
 }

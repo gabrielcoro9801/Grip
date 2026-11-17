@@ -4,7 +4,8 @@ import { Card, CardContent } from "@/ui/primitivi/card";
 import { Button } from "@/ui/primitivi/button";
 import { Input } from "@/ui/primitivi/input";
 import { Label } from "@/ui/primitivi/label";
-import { Dumbbell, LogIn, AlertCircle, KeyRound } from "lucide-react";
+import { LogIn, AlertCircle, KeyRound } from "lucide-react";
+import MarchioLogin from "@/ui/MarchioLogin";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter
 } from "@/ui/primitivi/dialog";
@@ -29,13 +30,7 @@ export default function MemberLogin() {
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
       <div className="max-w-md w-full space-y-6">
-        <div className="text-center">
-          <div className="w-14 h-14 rounded-xl bg-primary/10 flex items-center justify-center mx-auto mb-3">
-            <Dumbbell className="w-7 h-7 text-primary" />
-          </div>
-          <h1 className="text-2xl font-heading font-bold">GRIP — Area Cliente</h1>
-          <p className="text-sm text-muted-foreground mt-1">Accedi al tuo portale</p>
-        </div>
+        <MarchioLogin area="Area cliente" sottotitolo="Accedi al tuo portale" />
 
         <Card className="border-0 shadow-sm">
           <CardContent className="p-5">

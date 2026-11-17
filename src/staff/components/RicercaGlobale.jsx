@@ -67,19 +67,19 @@ export default function RicercaGlobale({ aperta, onAperta }) {
 
   return (
     <Dialog open={aperta} onOpenChange={onAperta}>
-      <DialogContent className="max-w-lg p-0 gap-0 top-[15%] translate-y-0">
-        <DialogTitle className="sr-only">Cerca una persona</DialogTitle>
+      <DialogContent className="max-w-2xl p-0 gap-0 top-[15%] translate-y-0 overflow-hidden">
+        <DialogTitle className="sr-only">Cerca un socio</DialogTitle>
         <DialogDescription className="sr-only">Nome, telefono, codice fiscale o codice socio.</DialogDescription>
-        <div className="flex items-center gap-2 px-3 border-b border-border">
-          <Search className="w-4 h-4 text-muted-foreground shrink-0" aria-hidden="true" />
+        <div className="flex items-center gap-2 pl-4 pr-12 border-b border-border">
+          <Search className="w-5 h-5 text-muted-foreground shrink-0" aria-hidden="true" />
           <Input
             autoFocus value={testo} onChange={(e) => setTesto(e.target.value)} onKeyDown={tasti}
             placeholder="Nome, telefono, codice fiscale o codice socio"
-            aria-label="Cerca una persona" role="combobox" aria-expanded={risultati.length > 0} aria-controls="ricerca-risultati"
-            className="border-0 shadow-none focus-visible:ring-0 h-12"
+            aria-label="Cerca un socio" role="combobox" aria-expanded={risultati.length > 0} aria-controls="ricerca-risultati"
+            className="border-0 shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 h-14 text-base md:text-base"
           />
         </div>
-        <ul id="ricerca-risultati" role="listbox" className="max-h-80 overflow-y-auto py-1">
+        <ul id="ricerca-risultati" role="listbox" className="max-h-[28rem] overflow-y-auto py-1">
           {testo.trim().length >= 2 && risultati.length === 0 && (
             <li className="px-4 py-6 text-sm text-center text-muted-foreground">Nessuno trovato.</li>
           )}
