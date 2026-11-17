@@ -51,6 +51,11 @@
             "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/graphify.mjs\" aggiorna",
             "timeout": 15
+          },
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/sito-pubblico.mjs\"",
+            "timeout": 10
           }
         ]
       }

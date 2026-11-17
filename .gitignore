@@ -15,3 +15,6 @@ server/uploads/
 graphify-out/
 .dev-squad/
 # --- fine dev-squad ---
+
+# Impronta locale dei file di rotta, usata da .claude/hooks/sito-pubblico.mjs
+.claude/.sito-pubblico.impronta

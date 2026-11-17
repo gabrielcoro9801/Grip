@@ -1,0 +1,10 @@
+# Grip è un gestionale: fuori dal login ci sono solo le due pagine d'accesso.
+# Gli script restano aperti perché il motore di ricerca deve eseguirli per vedere la pagina.
+User-agent: *
+Allow: /$
+Allow: /member-portal$
+Allow: /assets/
+Allow: /tema.js
+Disallow: /
+
+Sitemap: https://gripcore.it/sitemap.xml
