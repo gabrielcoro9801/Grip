@@ -2,7 +2,7 @@
 import test, { describe } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-	segnaliPersona, coperturaAbbonamento, eCompleanno, compleannoVicino, daFare, perche, fase,
+	segnaliPersona, coperturaAbbonamento, eCompleanno, compleannoVicino, daFare, perche,
 	SEGNALI, CODICI_SEGNALE, regolaSegnale,
 } from './segnali.js';
 import { spostaGiorni } from './giorni.js';
@@ -22,13 +22,6 @@ describe('gli stati', () => {
 		const r = calcola();
 		assert.equal(r.fase, 'attivo');
 		assert.deepEqual(staff(r), []);
-	});
-
-	test('chi non è socio è un contatto: il suo lavoro sta nella sezione Lead, non qui', () => {
-		const r = segnaliPersona({ trattativa: { stato: 'nuovo', data_contatto: g(-1) }, oggi: OGGI });
-		assert.equal(r.fase, 'lead');
-		assert.deepEqual(r.segnali, []);
-		assert.equal(fase(r.fase).etichetta, 'Contatto');
 	});
 
 	test('nuovo nei primi 30 giorni di abbonamento, poi attivo', () => {

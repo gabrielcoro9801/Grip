@@ -8,7 +8,7 @@ import { Checkbox } from "@/ui/primitivi/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/ui/primitivi/select";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/ui/primitivi/dialog";
 import { useToast } from "@/ui/primitivi/use-toast";
-import CampiAnagrafica, { ANAGRAFICA_VUOTA, anagraficaDi, motivoAnagraficaIncompleta } from "@/staff/components/soci/CampiAnagrafica";
+import CampiAnagrafica, { ANAGRAFICA_VUOTA, motivoAnagraficaIncompleta } from "@/staff/components/soci/CampiAnagrafica";
 import { SceltaFoto } from "@/staff/components/soci/FotoSocio";
 import { caricaFile } from "@/staff/lib/uploads";
 import { generaPasswordTemporanea } from "@/staff/lib/passwordTemporanea";
@@ -31,11 +31,9 @@ const INIZIO = { plan_id: "", start_date: oggiIso() };
  * Abbonamento e portale si possono saltare; l'informativa privacy firmata no. (Il certificato e i
  * consensi promozionali con il modulo firmato sono usciti a novembre 2026: docs/piani/portale.md.)
  *
- * Da un contatto (`lead`) parte da quello che si sa già — nome e recapiti, o tutta la vecchia
- * scheda di un ex socio — e la storia resta nel diario della persona. Senza contatto è chi entra
- * direttamente: un ex socio con lo stesso codice fiscale ritrova la sua scheda.
+ * Un ex socio con lo stesso codice fiscale ritrova la sua scheda.
  */
-export default function Iscrivi({ aperto, lead = null, onChiudi }) {
+export default function Iscrivi({ aperto, onChiudi }) {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [passo, setPasso] = useState(0);
@@ -47,7 +45,7 @@ export default function Iscrivi({ aperto, lead = null, onChiudi }) {
   const [password, setPassword] = useState("");
   const [salvando, setSalvando] = useState(false);
 
-  // Ogni apertura riparte da capo, con quello che si sa già del contatto.
+  // Ogni apertura riparte da capo.
   useEffect(() => {
     if (!aperto) return;
     setPasso(0);
@@ -55,16 +53,9 @@ export default function Iscrivi({ aperto, lead = null, onChiudi }) {
     setAbbonamento(INIZIO);
     setPrivacy(false);
     setPassword(generaPasswordTemporanea());
-    setAnagrafica(lead ? {
-      ...ANAGRAFICA_VUOTA, nome: lead.nome ?? "", cognome: lead.cognome ?? "", sesso: lead.sesso ?? "",
-      email: lead.email ?? "", phone: lead.telefono ?? "",
-      // La nota del contatto diventa la prima nota del socio: è la stessa segreteria che la legge.
-      notes: lead.note ?? "",
-    } : ANAGRAFICA_VUOTA);
-    // Un ex socio ha già una scheda: si riparte da quella, che ha codice fiscale e data di nascita.
-    if (lead?.socio_id) api.entities.Member.get(lead.socio_id).then((s) => setAnagrafica(anagraficaDi(s))).catch(() => {});
+    setAnagrafica(ANAGRAFICA_VUOTA);
     api.entities.Plan.list().then((elenco) => setTipi(elenco.filter((p) => !motivoNonVendibile(p)))).catch(() => setTipi([]));
-  }, [aperto, lead]);
+  }, [aperto]);
 
   const tipo = tipi.find((p) => p.id === abbonamento.plan_id);
   const scadenza = tipo ? dataFineAbbonamento(abbonamento.start_date, tipo.durata_valore, tipo.durata_unita) : null;
@@ -92,7 +83,6 @@ export default function Iscrivi({ aperto, lead = null, onChiudi }) {
       const foto_url = foto.file ? (await caricaFile({ file: foto.file })).file_url : undefined;
       const accesso = password && conEmail && !senzaAccesso ? { password } : undefined;
       const { member, riattivato, accesso_portale: portale } = await api.iscrivi({
-        lead_id: lead?.id,
         anagrafica: { ...anagrafica, ...(foto_url ? { foto_url } : {}) },
         abbonamento: tipo ? { plan_id: tipo.id, start_date: abbonamento.start_date } : undefined,
         informativa_privacy: privacy,
@@ -114,11 +104,9 @@ export default function Iscrivi({ aperto, lead = null, onChiudi }) {
     <Dialog open={aperto} onOpenChange={(v) => { if (!v && !salvando) onChiudi(false); }}>
       <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Iscrivi{lead ? ` ${lead.nome}` : ""}</DialogTitle>
+          <DialogTitle>Iscrivi</DialogTitle>
           <DialogDescription>
-            {lead?.socio_id
-              ? "È già stato socio: controlla i dati della sua scheda. Alla fine torna socio, con il suo codice e la sua storia."
-              : "Si salva tutto insieme alla fine: nessun socio resta a metà."}
+            Si salva tutto insieme alla fine: nessun socio resta a metà.
           </DialogDescription>
         </DialogHeader>
 
@@ -134,9 +122,8 @@ export default function Iscrivi({ aperto, lead = null, onChiudi }) {
         <form onSubmit={(e) => { e.preventDefault(); if (ultimo) conferma(); else setPasso((p) => p + 1); }} className="space-y-4">
           {corrente.valore === "anagrafica" && (
             <>
-              <CampiAnagrafica valori={anagrafica} onChange={setAnagrafica}
-                suggerimentoNascita={lead?.anno_nascita ? `Il contatto aveva indicato il ${lead.anno_nascita}.` : null} />
-              {!lead?.socio_id && <SceltaFoto socio={anagrafica} file={foto.file} onChange={setFoto} />}
+              <CampiAnagrafica valori={anagrafica} onChange={setAnagrafica} />
+              <SceltaFoto socio={anagrafica} file={foto.file} onChange={setFoto} />
             </>
           )}
 
@@ -188,7 +175,7 @@ export default function Iscrivi({ aperto, lead = null, onChiudi }) {
             <div className="flex flex-col-reverse sm:flex-row gap-2 sm:ml-auto">
               {corrente.facoltativo && <Button type="button" variant="ghost" onClick={salta} disabled={salvando}>Salta</Button>}
               <Button type="submit" disabled={Boolean(bloccato) || salvando}>
-                {salvando ? "Iscrizione..." : ultimo ? (lead?.socio_id ? "Riattiva il socio" : "Iscrivi") : "Avanti"}
+                {salvando ? "Iscrizione..." : ultimo ? "Iscrivi" : "Avanti"}
               </Button>
             </div>
           </div>

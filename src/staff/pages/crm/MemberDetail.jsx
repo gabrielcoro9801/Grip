@@ -72,8 +72,8 @@ export default function MemberDetail() {
   const [versioneDiario, setVersioneDiario] = useState(0);
   // L'elenco da cui si è arrivati (filtri, ricerca, pagina), per «Torna ai soci».
   const { state } = useLocation();
-  // Il diario è lavoro della segreteria: lo vede chi segue i soci o i contatti.
-  const vedeDiario = canAccess(staffUser?.ruolo, "crm_members", "view") || canAccess(staffUser?.ruolo, "crm_leads", "view");
+  // Il diario è lavoro della segreteria: lo vede chi segue i soci.
+  const vedeDiario = canAccess(staffUser?.ruolo, "crm_members", "view");
 
   const loadData = async () => {
     setLoading(true);
@@ -374,7 +374,7 @@ export default function MemberDetail() {
             Da fare, non qui: la scheda racconta, non chiede. */}
         {vedeDiario && (
           <div className="lg:col-span-2">
-            <DiarioSocio key={versioneDiario} socio={member} puoModificare={puoModificare || canEdit(staffUser?.ruolo, "crm_leads")} />
+            <DiarioSocio key={versioneDiario} socio={member} puoModificare={puoModificare} />
           </div>
         )}
       </div>

@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { useToast } from "@/ui/primitivi/use-toast";
 import { formatData } from "@/core/domain/format";
 import { oggiIso, spostaGiorni, giorniFra } from "@/core/domain/giorni";
-import { NOTA_DIARIO_MASSIMO } from "@/core/domain/lead";
+import { NOTA_DIARIO_MASSIMO } from "@/core/domain/diario";
 import { PauseCircle } from "lucide-react";
 
 /**

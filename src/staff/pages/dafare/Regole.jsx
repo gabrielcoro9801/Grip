@@ -74,7 +74,7 @@ function CampoSoglia({ percorso, etichetta, valori, onCambia }) {
  *
  * «Segui» accende o spegne tutti i segnali dell'avviso (TIPI_AVVISO, `segnali`): uno spento non
  * compare in Da fare né si conta. Gli altri segnali spenti (quelli del bancone) restano come
- * sono, e così le soglie che non stanno qui (stati dei soci, Lead): si salvano con il valore che
+ * sono, e così le soglie che non stanno qui (stati dei soci): si salvano con il valore che
  * hanno.
  *
  * Sotto i 640 px «Salva» è una barra fissa in basso: le regole sono lunghe e il pulsante in cima

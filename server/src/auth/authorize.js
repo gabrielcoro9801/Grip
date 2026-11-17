@@ -25,12 +25,6 @@ const ENTITY_MODULES = {
 	Subscription: 'crm_members',
 	Plan: 'crm_members',
 
-	// I contatti di chi non è ancora socio, e i canali da cui arrivano. `Lead` non passa
-	// dall'endpoint generico (una persona e la sua trattativa si scrivono insieme, in
-	// routes/lead.js): il nome resta qui perché è con questo che quelle rotte chiedono il permesso.
-	Lead: 'crm_leads',
-	CanaleContatto: 'crm_leads',
-
 	// Corsi, calendario e prenotazioni.
 	Course: 'corsi',
 	Category: 'corsi',
@@ -129,8 +123,6 @@ const LETTURA = {
 	// e a prenotare, e l'istruttore prenota alle sue lezioni.
 	Member: ['crm_members', 'prenotazioni'],
 	Subscription: ['crm_members'],
-	Lead: ['crm_leads'],
-	CanaleContatto: ['crm_leads'],
 	Booking: ['prenotazioni'],
 	StaffAccount: ['utenti'],
 	AuditLog: ['audit_log'],

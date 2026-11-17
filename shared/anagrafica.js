@@ -1,4 +1,4 @@
-// Le regole dell'anagrafica, uguali per soci e lead, per il server e per le schermate.
+// Le regole dell'anagrafica, dei soci, per il server e per le schermate.
 //
 // Il codice fiscale sta qui e non in un modulo: la segreteria lo scrive a mano, e un
 // carattere sbagliato non si nota finché non serve — al tesseramento, su una ricevuta. Il
@@ -36,7 +36,7 @@ export const MAGGIORE_ETA = 18;
  * Perché una data di nascita non va bene, o null.
  *
  * È obbligatoria per ogni socio: da lei dipende se è minorenne, e quindi se servono il consenso
- * dei genitori e chi firma per lui. Per i lead no: lì basta l'anno, e nemmeno quello è richiesto.
+ * dei genitori e chi firma per lui.
  */
 export function motivoDataNascitaNonValida(data, oggi = oggiIso()) {
   if (data === undefined || data === null || String(data).trim() === "") return "La data di nascita è obbligatoria.";

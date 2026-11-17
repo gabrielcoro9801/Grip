@@ -9,7 +9,7 @@ import { Users, UserCheck, Calendar, Clock, UserX, ListChecks, ChevronRight } fr
 import { LoadingState } from "@/ui/Spinner";
 import { ErrorState } from "@/ui/StateViews";
 import { formatData } from "@/core/domain/format";
-import { etichettaMotivoAbbandono } from "@/core/domain/lead";
+import { etichettaMotivoAbbandono } from "@/core/domain/diario";
 import { SCHEDE } from "@/staff/components/dafare/avvisi";
 import { postiOccupati } from "@/core/domain/corsi";
 

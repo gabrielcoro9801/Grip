@@ -44,7 +44,7 @@ export const members = pgTable('members', {
 	// Il consenso dei genitori, firmato in reception, per un socio minorenne (decisione R4 del piano
 	// del portale, migrazione 0062): prima era un documento caricato. La scheda lo segnala se manca.
 	consensoGenitoriFirmato: boolean('consenso_genitori_firmato').notNull().default(false),
-	// La persona che questo socio è (persone.js): il suo diario, le sue trattative, i suoi
+	// La persona che questo socio è (persone.js): il suo diario, i suoi
 	// consensi. Se chi crea il socio non la indica, la crea il database (trigger
 	// `socio_su_persona`), che poi tiene allineati sulla persona nome, recapiti e note del socio.
 	personaId: uuid('persona_id').notNull().unique('members_persona_id_univoco').references(() => persone.id, { onDelete: 'restrict' }),

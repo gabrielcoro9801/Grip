@@ -25,10 +25,6 @@ const MemberDetail = lazy(() => import('@/staff/pages/crm/MemberDetail'));
 const PlansCatalog = lazy(() => import('@/staff/pages/crm/PlansCatalog'));
 const SubscriptionsList = lazy(() => import('@/staff/pages/crm/SubscriptionsList'));
 const Ingressi = lazy(() => import('@/staff/pages/crm/Ingressi'));
-const LeadLayout = lazy(() => import('@/staff/pages/lead/LeadLayout'));
-const Contatti = lazy(() => import('@/staff/pages/lead/Contatti'));
-const Andamento = lazy(() => import('@/staff/pages/lead/Andamento'));
-const Canali = lazy(() => import('@/staff/pages/lead/Canali'));
 const CorsiLayout = lazy(() => import('@/staff/pages/corsi/CorsiLayout'));
 const Calendario = lazy(() => import('@/staff/pages/corsi/Calendario'));
 const DettaglioLezione = lazy(() => import('@/staff/pages/corsi/DettaglioLezione'));
@@ -87,14 +83,9 @@ export default function App() {
                   <Route path="plans" element={<Navigate to="/crm/listino" replace />} />
                   <Route path="subscriptions" element={<Navigate to="/crm/venduti" replace />} />
                 </Route>
-                <Route path="/lead" element={<PermissionGate module="crm_leads"><LeadLayout /></PermissionGate>}>
-                  <Route index element={<Contatti />} />
-                  <Route path="andamento" element={<Andamento />} />
-                  <Route path="canali" element={<Canali />} />
-                </Route>
                 {/* I corsi erano una pagina sola con due piani di schede interne. Ora le sei viste
-                    sono rotte come nelle altre sezioni: la barra in alto è la stessa di Soci e
-                    Lead, e ogni voce ha un indirizzo che si può mandare a un collega. */}
+                    sono rotte come nelle altre sezioni: la barra in alto è la stessa di Soci, e
+                    ogni voce ha un indirizzo che si può mandare a un collega. */}
                 <Route path="/calendario" element={<PermissionGate module={["calendario", "prenotazioni", "corsi"]}><CorsiLayout /></PermissionGate>}>
                   <Route index element={<Calendario />} />
                   <Route path="lezioni/:id" element={<DettaglioLezione />} />

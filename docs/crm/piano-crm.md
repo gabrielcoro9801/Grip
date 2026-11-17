@@ -1,3 +1,5 @@
+> **Nota (17/11/2026):** i lead (contatti, trattative, canali) sono usciti dall'applicazione; il codice è nel branch `archivio/lead` (tag `archivio/lead-2026-11`).
+
 # GRIP CRM nativo — piano di fondazione
 
 ## Context

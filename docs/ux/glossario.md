@@ -15,7 +15,7 @@ l'abbonamento venduto, il tipo del listino, l'account); "Abbonamenti" era il lis
 |---|---|---|
 | **Socio** | Chi è iscritto alla palestra, con una scheda e un codice. | membro |
 | **Soci** | La sezione del gestionale (menu). | Gestione membri |
-| **Contatto** | Chi ha chiesto informazioni e non è (ancora) socio. La sezione del menu resta "Lead". | — |
+| **Contatto** | Chi ha chiesto informazioni e non è (ancora) socio. La sezione Lead è uscita dall'applicazione il 17/11/2026 (branch `archivio/lead`). | — |
 | **Iscrivi** | Far diventare socio una persona: anagrafica, abbonamento, privacy, accesso al portale. | Aggiungi socio, Nuovo socio |
 | **Archivia** | Un socio che ha lasciato la palestra esce dagli elenchi; si ritrova e si riattiva. | Elimina |
 
@@ -95,7 +95,7 @@ In interfaccia «sessione» è la riga di `events`, non di `sessions`.
 | **Nascondi avviso** | Chiudere a mano un avviso senza fare altro: va nell'Archivio di Da fare e si ripristina. In Da fare non si dice mai «Archivia». |
 | **Archivio di Da fare** | Gli avvisi chiusi, a mano o da soli: come, chi e quando. Non è l'archivio dei soci. |
 | **Regole** | La scheda di Da fare, per l'amministratore, con le soglie di ogni avviso. |
-| **Diario** | La storia di una persona: contatti, note, cose da fare comparse e risolte. Nella scheda socio la sezione si chiama **Note**; nei Lead resta Diario. |
+| **Diario** | La storia di una persona: contatti, note, cose da fare comparse e risolte. Nella scheda socio la sezione si chiama **Note**. (Nei Lead, usciti il 17/11/2026, si chiamava Diario.) |
 | **Ingresso** | Un passaggio registrato a mano al bancone (il lettore al tornello non c'è ancora). |
 | **Impostazioni** | La sezione in fondo al menu, per l'amministratore: Utenti e ruoli, Comunicazioni, Registro delle azioni. Le regole di Da fare stanno nella scheda Regole di Da fare. |
 | **Registro delle azioni** | Chi ha fatto che cosa, e quando (era "Log audit"). |

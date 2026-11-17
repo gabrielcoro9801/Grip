@@ -233,7 +233,7 @@ try {
 	controlla('In testa lo stato: In calo', await pg.getByText('In calo', { exact: true }).first().isVisible());
 	controlla('Niente blocco "Da seguire"', await pg.getByText('Da seguire', { exact: true }).count() === 0);
 	controlla('Niente "Registra contatto" né "Rimanda"', await pg.getByRole('button', { name: /Registra contatto|Rimanda/ }).count() === 0);
-	// Dal 14/11 un «Fatto» di Da fare nel diario dice solo «Fatto», senza il mezzo (shared/lead.js).
+	// Dal 14/11 un «Fatto» di Da fare nel diario dice solo «Fatto», senza il mezzo (shared/diario.js).
 	controlla('Il diario racconta il Contattato', await pg.getByText(/^Fatto · .*Non viene da un po'/).first().isVisible());
 	controlla('Niente consensi né documenti nella scheda', await pg.getByText('Comunicazioni promozionali', { exact: true }).count() === 0
 		&& await pg.getByRole('heading', { name: /Documenti/ }).count() === 0);

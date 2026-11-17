@@ -231,7 +231,7 @@ const vuoto = (v) => v === undefined || v === null || String(v).trim() === '';
 
 /**
  * Le regole dell'anagrafica di un socio, valide per ogni strada da cui ne nasce uno: il modulo
- * dei soci e la trasformazione di un lead (routes/lead.js).
+ * dei soci e l'iscrizione (routes/iscrizioni.js).
  *
  * In creazione tutto deve esserci. In modifica si controlla solo quello che arriva: un socio
  * registrato prima che il codice fiscale fosse obbligatorio resta modificabile nel resto, ma
@@ -375,9 +375,8 @@ const WRITE_TRANSFORMS = {
 	async Member(body, { creazione }) {
 		const { archiviato_il: _archivio, persona_id: _persona, ...corpo } = body ?? {};
 		// L'archiviazione passa dalle sue rotte (routes/soci.js), che fanno anche il resto:
-		// disdire le prenotazioni future, lasciarne traccia nel registro. La persona la sceglie
-		// solo l'iscrizione di un contatto (routes/lead.js); per gli altri la crea il database:
-		// spostare un socio su un'altra persona gli darebbe il diario di qualcun altro.
+		// disdire le prenotazioni future, lasciarne traccia nel registro. La persona la crea
+		// il database: spostare un socio su un'altra persona gli darebbe il diario di qualcun altro.
 		const rest = anagraficaSocio(corpo, { creazione });
 		// Il codice è la chiave del socio: lo decide sempre il contatore, anche se il modulo ne
 		// manda uno, e non si riscrive in modifica.

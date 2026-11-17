@@ -206,7 +206,7 @@ export const api = {
 	},
 
 	/**
-	 * Iscrivi, in un passo: { lead_id?, anagrafica, abbonamento?, informativa_privacy, portale? }
+	 * Iscrivi, in un passo: { anagrafica, abbonamento?, informativa_privacy, portale? }
 	 * → { member, riattivato, accesso_portale }. Tutto in una transazione.
 	 */
 	iscrivi(corpo) {
@@ -320,49 +320,6 @@ export const api = {
 		},
 	},
 
-	/**
-	 * I contatti (lead). Non passano da `entities`: un lead è una persona più una sua trattativa,
-	 * e il server le scrive insieme, in una transazione.
-	 */
-	lead: {
-		/** Un contatto nuovo, o una trattativa nuova su una persona già nota ({ persona_id, … }). → { lead } */
-		crea(dati) {
-			return request('/api/lead', { method: 'POST', body: dati });
-		},
-		/** Corregge dati del contatto e della trattativa. → { lead } */
-		aggiorna(leadId, dati) {
-			return request(`/api/lead/${leadId}`, { method: 'PUT', body: dati });
-		},
-		elimina(leadId) {
-			return request(`/api/lead/${leadId}`, { method: 'DELETE' });
-		},
-		/** Le persone già note con quel telefono o quella email: { doppioni: [{ persona_id, nome, tipo, trattativa_aperta_id }] }. */
-		doppioni({ telefono, email, escludi }) {
-			const q = new URLSearchParams(Object.entries({ telefono, email, escludi }).filter(([, v]) => v));
-			return request(`/api/lead/doppioni?${q}`);
-		},
-		/** Quanti contatti e quanti soci cita ogni canale: { [idCanale]: { contatti, soci } }. */
-		usoCanali() {
-			return request('/api/lead/canali/uso');
-		},
-		/** I lead col loro stato, i conteggi dei filtri rapidi e le soglie con cui sono contati: { leads, conteggi, soglie }. */
-		lavoro() {
-			return request('/api/lead/lavoro');
-		},
-		/** Un'azione che cambia lo stato: 'contatto' | 'richiamo' | 'chiudi' | 'riapri'. → { lead } */
-		azione(leadId, nome, corpo = {}) {
-			return request(`/api/lead/${leadId}/${nome}`, { method: 'POST', body: corpo });
-		},
-		/** Le righe anonime della pagina Andamento, e i canali: { righe, canali }. */
-		andamento() {
-			return request('/api/lead/andamento');
-		},
-		/** Il diario della persona del lead, dal più vecchio: { attivita }. */
-		attivita(leadId) {
-			return request(`/api/lead/${leadId}/attivita`);
-		},
-	},
-
 	/** La storia di una persona per la segreteria: il diario. */
 	persone: {
 		/** { attivita } */
@@ -421,7 +378,7 @@ export const api = {
 
 	/**
 	 * Chi va seguito, e perché (shared/segnali.js).
-	 * { persona?, tipo?: 'soci'|'lead', fase?, segnale?, pubblico? } → { oggi, persone, conteggi }
+	 * { persona?, fase?, segnale?, pubblico? } → { oggi, persone, conteggi }
 	 */
 	segnali(filtri = {}) {
 		const q = new URLSearchParams(Object.entries(filtri).filter(([, v]) => v)).toString();

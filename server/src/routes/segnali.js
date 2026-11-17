@@ -4,8 +4,7 @@
 // chiede una persona sola. I conti li fa lib/segnali.js. Da fare ha la sua rotta, con gli avvisi
 // salvati (routes/avvisi.js).
 //
-// Chi può: chi vede i soci o i contatti, come il diario. Ognuno riceve solo la parte che vede:
-// chi segue i contatti ma non i soci non riceve i soci, e viceversa.
+// Chi può: chi vede i soci, come il diario.
 import { getUserFromRequest } from '../auth/tokens.js';
 import { canAccess } from '../../../shared/permissions.js';
 import { situazioni } from '../lib/segnali.js';
@@ -37,14 +36,11 @@ export default async function segnaliRoutes(fastify) {
 	fastify.addHook('preHandler', async (request, reply) => {
 		const utente = getUserFromRequest(request);
 		if (!utente) return reply.code(401).send({ error: 'Non autenticato.' });
-		const soci = canAccess(utente.ruolo, 'crm_members', 'view');
-		const lead = canAccess(utente.ruolo, 'crm_leads', 'view');
-		if (utente.ruolo === 'member' || (!soci && !lead)) return reply.code(403).send({ error: 'Non consentito.' });
-		request.vede = { soci, lead };
+		if (utente.ruolo === 'member' || !canAccess(utente.ruolo, 'crm_members', 'view')) return reply.code(403).send({ error: 'Non consentito.' });
 	});
 
 	/**
-	 * GET /api/segnali?persona=&tipo=soci|lead&fase=&segnale=&pubblico=staff
+	 * GET /api/segnali?persona=&fase=&segnale=&pubblico=staff
 	 * → { oggi, soglie, persone, conteggi: { fasi, segnali } }
 	 *
 	 * - `fase` (lo stato), `segnale`: filtri dell'elenco; `segnale` cerca fra quelli da fare.
@@ -57,10 +53,7 @@ export default async function segnaliRoutes(fastify) {
 		if (q.fase && !FASI.some((f) => f.valore === q.fase)) return reply.code(400).send({ error: 'Fase non valida.' });
 
 		const { oggi, soglie, persone } = await situazioni({ personaId: q.persona || null });
-		let elenco = persone
-			.filter((p) => (p.socio_id ? request.vede.soci : request.vede.lead))
-			.filter((p) => !q.tipo || (q.tipo === 'soci' ? p.socio_id : !p.socio_id))
-			.map((p) => perLoSchermo(p, pubblico));
+		let elenco = persone.map((p) => perLoSchermo(p, pubblico));
 
 		const conteggi = { fasi: {}, segnali: {} };
 		for (const p of elenco) {

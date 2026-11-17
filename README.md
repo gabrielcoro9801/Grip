@@ -1,6 +1,6 @@
 # Grip — Gestione Palestra
 
-Gestionale per palestre: CRM soci, contatti (lead), corsi e prenotazioni, e portale soci.
+Gestionale per palestre: CRM soci, corsi e prenotazioni, e portale soci.
 
 - **Frontend**: React 18 + Vite 6, Tailwind CSS, Radix UI, React Router (cartella `src/`)
 - **Backend**: Fastify + PostgreSQL con Drizzle ORM (cartella `server/`)
@@ -104,6 +104,22 @@ Tre punti che si sbagliano quasi sempre, spiegati lì per esteso:
   redirect, con un errore che non dice perché.
 
 ## Stato del progetto
+
+### 17 novembre 2026 — I lead escono dall'applicazione (ramo `via-lead`)
+
+Come per l'allenamento e le comunicazioni: il codice è nel tag `archivio/lead-2026-11` e nel branch
+`archivio/lead`, su origin. Una migrazione, `0066_via_lead` (scritta a mano). **Elimina dati, e per
+scelta non c'è un backup**: chi vuole tenerli fa un dump prima di applicarla.
+
+- **Via**: la sezione Lead (`/lead`: Contatti, Andamento, Canali), le rotte `/api/lead/*`, l'entità
+  `CanaleContatto`, il modulo di permesso `crm_leads` (anche dai ruoli salvati), le soglie `lead`,
+  la fase «Contatto» dei segnali, il passaggio automatico a «non raggiungibile» nel giro, l'Iscrivi
+  da un contatto (`lead_id` in `POST /api/iscrivi`) e i contatti nella ricerca globale.
+- **Database**: via `trattative`, `canali_contatto` e `attivita.trattativa_id`; via le persone che
+  non sono soci (erano solo contatti) e, con loro, il loro diario, i consensi e gli avvisi.
+- **Resta**: `persone`, il diario dei soci (`attivita`, anche le righe di quando erano contatti, che
+  si leggono ancora), i consensi, Da fare. `shared/lead.js` diventa `shared/diario.js`, con solo
+  quello che serve al diario e ai soci; i pezzi dei grafici stanno in `components/andamento/`.
 
 ### 15 novembre 2026 (notte) — Pulizia: tabelle dismesse e codice morto (ramo `pulizia-codice-morto`)
 
