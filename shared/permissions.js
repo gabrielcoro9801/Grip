@@ -12,7 +12,6 @@ export const AZIONI = ["view", "edit", "suoi"];
 export const MODULES = {
   dashboard: { label: "Dashboard", azioni: ["view"] },
   crm_members: { label: "Soci", azioni: ["view", "edit"] },
-  crm_leads: { label: "Lead", azioni: ["view", "edit"] },
   calendario: { label: "Calendario e lezioni", azioni: ["view", "edit", "suoi"] },
   prenotazioni: { label: "Prenotazioni", azioni: ["view", "edit", "suoi"] },
   corsi: { label: "Corsi e categorie", azioni: ["view", "edit", "suoi"] },
@@ -34,7 +33,6 @@ export const PERMESSI_PREDEFINITI = {
   admin: {
     dashboard: ["view"],
     crm_members: ["view", "edit"],
-    crm_leads: ["view", "edit"],
     calendario: ["view", "edit"],
     prenotazioni: ["view", "edit"],
     corsi: ["view", "edit"],
@@ -47,7 +45,6 @@ export const PERMESSI_PREDEFINITI = {
   reception: {
     dashboard: ["view"],
     crm_members: ["view", "edit"],
-    crm_leads: ["view", "edit"],
     calendario: ["view", "edit"],
     prenotazioni: ["view", "edit"],
     corsi: ["view", "edit"],
@@ -195,7 +192,6 @@ export const SIDEBAR_PERMISSIONS = {
   "/da-fare": "crm_members",
   "/": "dashboard",
   "/crm": "crm_members",
-  "/lead": "crm_leads",
   "/calendario": ["calendario", "prenotazioni", "corsi"],
   "/admin": ["utenti", "ruoli"],
   "/admin/contatti": "impostazioni",

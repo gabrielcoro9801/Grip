@@ -1,19 +1,16 @@
 // Le persone: chiunque la palestra conosca, socio o no.
 //
-// Un contatto che chiede informazioni, un socio, un ex socio che richiama dopo un anno sono la
-// stessa persona in momenti diversi. Prima erano righe di tabelle diverse: il lead si
-// cancellava quando diventava socio, e con lui il suo diario; un ex socio che richiamava
-// tornava uno sconosciuto. Qui la persona resta, e attorno a lei stanno le trattative
-// (`lead.js`, un lead è una trattativa aperta), il diario e i consensi.
+// Un socio e lo stesso socio tornato dopo un anno sono la stessa persona in momenti diversi:
+// la persona resta, e attorno a lei stanno il diario, i consensi e gli avvisi. Fino al
+// 17/11/2026 c'erano anche le persone che erano solo contatti, con le loro trattative: i lead
+// sono usciti dall'applicazione (archivio/lead, migrazione 0066).
 //
 // I recapiti di chi è socio si scrivono sul socio (`members`), come sempre: la persona ne tiene
 // una copia che il database aggiorna da solo (trigger `socio_su_persona`, migrazione 0051), così
-// cercare, contare e riconoscere le persone si fa su una tabella sola. Per chi non è socio, la
-// persona è l'unico posto dove stanno.
+// cercare, contare e riconoscere le persone si fa su una tabella sola.
 import { sql } from 'drizzle-orm';
 import { pgTable, uuid, varchar, text, boolean, integer, timestamp, jsonb, check, index, uniqueIndex } from 'drizzle-orm/pg-core';
 import { staffAccounts } from './hr.js';
-import { trattative } from './lead.js';
 
 export const persone = pgTable('persone', {
 	id: uuid('id').defaultRandom().primaryKey(),
@@ -37,16 +34,13 @@ export const persone = pgTable('persone', {
 	perEmail: index('persone_email_idx').on(sql`lower(${table.email})`),
 }));
 
-// Il diario di una persona: i contatti, le risposte, i richiami, l'iscrizione, le note. Resta
-// alla persona per sempre — anche quando la trattativa da cui è nata una riga si chiude o viene
-// eliminata — ed è la storia che la reception legge prima di richiamare.
+// Il diario di una persona: i contatti, l'iscrizione, le note. Resta alla persona per sempre
+// ed è la storia che la reception legge prima di richiamare.
 //
-// `autore_id` vuoto vuol dire "il sistema": oggi il passaggio automatico a non raggiungibile,
-// domani i messaggi mandati dalle automazioni.
+// `autore_id` vuoto vuol dire "il sistema": il giro quotidiano (giro.js).
 export const attivita = pgTable('attivita', {
 	id: uuid('id').defaultRandom().primaryKey(),
 	personaId: uuid('persona_id').notNull().references(() => persone.id, { onDelete: 'cascade' }),
-	trattativaId: uuid('trattativa_id').references(() => trattative.id, { onDelete: 'set null' }),
 	tipo: varchar('tipo', { length: 24 }).notNull(), // tentativo | risposta | richiamo | chiusura | riapertura | stato_automatico | iscrizione | nota
 	canale: varchar('canale', { length: 16 }), // telefono | whatsapp | email | sms | di_persona
 	esito: varchar('esito', { length: 32 }), // nessuna_risposta | risposto | la data del richiamo | il motivo di chiusura | nuovo/riattivato
@@ -60,7 +54,6 @@ export const attivita = pgTable('attivita', {
 	createdDate: timestamp('created_date', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({
 	perPersona: index('attivita_persona_id_idx').on(table.personaId, table.createdDate),
-	perTrattativa: index('attivita_trattativa_id_idx').on(table.trattativaId),
 	// Un rientro per contatto: il giro si può lanciare quante volte si vuole.
 	unRientroPerContatto: uniqueIndex('attivita_ingresso_dopo_contatto_unico')
 		.on(sql`(${table.riferimento}->>'contatto')`).where(sql`${table.tipo} = 'ingresso_dopo_contatto'`),

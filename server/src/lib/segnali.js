@@ -7,15 +7,14 @@
 //
 // ponytail: tutto in memoria, per palestra; regge migliaia di persone. Una vista materializzata
 // solo se le misure lo chiederanno.
-import { and, count, eq, gte, inArray, max, ne, sql } from 'drizzle-orm';
+import { count, eq, gte, inArray, max, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
-	persone, members, trattative, ingressi, attivita,
+	persone, members, ingressi, attivita,
 } from '../db/schema/index.js';
 import { iscrizioniPerSocio } from './iscrizioni.js';
 import { soglieEnte } from './impostazioni.js';
 import { segnaliPersona } from '../../../shared/segnali.js';
-import { STATI_APERTI } from '../../../shared/lead.js';
 import { oggiIso, spostaGiorni } from '../../../shared/giorni.js';
 
 // La mezzanotte di un giorno a Roma, come istante: i conteggi "delle ultime 4 settimane" partono da lì.
@@ -24,10 +23,10 @@ const mezzanotteRoma = (giorno) => sql`((${giorno})::date)::timestamp AT TIME ZO
 const GIORNI_STORICO_ABBONAMENTI = 400;
 
 /**
- * Le persone con la loro situazione di oggi: i soci (anche ex) e i contatti con una trattativa.
+ * Le persone con la loro situazione di oggi: i soci, anche ex.
  * Con `personaId`, una sola.
  *
- * @returns {{ oggi, soglie, persone: [{ persona_id, socio_id, trattativa_id, nome, telefono, email,
+ * @returns {{ oggi, soglie, persone: [{ persona_id, socio_id, nome, telefono, email,
  *   codice_socio, archiviato_il, fase, segnali, ultimo_ingresso, ingressi_4, media_4, scadenza,
  *   abbonamento, valido, grezzi }] }}
  *   `grezzi` ({ archiviato_il, date_of_birth, iscrizioni }) serve a Da fare per capire
@@ -43,15 +42,13 @@ export async function situazioni({ personaId = null, conn = db, adesso = new Dat
 		persona_id: persone.id, nome: persone.fullName, nome_proprio: persone.nome, telefono: persone.telefono, email: persone.email,
 		socio_id: members.id, codice_socio: members.codiceSocio, archiviato_il: members.archiviatoIl,
 		date_of_birth: members.dateOfBirth, created_date: members.createdDate, foto_url: members.fotoUrl,
-	}).from(persone).leftJoin(members, eq(members.personaId, persone.id))
+	}).from(persone).innerJoin(members, eq(members.personaId, persone.id))
 		.where(personaId ? eq(persone.id, personaId) : undefined);
 	const idSoci = anagrafiche.map((a) => a.socio_id).filter(Boolean);
 	// Con una persona sola si legge solo quello che è suo.
 	const suoi = (colonna) => (personaId ? inArray(colonna, idSoci.length ? idSoci : ['00000000-0000-0000-0000-000000000000']) : undefined);
 
-	const [elencoTrattative, iscrizioni, conteggi, misurati, fatti] = await Promise.all([
-		conn.select().from(trattative)
-			.where(and(ne(trattative.stato, 'iscritto'), personaId ? eq(trattative.personaId, personaId) : undefined)),
+	const [iscrizioni, conteggi, misurati, fatti] = await Promise.all([
 		// Con le date dopo le sospensioni (lib/iscrizioni.js).
 		iscrizioniPerSocio(personaId ? idSoci : null, { conn, fineDal: spostaGiorni(oggi, -GIORNI_STORICO_ABBONAMENTI) }),
 		conn.select({
@@ -74,15 +71,6 @@ export async function situazioni({ personaId = null, conn = db, adesso = new Dat
 			group by a.persona_id, s.codice`),
 	]);
 
-	const trattativaDi = new Map();
-	for (const t of elencoTrattative) {
-		const prima = trattativaDi.get(t.personaId);
-		const aperta = STATI_APERTI.includes(t.stato);
-		// L'aperta, se c'è (una sola per persona); altrimenti l'ultima chiusa.
-		if (!prima || (aperta && !STATI_APERTI.includes(prima.stato)) || (!STATI_APERTI.includes(prima.stato) && String(t.statoDal) > String(prima.statoDal))) {
-			trattativaDi.set(t.personaId, t);
-		}
-	}
 	const conteggiDi = new Map(conteggi.map((c) => [c.member_id, c]));
 	const fattiDi = new Map();
 	for (const f of fatti.rows ?? fatti) {
@@ -93,8 +81,6 @@ export async function situazioni({ personaId = null, conn = db, adesso = new Dat
 
 	const elenco = [];
 	for (const a of anagrafiche) {
-		const trattativa = trattativaDi.get(a.persona_id) ?? null;
-		if (!a.socio_id && !trattativa) continue;
 		const c = conteggiDi.get(a.socio_id);
 		const ingressiSocio = a.socio_id && misura
 			? {
@@ -111,7 +97,7 @@ export async function situazioni({ personaId = null, conn = db, adesso = new Dat
 			oggi, soglie,
 		});
 		elenco.push({
-			persona_id: a.persona_id, socio_id: a.socio_id, trattativa_id: trattativa?.id ?? null,
+			persona_id: a.persona_id, socio_id: a.socio_id,
 			nome: a.nome, nome_proprio: a.nome_proprio, telefono: a.telefono, email: a.email, codice_socio: a.codice_socio, archiviato_il: a.archiviato_il,
 			fase, segnali,
 			ultimo_ingresso: c?.ultimo ? oggiIso(new Date(c.ultimo)) : null,

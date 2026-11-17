@@ -1,8 +1,8 @@
 // Il codice socio: sei cifre, progressivo, mai due volte lo stesso.
 //
-// Stava dentro la trasformazione in scrittura di `Member` in entities/hooks.js. Ora un socio
-// nasce anche convertendo un lead (routes/lead.js), e ricopiare lì la query avrebbe
-// significato due numerazioni che un giorno partono da massimi diversi.
+// Stava dentro la trasformazione in scrittura di `Member` in entities/hooks.js. Un socio nasce
+// anche dall'iscrizione (routes/iscrizioni.js), e ricopiare lì la query avrebbe significato due
+// numerazioni che un giorno partono da massimi diversi.
 //
 // Dalla migrazione 0029 il codice è obbligatorio e univoco (la chiave con cui la palestra
 // riconosce un socio, accanto all'id tecnico): nessuna strada può più creare un socio senza.
@@ -14,8 +14,8 @@ import { nextNumber } from './numbering.js';
  * L'ente che tiene il contatore dei codici socio.
  *
  * I soci non appartengono a un ente nel database, ma il contatore sì. Prima il modulo mandava
- * `organization_id` solo se l'aveva già caricato, e la trasformazione di un lead prendeva
- * "un ente qualsiasi": con due enti, due contatori, e un socio poteva nascere senza codice.
+ * `organization_id` solo se l'aveva già caricato, e la trasformazione di un lead (oggi
+ * uscita, archivio/lead) prendeva "un ente qualsiasi": con due enti, due contatori, e un socio poteva nascere senza codice.
  * Si usa l'ente che il contatore ce l'ha già; se nessuno, il primo creato.
  */
 export async function enteDellaNumerazione(tx) {

@@ -173,7 +173,7 @@ export default function MembersList() {
   const scegliVista = (v) => { setVista(v); salvaVista(v); aggiorna({}); };
   // Chi apre un socio porta con sé l'indirizzo dell'elenco: «Torna ai soci» ci riporta.
   const daQui = { da: location.search };
-  // "Iscrivi", per chi entra direttamente senza essere stato un contatto.
+  // "Iscrivi", per chi entra dal bancone.
   const [showForm, setShowForm] = useState(false);
   const [errore, setErrore] = useState(null);
   const [daContattare, setDaContattare] = useState(null);
@@ -183,7 +183,7 @@ export default function MembersList() {
   // tutti i soci e tutti gli abbonamenti e li incrociava qui.
   const loadData = useCallback(() => {
     setErrore(null);
-    api.segnali({ tipo: "soci", fase: filtroFase === TUTTI ? "" : filtroFase, segnale: filtroSegnale === NESSUNO ? "" : filtroSegnale })
+    api.segnali({ fase: filtroFase === TUTTI ? "" : filtroFase, segnale: filtroSegnale === NESSUNO ? "" : filtroSegnale })
       .then(setDati).catch(setErrore);
   }, [filtroFase, filtroSegnale]);
 
@@ -232,7 +232,7 @@ export default function MembersList() {
             <SelectTrigger id="fase-soci" className="w-[200px]"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value={TUTTI}>Tutti i soci ({frequentano})</SelectItem>
-              {FASI.filter((f) => f.valore !== "lead").map((f) => (
+              {FASI.map((f) => (
                 <SelectItem key={f.valore} value={f.valore}>{f.etichetta} ({fasi[f.valore] ?? 0})</SelectItem>
               ))}
             </SelectContent>

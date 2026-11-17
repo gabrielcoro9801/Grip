@@ -7,9 +7,7 @@
 // Ogni passo è idempotente — lanciato due volte nello stesso giorno, la seconda non trova nulla
 // da fare — così un cron ripetuto o un lancio a mano in più non fanno danni.
 //
-// Cosa fa: chiude come *non raggiungibili* i lead con troppi tentativi senza risposta,
-// l'ultimo da tanto (prima lo faceva GET /api/lead/lavoro alla lettura: una GET non deve
-// scrivere); registra chi è rientrato in palestra dopo essere stato contattato perché assente;
+// Cosa fa: registra chi è rientrato in palestra dopo essere stato contattato perché assente;
 // archivia chi è senza abbonamento da troppo tempo; e scrive nel diario dei soci le cose da fare
 // che sono comparse e quelle che non ci sono più, così la scheda le racconta senza mostrarle;
 // infine allinea gli avvisi di Da fare (lib/avvisi.js), così quelli che si chiudono da soli
@@ -18,9 +16,9 @@
 // anche se nessuno apre il portale.
 import 'dotenv/config';
 import { pathToFileURL } from 'node:url';
-import { and, eq, gte, inArray, isNull, lte, sql } from 'drizzle-orm';
+import { and, eq, gte, inArray, isNull, sql } from 'drizzle-orm';
 import { db, pool } from './db/client.js';
-import { organizations, trattative, attivita, members, bookings, sessions } from './db/schema/index.js';
+import { organizations, attivita, members, bookings, sessions } from './db/schema/index.js';
 import { regolaOfferte } from './lib/prenotazioni.js';
 import { soglieDi } from '../../shared/soglie.js';
 import { situazioni } from './lib/segnali.js';
@@ -29,28 +27,6 @@ import { etichettaSegnale } from '../../shared/segnali.js';
 import { oggiIso, spostaGiorni } from '../../shared/giorni.js';
 
 const AUTORE_SISTEMA = 'Sistema';
-
-/** Chiude i lead non raggiungibili, con una riga di diario ciascuno. → quanti ne ha chiusi */
-async function chiudiNonRaggiungibili(conn, oggi, soglie) {
-	const limite = spostaGiorni(oggi, -soglie.nonRaggiungibileGiorni);
-	return conn.transaction(async (tx) => {
-		const chiusi = await tx.update(trattative)
-			.set({ stato: 'non_raggiungibile', statoDal: oggi, updatedDate: new Date() })
-			.where(and(
-				eq(trattative.stato, 'in_attesa'),
-				gte(trattative.tentativiSenzaRisposta, soglie.tentativiMassimi),
-				lte(trattative.ultimoContattoIl, limite),
-			))
-			.returning({ id: trattative.id, personaId: trattative.personaId, tentativi: trattative.tentativiSenzaRisposta });
-		if (chiusi.length) {
-			await tx.insert(attivita).values(chiusi.map((t) => ({
-				personaId: t.personaId, trattativaId: t.id, tipo: 'stato_automatico', esito: 'non_raggiungibile', autoreNome: AUTORE_SISTEMA,
-				nota: `${t.tentativi} tentativi senza risposta, l'ultimo da almeno ${soglie.nonRaggiungibileGiorni} giorni`,
-			})));
-		}
-		return chiusi.length;
-	});
-}
 
 // Entro quanti giorni da un contatto un ingresso conta come "è tornato".
 const GIORNI_RIENTRO = 14;
@@ -170,10 +146,9 @@ async function regolaListeAttesa(conn, oggi, adesso) {
 }
 
 /**
- * Un giro su tutte le palestre. → [{ palestra, non_raggiungibili, rientri, archiviati, da_fare, avvisi }]
+ * Un giro su tutte le palestre. → [{ palestra, rientri, archiviati, da_fare, avvisi }]
  *
- * ponytail: oggi c'è una palestra per installazione e le trattative non hanno ancora la loro
- * palestra: il giro scorre le palestre, ma ogni passo lavora sul database intero. Con il
+ * ponytail: oggi c'è una palestra per installazione: il giro scorre le palestre, ma ogni passo lavora sul database intero. Con il
  * multi-tenant ogni passo riceverà la palestra e filtrerà per lei.
  */
 export async function giro({ oggi = oggiIso(), conn = db, adesso = new Date() } = {}) {
@@ -181,13 +156,12 @@ export async function giro({ oggi = oggiIso(), conn = db, adesso = new Date() } 
 	const esiti = [];
 	for (const palestra of palestre) {
 		const soglie = soglieDi(palestra.impostazioni);
-		const non_raggiungibili = await chiudiNonRaggiungibili(conn, oggi, soglie.lead);
 		const rientri = await registraRientri(conn, adesso);
 		const archiviati = await archiviaSenzaAbbonamento(conn, oggi, soglie, (await situazioni({ conn, adesso })).persone);
 		// Dopo l'archiviazione: chi è appena stato archiviato chiude le sue cose da fare e i suoi avvisi.
 		const { persone } = await situazioni({ conn, adesso });
 		esiti.push({
-			palestra: palestra.nome, non_raggiungibili, rientri, archiviati,
+			palestra: palestra.nome, rientri, archiviati,
 			da_fare: await scriviDaFare(conn, soglie, persone),
 			avvisi: await allinea(conn, persone, oggi, soglie),
 			liste_attesa: await regolaListeAttesa(conn, oggi, adesso),
@@ -200,7 +174,7 @@ export async function giro({ oggi = oggiIso(), conn = db, adesso = new Date() } 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
 	try {
 		for (const e of await giro()) {
-			console.log(`${e.palestra}: ${e.non_raggiungibili} lead chiusi come non raggiungibili, ${e.rientri} soci rientrati dopo un contatto, ${e.archiviati} archiviati senza abbonamento.`);
+			console.log(`${e.palestra}: ${e.rientri} soci rientrati dopo un contatto, ${e.archiviati} archiviati senza abbonamento.`);
 			console.log(`  Da fare nel diario: ${e.da_fare.aperti} comparsi, ${e.da_fare.chiusi} non più da fare.`);
 			console.log(`  Avvisi: ${e.avvisi.aperti} aperti, ${e.avvisi.riaperti} riaperti, ${e.avvisi.chiusi} chiusi da soli.`);
 			console.log(`  Liste d'attesa guardate: ${e.liste_attesa}.`);

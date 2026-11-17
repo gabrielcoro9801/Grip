@@ -5,7 +5,7 @@ import { Button } from "@/ui/primitivi/button";
 import { Textarea } from "@/ui/primitivi/textarea";
 import { useToast } from "@/ui/primitivi/use-toast";
 import { formatDataOra } from "@/core/domain/format";
-import { descriviAttivita, NOTA_DIARIO_MASSIMO } from "@/core/domain/lead";
+import { descriviAttivita, NOTA_DIARIO_MASSIMO } from "@/core/domain/diario";
 import { etichettaSegnale } from "@/core/domain/segnali";
 import { BookOpen, Bot } from "lucide-react";
 

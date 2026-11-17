@@ -5,11 +5,31 @@ import { Label } from "@/ui/primitivi/label";
 import { Textarea } from "@/ui/primitivi/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/ui/primitivi/dialog";
 import { useToast } from "@/ui/primitivi/use-toast";
-import { Scelte } from "@/staff/components/lead/AzioneLead";
-import { MOTIVI_ABBANDONO, NOTA_DIARIO_MASSIMO } from "@/core/domain/lead";
+import { MOTIVI_ABBANDONO, NOTA_DIARIO_MASSIMO } from "@/core/domain/diario";
+
+/** Un gruppo di pulsanti a scelta singola, con aria-pressed. */
+function Scelte({ etichetta, voci, valore, onScegli }) {
+  return (
+    <div>
+      <Label>{etichetta}</Label>
+      <div className="flex flex-wrap gap-2 mt-1">
+        {voci.map((v) => (
+          <button
+            key={v.valore} type="button" aria-pressed={valore === v.valore} onClick={() => onScegli(v.valore)}
+            className={`px-3 py-1.5 rounded-lg text-sm border transition-colors ${
+              valore === v.valore ? "bg-primary text-primary-foreground border-primary" : "border-border hover:bg-muted/50"
+            }`}
+          >
+            {v.etichetta}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 /**
- * "Se ne va": il socio si archivia con il suo motivo, da un elenco chiuso (shared/lead.js). Lo
+ * "Se ne va": il socio si archivia con il suo motivo, da un elenco chiuso (shared/diario.js). Lo
  * stesso dalla scheda e da Da fare, per uno scaduto che non torna. Niente si cancella: scheda,
  * abbonamenti e storico restano, e lo si riattiva quando torna; il motivo resta nel diario e la
  * dashboard conta perché se ne vanno.

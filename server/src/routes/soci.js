@@ -23,7 +23,7 @@ import { applicaFisse, terminaFissa } from '../lib/prenotazioniFisse.js';
 import { iscrizioniDelSocio, sospensioniDelSocio } from '../lib/iscrizioni.js';
 import { registerPgErrorHandler } from './errorHandler.js';
 import { abbonamentoCopre } from '../../../shared/abbonamenti.js';
-import { NOTA_DIARIO_MASSIMO, motivoAbbandonoValido, etichettaMotivoAbbandono } from '../../../shared/lead.js';
+import { NOTA_DIARIO_MASSIMO, motivoAbbandonoValido, etichettaMotivoAbbandono } from '../../../shared/diario.js';
 import { oggiIso, lezioneFinita, eUnGiorno, spostaGiorni } from '../../../shared/giorni.js';
 import { corrispondeRicerca } from '../../../shared/ricerca.js';
 
@@ -181,7 +181,7 @@ export default async function sociRoutes(fastify) {
 	 * restano, e lo si riattiva quando torna. Da archiviato non compare negli elenchi, non compra
 	 * abbonamenti, non prenota, e portale e QR non lo fanno entrare (auth/revoca.js, routes/qr.js).
 	 *
-	 * Il motivo (MOTIVI_ABBANDONO, shared/lead.js) è obbligatorio: finisce nel diario e la
+	 * Il motivo (MOTIVI_ABBANDONO, shared/diario.js) è obbligatorio: finisce nel diario e la
 	 * dashboard conta perché se ne vanno. È anche il modo di chiudere uno "scaduto da recuperare"
 	 * che non torna: archiviato, esce da Da fare.
 	 *

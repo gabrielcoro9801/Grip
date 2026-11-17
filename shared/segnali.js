@@ -2,9 +2,8 @@
 //
 // Prima c'erano quattro motori di "attenzione", ognuno con le sue soglie: i rinnovi e i
 // certificati della dashboard, il rischio degli ingressi, gli avvisi del portale, le condizioni
-// dei lead. Qui ce n'è uno: Da fare, la dashboard, l'elenco dei soci, la scheda e il bancone
-// leggono quello che dice questo file. I contatti (lead) hanno la loro sezione, con le condizioni
-// di shared/lead.js: qui non entrano.
+// dei lead (usciti il 17/11/2026, archivio/lead). Qui ce n'è uno: Da fare, la dashboard,
+// l'elenco dei soci, la scheda e il bancone leggono quello che dice questo file.
 //
 // Lo stato di una persona e i suoi segnali si calcolano dalle date ogni volta: un "in calo"
 // salvato ieri oggi potrebbe essere falso. Da fare trasforma i segnali per lo staff in avvisi,
@@ -23,10 +22,8 @@ import { SOGLIE } from './soglie.js';
  * Lo stato di una persona: per un socio, il suo rapporto con la palestra. Sei valori, e solo
  * quelli: l'abbonamento (in scadenza, scaduto) ha la sua colonna, e il lavoro da fare (rinnovi,
  * documenti) sta nei segnali. Mescolarli faceva undici "fasi" che dicevano tre cose diverse.
- * `lead` non è uno stato del socio: è chi non lo è ancora.
  */
 export const FASI = [
-	{ valore: 'lead', etichetta: 'Contatto', tono: 'info' },
 	{ valore: 'nuovo', etichetta: 'Nuovo', tono: 'info' },
 	{ valore: 'attivo', etichetta: 'Attivo', tono: 'positivo' },
 	{ valore: 'in_calo', etichetta: 'In calo', tono: 'attesa' },
@@ -48,7 +45,6 @@ const REGOLE_FASI = {
 	nuovo: (s) => `abbonamento valido, socio da non più di ${s.segnali.nuovoGiorni} giorni`,
 	in_calo: (s) => `abbonamento valido, socio da più di ${s.segnali.nuovoGiorni} giorni, e non entra da ${s.segnali.assenzaGiorni} giorni o viene meno del ${s.segnali.caloPercentuale}% della sua media`,
 	attivo: (s) => `abbonamento valido, socio da più di ${s.segnali.nuovoGiorni} giorni, viene con regolarità`,
-	lead: () => 'non è ancora socio: è un contatto',
 };
 /** Gli stati dei soci nell'ordine in cui si valutano: [{ valore, etichetta, tono, regola }]. */
 export const regoleStati = (soglie = SOGLIE) => ['archiviato', 'sospeso', 'senza_abbonamento', 'nuovo', 'in_calo', 'attivo']
@@ -172,8 +168,8 @@ const descriviCompleanno = (giorni) => (giorni === 0 ? 'oggi compie gli anni'
 /**
  * Lo stato e i segnali di una persona, oggi.
  *
- * @param p.socio        { created_date, archiviato_il, date_of_birth } | null (non è socio: è un
- *                       contatto, che si segue nella sezione Lead)
+ * @param p.socio        { created_date, archiviato_il, date_of_birth } | null (senza socio non
+ *                       c'è niente da seguire)
  * @param p.iscrizioni   [{ id?, plan_name?, start_date, end_date }], passate da `conSospensioni`
  *                       (shared/abbonamenti.js), con `created_date`
  * @param p.ingressi     { ultimo: 'AAAA-MM-GG'|null, quattro, dodici, totale, prima?, oggi? } — ingressi
@@ -191,8 +187,7 @@ const descriviCompleanno = (giorni) => (giorni === 0 ? 'oggi compie gli anni'
 export function segnaliPersona({
 	socio = null, iscrizioni = [], ingressi = null, contatti = {}, oggi = oggiIso(), soglie: tutte = SOGLIE,
 }) {
-	// Chi non è socio è un contatto: il suo lavoro sta nella sezione Lead (shared/lead.js).
-	if (!socio) return { fase: 'lead', segnali: [], copertura: null };
+	if (!socio) return { fase: null, segnali: [], copertura: null };
 
 	const soglie = { ...SOGLIE.segnali, ...(tutte.segnali ?? {}) };
 	const spenti = new Set(tutte.segnaliSpenti ?? []);

@@ -28,7 +28,7 @@ import { enteDellaNumerazione } from '../src/lib/codiceSocio.js';
 import {
 	members, staffAccounts, subscriptions,
 	rooms, courses, categories, events, sessions, bookings,
-	persone, trattative, attivita, consensi, canaliContatto, numberingCounters, auditLogs,
+	persone, attivita, consensi, numberingCounters, auditLogs,
 } from '../src/db/schema/index.js';
 
 const PASSWORD = 'verifica-pagine-1234';
@@ -48,15 +48,12 @@ const NOME_SOCIO = 'Socio Giro Pagine';
 // Senza cifre: il contatore dei codici veri prende il massimo delle cifre, e un codice di prova
 // numerico lo farebbe saltare in avanti.
 const CODICE_SOCIO = `GP${String(suffisso).replace(/\d/g, (c) => 'ABCDEFGHIJ'[c])}`;
-// Un contatto e il suo canale: si pretende di rivederli nelle tre pagine dei lead, e poi il
-// contatto si trasforma in socio dal browser.
-const CANALE = `Canale Verifica ${suffisso}`;
-const COGNOME_LEAD = `Contatto${suffisso}`;
-const CF_LEAD = 'RSSMRA85T10A562S';
+// Un socio nuovo, iscritto dal browser con Iscrivi.
+const COGNOME_NUOVO = `Nuovo${suffisso}`;
+const CF_NUOVO = 'RSSMRA85T10A562S';
 
 const PAGINE_STAFF = [
 	['/', null], ['/crm', null], ['/crm/listino', null], ['/crm/venduti', null], ['/crm/ingressi', null],
-	['/lead', COGNOME_LEAD], ['/lead/andamento', CANALE], ['/lead/canali', CANALE],
 	['/calendario', null], ['/calendario/sessioni', CORSO], ['/calendario/corsi', null],
 	['/calendario/sale', null], ['/calendario/istruttori', null], ['/calendario/categorie', null],
 	['/admin', null], ['/admin/contatti', 'Orari della reception'], ['/log-audit', null],
@@ -122,9 +119,6 @@ let idCategoria;
 let idCorso;
 let idEvento;
 let idLezione;
-let idCanale;
-let idLead;
-let idPersonaLead;
 let contatoreIniziale;
 let idEnte;
 
@@ -178,15 +172,7 @@ try {
 		.returning();
 	idPrenotazioni.push(...prenotate.map((p) => p.id));
 
-	const [canale] = await db.insert(canaliContatto).values({ nome: CANALE }).returning();
-	idCanale = canale.id;
-	// Un contatto è una persona con una trattativa (dalla migrazione 0051 la tabella `leads` non c'è più).
-	const [personaLead] = await db.insert(persone).values({ nome: 'Lucia', cognome: COGNOME_LEAD, sesso: 'F', annoNascita: 1994 }).returning();
-	idPersonaLead = personaLead.id;
-	const [lead] = await db.insert(trattative).values({ personaId: personaLead.id, dataContatto: oggi, canaleId: canale.id }).returning();
-	idLead = lead.id;
-
-	// La trasformazione consuma un codice socio: a fine giro il contatore torna dov'era.
+	// L'iscrizione consuma un codice socio: a fine giro il contatore torna dov'era.
 	// Lo stesso ente che userà il server per numerare.
 	idEnte = await enteDellaNumerazione(db);
 	if (idEnte) {
@@ -208,23 +194,23 @@ try {
 	// La pagina di una lezione ha l'indirizzo della lezione seminata: si apre dopo, con il suo id.
 	await apri(pagStaff, `/calendario/lezioni/${idLezione}`, CORSO, BASE);
 
-	// Trasformare un contatto e correggere un'anagrafica: sono le due finestre in cui un
-	// errore di validazione — un codice fiscale, un nome completo che non si ricalcola — non
-	// si vede aprendo la pagina. Si fa il clic, e si guarda il database.
-	console.log('\nLAVORARE UN CONTATTO (non solo aprirlo)');
-	await pagStaff.goto(`${BASE}/lead`, { waitUntil: 'networkidle' });
-	await pagStaff.waitForTimeout(1000);
-	const riga = pagStaff.locator('tr', { hasText: COGNOME_LEAD });
-	// "Trasforma in socio" è diventato Iscrivi, una finestra a passi (anagrafica, abbonamento,
-	// privacy, portale): qui si fa il giro minimo, saltando i facoltativi.
-	const trasforma = riga.getByRole('button', { name: `Iscrivi Lucia ${COGNOME_LEAD}` });
+	// Iscrivere e correggere un'anagrafica: sono le due finestre in cui un errore di validazione —
+	// un codice fiscale, un nome completo che non si ricalcola — non si vede aprendo la pagina. Si
+	// fa il clic, e si guarda il database.
+	console.log('\nISCRIVERE UN SOCIO (non solo aprire la pagina)');
+	await pagStaff.goto(`${BASE}/crm`, { waitUntil: 'networkidle' });
 	let socioCreato = null;
-	if (await trasforma.count()) {
-		await trasforma.click();
+	try {
+		// Iscrivi è una finestra a passi (anagrafica, abbonamento, privacy, portale): qui si fa il
+		// giro minimo, saltando i facoltativi.
+		await pagStaff.getByRole('button', { name: /^Iscrivi$/ }).click();
 		const finestra = pagStaff.getByRole('dialog');
-		await finestra.locator('#anag-cf').fill(CF_LEAD);
-		// Il lead aveva solo l'anno: per il socio la data intera è obbligatoria.
+		await finestra.locator('#anag-nome').fill('Lucia');
+		await finestra.locator('#anag-cognome').fill(COGNOME_NUOVO);
+		await finestra.locator('#anag-cf').fill(CF_NUOVO);
 		await finestra.locator('#anag-nascita').fill('1994-03-02');
+		await finestra.getByRole('combobox', { name: 'Sesso' }).click();
+		await pagStaff.getByRole('option', { name: 'Femmina' }).click();
 		await finestra.getByRole('button', { name: 'Avanti' }).click();
 		await finestra.getByRole('button', { name: 'Salta' }).click();
 		await finestra.getByRole('checkbox', { name: 'Informativa privacy firmata' }).click();
@@ -232,26 +218,24 @@ try {
 		// L'ultimo "Salta" iscrive senza l'accesso al portale.
 		await finestra.getByRole('button', { name: 'Salta' }).click();
 		await pagStaff.waitForURL(/\/crm\/soci\//, { timeout: 10000 }).catch(() => {});
-		[socioCreato] = await db.select().from(members).where(eq(members.codiceFiscale, CF_LEAD));
-		const [trattativa] = await db.select().from(trattative).where(eq(trattative.id, idLead));
-		const ok = socioCreato?.fullName === `Lucia ${COGNOME_LEAD}` && trattativa?.stato === 'iscritto'
-			&& socioCreato?.personaId === idPersonaLead && pagStaff.url().includes(`/crm/soci/${socioCreato?.id}`);
-		if (!ok) problemi.push({ percorso: 'iscrivere un contatto', errori: [`socio ${socioCreato?.fullName ?? 'assente'}, trattativa ${trattativa?.stato}, pagina ${pagStaff.url()}`], testo: '' });
-		console.log(`  ${ok ? 'OK     ' : 'ROTTA  '} Iscrivi crea il socio sulla persona del contatto, chiude la trattativa e apre la scheda`);
-	} else {
-		problemi.push({ percorso: 'iscrivere un contatto', errori: ['pulsante non trovato'], testo: '' });
-		console.log('  ROTTA   il contatto non si può iscrivere: pulsante non trovato');
+		[socioCreato] = await db.select().from(members).where(eq(members.codiceFiscale, CF_NUOVO));
+		const ok = socioCreato?.fullName === `Lucia ${COGNOME_NUOVO}` && pagStaff.url().includes(`/crm/soci/${socioCreato?.id}`);
+		if (!ok) problemi.push({ percorso: 'iscrivere un socio', errori: [`socio ${socioCreato?.fullName ?? 'assente'}, pagina ${pagStaff.url()}`], testo: '' });
+		console.log(`  ${ok ? 'OK     ' : 'ROTTA  '} Iscrivi crea il socio e apre la scheda`);
+	} catch (errore) {
+		problemi.push({ percorso: 'iscrivere un socio', errori: [errore.message.split('\n')[0]], testo: '' });
+		console.log(`  ROTTA   iscrivere un socio: ${errore.message.split('\n')[0]}`);
 	}
 
 	const modifica = pagStaff.getByRole('button', { name: /Modifica anagrafica/ });
 	await modifica.waitFor({ timeout: 10000 }).catch(() => {});
 	if (socioCreato && await modifica.count()) {
 		await modifica.click();
-		await pagStaff.locator('#anag-cognome').fill(`${COGNOME_LEAD} Bis`);
+		await pagStaff.locator('#anag-cognome').fill(`${COGNOME_NUOVO} Bis`);
 		await pagStaff.getByRole('button', { name: /^Salva$/ }).click();
 		await pagStaff.waitForTimeout(2000);
 		const [dopo] = await db.select().from(members).where(eq(members.id, socioCreato.id));
-		const ok = dopo?.fullName === `Lucia ${COGNOME_LEAD} Bis`;
+		const ok = dopo?.fullName === `Lucia ${COGNOME_NUOVO} Bis`;
 		if (!ok) problemi.push({ percorso: "modificare l'anagrafica", errori: [`nome completo: ${dopo?.fullName}`], testo: '' });
 		console.log(`  ${ok ? 'OK     ' : 'ROTTA  '} cambiando il cognome si ricalcola il nome completo`);
 	} else {
@@ -299,19 +283,19 @@ try {
 	if (idAbbonamenti.length) await db.delete(subscriptions).where(inArray(subscriptions.id, idAbbonamenti));
 	if (idAccount.length) await db.delete(staffAccounts).where(inArray(staffAccounts.id, idAccount));
 	if (idSocio) await db.delete(members).where(inArray(members.id, [idSocio]));
-	const creati = await db.select({ id: members.id }).from(members).where(eq(members.codiceFiscale, CF_LEAD));
+	const creati = await db.select({ id: members.id }).from(members).where(eq(members.codiceFiscale, CF_NUOVO));
 	if (creati.length) {
 		const ids = creati.map((c) => c.id);
 		await db.delete(auditLogs).where(inArray(auditLogs.entitaId, ids));
+		// La persona l'ha creata il trigger: si porta via il diario e i consensi del socio di prova.
+		const idPersone = (await db.select({ id: members.personaId }).from(members).where(inArray(members.id, ids))).map((r) => r.id);
 		await db.delete(members).where(inArray(members.id, ids));
+		if (idPersone.length) {
+			await db.delete(consensi).where(inArray(consensi.personaId, idPersone));
+			await db.delete(attivita).where(inArray(attivita.personaId, idPersone));
+			await db.delete(persone).where(inArray(persone.id, idPersone));
+		}
 	}
-	if (idPersonaLead) {
-		await db.delete(consensi).where(eq(consensi.personaId, idPersonaLead));
-		await db.delete(attivita).where(eq(attivita.personaId, idPersonaLead));
-		await db.delete(trattative).where(eq(trattative.personaId, idPersonaLead));
-		await db.delete(persone).where(eq(persone.id, idPersonaLead));
-	}
-	if (idCanale) await db.delete(canaliContatto).where(eq(canaliContatto.id, idCanale));
 	if (idEnte && contatoreIniziale !== undefined) {
 		const dove = and(eq(numberingCounters.organizationId, idEnte), eq(numberingCounters.scope, 'codice_socio'));
 		if (contatoreIniziale === null) await db.delete(numberingCounters).where(dove);

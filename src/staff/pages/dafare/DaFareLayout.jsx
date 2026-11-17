@@ -9,7 +9,7 @@ import { canEdit } from "@/staff/lib/permissions";
 
 /**
  * Da fare: la barra delle quattro schede, l'Archivio e, per l'amministratore, le Regole. Come in
- * Soci e Lead, una voce per scheda e un indirizzo per voce.
+ * Soci, una voce per scheda e un indirizzo per voce.
  *
  * Accanto a ogni scheda il numero degli avvisi aperti. Lo porta ogni lettura degli avvisi
  * (GET /api/avvisi, `conteggi`): la pagina sotto lo passa alla barra con `aggiornaConteggi`, dal

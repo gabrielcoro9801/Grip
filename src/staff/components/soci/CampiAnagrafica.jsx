@@ -61,21 +61,18 @@ export function motivoAnagraficaIncompleta(v) {
 }
 
 /**
- * L'anagrafica di un socio: la stessa quando lo si crea, quando la si corregge e quando un lead
- * diventa socio. Tre copie del modulo sarebbero diventate tre elenchi di campi diversi.
+ * L'anagrafica di un socio: la stessa quando lo si crea e quando la si corregge. Due copie del
+ * modulo sarebbero diventate due elenchi di campi diversi.
  *
  * L'ordine è quello in cui la segreteria chiede i dati allo sportello: chi è (nome, cognome,
  * codice fiscale, nascita, sesso), dove vive, come si raggiunge, chi chiamare in emergenza.
  * Una griglia sola a due colonne: da sinistra a destra e dall'alto in basso l'ordine resta
  * quello, anche col tasto Tab e su telefono, dove le colonne diventano una.
  *
- * `suggerimentoNascita` è un testo accanto alla data di nascita: nella trasformazione ricorda
- * l'anno che il lead aveva indicato.
- *
  * Le note chiudono il modulo, a tutta larghezza: sono della segreteria e al socio non arrivano
  * (né dal portale né dall'endpoint generico).
  */
-export default function CampiAnagrafica({ valori, onChange, suggerimentoNascita }) {
+export default function CampiAnagrafica({ valori, onChange }) {
   // Aggiornamenti a funzione, non a partire da `valori`: due modifiche ravvicinate (il sesso
   // scelto dal menu e il campo dopo) partivano dalla stessa copia, e la seconda cancellava la
   // prima. `onChange` è sempre un setter di useState, che accetta una funzione.
@@ -117,7 +114,6 @@ export default function CampiAnagrafica({ valori, onChange, suggerimentoNascita 
         {/* Obbligatoria: dice se il socio è minorenne, e quindi se serve il consenso dei genitori. */}
         <Label htmlFor="anag-nascita">Data di nascita *</Label>
         <Input id="anag-nascita" type="date" required max={oggiIso()} value={valori.date_of_birth ?? ""} onChange={imposta("date_of_birth")} />
-        {suggerimentoNascita && <p className="text-xs text-muted-foreground mt-1">{suggerimentoNascita}</p>}
         {eMinorenne(valori.date_of_birth) && (
           <label className="flex items-center gap-2 text-sm mt-2 min-h-11">
             <Checkbox checked={valori.consenso_genitori_firmato === true}

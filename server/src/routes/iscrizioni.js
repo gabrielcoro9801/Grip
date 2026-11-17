@@ -2,10 +2,9 @@
 // insieme, in una transazione. O si salva tutto, o niente: prima erano tre schermate e
 // tre salvataggi, e un errore al terzo lasciava un socio a metà (senza abbonamento, o senza accesso).
 //
-// Si iscrive un contatto (`lead_id`: la trattativa si chiude come *iscritto*, il diario resta alla
-// persona) o chi entra direttamente. In tutti e due i casi un ex socio che torna ritrova la sua
-// scheda, con il suo codice e la sua storia: dal contatto lo si riconosce dalla persona, entrando
-// direttamente dal codice fiscale.
+// Un ex socio che torna ritrova la sua scheda, con il suo codice e la sua storia: lo si
+// riconosce dal codice fiscale. (Fino al 17/11/2026 si iscriveva anche un contatto, `lead_id`:
+// i lead sono usciti dall'applicazione, archivio/lead.)
 //
 // Le regole di ogni pezzo sono quelle di sempre — l'anagrafica (`anagraficaSocio`), la vendita di
 // un abbonamento (le trasformazioni dell'endpoint generico, entities/hooks.js), la password
@@ -16,7 +15,7 @@
 import bcrypt from 'bcryptjs';
 import { eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { members, trattative, attivita, subscriptions, staffAccounts } from '../db/schema/index.js';
+import { members, attivita, subscriptions, staffAccounts } from '../db/schema/index.js';
 import { getUserFromRequest } from '../auth/tokens.js';
 import { canWriteEntity } from '../auth/authorize.js';
 import { translateToJs, translateToSnakeCase } from '../entities/columnMaps.js';
@@ -25,7 +24,6 @@ import { assegnaCodiceSocio } from '../lib/codiceSocio.js';
 import { registra } from '../lib/registro.js';
 import { registerPgErrorHandler } from './errorHandler.js';
 import { motivoPasswordNonValida } from '../../../shared/password.js';
-import { oggiIso } from '../../../shared/giorni.js';
 
 // Quello che l'iscrizione può scrivere sul socio. Il codice socio e le date di sistema restano
 // fuori: il codice lo assegna il contatore. Il consenso privacy non viene dall'anagrafica: è il
@@ -50,22 +48,20 @@ export default async function iscrizioniRoutes(fastify) {
 	 * POST /api/iscrivi → 201 { member, riattivato, accesso_portale }
 	 *
 	 *   {
-	 *     lead_id?,                                   — il contatto che si iscrive
 	 *     anagrafica: { nome, cognome, sesso, codice_fiscale, date_of_birth, … },
 	 *     abbonamento?: { plan_id, start_date?, price_paid? },
 	 *     informativa_privacy: true,                  — l'informativa firmata in reception
 	 *     portale?: { password }                      — l'accesso, con l'email dell'anagrafica
 	 *   }
 	 *
-	 * Serve poter scrivere i soci, e i contatti se si iscrive un contatto. Il socio non ha nessuno
-	 * di questi permessi, per costruzione. `certificato`, `consensi` e `modulo_consensi` (i passi
+	 * Serve poter scrivere i soci. Il socio non ha questo permesso, per costruzione. `certificato`, `consensi` e `modulo_consensi` (i passi
 	 * di prima) si rifiutano: un client vecchio non deve credere di averli salvati.
 	 */
 	fastify.post('/api/iscrivi', async (request, reply) => {
 		const corpo = request.body ?? {};
 		const ruolo = request.utente.ruolo;
 		const puo = (entita) => canWriteEntity(ruolo, entita);
-		if (!puo('Member') || (corpo.lead_id && !puo('Lead'))) {
+		if (!puo('Member')) {
 			return reply.code(403).send({ error: 'Il tuo ruolo non consente questa operazione.' });
 		}
 
@@ -76,7 +72,6 @@ export default async function iscrizioniRoutes(fastify) {
 		}
 		verificaCampiFile({ foto_url: anagrafica.foto_url });
 		if (corpo.informativa_privacy !== true) return reply.code(400).send({ error: "Serve l'informativa privacy firmata." });
-		const oggi = oggiIso();
 		const password = corpo.portale?.password;
 		if (corpo.portale) {
 			const nonValida = motivoPasswordNonValida(password);
@@ -88,20 +83,10 @@ export default async function iscrizioniRoutes(fastify) {
 		const autoreNome = autore?.nome ?? '';
 
 		const esito = await db.transaction(async (tx) => {
-			// Chi è: un contatto (e la sua persona), un ex socio con lo stesso codice fiscale, o nessuno.
-			let trattativa = null;
-			let gia = null;
-			if (corpo.lead_id) {
-				[trattativa] = await tx.select().from(trattative).where(eq(trattative.id, corpo.lead_id)).limit(1).for('update');
-				// Già iscritto — da un collega, o da un doppio clic — oppure eliminato.
-				if (!trattativa || trattativa.stato === 'iscritto') return { errore: 404, messaggio: 'Il contatto non esiste più: forse è già stato iscritto.' };
-				[gia] = await tx.select({ id: members.id, archiviatoIl: members.archiviatoIl }).from(members)
-					.where(eq(members.personaId, trattativa.personaId)).limit(1).for('update');
-			} else {
-				[gia] = await tx.select({ id: members.id, archiviatoIl: members.archiviatoIl }).from(members)
-					.where(sql`upper(${members.codiceFiscale}) = ${anagrafica.codice_fiscale}`).limit(1).for('update');
-				if (gia && !gia.archiviatoIl) return { errore: 409, messaggio: 'È già socio: con questo codice fiscale c\'è una scheda attiva.', socio_id: gia.id };
-			}
+			// Chi è: un ex socio con lo stesso codice fiscale, o nessuno.
+			const [gia] = await tx.select({ id: members.id, archiviatoIl: members.archiviatoIl }).from(members)
+				.where(sql`upper(${members.codiceFiscale}) = ${anagrafica.codice_fiscale}`).limit(1).for('update');
+			if (gia && !gia.archiviatoIl) return { errore: 409, messaggio: 'È già socio: con questo codice fiscale c\'è una scheda attiva.', socio_id: gia.id };
 
 			let socio;
 			if (gia) {
@@ -110,16 +95,11 @@ export default async function iscrizioniRoutes(fastify) {
 					.where(eq(members.id, gia.id)).returning();
 			} else {
 				[socio] = await tx.insert(members)
-					.values({ ...translateToJs(members, anagrafica), codiceSocio: await assegnaCodiceSocio(tx), ...(trattativa ? { personaId: trattativa.personaId } : {}) })
+					.values({ ...translateToJs(members, anagrafica), codiceSocio: await assegnaCodiceSocio(tx) })
 					.returning();
 			}
-			if (trattativa) {
-				await tx.update(trattative)
-					.set({ stato: 'iscritto', statoDal: oggi, richiamareIl: null, updatedDate: new Date() })
-					.where(eq(trattative.id, trattativa.id));
-			}
 			await tx.insert(attivita).values({
-				personaId: socio.personaId, trattativaId: trattativa?.id ?? null, tipo: 'iscrizione',
+				personaId: socio.personaId, tipo: 'iscrizione',
 				esito: gia ? 'riattivato' : 'nuovo', autoreId: request.utente.sub, autoreNome,
 			});
 
@@ -160,7 +140,7 @@ export default async function iscrizioniRoutes(fastify) {
 		const pezzi = [abbonamento && `abbonamento ${abbonamento.planName}`, accesso && 'accesso al portale'].filter(Boolean);
 		await registra(request.utente, {
 			tipoAzione: riattivato ? 'activate' : 'create', entitaTipo: 'member', entitaNome: socio.fullName, entitaId: socio.id,
-			dettagli: `${riattivato ? 'Tornato socio' : 'Iscritto'}${corpo.lead_id ? ' da un contatto (lead)' : ''}${pezzi.length ? `, con ${pezzi.join(', ')}` : ''}`,
+			dettagli: `${riattivato ? 'Tornato socio' : 'Iscritto'}${pezzi.length ? `, con ${pezzi.join(', ')}` : ''}`,
 		}, request.log);
 		reply.code(201);
 		return { member: translateToSnakeCase(members, socio), riattivato, accesso_portale: accesso };

@@ -1,5 +1,5 @@
 import React from "react";
-import { Numero, n } from "@/staff/components/lead/andamento/comuni";
+import { Numero, n } from "@/staff/components/andamento/comuni";
 import { LOCALE } from "@/core/domain/format";
 
 // I mesi dei riquadri, da "YYYY-MM": "novembre", e "nov 2025" per quello dell'anno prima.

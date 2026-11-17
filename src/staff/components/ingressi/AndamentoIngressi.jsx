@@ -5,8 +5,8 @@ import { LoadingState } from "@/ui/Spinner";
 import { ErrorState } from "@/ui/StateViews";
 import { useTema } from "@/ui/tema";
 import { formatData } from "@/core/domain/format";
-import { variazione } from "@/core/domain/lead";
-import { COLORI, Numero, Riquadro, useSuggerimento, n } from "@/staff/components/lead/andamento/comuni";
+import { variazione } from "@/core/domain/diario";
+import { COLORI, Numero, Riquadro, useSuggerimento, n } from "@/staff/components/andamento/comuni";
 import { ArrowDownRight, ArrowUpRight } from "lucide-react";
 
 const ALTEZZA = 140;
@@ -14,8 +14,8 @@ const GRADINI = 5;
 const gradino = (v, massimo) => (v <= 0 || massimo <= 0 ? 0 : Math.max(1, Math.ceil((v / massimo) * GRADINI)));
 
 /**
- * Come si frequenta la palestra: quanti ingressi, quando c'è gente, e chi non viene più. Gli
- * stessi colori e gli stessi pezzi di Andamento dei lead; i numeri vengono dal server
+ * Come si frequenta la palestra: quanti ingressi, quando c'è gente, e chi non viene più. I pezzi
+ * sono quelli di components/andamento/comuni.jsx; i numeri vengono dal server
  * (/api/ingressi/statistiche).
  */
 export default function AndamentoIngressi() {

@@ -143,13 +143,13 @@ describe('gli avvisi', () => {
 		assert.equal((await come('reception', 'GET', '/api/avvisi?tipo=contatti')).statusCode, 400);
 	});
 
-	test('chi vede e basta legge, ma non chiude; chi segue solo i contatti non li legge', async () => {
+	test('chi vede e basta legge, ma non chiude; chi non vede i soci non li legge', async () => {
 		try {
 			impostaMatrice({ permessi: { ...PERMESSI_PREDEFINITI, istruttore: { crm_members: ['view'] } }, capacita: {} });
 			assert.equal((await come('istruttore', 'GET', '/api/avvisi')).statusCode, 200);
 			const [avviso] = await avvisiDi('recente');
 			assert.equal((await come('istruttore', 'POST', `/api/avvisi/${avviso.id}/chiudi`, { esito: 'nascosto' })).statusCode, 403);
-			impostaMatrice({ permessi: { ...PERMESSI_PREDEFINITI, istruttore: { crm_leads: ['view', 'edit'] } }, capacita: {} });
+			impostaMatrice({ permessi: { ...PERMESSI_PREDEFINITI, istruttore: { prenotazioni: ['view'] } }, capacita: {} });
 			assert.equal((await come('istruttore', 'GET', '/api/avvisi')).statusCode, 403);
 		} finally {
 			ripristinaMatricePredefinita();

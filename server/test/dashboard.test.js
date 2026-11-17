@@ -85,19 +85,13 @@ describe('i numeri li conta il server', () => {
 });
 
 describe('ogni parte a chi può leggerla', () => {
-	test('chi vede i soci riceve le quattro tessere; nessuna dei contatti', async () => {
-		impostaMatrice({ permessi: { ...PERMESSI_PREDEFINITI, istruttore: { crm_members: ['view'], crm_leads: ['view'], prenotazioni: ['view'], dashboard: ['view'] } }, capacita: {} });
+	test('chi vede i soci riceve le quattro tessere', async () => {
+		impostaMatrice({ permessi: { ...PERMESSI_PREDEFINITI, istruttore: { crm_members: ['view'], prenotazioni: ['view'], dashboard: ['view'] } }, capacita: {} });
 		const dati = (await leggi('istruttore')).json();
 		assert.equal(Object.keys(dati.da_fare).length, 4);
-		assert.ok(!('contatti' in dati.da_fare));
-	});
+		});
 
-	test('chi segue solo i contatti non riceve Da fare: gli avvisi sono dei soci', async () => {
-		impostaMatrice({ permessi: { ...PERMESSI_PREDEFINITI, istruttore: { crm_leads: ['view'], prenotazioni: ['view'], dashboard: ['view'] } }, capacita: {} });
-		assert.equal((await leggi('istruttore')).json().da_fare, null);
-	});
-
-	test('chi non segue né soci né contatti non riceve Da fare', async () => {
+	test('chi non segue i soci non riceve Da fare', async () => {
 		impostaMatrice({ permessi: { ...PERMESSI_PREDEFINITI, istruttore: { prenotazioni: ['view'], dashboard: ['view'] } }, capacita: {} });
 		assert.equal((await leggi('istruttore')).json().da_fare, null);
 	});

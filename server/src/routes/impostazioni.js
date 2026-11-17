@@ -5,7 +5,7 @@
 // dei soci, la lista di Da fare, il bancone, la dashboard. Qui stanno accanto agli interruttori
 // dei segnali, ognuno con la sua regola in parole (shared/segnali.js, `regolaSegnale`).
 //
-// Le legge chi vede soci o contatti (servono a spiegare perché uno è in lista); le cambia solo
+// Le legge chi vede i soci (servono a spiegare perché uno è in lista); le cambia solo
 // l'amministratore (il modulo `impostazioni`). Ogni cambio passa dal registro delle azioni.
 //
 // I contatti: nome e indirizzo sono colonne di `organizations`, telefono, WhatsApp, email e orari
@@ -77,7 +77,7 @@ export default async function impostazioniRoutes(fastify) {
 		if (!utente) return reply.code(401).send({ error: 'Non autenticato.' });
 		const legge = request.method === 'GET';
 		const puo = legge
-			? ['crm_members', 'crm_leads', 'impostazioni'].some((m) => canAccess(utente.ruolo, m, 'view'))
+			? ['crm_members', 'impostazioni'].some((m) => canAccess(utente.ruolo, m, 'view'))
 			: canAccess(utente.ruolo, 'impostazioni', 'edit');
 		if (utente.ruolo === 'member' || !puo) {
 			return reply.code(403).send({ error: legge ? 'Non consentito.' : 'Solo l\'amministratore cambia le impostazioni.' });
@@ -89,7 +89,7 @@ export default async function impostazioniRoutes(fastify) {
 	fastify.get('/api/impostazioni/da-fare', async () => vista());
 
 	/**
-	 * PUT /api/impostazioni/da-fare { soglie?: { segnali: { … }, lead: { … }, … }, segnali_spenti?: [codice] }
+	 * PUT /api/impostazioni/da-fare { soglie?: { segnali: { … }, … }, segnali_spenti?: [codice] }
 	 *
 	 * Si salvano solo chiavi note e valori sensati (interi da 1 a 3650; l'archiviazione anche 0,
 	 * "mai"): una soglia sbagliata non deve svuotare né riempire le liste di lavoro. Un valore

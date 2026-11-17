@@ -30,12 +30,12 @@ const persona = async (chiave) => {
 	const [s] = await db.select({ personaId: members.personaId }).from(members).where(eq(members.id, id.soci[chiave])).limit(1);
 	return s.personaId;
 };
-const elenco = async (chi = 'reception') => (await come(chi, 'GET', '/api/segnali?tipo=soci')).json();
+const elenco = async (chi = 'reception') => (await come(chi, 'GET', '/api/segnali')).json();
 const riga = (dati, chiave) => dati.persone.find((p) => p.socio_id === id.soci[chiave]);
 
 // "Vede ma non modifica": fino alla fase 3 del CRM era l'istruttore predefinito, e questi test lo
 // usano così. Oggi l'istruttore ha la sua vista e non le anagrafiche: gli si ridà qui la sola lettura.
-const SOLA_LETTURA = { ...PERMESSI_PREDEFINITI, istruttore: { crm_members: ['view'], crm_leads: ['view'], calendario: ['view', 'edit'] } };
+const SOLA_LETTURA = { ...PERMESSI_PREDEFINITI, istruttore: { crm_members: ['view'], calendario: ['view', 'edit'] } };
 const matriceDiProva = () => impostaMatrice({ permessi: SOLA_LETTURA, capacita: {} });
 
 before(async () => {
@@ -125,10 +125,10 @@ describe('le cose da fare di un socio', () => {
 
 describe('filtri dell\'elenco', () => {
 	test('per stato e per segnale, solo soci', async () => {
-		const perStato = (await come('reception', 'GET', '/api/segnali?tipo=soci&fase=attivo')).json();
+		const perStato = (await come('reception', 'GET', '/api/segnali?fase=attivo')).json();
 		assert.ok(perStato.persone.every((p) => p.fase === 'attivo' && p.socio_id));
 		assert.ok(riga(perStato, 'contattato'), 'l\'elenco mostra anche chi è già stato seguito');
-		const perSegnale = (await come('reception', 'GET', '/api/segnali?tipo=soci&segnale=in_scadenza')).json();
+		const perSegnale = (await come('reception', 'GET', '/api/segnali?segnale=in_scadenza')).json();
 		assert.ok(riga(perSegnale, 'scade'));
 		assert.ok(!riga(perSegnale, 'saltalezioni'));
 		assert.equal((await come('reception', 'GET', '/api/segnali?fase=in_scadenza')).statusCode, 400, 'non è più uno stato');
@@ -165,13 +165,11 @@ describe('i permessi', () => {
 		assert.equal((await come('istruttore', 'POST', `/api/persone/${pid}/contatti`, { canale: 'telefono', segnale: 'in_scadenza' })).statusCode, 403);
 	});
 
-	test('chi segue solo i contatti non riceve i soci, né li trova', async () => {
-		impostaMatrice({ permessi: { ...PERMESSI_PREDEFINITI, istruttore: { crm_leads: ['view'] } }, capacita: {} });
+	test('chi non vede i soci non riceve i segnali, né li cerca', async () => {
+		impostaMatrice({ permessi: { ...PERMESSI_PREDEFINITI, istruttore: { calendario: ['view'] } }, capacita: {} });
 		try {
-			const dati = (await come('istruttore', 'GET', '/api/segnali')).json();
-			assert.ok(dati.persone.every((p) => !p.socio_id));
-			const trovati = (await come('istruttore', 'GET', `/api/persone/cerca?q=${encodeURIComponent(`Segnali${lettere}`)}`)).json().risultati;
-			assert.deepEqual(trovati, []);
+			assert.equal((await come('istruttore', 'GET', '/api/segnali')).statusCode, 403);
+			assert.equal((await come('istruttore', 'GET', `/api/persone/cerca?q=${encodeURIComponent(`Segnali${lettere}`)}`)).statusCode, 403);
 		} finally {
 			matriceDiProva();
 		}

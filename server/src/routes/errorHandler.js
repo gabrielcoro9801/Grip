@@ -23,10 +23,7 @@ const PG_ERROR_MESSAGES = {
 // `error.detail`.
 const VINCOLI_CON_MESSAGGIO = {
 	members_codice_fiscale_univoco: 'Esiste già un socio con questo codice fiscale.',
-	canali_contatto_nome_unique: 'Esiste già un canale con questo nome.',
 	staff_accounts_email_lower_idx: 'Esiste già un account con questa email (le maiuscole non contano).',
-	trattative_canale_id_canali_contatto_id_fk: 'Da questo canale sono arrivati dei contatti o dei soci: disattivalo invece di eliminarlo.',
-	trattative_una_aperta_idx: 'Questa persona ha già un contatto aperto: lavora quello.',
 	bookings_attiva_unica_idx: 'Il socio è già prenotato a questa lezione.',
 	staff_accounts_linked_member_id_idx: 'Il socio ha già un account per il portale.',
 };
@@ -41,7 +38,6 @@ const CHI_CITA = {
 	sessions: 'lezioni in calendario',
 	events: 'eventi in calendario',
 	courses: 'corsi',
-	trattative: 'contatti',
 };
 
 function messaggioEliminazioneBloccata(error) {

@@ -9,18 +9,12 @@ import { Search } from "lucide-react";
 const TIPI = {
   socio: { etichetta: "Socio", tono: "positivo" },
   ex_socio: { etichetta: "Archiviato", tono: "neutro" },
-  contatto_aperto: { etichetta: "Contatto", tono: "info" },
-  contatto: { etichetta: "Contatto chiuso", tono: "neutro" },
 };
 // Si cerca quando si smette di scrivere, non a ogni lettera.
 const ATTESA_MS = 200;
 
-/** Dove porta un risultato: la scheda del socio, o il contatto fra i lead (anche fra i chiusi). */
-function destinazione(r) {
-  if (r.socio_id) return `/crm/soci/${r.socio_id}`;
-  const q = encodeURIComponent(r.nome);
-  return r.tipo === "contatto_aperto" ? `/lead?q=${q}` : `/lead?vista=chiusi&q=${q}`;
-}
+/** Dove porta un risultato: la scheda del socio. */
+const destinazione = (r) => `/crm/soci/${r.socio_id}`;
 
 /**
  * La ricerca di una persona da qualunque pagina, con Ctrl+K (⌘K sul Mac): nome, telefono scritto

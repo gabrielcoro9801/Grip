@@ -6,7 +6,7 @@ import StaffLogin from "@/staff/pages/StaffLogin";
 import {
   LayoutDashboard, Users, Calendar,
   ChevronLeft, ChevronRight, LogOut, Menu, Dumbbell,
-  ShieldCheck, ScrollText, UserPlus, KeyRound, ListChecks, Search, Phone
+  ShieldCheck, ScrollText, KeyRound, ListChecks, Search, Phone
 } from "lucide-react";
 import RicercaGlobale from "@/staff/components/RicercaGlobale";
 import { CambioPasswordObbligatorio, DialogCambioPassword } from "@/ui/CambioPassword";
@@ -25,9 +25,6 @@ const navItems = [
   { label: "Da fare", path: "/da-fare", icon: ListChecks },
   { label: "Dashboard", path: "/", icon: LayoutDashboard },
   { label: "Soci", path: "/crm", icon: Users },
-  // I lead sono contatti, non soci: non hanno scheda, abbonamento né accesso. Stanno in una
-  // sezione loro per non mescolarsi con chi è già iscritto.
-  { label: "Lead", path: "/lead", icon: UserPlus },
   { label: "Gestione corsi", path: "/calendario", icon: Calendar },
   // Le impostazioni stanno in fondo, sotto il loro titolo: prima erano mescolate al lavoro di
   // ogni giorno (Utenti accanto a Soci e Corsi). Le vede l'amministratore.
